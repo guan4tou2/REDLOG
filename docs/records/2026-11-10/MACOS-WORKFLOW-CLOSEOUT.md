@@ -9,7 +9,7 @@
 | #591 內容語義 | `contentState(ContentDescriptor)` 統一 available／empty／not-captured／unreadable／truncated；Shell、HTTP、Activity AI、Timeline AI 皆沿用核心 Reader | 零位元組且 partial 仍是截斷；缺檔不說未擷取；空 stderr 不新增選項，但保存後讀取失敗仍可見 |
 | #661 Timeline | `useTimelinePages`、`useTimelineLive`、`useTimelineInspector`、`useTimelineViewport` 與既有 summary／pan hooks 分責任 | 頁面 generation／cursor 防競爭；live 最新修訂勝出；大集合 250 ms 合併、小集合 frame 路徑；Reader 不轉移到下一個事件 |
 | #661 匯出 | iterator 分頁選取與摘要；preview／來源重檢／Bundle／HAR 在唯讀 worker；JSON／NDJSON／Timeline 以確認批次串流寫出 | snapshot／核准 ID／內容 digest／DoNotExport／設定／sanitization 重檢；專案切換中止；私有 staging 通過交付重檢才發布 |
-| #661 來源契約 | 核心 `captureFacts` 分開設定、服務、連線、保存與讀取新鮮度，現有 HTTP／onboarding／官方插件 View Model 使用相同保存事實 | 歷史 HTTP 流量不證明目前代理正在運作；讀取失敗明確未知；不新增 Manifest 欄位、事件儲存或第三方 UI 執行 |
+| #661 來源契約 | 核心 `captureFacts` 分開設定、服務、連線、保存與讀取新鮮度，現有 HTTP／onboarding／官方插件 View Model 使用相同保存事實 | 歷史 HTTP 流量不證明目前代理正在運作；讀取失敗時 HTTP／命令列皆明確未知、撤銷快取的 Running 標籤；不新增 Manifest 欄位、事件儲存或第三方 UI 執行 |
 | 未知來源 | Generic Reader 可讀完整事件 JSON，沿用 ContentRef 的 project／version／Find／視窗服務 | 插件不在場仍可閱讀歷史；已知欄位的缺失／讀取錯誤不會被通用 JSON 假裝成有輸出 |
 
 Timeline 的 `sliceWithAmendments`／`markerIdsIn` 是舊同步匯出的失效輔助函式，已移除。原先只呼叫這兩個函式的測試，改以真實 preview → execute → 成品斷言：已核准的 marker／correction 各一次，核准範圍外或 snapshot 後的 correction 不會偷偷加入。Bundle 的雜湊鏈／修訂保存契約與 verifier 測試保留。
@@ -27,11 +27,12 @@ Timeline 的 `sliceWithAmendments`／`markerIdsIn` 是舊同步匯出的失效�
 | 執行 | 結果與界線 |
 | --- | --- |
 | typecheck／spec／architecture／i18n | 四項通過；architecture 404 source files，沒有新增 allowlist |
-| 完整 macOS unit | 5,949 passed／1 failed／42 skipped；唯一失敗是既有 Bash PTY 的 `setpgid: Operation not permitted` 插入了終端文字，計數本身為 1 |
+| 完整 macOS unit（最後小修前） | 5,949 passed／1 failed／42 skipped；唯一失敗是既有 Bash PTY 的 `setpgid: Operation not permitted` 插入了終端文字，計數本身為 1 |
 | 該 PTY 檔案單獨重驗 | 5 passed，19.19 s；不隱藏完整 suite 的偶發失敗，也未放寬斷言或修改 shell 產品碼 |
 | 正式 build | 通過，含獨立 export worker |
 | 來源碼 Electron | **117 passed，3.0 min，零 retry／skip**；12 份受影響 spec，含窄窗／雙語／縮放、來源修復、插件、Session、Find／閱讀位置返回及匯出 |
-| installed macOS 候選 | 尚待下節精確 Build 與實際 smoke，完成前不計 PASS |
+| 最後小修補驗 | 競爭／交付 15 項、狀態／Reader／worker 33 項通過；Timeline／export Electron 38 項再次通過（與 117 有重疊，不相加） |
+| installed macOS 候選 | **1 passed，10.1 s**，兩次 App 啟動，沒有 skipped／not-exercised；資源、native module、Bundle worker 與 verifier 皆實際執行 |
 
 來源碼選取：`app-shell`、`cast-content-reader`、`export-preview`、`timeline-track`、`network-state-recovery`、`settings-search-closeout`、`first-run`、`evidence-views`、`external-session`、`official-agent-capture`、`plugin-explore`、`capture-settings-interaction`。不把 unit、CI shard 或安裝 smoke 的重複覆蓋加進同一個通過總數。
 
@@ -45,6 +46,19 @@ Timeline 的 `sliceWithAmendments`／`markerIdsIn` 是舊同步匯出的失效�
 | 事後查找 #589 | Source filter＋query＋Reader Find＋內容視窗／scroll＋event，Timeline 返回逐項斷言；另驗 AI provider／Session／query | 同一事件與跨專案隔離，不以 Toast 假導航 |
 | 異常修復 #590 | 設定搜尋／深層定位、真實設定寫入拒絕後重試、外部來源恢復後新事件；IP／Pivot／CDP 可控失敗恢復 | 可控 IPC 案例只證明 UI 與恢復路徑，不冒充實際網路故障 |
 | 證據交付 | preview／政策變更／成品讀回、原始附件警告、verifier | 各格式保留既有遮蔽及可攜範圍，未開放報告產生器 |
+
+## 固定 macOS 安裝候選
+
+- 版本 **0.18.6**，產品提交 **`f10c6645`**；之後僅更新測試／文件，不冒用後續文件提交作為已建置版本。
+- `electron-builder --mac dir --arm64 --publish never`，複製成獨立 `.app` 副本；不是公開 release、DMG 下載或覆蓋既有 `/Applications/RedLog.app`。
+- resources／optional AI checksum／native resources 與 `codesign --verify --deep --strict` 通過；**ad-hoc 簽章**，沒有 notarization 或經認證的發行者身分。
+- `app.asar` SHA-256：`c50a57b34ca15c6960ea66ddf634e90b88901b7501444218062c3010eb477c86`。
+- ASAR 內確認 `out/main/export-worker.js`、`fs-extra`、`@dagrejs/graphlib`、`@tanstack/virtual-core` 等必要依賴；安裝版 Bundle 實際透過 worker 執行，驗證 native SQLite 與封裝路徑。
+- smoke 涵蓋開專案前 API、內建終端、外部 Shell、實際 mitmdump／HTTP／HTTPS canary、擷取驗證、Bundle verifier 與重啟讀回；report validator 確認無跳過步驟。
+
+初次封裝在測試用的 `node_modules` 連結下漏收間接依賴，未作為通過候選；改以同一 lockfile 的隔離 `npm ci`／必要 runtime rebuild 重建。沒有修改 lockfile 或引入新套件。
+
+首次安裝 smoke 被已執行五天的使用者 RedLog 代理佔用 `6661` 阻擋，狀態有正確顯示 PID 與衝突原因。第二次只改設定但未重新啟動，仍保留失敗狀態；測試現透過正式設定與 stop／start 為隔離專案配置獨立埠，不終止既有代理。修正後完整 smoke 通過；兩次診斷失敗沒有算進 PASS，也沒有降低原斷言。
 
 ## 完整匯出 workload
 

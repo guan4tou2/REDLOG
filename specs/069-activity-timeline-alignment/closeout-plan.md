@@ -6,11 +6,11 @@
 
 - [x] 整合 #662 的現況／驗收文件及 #663 的測試收斂；保留完整 CI，不以快速選取取代門檻。
 - [x] #591：由核心內容描述導出有內容、空內容、未擷取、無法讀取與截斷；各 Reader 共用判斷，缺檔不說未擷取，空 stderr 不新增區塊。
-- [ ] #589／#590／#593：補齊非預設來源／Session／Find／閱讀位置的往返、來源故障恢復與 macOS 安裝候選流程；紀錄 fixture、實際來源與原生人工驗收的界線。
+- [x] #589／#590／#593：補齊非預設來源／Session／Find／閱讀位置的往返、來源故障恢復與 macOS 安裝候選流程；紀錄 fixture、實際來源與原生人工驗收的界線。
 - [x] #661 Timeline：資料分頁與增量、選取與 Reader／返回、viewport 分責任抽離；保留過期回應與跨專案防護。
 - [x] #661 export：有界讀取／核准重檢與串流交付；Bundle／HAR 重工作移出 UI 主程序，保留 snapshot、遮蔽、附件、取消／專案切換與證據一致性。
 - [x] #661 source contract：沿用既有 core／adapter／Reader，統一服務、連線、保存、完整性與讀取的狀態，不建立第二套儲存或開放任意第三方 UI。
-- [ ] 跑依序 gates、完整單元、受影響 Electron 與 macOS 安裝驗證；更新實際證據、commit 與 push 獨立分支。
+- [x] 跑依序 gates、完整單元、受影響 Electron 與 macOS 安裝驗證；更新實際證據、commit 與 push 獨立分支。
 
 ## 不得誤標的驗收
 
@@ -19,3 +19,5 @@
 本輪授權包含完成與 push；直接合併 main 曾被自動審核拒絕。完成可審查 PR 後另取得合併授權。
 
 執行證據與六條流程對照見 [本批紀錄](../../docs/records/2026-11-10/MACOS-WORKFLOW-CLOSEOUT.md)；保留原生人工／原 Windows 的 NOT RUN。
+
+本批自動化驗收完成：來源碼 Electron 117 案；最後小修的重疊選取 38 案；固定產品 f10c6645 的獨立安裝副本 smoke 1 案（無跳過）。完整 unit 的單一 macOS PTY 環境偶發與隔離重驗結果均保留在紀錄，不宣稱當次完整 suite 全綠。

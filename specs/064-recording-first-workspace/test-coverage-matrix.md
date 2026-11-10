@@ -25,7 +25,7 @@
 
 | 順序 | 工作與完成條件 | 追蹤 |
 | --- | --- | --- |
-| 1 | 從固定乾淨 commit 建立 macOS 安裝候選；核對 Build／資源／簽章／hash，跑 installed recording → export → restart smoke；另驗 Gatekeeper、權限與一般退出提示 | #226、#457 |
+| 1 | f10c6645 的固定 macOS 安裝副本已通過 Build／資源／ad-hoc 簽章／hash 與 recording → export → restart；仍需真正下載的 Gatekeeper／notarization、OS 權限及一般退出提示 | #226、#457 |
 | 2 | 真實 Terminal App／Shell、實際瀏覽器 HTTPS 與 AI 客戶端，各完成接入 → 新資料保存 → Reader → 交付；保留失敗恢復與來源依據 | #593、#434、#489；CT-08／09 不以環境旗標取代 |
 | 3 | 本批已共用 Reader 五態並補跨 Reader／空 stderr／未知來源回歸；特殊真實 producer 與全平台人工狀態仍需專項驗收（見下方本批紀錄） | #591、#546、PR #565 |
 | 4 | 確認 token 任意 hex 守門及按鈕例外，完成空／載入／錯誤、鍵盤與視覺人工檢查；五人使用者量測仍未執行 | #592、#558、#457 |
