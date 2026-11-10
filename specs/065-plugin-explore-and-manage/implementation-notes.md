@@ -2,6 +2,8 @@
 
 記錄現況與既有能力,不把建議當成已實作。基準 `origin/main` f51037e0。
 
+此檔保留 2026-11-04 的調查；目前整合與測試狀態見 [verification.md](verification.md)。寬窗並排已由後續 Stitch 單欄定稿取代，不依此歷史可重用清單恢復舊布局。
+
 ## 現況(2026-11-04 審查)
 
 ### 設定→插件(`PluginsPanel.tsx`,src/renderer/src/components/settings/)
