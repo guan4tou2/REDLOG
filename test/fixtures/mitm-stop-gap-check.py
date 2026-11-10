@@ -61,11 +61,28 @@ with tempfile.TemporaryDirectory() as directory:
             'response_headers': [['set-cookie', 'session=SECRET']],
             'response_body': {'data': 'UFJJVkFURS1CWVRFUw==', 'encoding': 'base64', 'size': size}}}
 
+    def read_record(path):
+        # This reader runs while worker threads are renaming records into the
+        # directory. On Windows a file being renamed answers open() with
+        # EACCES for an instant, which is the writer's moment, not a fault in
+        # the record. A file that vanished meanwhile was drained: skip it.
+        for attempt in range(50):
+            try:
+                return json.loads(path.read_text())
+            except PermissionError:
+                time.sleep(0.02)
+            except FileNotFoundError:
+                return None
+        return json.loads(path.read_text())
+
+    def read_all(directory):
+        return [r for r in (read_record(p) for p in sorted(directory.glob('*.json'))) if r is not None]
+
     def markers():
-        return [json.loads(p.read_text()) for p in sorted(ns['INFLIGHT_DIR'].glob('*.json'))]
+        return read_all(ns['INFLIGHT_DIR'])
 
     def spooled():
-        return [json.loads(p.read_text()) for p in sorted(ns['SPOOL_DIR'].glob('*.json'))]
+        return read_all(ns['SPOOL_DIR'])
 
     def gaps(reason):
         return [r['data'] for r in spooled() if r['data'].get('reason') == reason]
