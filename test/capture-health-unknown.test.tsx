@@ -143,6 +143,16 @@ describe('Dashboard capture card', () => {
     expect(screen.queryByText('Capture is working')).toBeNull()
   })
 
+  it('does not leave a cached command source running after the health read fails', async () => {
+    const last = { ...snap('healthy'), sources: [{ id: 'terminal', label: 'Terminal', installed: true, state: 'ready', lastEventAt: Date.now() }] }
+    health.mockResolvedValueOnce(last).mockRejectedValue(new Error('ipc'))
+    show(<DashboardView onNavigate={noop} projectName="p" />)
+    await waitFor(() => expect(screen.getByTestId('capture-core-commands').getAttribute('data-state')).toBe('ready'))
+    await act(async () => { batch() })
+    await waitFor(() => expect(screen.getByTestId('capture-core-commands').getAttribute('data-state')).toBe('unknown'))
+    expect(screen.getByTestId('capture-core-commands').textContent).not.toContain('Running')
+  })
+
   it('says so when the first read failed and nothing was ever confirmed', async () => {
     health.mockRejectedValue(new Error('ipc'))
     show(<DashboardView onNavigate={noop} projectName="p" />)
