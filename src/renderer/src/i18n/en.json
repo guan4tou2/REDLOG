@@ -1163,6 +1163,7 @@
   "palette.hostHits": "{{count}} events",
   "palette.operatorPrimary": "primary",
   "settings.categories": "Settings categories",
+  "settings.captureJump": "Groups on this page",
   "settings.home.subtitle": "Manage RedLog's capture channels, project scope and system environment",
   "settings.home.group.capture": "Capture sources",
   "settings.home.group.project": "Project settings",

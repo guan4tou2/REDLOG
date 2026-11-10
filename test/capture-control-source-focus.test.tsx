@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import CaptureControlPage from '../src/renderer/src/components/settings/CaptureControlPage'
 import type { ConfigState } from '../src/renderer/src/components/settings/SettingsShared'
@@ -54,6 +54,23 @@ describe('Capture sources page: landing on a source row', () => {
     stubBridge()
     const { container } = page('file-watcher')
     await waitFor(() => expect(document.activeElement).toBe(container.querySelector('[data-source-id="file-watcher"]')))
+  })
+
+  // #557: a jump per group, in page order, each scrolling to its own group.
+  it('jumps to each of the four groups', async () => {
+    stubBridge()
+    const scrolled: Element[] = []
+    Element.prototype.scrollIntoView = function (this: Element) { scrolled.push(this) }
+    const { container, getByTestId } = page(null)
+    const buttons = Array.from(container.querySelectorAll('nav button')).map(b => b.getAttribute('data-testid'))
+    expect(buttons).toEqual(['capture-jump-agents', 'capture-jump-screenshot', 'capture-jump-hostMonitors', 'capture-jump-external'])
+    for (const id of ['agents', 'screenshot', 'hostMonitors']) fireEvent.click(getByTestId(`capture-jump-${id}`))
+    // `t` is the identity here, so a group's title is its key.
+    expect(scrolled[0]!.textContent).toContain('settings.agents')
+    expect(scrolled[1]).toBe(container.querySelector('[data-source-id="screenshot"]'))
+    expect(scrolled[2]!.textContent).toContain('settings.packHostMonitors')
+    expect(scrolled).toHaveLength(3)
+    cleanup()
   })
 
   it('does not move focus when no source is named', async () => {

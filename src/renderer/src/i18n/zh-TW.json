@@ -1163,6 +1163,7 @@
   "palette.hostHits": "{{count}} 筆",
   "palette.operatorPrimary": "主要",
   "settings.categories": "設定分類",
+  "settings.captureJump": "本頁的區塊",
   "settings.home.subtitle": "管理 RedLog 擷取管道、專案範疇與系統環境",
   "settings.home.group.capture": "擷取來源",
   "settings.home.group.project": "專案設定",

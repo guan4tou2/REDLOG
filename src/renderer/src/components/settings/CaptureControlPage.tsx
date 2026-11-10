@@ -1,4 +1,5 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
+import { Button } from '../Button'
 import { FieldGroup, Field, ListField, type ConfigState } from './SettingsShared'
 import CapturePackGroup, { PackMember } from './CapturePackGroup'
 import AgentsPanel from './AgentsPanel'
@@ -16,6 +17,16 @@ const MEMBER_HEALTH_ID: Record<string, string> = {
   processMonitor: 'process-monitor',
   connectionMonitor: 'connection-monitor'
 }
+
+/** The page's four groups, in page order (#557). The landmark's name is not a
+ *  setting; it is held in a constant so the search index does not list it. */
+const JUMP_NAV = 'settings.captureJump'
+const JUMPS = [
+  { id: 'agents', label: 'settings.agents' },
+  { id: 'screenshot', label: 'settings.screenshotGroup' },
+  { id: 'hostMonitors', label: 'settings.packHostMonitors' },
+  { id: 'external', label: 'settings.externalCapture' }
+] as const
 
 export default function CaptureControlPage({
   config, setConfig, t, onOpenPlugins, onOpenIntegration, focusSource, onFocusHandled
@@ -58,18 +69,29 @@ export default function CaptureControlPage({
     return () => { observer.disconnect(); clearTimeout(giveUp) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusSource])
+  // #557: four groups on one page. A jump per group, in page order; the labels
+  // are the group titles, so the buttons need no copy of their own.
+  const groups = useRef<Record<string, HTMLElement | null>>({})
+  const group = (id: string) => (el: HTMLElement | null): void => { groups.current[id] = el }
   return (
     <>
+      <nav aria-label={t(JUMP_NAV)} className="flex flex-wrap gap-1.5">
+        {JUMPS.map(({ id, label }) => (
+          <Button key={id} size="compact" level="quiet" data-testid={`capture-jump-${id}`}
+            onClick={() => groups.current[id]?.scrollIntoView?.({ block: 'start' })}>{t(label)}</Button>
+        ))}
+      </nav>
       {/* Spec 049: the four-bullet "what every project records" list is gone.
           It had no control, no state and no link, and it held the first screen
           of this page. The same four sources are rows in the Dashboard's
           capture inventory, where they carry whether they are actually feeding
           the record — which is what an operator came here to find out. */}
       {/* Optional AI integrations are installed per tool and authorized per project. */}
-      <AgentsPanel config={config} setConfig={setConfig} t={t} onOpenPlugins={onOpenIntegration} focusAgentKind={agentKind} onFocusHandled={onFocusHandled} />
+      <div ref={group('agents')} className="scroll-mt-4">
+        <AgentsPanel config={config} setConfig={setConfig} t={t} onOpenPlugins={onOpenIntegration} focusAgentKind={agentKind} onFocusHandled={onFocusHandled} />
+      </div>
 
-
-      <div data-source-id="screenshot" tabIndex={-1} className={SOURCE_ROW}>
+      <div ref={group('screenshot')} data-source-id="screenshot" tabIndex={-1} className={SOURCE_ROW}>
       <FieldGroup title={t('settings.screenshotGroup')}>
         <div className="flex items-center gap-2 flex-wrap">
           {[
@@ -145,6 +167,7 @@ export default function CaptureControlPage({
       </FieldGroup>
       </div>
 
+      <div ref={group('hostMonitors')} className="scroll-mt-4">
       <CapturePackGroup
         pack="hostMonitors" title={t('settings.packHostMonitors')} hint={t('settings.packHostMonitorsHint')}
         config={config} setConfig={setConfig} t={t} onOpenPlugins={onOpenPlugins}
@@ -213,6 +236,7 @@ export default function CaptureControlPage({
           config={config} setConfig={setConfig} t={t}
         />
       </CapturePackGroup>
+      </div>
 
 
       {/* Last, and the one block on this page that is not per project: what
@@ -220,7 +244,9 @@ export default function CaptureControlPage({
           than on the Plugins page because the question it answers -- "is
           anything actually recording" -- is this page's question, and because
           what ships with RedLog is not a plugin. */}
-      <ExternalCaptureGroup t={t} onOpenPlugins={onOpenPlugins} />
+      <div ref={group('external')} className="scroll-mt-4 empty:hidden">
+        <ExternalCaptureGroup t={t} onOpenPlugins={onOpenPlugins} />
+      </div>
 
 
 
