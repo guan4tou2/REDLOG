@@ -56,8 +56,10 @@ export async function writeApprovedEventExport(
   }
   const identity = fs.fstatSync(fd, { bigint: true })
   const ownsDestination = () => {
-    const named = fs.lstatSync(file, { bigint: true })
-    return named.isFile() && named.ino === identity.ino && named.dev === identity.dev
+    try {
+      const named = fs.lstatSync(file, { bigint: true })
+      return named.isFile() && named.ino === identity.ino && named.dev === identity.dev
+    } catch { return false }
   }
   let worker: Worker | undefined
   let closed = false

@@ -47,7 +47,7 @@ export function useTimelineLive(filter: MutableRefObject<EventFilter>, generatio
         if (added) current.current.count(added)
         if (changed) schedule()
       } catch (error) {
-        if (alive && gen === generation.current) current.current.failed(batch)
+        if (alive && gen === generation.current && batch.some(row => latest.get(row.id) === version)) current.current.failed(batch)
         throw error
       } finally {
         for (const row of batch) if (latest.get(row.id) === version) latest.delete(row.id)

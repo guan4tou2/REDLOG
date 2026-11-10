@@ -28,6 +28,15 @@ it('keeps the newest live revision and ignores obsolete filter responses or fail
   await act(async () => { stale.reject(new Error('old filter')); await changed })
   expect(actions.failed).not.toHaveBeenCalled()
   expect(h.result.current.rows.current.has('b')).toBe(false)
+  const failedOlder = deferred(), succeededNewer = deferred()
+  query.mockReturnValueOnce(failedOlder.promise).mockReturnValueOnce(succeededNewer.promise)
+  const failed = h.result.current.admit.current([{ id: 'c', timestamp: 1 } as any]).catch(() => {})
+  const succeeded = h.result.current.admit.current([{ id: 'c', timestamp: 1 } as any])
+  await act(async () => { succeededNewer.resolve(['c']); await succeeded })
+  actions.failed.mockClear()
+  await act(async () => { failedOlder.reject(new Error('obsolete live read')); await failed })
+  expect(actions.failed).not.toHaveBeenCalled()
+
 })
 
 it.each([1, 5001])('coalesces live publishes for %s existing rows and keeps the small-set frame path', async size => {

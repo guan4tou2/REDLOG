@@ -30,7 +30,6 @@
 | 3 | 本批已共用 Reader 五態並補跨 Reader／空 stderr／未知來源回歸；特殊真實 producer 與全平台人工狀態仍需專項驗收（見下方本批紀錄） | #591、#546、PR #565 |
 | 4 | 確認 token 任意 hex 守門及按鈕例外，完成空／載入／錯誤、鍵盤與視覺人工檢查；五人使用者量測仍未執行 | #592、#558、#457 |
 | 延後 | 原 Windows 約 200k 事件端到端效能；不以 macOS 子基準或 PowerShell 安裝 smoke 代替 | #660（#587 子項） |
-| 獨立工程 | Timeline 剩餘 controllers、匯出查詢陣列／bundle／HAR、共用來源與事件契約 | #661、PR #584（規格 Draft） |
 
 本批 macOS 整合的責任邊界、實際測試與外部限制見 [2026-11-10 整合驗收](../../docs/records/2026-11-10/MACOS-WORKFLOW-CLOSEOUT.md)。Timeline 分頁／live／Inspector／viewport、匯出 iterator／唯讀 worker 及來源事實已實作；不再將它們與尚未開放的第三方 UI／Manifest 平台混成同一項未完成工作。此紀錄不回填下方歷史安裝包或整體 CT 為 PASS。
 
