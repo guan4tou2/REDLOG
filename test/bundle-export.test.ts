@@ -368,6 +368,19 @@ describeDB('private bookmarks stay out of the bundle', () => {
     expect(manifest.sanitizedOutOfScope).toBe(1)
   })
 
+  it('drops the body-store ref of an out-of-scope event that has no preview beside it (#489)', () => {
+    const ref = { sha256: 'a'.repeat(64), file: `${'a'.repeat(64)}.body`, size: 5_000_000, encoding: 'base64' }
+    insT({ subtype: 'http_response', flow_id: 'f1', response_body_ref: ref }, 'out.evil.com')
+    insT({ subtype: 'http_response', flow_id: 'f2', response_body_ref: { ...ref, sha256: 'b'.repeat(64), file: `${'b'.repeat(64)}.body` } }, 'in.example.com')
+
+    const { outDir } = exportBundle('eng', { outRoot: path.join(dir, 'a489'), scope: { targets: ['*.example.com'] } })
+    const rows = fs.readFileSync(path.join(outDir, 'events.jsonl'), 'utf-8').trim().split('\n').map((l) => JSON.parse(l))
+    const outData = JSON.parse(rows.find((r) => r.target_id === 'out.evil.com').data)
+    const inData = JSON.parse(rows.find((r) => r.target_id === 'in.example.com').data)
+    expect(outData.response_body_ref).toBeUndefined()
+    expect(inData.response_body_ref).toBeDefined()
+  })
+
   it('does not mask anything when no scope is supplied (A2 default is safe)', () => {
     insT({ subtype: 'command_end', command: 'curl https://out.evil.com', output: 'STILL-HERE' }, 'out.evil.com')
     const { outDir, manifest } = exportBundle('eng', { outRoot: path.join(dir, 'a2b') })

@@ -267,9 +267,12 @@ project isolation, truncation and platform limits.
 Direct REST API for scripts and custom agents.
 
 ```bash
-TOKEN=$(cat ~/.redlog/api-token)
 PORT=$(cat ~/.redlog/api-port)
-curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:$PORT/api/status
+# The token goes to curl as a config on stdin; `-H "Authorization: Bearer …"`
+# would put it in the argument list that `ps` shows to every user on the host.
+curl -K - http://127.0.0.1:$PORT/api/status <<EOF
+header = "Authorization: Bearer $(cat ~/.redlog/api-token)"
+EOF
 ```
 
 | Method | Endpoint | Description |

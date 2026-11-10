@@ -64,7 +64,9 @@ LOCAL_PORT="${REDLOG_REMOTE_PORT:-$(read_local api-port)}"
 # is rewritten on every app start, so the copy on the VPS stops working without
 # saying why.
 #
-# Mint a secondary and pass it in REDLOG_REMOTE_TOKEN instead.
+# A secondary token would be the right thing to pass in REDLOG_REMOTE_TOKEN,
+# but secondary operators were removed (200d0c95): passing the primary token
+# there is now an explicit, deliberate choice.
 if [[ -n "${REDLOG_REMOTE_TOKEN:-}" ]]; then
   LOCAL_TOKEN="$REDLOG_REMOTE_TOKEN"
 else
@@ -76,10 +78,11 @@ Refusing to deploy with the primary operator token.
   A VPS only needs to append events, and the primary token is rotated on
   every app start — so the copy you push would break silently anyway.
 
-  Create a dedicated operator and pass its token:
+  RedLog no longer issues secondary operator tokens (redlog-cli operators
+  only lists them), so there is no narrower token to create. To put the
+  primary token on that host anyway, pass it explicitly:
 
-    redlog-cli operators add vps-01
-    REDLOG_REMOTE_TOKEN=<token> hooks/vps-deploy.sh install user@vps
+    REDLOG_REMOTE_TOKEN="$(cat ~/.redlog/api-token)" hooks/vps-deploy.sh install user@vps
 
 MSG
   exit 1

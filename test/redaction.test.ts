@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { _shutdownBoundedRegex } from '../src/core/bounded-regex'
 import {
   redact, maskText, shannonEntropy, redactFields,
   configureRedaction, getRules, DEFAULT_RULES,
@@ -186,5 +187,40 @@ describe('redactFields', () => {
     const masked = maskText(data.notes as string, spans)
     expect(masked).toBe(`pw is ${'\u2022'.repeat(SECRET.length)} ok`)
     expect(masked).not.toContain(SECRET)
+  })
+})
+
+describe('a plugin denylist regex runs under a time bound (#499)', () => {
+  afterEach(async () => {
+    unregisterRedactionRules('slow-plugin')
+    await _shutdownBoundedRegex()
+  })
+
+  // `^(a+)+$` against a long run of `a` followed by a character it cannot
+  // consume backtracks exponentially. `-` is a token character, so the token
+  // reaches the rule whole.
+  const POISON = 'a'.repeat(22) + '-'
+  const SAFE_SECRET = 'CORP_ABCDEFGHIJKL'
+
+  it('stops a catastrophic pattern, keeps masking with the rest, and does not stall again', () => {
+    registerRedactionRules('slow-plugin', { denylist: ['/^(a+)+$/', '/^CORP_[A-Z]{12}$/'] })
+    const text = `${POISON} ${SAFE_SECRET}`
+
+    const t0 = Date.now()
+    const first = redact(text)
+    expect(Date.now() - t0, 'first call must be bounded').toBeLessThan(2000)
+    expect(first.redacted.map((r) => text.slice(r.start, r.end))).toEqual([SAFE_SECRET])
+
+    const t1 = Date.now()
+    redact(text)
+    expect(Date.now() - t1, 'a stopped pattern is not run again').toBeLessThan(500)
+  }, 120_000)
+
+  it('keeps testing each regex against one token alone, anchors included', () => {
+    registerRedactionRules('slow-plugin', { denylist: ['/^CORP_[A-Z]{12}$/'] })
+    const spans = (t: string) => redact(t).redacted.filter((r) => r.pattern === 'denylist').map((r) => t.slice(r.start, r.end))
+    expect(spans('use CORP_ABCDEFGHIJKL now')).toEqual(['CORP_ABCDEFGHIJKL'])
+    expect(spans('use xCORP_ABCDEFGHIJKL now')).toEqual([])
+    expect(spans('CORP_ABCDEFGHIJKLM')).toEqual([])
   })
 })
