@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import { timePhase } from './helpers/phase-timing'
 
 // An engagement recorded before v0.16 could not be opened by any build after
 // it. `76548d2` added `subtype` to the events tables and an index that names
@@ -85,9 +86,9 @@ describe.skipIf(!available)('opening an engagement recorded by an older build', 
   })
 
   it('is idempotent — a second open neither throws nor rewrites', () => {
-    dbmod!.initDB(dir)
-    dbmod!.closeDB()
-    const db = dbmod!.initDB(dir)
+    timePhase('first initDB', () => dbmod!.initDB(dir))
+    timePhase('closeDB', () => dbmod!.closeDB())
+    const db = timePhase('second initDB', () => dbmod!.initDB(dir))
     expect((db.prepare("SELECT subtype FROM events WHERE id = 'old-1'").get() as { subtype: string }).subtype)
       .toBe('command_end')
   })

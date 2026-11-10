@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import { timePhase } from './helpers/phase-timing'
 
 // socket-attribution joins a traffic event to the command that owns its pid,
 // from maps that live as long as the process. A pid is an OS number, not a
@@ -38,13 +39,14 @@ describeDB('socket attribution does not outlive its project', () => {
   const open = (engagementId: string): string => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), `redlog-sock-${engagementId}-`))
     dirs.push(dir)
-    dbMod.initDB(dir)
+    timePhase(`initDB ${engagementId}`, () => dbMod.initDB(dir))
     dbMod.bindDBEngagement(engagementId)
-    return ops.ensurePrimaryOperator('op-primary', 'Primary', ops.generateToken()).id
+    return timePhase(`ensurePrimaryOperator ${engagementId}`,
+      () => ops.ensurePrimaryOperator('op-primary', 'Primary', ops.generateToken()).id)
   }
 
   /** What stopProject does to the database (src/main/index.ts closeDB). */
-  const stopProject = (): void => { bodyIndex.closeHttpBodyIndex(); dbMod.closeDB() }
+  const stopProject = (): void => timePhase('stopProject', () => { bodyIndex.closeHttpBodyIndex(); dbMod.closeDB() })
 
   const commandStart = (op: string, engagementId: string, pid: number): string => {
     const r = ingestMod.ingest({

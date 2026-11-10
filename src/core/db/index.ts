@@ -142,6 +142,21 @@ export function initDB(projectDir: string): Database.Database {
   restrictFile(`${dbPath}-shm`)
   db.pragma('foreign_keys = ON')
 
+  // The whole schema step is one transaction. As separate autocommits an old
+  // project paid ~40 WAL commits on its first open (each one a sync, which is
+  // what a Windows runner with a scanner on the file is slow at), and a failure
+  // part-way, e.g. after the backfill dropped the append-only trigger, left a
+  // half-migrated file. IMMEDIATE so the write lock is taken up front rather
+  // than by a stale read snapshot being upgraded half-way. When nothing is
+  // missing nothing is written, so a reopen commits nothing.
+  db.transaction(applySchema).immediate()
+
+  currentProjectDir = projectDir
+  return db
+}
+
+function applySchema(): void {
+  const db = getDB()
   migrateAddedColumns(db)
 
   db.exec(`
@@ -426,12 +441,23 @@ export function initDB(projectDir: string): Database.Database {
         // reopen must not rescan a large project or touch its evidence.
         const rebuild = (definition.get(fts) as { sql: string } | undefined)?.sql !== ftsSql
           || (definition.get(`${fts}_ai`) as { sql: string } | undefined)?.sql !== insertSql
-        db!.exec(`DROP TRIGGER IF EXISTS ${fts}_ai; DROP TRIGGER IF EXISTS ${fts}_ad;`)
-        if (rebuild) db!.exec(`DROP TABLE IF EXISTS ${fts}; ${ftsSql};`)
-        db!.exec(insertSql)
-        if (table === 'events_logged') db!.exec(`CREATE TRIGGER ${fts}_ad AFTER DELETE ON ${table} BEGIN
+        // Only the logged tier cleans its index on DELETE; the chained tier is
+        // append-only, so `events_fts_ad` must not exist at all.
+        const deleteSql = table === 'events_logged'
+          ? `CREATE TRIGGER ${fts}_ad AFTER DELETE ON ${table} BEGIN
           DELETE FROM ${fts} WHERE rowid = old.rowid;
-        END;`)
+        END`
+          : null
+        const triggersCurrent = !rebuild
+          && (definition.get(`${fts}_ad`) as { sql: string } | undefined)?.sql === (deleteSql ?? undefined)
+        // A current definition is not dropped and recreated: that was a write
+        // on every open of an unchanged project.
+        if (!triggersCurrent) {
+          db!.exec(`DROP TRIGGER IF EXISTS ${fts}_ai; DROP TRIGGER IF EXISTS ${fts}_ad;`)
+          if (rebuild) db!.exec(`DROP TABLE IF EXISTS ${fts}; ${ftsSql};`)
+          db!.exec(insertSql)
+          if (deleteSql) db!.exec(deleteSql)
+        }
         if (rebuild && hasRows(db!, table)) db!.exec(`INSERT INTO ${fts}(rowid, data, target_id, agent_type)
           SELECT e.rowid, ${decoded('e.data')}, e.target_id, e.agent_type FROM ${table} e`)
       }
@@ -442,9 +468,6 @@ export function initDB(projectDir: string): Database.Database {
   // DELETE / UPDATE-of-immutable-fields raise instead of silently corrupting
   // the chain. Idempotent — safe to call every project open.
   assertEventsAppendOnly()
-
-  currentProjectDir = projectDir
-  return db
 }
 
 /** v0.11.1: a second, read-only handle on the same file.
