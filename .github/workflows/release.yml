@@ -34,6 +34,7 @@ jobs:
       - name: Checkout (full history, to judge reachability from main)
         uses: actions/checkout@v7
         with:
+          persist-credentials: false
           # Fully qualified: a bare name is looked up as a branch before a tag.
           ref: ${{ github.ref_type == 'tag' && github.ref || format('refs/tags/{0}', inputs.tag) }}
           fetch-depth: 0
@@ -66,6 +67,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          persist-credentials: false
           ref: ${{ needs.gate.outputs.sha }}
 
       - name: Setup Node
@@ -86,6 +88,8 @@ jobs:
         # looser and reconciles at install time — dep resolution still deterministic
         # via the lock, just tolerant of the optional-platform-entry drift
         # between different npm majors.
+        # Not `--ignore-scripts`: better-sqlite3 and node-pty are built by their
+        # install scripts, and `npm test` and electron-builder run on top of them.
         run: npm install --no-audit --no-fund
 
       - name: Run tests (Node ABI)
@@ -134,6 +138,9 @@ jobs:
       - name: Checkout release verification and notes
         uses: actions/checkout@v7
         with:
+          # The release is created by softprops/action-gh-release with its own
+          # `token` input (github.token); no git command here pushes.
+          persist-credentials: false
           ref: ${{ needs.gate.outputs.sha }}
 
       - name: Set up Node
@@ -178,7 +185,10 @@ jobs:
           cat "$sums"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        # Third party, and it holds contents: write: pinned to a commit, not a
+        # moving tag. v2 and v2.6.2 resolve to this same commit; Dependabot
+        # (github-actions) keeps the pin and the comment current.
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
           name: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
