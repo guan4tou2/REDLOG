@@ -81,6 +81,7 @@ export function CommandEndDetail({ data, projectId, eventId, reader }: {
   const [ownReaderOpen, setOwnReaderOpen] = useState(false)
   const readerOpen = reader ? reader.mode !== 'closed' : ownReaderOpen
   const setReaderOpen = (open: boolean): void => { if (reader) reader.setMode(open ? 'inline' : 'closed'); else setOwnReaderOpen(open) }
+  const outputState = commandOutputState(data)
   const hasStdout = typeof data.stdout === 'string'
   const hasStderr = typeof data.stderr === 'string'
   const stdoutRef = asRef(data.stdout_ref)
@@ -118,8 +119,9 @@ export function CommandEndDetail({ data, projectId, eventId, reader }: {
         <LateOutput commandId={data.command_id as string} />
       )}
       {/* v0.9.6 (T2/T3): say what happened to this command's output. */}
-      {!hasStdout && !hasStderr && !stdoutRef && !stderrRef && !hasStreamedOutput && (
+      {!readerOpen && !hasStreamedOutput && ['empty', 'recorded', 'unbracketed', 'not-captured'].includes(outputState) && (
         <IoAbsenceNote
+          data={data}
           builtin={data.source === 'builtin-terminal'}
           io={data.io as Record<string, unknown> | undefined}
         />
@@ -183,9 +185,9 @@ export function EvidenceFileDetail({ data }: { data: Record<string, unknown> }):
 
 /** v0.9.6 (T2): explains the absence — or the on-disk location — of a shell
  *  command's output, so an empty panel is never ambiguous. */
-export function IoAbsenceNote({ builtin, io }: { builtin: boolean; io?: Record<string, unknown> }): JSX.Element {
+export function IoAbsenceNote({ builtin, io, data }: { builtin: boolean; io?: Record<string, unknown>; data?: Record<string, unknown> }): JSX.Element {
   const { t } = useI18n()
-  const state = commandOutputState({ source: builtin ? 'builtin-terminal' : undefined, io })
+  const state = commandOutputState(data ?? { source: builtin ? 'builtin-terminal' : undefined, io })
   const len = typeof io?.len === 'number' ? (io.len as number) : 0
 
   if (state === 'recorded') {
@@ -198,7 +200,7 @@ export function IoAbsenceNote({ builtin, io }: { builtin: boolean; io?: Record<s
   if (state === 'empty') {
     return (
       <p className="text-xs text-redlog-text-dim font-mono px-2 py-1 rounded border border-redlog-border/60 bg-redlog-bg/40">
-        {t('timeline.detail.ioNone')}
+        {t('content.empty')}
       </p>
     )
   }
@@ -217,10 +219,13 @@ export function IoAbsenceNote({ builtin, io }: { builtin: boolean; io?: Record<s
  *  v0.15: when a tool_call or tool_result is selected, `paired` carries the
  *  other half so both the request and its return read in one panel. */
 export function AgentTurnDetail(
-  { data, paired, allLoaded }: {
+  { data, paired, allLoaded, projectId, eventId, reader }: {
     data: Record<string, unknown>
     paired?: { kind: 'call' | 'result'; data: Record<string, unknown> }
     allLoaded?: boolean
+    projectId?: string
+    eventId?: string
+    reader?: ReaderControl
   }
 ): JSX.Element {
   const { t } = useI18n()
@@ -249,6 +254,11 @@ export function AgentTurnDetail(
   const pairedCallInput = paired?.kind === 'call'
     ? (paired.data.tool_input as Record<string, unknown> | undefined) : undefined
   const pairedCallStr = pairedCallInput ? safePretty(pairedCallInput) : ''
+
+  if (projectId && eventId && reader && reader.mode !== 'closed') return (
+    <div className="mt-2"><EventContentReader key={eventId} projectId={projectId} eventId={eventId}
+      expanded={reader.mode === 'expanded'} onExpandedChange={expanded => reader.setMode(expanded ? 'expanded' : 'inline')} /></div>
+  )
 
   return (
     <div className="mt-2 space-y-1.5">

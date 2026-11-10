@@ -20,7 +20,7 @@ import { CommandEndDetail, CommandUnfinishedNote, AgentTurnDetail, BrowserConsol
 import { hasSpecificEventDetail } from '../../lib/timelineEvents'
 import { HttpDetail } from '../HttpDetail'
 import { MarkerDetail } from '../MarkerDetail'
-import type { ReaderControl } from '../EventContentReader'
+import { EventContentReader, type ReaderControl } from '../EventContentReader'
 
 type Translate = (key: string, vars?: Record<string, string | number>) => string
 
@@ -422,7 +422,7 @@ export function TimelineEventInspector({
           on click without another expand. tool_call renders the
           parsed input JSON; tool_result its output stream. */}
       {event.agentType === 'agent' && (
-        <AgentTurnDetail
+        <AgentTurnDetail projectId={event.engagementId} eventId={event.id} reader={reader}
           data={event.data as Record<string, unknown>}
           paired={paired}
           allLoaded={allLoaded}
@@ -443,7 +443,10 @@ export function TimelineEventInspector({
       {event.agentType === 'file_transfer' && event.data?.subtype === 'artifact_added' && (
         <EvidenceFileDetail data={event.data as Record<string, unknown>} />
       )}
-      {!hasSpecificEventDetail(event) && <GenericEventDetail data={event.data as Record<string, unknown>} />}
+      {!hasSpecificEventDetail(event) && (reader && reader.mode !== 'closed'
+        ? <EventContentReader key={event.id} projectId={event.engagementId} eventId={event.id}
+            expanded={reader.mode === 'expanded'} onExpandedChange={expanded => reader.setMode(expanded ? 'expanded' : 'inline')} />
+        : <GenericEventDetail data={event.data as Record<string, unknown>} />)}
       {event.agentType === 'marker' && (
         <MarkerDetail
           key={event.id}

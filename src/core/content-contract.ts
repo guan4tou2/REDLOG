@@ -1,4 +1,4 @@
-export type ContentField = 'command' | 'stdout' | 'stderr' | 'full' | 'preview' | 'tool_input' | 'output' | 'request_body' | 'response_body' | 'ws_body' | 'tcp_body' | 'output_body' | 'artifact' | 'ai_raw'
+export type ContentField = 'command' | 'stdout' | 'stderr' | 'full' | 'preview' | 'tool_input' | 'output' | 'request_body' | 'response_body' | 'ws_body' | 'tcp_body' | 'output_body' | 'artifact' | 'ai_raw' | 'event_data'
 export type ContentUnavailable = 'not-captured' | 'missing' | 'changed' | 'denied' | 'unsupported' | 'failed' | 'cast-recording'
 export interface ContentRef {
   projectId: string
@@ -15,6 +15,17 @@ export interface ContentDescriptor {
   format: 'utf8' | 'json' | 'binary'
   capture: 'partial' | 'unknown'
 }
+/** Reader presentation is independent of event kind and pagination. */
+export type ContentState = 'available' | 'empty' | 'not-captured' | 'unreadable' | 'truncated'
+
+export function contentState(descriptor: Pick<ContentDescriptor, 'status' | 'bytes' | 'capture'>): ContentState {
+  if (descriptor.status === 'not-captured') return 'not-captured'
+  if (descriptor.status !== 'available') return 'unreadable'
+  // Zero saved bytes can still mean capture loss, never a confirmed empty result.
+  if (descriptor.capture === 'partial') return 'truncated'
+  return descriptor.bytes === 0 ? 'empty' : 'available'
+}
+
 export interface ContentCursor {
   version: string
   offset: number
@@ -131,6 +142,7 @@ export function commandOutputState(data: Record<string, unknown>, hasInlineText 
   if (data.stdout_ref || data.stderr_ref) return 'saved'
   const io = data.io as { len?: unknown; unbracketed?: unknown } | undefined
   if (typeof io?.len === 'number' && !io.unbracketed) return io.len > 0 ? 'recorded' : 'empty'
+  if (typeof data.stdout === 'string') return 'empty'
   return data.source === 'builtin-terminal' ? 'unbracketed' : 'not-captured'
 }
 
