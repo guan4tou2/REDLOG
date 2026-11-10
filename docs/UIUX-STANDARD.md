@@ -132,6 +132,19 @@
 - **圖示**：Lucide，1.5px stroke，尺寸只用 16/20/24px（取代 `◉ ▸ ═ ☰ ◻ ⊕ ⊘ ◆ ⚑`，這些 Unicode 在 Windows 落到不同 fallback）
 - **載入**：<300ms 不顯示 · <2s 行內 spinner · >2s 骨架屏 + 進度文字（骨架尺寸須與真實內容對齊）
 
+### 4.1 何時可以用原生 `<button>`
+
+預設用 `Button`（有文字的動作）或 `IconButton`（只有圖示，`label` 必填）。原生 `<button>` 只在下列情形成立，其餘視為待收斂：
+
+1. **整列／整張卡片是一個可點表面**：列、卡片、結果項目本身就是目標，內含多段文字或徽章；套 `Button` 的 34px 邊框與填色會破壞列的版面。
+2. **有語意的選取項**：`role="tab"`、`role="option"`、清單項目、chip 切換、時間軸上的點——選取狀態由 `aria-selected`／`aria-pressed` 表達，視覺由所在元件決定，不是四級按鈕之一。
+3. **只有圖示、且 `IconButton` 的最小 24px 熱區放不下的列內控制項**：必須帶 `aria-label`，並符合 §25.3；放得下就用 `IconButton`。
+4. **行內文字連結式的動作**（句子中的「顯示全部」「清除篩選」）：外觀是連結，不是控制項。
+
+不成立的理由：「樣式不同所以自己寫」。需要不同的視覺，先看是否是 `Button` 的 `level`／`size` 能表達的。原生 `<button>` 一律寫 `type="button"` 並保有可見的 focus 樣式（§25.4）。
+
+`test/raw-button-ratchet.test.ts` 記錄 `components/` 內原生 `<button`（不含 `Button.tsx`、`IconButton.tsx` 本身）的數量基準；數量只准降、不准升。新增符合上列情形的原生按鈕時，在同一個 PR 調高基準並說明屬於哪一款，讓增加是被審過的決定。
+
 ## 5. UX 原則
 
 1. 一屏只回答一個問題——每畫面選一個主問題給最大字級，其餘降為單行摘要
@@ -591,7 +604,7 @@ app 自己要發現機器變了：視窗重新取得焦點時重探環境（`hoo
 
 ### 25.8 可機檢的部分
 
-由 `test/ui-copy.test.ts`、`test/design-palette.test.ts`、`test/lane-colours.test.ts` 等進 CI（見 §21）：同一說明存於兩個鍵、無人渲染的描述鍵、只重複標籤的 hint、重複可見文字的 tooltip、超過三句的 helper 行。標題句號、「我們」、單一畫面多個 primary 目前仍是 review 檢查項。判斷一句話「值不值得說」仍屬 §25.2，機器不能代勞。
+由 `test/ui-copy.test.ts`、`test/design-palette.test.ts`、`test/lane-colours.test.ts` 等進 CI（見 §21）：同一說明存於兩個鍵、無人渲染的描述鍵、只重複標籤的 hint、重複可見文字的 tooltip、超過三句的 helper 行。標題句號、「我們」、單一畫面多個 primary 目前仍是 review 檢查項。判斷一句話「值不值得說」仍屬 §25.2，機器不能代勞。`test/raw-button-ratchet.test.ts` 另管原生 `<button>` 的數量（只降不升，見 §4.1）。
 
 ## 19. 已知的既存缺陷（非設計問題）
 
