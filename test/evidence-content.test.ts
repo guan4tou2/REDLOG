@@ -300,3 +300,40 @@ describe('output held in the terminal recording (#550)', () => {
     expect(readEventContent({ ref: d.ref! })).toMatchObject({ ok: true, value: { text: 'inline wins' } })
   })
 })
+
+describe('output_preview content field (#546)', () => {
+  const fields = (id: string): string[] => {
+    const r = describeEventContent('project', id)
+    if (!r.ok) throw new Error(r.message)
+    return r.value.map(v => v.field)
+  }
+
+  it('offers an AI agent tool event\'s output_preview as readable partial content next to its tool input', () => {
+    // The shape the codex hook and the OpenCode plugin POST: one event, no tool_use_id.
+    const output = 'Starting Nmap 7.94\n22/tcp open ssh'
+    event('opencode', { subtype: 'opencode_tool', tool: 'bash', tool_input: { command: 'nmap -sV -Pn 10.10.10.5' }, output_preview: output }, 'events', 'agent', 'opencode_tool')
+    expect(fields('opencode')).toEqual(['output_preview', 'tool_input'])
+    const d = descriptor('opencode', 'output_preview')
+    expect(d).toMatchObject({ status: 'available', capture: 'partial', format: 'utf8', bytes: Buffer.byteLength(output) })
+    expect(readEventContent({ ref: d.ref! })).toMatchObject({ ok: true, value: { text: output } })
+  })
+
+  it('keeps preview and output_preview as separate fields', () => {
+    event('both', { preview: 'p', output_preview: 'o' }, 'events', 'agent', 'codex_tool')
+    expect(fields('both')).toEqual(['preview', 'output_preview'])
+    expect(readEventContent({ ref: descriptor('both', 'output_preview').ref! })).toMatchObject({ ok: true, value: { text: 'o' } })
+  })
+
+  it('reads a PowerShell transcript command_end whose only output is output_preview, and does not call stdout not-captured', () => {
+    event('ps', { subtype: 'command_end', source: 'start-transcript', command: 'whoami', cwd: 'C:\\', output_preview: 'corp\\alice' })
+    const listed = fields('ps')
+    expect(listed).toContain('output_preview')
+    expect(listed).not.toContain('stdout')
+    expect(readEventContent({ ref: descriptor('ps', 'output_preview').ref! })).toMatchObject({ ok: true, value: { text: 'corp\\alice' } })
+  })
+
+  it('still reports stdout as not captured for a shell command_end with no output at all', () => {
+    event('bare', { subtype: 'command_end', command: 'true' })
+    expect(descriptor('bare', 'stdout').status).toBe('not-captured')
+  })
+})

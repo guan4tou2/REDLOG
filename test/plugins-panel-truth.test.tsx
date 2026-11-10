@@ -388,3 +388,20 @@ it('lists each official integration once, including the one that is not installe
   expect(screen.queryByTestId('plugin-detail-toggle-official-ai-codex')).toBeNull()
   cleanup()
 })
+
+// #546: «loaded» is not «running». A plugin that declares a capture source and
+// has shown no heartbeat or event says so on its row, beside a status that
+// claims no more than the manifest being read.
+it('labels a loaded plugin LOADED and flags a declared capture source nobody has seen', async () => {
+  api.list.mockResolvedValue([{ ...view('opencode-hook'), report: { capture: { accepted: 1, rejected: [] } } }])
+  api.officialAgents.mockResolvedValue([])
+  ;(window as unknown as { redlog: unknown }).redlog = {
+    plugins: api,
+    capture: { health: vi.fn().mockResolvedValue({ verdict: 'dark', hasRecorded: false, sources: [{ id: 'opencode-hook.plugin-api', lastEventAt: null, running: false, state: 'off' }], lastEventAt: null, checkedAt: 1, dbErrorTotal: 0, dbErrorFirstAt: null, unattributedSpool: null }) }
+  }
+  render(<PluginsPanel t={t} />)
+  expect((await screen.findByTestId('plugin-state-opencode-hook')).textContent).toBe('LOADED')
+  expect((await screen.findByTestId('plugin-issue-opencode-hook')).textContent).toBe(en['plugins.issue.captureNotSeen'])
+  expect(zh['plugins.status.active']).toBe('已載入')
+  cleanup()
+})
