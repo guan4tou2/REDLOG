@@ -37,7 +37,7 @@ import { buildTimeMap, computeDomainBounds, computeBins, densestRun, placeRulerM
 import { binRange, densityAreaPath, dragMinimapWindow, peakBin, type MinimapWindow, type WindowGrip } from '../lib/minimapWindow'
 import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
 import { buildEffectsIndex, computeObservationStanding, buildFoldIndex, buildBadgeIndex } from '../lib/timelineAnnotations'
-import { mapMatchesToDrawn, distributeLaneEvents, distributeRowEvents, singleTrackEvents, STANDARD_ROW, computeRecentEvents, countWindowEvents, type ViewportWindow } from '../lib/timelineFilters'
+import { mapMatchesToDrawn, distributeLaneEvents, distributeRowEvents, singleTrackEvents, STANDARD_ROW, computeWindowSlice, type ViewportWindow } from '../lib/timelineFilters'
 import { TimelineHelpModal } from './TimelineHelpModal'
 import { QueryReadout } from './QueryReadout'
 import { parseQuery } from '../../../core/query/contract'
@@ -1197,22 +1197,17 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   const [showAllDespiteQuery, setShowAllDespiteQuery] = useState(false)
   useEffect(() => { setShowAllDespiteQuery(false) }, [queryKey])
   const queryActive = filterMatches !== null && !showAllDespiteQuery
-  const recentEvents = useMemo(
-    () => computeRecentEvents(events, hiddenLanes, pluginTypes, vp, 50, queryActive ? filterMatches : null),
+  // The rail shows the newest 50 and says "of N" with the same window rule, and
+  // the hidden-by-query count is the difference of two real, uncapped totals
+  // rather than of two capped slices. One walk of the window yields all three;
+  // this runs on every scroll frame.
+  const windowSlice = useMemo(
+    () => computeWindowSlice(events, hiddenLanes, pluginTypes, vp, 50, queryActive ? filterMatches : null),
     [events, hiddenLanes, pluginTypes, vp, queryActive, filterMatches]
   )
-  // In-window totals, memoised and uncapped: the rail shows the newest 50 and
-  // says "of N" with the same window rule, and the hidden-by-query count is
-  // the difference of two real totals rather than of two capped slices.
-  const windowTotalAll = useMemo(
-    () => countWindowEvents(events, hiddenLanes, pluginTypes, vp),
-    [events, hiddenLanes, pluginTypes, vp]
-  )
-  const windowTotal = useMemo(
-    () => (queryActive ? countWindowEvents(events, hiddenLanes, pluginTypes, vp, filterMatches) : windowTotalAll),
-    [events, hiddenLanes, pluginTypes, vp, queryActive, filterMatches, windowTotalAll]
-  )
-  const hiddenByQuery = queryActive ? windowTotalAll - windowTotal : 0
+  const recentEvents = windowSlice.recent
+  const windowTotal = windowSlice.total
+  const hiddenByQuery = queryActive ? windowSlice.totalAll - windowSlice.total : 0
 
   const sliceExportRequest = useMemo<ExportRequest>(() => {
     const since = Math.round(fromX((view.left / 100) * TRACK_W))

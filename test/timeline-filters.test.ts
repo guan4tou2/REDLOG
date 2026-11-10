@@ -3,12 +3,23 @@ import {
   mapMatchesToDrawn,
   distributeLaneEvents,
   distributeRowEvents,
-  computeRecentEvents,
-  countWindowEvents,
+  computeWindowSlice,
   type ViewportWindow
 } from '../src/renderer/src/lib/timelineFilters'
 import { toLane, type LaneId } from '../src/renderer/src/lib/timelineDomain'
 import type { RedLogEvent } from '../src/core/db/event-types'
+import type { PluginEventType } from '../src/renderer/src/lib/timelineDomain'
+
+// The two questions the tests below ask, as they were asked before one walk of
+// the window answered both.
+const computeRecentEvents = (
+  events: readonly RedLogEvent[], hidden: ReadonlySet<LaneId>, pluginTypes: PluginEventType[] | undefined,
+  vp: ViewportWindow, cap = 50, matched: ReadonlySet<string> | null = null
+): RedLogEvent[] => computeWindowSlice(events, hidden, pluginTypes, vp, cap, matched).recent
+const countWindowEvents = (
+  events: readonly RedLogEvent[], hidden: ReadonlySet<LaneId>, pluginTypes: PluginEventType[] | undefined,
+  vp: ViewportWindow, matched: ReadonlySet<string> | null = null
+): number => computeWindowSlice(events, hidden, pluginTypes, vp, 0, matched).total
 
 function evt(
   id: string,
