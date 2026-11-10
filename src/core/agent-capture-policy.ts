@@ -39,6 +39,22 @@ export function resolveAgentCapture(config: AgentCaptureConfig, catalog: readonl
   })
 }
 
+/** Append a manually typed working directory to the authorized set.
+ *
+ *  The native picker on Windows cannot open `\\wsl.localhost\...` shares (9P),
+ *  so the operator can type a path instead of picking one. This stays
+ *  platform-neutral — trim, drop empties, strip one layer of matching quotes,
+ *  dedupe. Whether the path is absolute is judged by the consumer on its own
+ *  platform, where the config is actually read. */
+export function addWorkPath(current: string[], raw: string): string[] {
+  let next = raw.trim()
+  if (next.length > 1 && ((next.startsWith('"') && next.endsWith('"')) || (next.startsWith("'") && next.endsWith("'")))) {
+    next = next.slice(1, -1).trim()
+  }
+  if (!next || current.includes(next)) return current
+  return [...current, next]
+}
+
 export function agentTranscriptRoot(entry: Pick<OfficialAgentPlugin, 'source'>, home: string, source?: AgentCaptureSourceConfig, env: Record<string, string | undefined> = process.env): string {
   if (source?.sourceRoot !== undefined) {
     if (!source.sourceRoot.trim() || !path.isAbsolute(source.sourceRoot)) throw new Error('AI transcript directory must be absolute')
