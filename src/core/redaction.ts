@@ -1,3 +1,5 @@
+import { runBoundedRules, PLUGIN_RULES_BUDGET_MS } from './bounded-regex'
+
 export interface RedactionRules {
   allowlist: string[]
   denylist: string[]
@@ -43,12 +45,14 @@ export function registerRedactionRules(pluginId: string, rules: { denylist?: str
     denylist.push(entry)
   }
   pluginRules.set(pluginId, denylist)
+  stoppedPluginRegexes.clear()
   invalidateCache()
   return { accepted: denylist.length, rejected }
 }
 
 export function unregisterRedactionRules(pluginId: string): void {
   pluginRules.delete(pluginId)
+  stoppedPluginRegexes.clear()
   invalidateCache()
 }
 
@@ -62,6 +66,9 @@ interface CompiledPattern {
   raw: string
   re: RegExp | null    // non-null when raw is /.../ shaped
   literal: string | null  // non-null when raw is a plain includes() substring
+  /** A regex a plugin contributed. It runs in the bounded worker, never inline:
+   *  a catastrophically backtracking pattern would freeze ingest (#499). */
+  bounded?: boolean
 }
 interface CachedRules {
   rules: RedactionRules
@@ -70,22 +77,61 @@ interface CachedRules {
 }
 let cachedRules: CachedRules | null = null
 
-function compilePattern(p: string): CompiledPattern | null {
+function compilePattern(p: string, bounded: boolean): CompiledPattern | null {
   if (!p) return null
   if (p.startsWith('/') && p.endsWith('/') && p.length > 2) {
-    try { return { raw: p, re: new RegExp(p.slice(1, -1)), literal: null } }
+    try { return { raw: p, re: new RegExp(p.slice(1, -1)), literal: null, ...(bounded ? { bounded: true } : {}) } }
     catch { return null }
   }
   return { raw: p, re: null, literal: p }
 }
 
-function compileList(patterns: string[]): CompiledPattern[] {
+/** The regex entries only plugins vouch for: one the operator also wrote in
+ *  `redaction.denylist` is theirs and runs as before. */
+function pluginRegexEntries(): Set<string> {
+  const out = new Set<string>()
+  for (const entries of pluginRules.values()) {
+    for (const e of entries) if (e.startsWith('/') && e.endsWith('/') && e.length > 2 && !activeRules.denylist.includes(e)) out.add(e)
+  }
+  return out
+}
+
+function compileList(patterns: string[], boundedEntries?: ReadonlySet<string>): CompiledPattern[] {
   const out: CompiledPattern[] = []
   for (const p of patterns) {
-    const c = compilePattern(p)
+    const c = compilePattern(p, boundedEntries?.has(p) ?? false)
     if (c) out.push(c)
   }
   return out
+}
+
+/** Plugin regexes that overran their time budget. They are skipped from then
+ *  on: a rule that cannot finish masks nothing either, and re-running it would
+ *  stall every event for the budget again. Cleared when a plugin's rules change
+ *  so a corrected rule gets a fresh start. */
+const stoppedPluginRegexes = new Set<string>()
+
+/** Indexes of the tokens a plugin denylist regex matches. Every such regex runs
+ *  in one bounded worker trip over all the tokens (each tested alone, as the
+ *  inline path did); one that overruns is stopped and the rest run again. */
+function pluginDenyHits(compiled: CompiledPattern[], tokens: string[]): Set<number> {
+  const hits = new Set<number>()
+  if (tokens.length === 0) return hits
+  const live = compiled
+    .filter((c) => c.bounded && c.re && !stoppedPluginRegexes.has(c.raw))
+    .map((c) => ({ c, stopped: undefined as 'time_limit' | undefined }))
+  if (live.length === 0) return hits
+  const results = runBoundedRules(
+    live,
+    ({ c }) => ({ source: c.re!.source, flags: c.re!.flags, group: 0, each: true }),
+    tokens.join('\n'),
+    ({ c }) => {
+      stoppedPluginRegexes.add(c.raw)
+      console.warn(`[redaction] plugin denylist ${c.raw} exceeded ${PLUGIN_RULES_BUDGET_MS} ms and was stopped`)
+    }
+  )
+  for (const [, found] of results) for (const m of found) hits.add(m.index)
+  return hits
 }
 
 function ensureCache(): CachedRules {
@@ -99,7 +145,7 @@ function ensureCache(): CachedRules {
       })()
   cachedRules = {
     rules,
-    denyCompiled: compileList(rules.denylist),
+    denyCompiled: compileList(rules.denylist, pluginRegexEntries()),
     allowCompiled: compileList(rules.allowlist)
   }
   return cachedRules
@@ -136,6 +182,7 @@ const TOKEN_RE = /[A-Za-z0-9_\-\.\/+=]{16,}/g
 
 function matchesCompiled(compiled: CompiledPattern[], token: string): boolean {
   for (const c of compiled) {
+    if (c.bounded) continue // plugin regexes run in the worker: pluginDenyHits
     if (c.re) { if (c.re.test(token)) return true }
     else if (c.literal !== null && token.includes(c.literal)) return true
   }
@@ -164,13 +211,15 @@ export function redact(text: string, rules: RedactionRules = effectiveRules()): 
   // denylist per event), compile once here rather than per token.
   const cache = ensureCache()
   const useCached = rules === cache.rules
-  const denyCompiled = useCached ? cache.denyCompiled : compileList(rules.denylist)
+  const denyCompiled = useCached ? cache.denyCompiled : compileList(rules.denylist, pluginRegexEntries())
   const allowCompiled = useCached ? cache.allowCompiled : compileList(rules.allowlist)
-  while ((m = re.exec(text)) !== null) {
-    const token = m[0]
-    const offset = m.index
+  const found: Array<{ token: string; offset: number }> = []
+  while ((m = re.exec(text)) !== null) found.push({ token: m[0], offset: m.index })
+  const pluginHits = pluginDenyHits(denyCompiled, found.map((f) => f.token))
+  for (let i = 0; i < found.length; i++) {
+    const { token, offset } = found[i]
     if (matchesCompiled(allowCompiled, token)) continue
-    if (matchesCompiled(denyCompiled, token)) {
+    if (matchesCompiled(denyCompiled, token) || pluginHits.has(i)) {
       redacted.push({ pattern: 'denylist', hint: `${token.length} chars`, start: offset, end: offset + token.length })
       continue
     }

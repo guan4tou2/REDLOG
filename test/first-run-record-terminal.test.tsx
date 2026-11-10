@@ -147,6 +147,14 @@ async function shownNonce(): Promise<string> {
   return nonce!
 }
 
+/** While the proxy runs, HTTP(S) has one client row and it alone says "not
+ *  verified" (#542); the header badge is not drawn for the same word twice. */
+async function expectHttpsPending(): Promise<void> {
+  const row = await screen.findByTestId('first-run-http-check-https')
+  expect(row.textContent).toBe('HTTPS○ 尚未驗證')
+  expect(screen.queryByTestId('first-run-http-status')).toBeNull()
+}
+
 /** What the mitmproxy addon reports when a check request reaches it. */
 async function report(r: Omit<Report, 'receivedAt'>): Promise<void> {
   await waitFor(() => expect(verifyListeners.length).toBeGreaterThan(0))
@@ -205,7 +213,7 @@ describe('first run: Commands and HTTP(S) are set up side by side (#217)', () =>
     draw()
     await screen.findByText('127.0.0.1:8080')
     await report({ scheme: 'http', nonce: await shownNonce(), userAgent: 'curl/8.5.0' })
-    expect((await screen.findByTestId('first-run-http-status')).textContent).toBe('○ 尚未驗證')
+    await expectHttpsPending()
     expect(screen.getByTestId('first-run-commands-status').textContent).toBe('○ 尚未驗證')
     expect(screen.queryByTestId('first-run-core-ready')).toBeNull()
   })
@@ -265,7 +273,7 @@ describe('first run: Commands and HTTP(S) are set up side by side (#217)', () =>
     // Starting a new check invalidates both the card and its parent's readiness.
     fireEvent.click(screen.getByTestId('first-run-http-retry'))
     await waitFor(() => expect(screen.getByTestId('first-run-strip').getAttribute('data-core-ready')).toBe('false'))
-    expect(screen.getByTestId('first-run-http-status').getAttribute('data-ca-trust')).toBe('none')
+    await expectHttpsPending()
     expect(screen.queryByTestId('first-run-core-ready')).toBeNull()
   })
 
@@ -713,7 +721,7 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     expect(reconfigured.length).toBeGreaterThan(0)
     expect(reconfigured.every(c => !c.verified && c.nonce !== verifiedNonce)).toBe(true)
     await report({ scheme: 'https', nonce: verifiedNonce })
-    expect(screen.getByTestId('first-run-http-status').textContent).toBe('○ 尚未驗證')
+    await expectHttpsPending()
     await report({ scheme: 'https', nonce: await shownNonce() })
     expect(screen.getByTestId('first-run-http-status').textContent).toBe('✓ 已驗證')
   })
@@ -728,10 +736,10 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     // attempt, prove nothing about this one.
     emit([HTTP_EVENT])
     await report({ scheme: 'http', nonce: 'rv-000000000000' })
-    expect(screen.getByTestId('first-run-http-status').textContent).toBe('○ 尚未驗證')
+    await expectHttpsPending()
 
     await report({ scheme: 'http', nonce, userAgent: 'curl/8.5.0' })
-    expect(screen.getByTestId('first-run-http-status').textContent).toBe('○ 尚未驗證')
+    await expectHttpsPending()
     expect(screen.queryByTestId('first-run-http-check-http')).toBeNull()
     expect(screen.getByTestId('first-run-http-check-https').getAttribute('data-verified')).toBe('false')
     await report({ scheme: 'https', nonce, userAgent: 'curl/8.5.0' })
@@ -803,7 +811,7 @@ describe('first run: HTTP(S) is verified by this check\'s own request (Spec 039,
     const second = await shownNonce()
     expect(second).not.toBe(first)
     await report({ scheme: 'https', nonce: first })
-    expect(screen.getByTestId('first-run-http-status').textContent).toBe('○ 尚未驗證')
+    await expectHttpsPending()
     await report({ scheme: 'https', nonce: second })
     await waitFor(() => expect(screen.getByTestId('first-run-http-status').textContent).toBe('✓ 已驗證'))
   })
@@ -920,7 +928,7 @@ it('invalidates HTTPS readiness on proxy stop and rejects the old nonce after re
   await act(async () => { await vi.advanceTimersByTimeAsync(3100) })
   expect(await shownNonce()).not.toBe(oldNonce)
   await report({ scheme: 'https', nonce: oldNonce })
-  expect(screen.getByTestId('first-run-http-status').textContent).toBe('○ 尚未驗證')
+  await expectHttpsPending()
   await report({ scheme: 'https', nonce: await shownNonce() })
   expect(await screen.findByTestId('first-run-core-ready')).toBeTruthy()
 })

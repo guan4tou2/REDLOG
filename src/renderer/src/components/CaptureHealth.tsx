@@ -264,6 +264,9 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
   // which this card has no opinion about. What is left is what an exception
   // report is for: it tried and failed, or it is writing without authorisation.
   // A proxy that could not start is on the core line, with its reason.
+  // An AI-agent source: no switch and nothing to install here, so its row sends
+  // the operator to the source's own row in Settings.
+  const isAgentRow = (s: CaptureSourceInfo): boolean => !s.configPath && !s.hookId && s.id.startsWith('agent-')
   const isProblem = (s: CaptureSourceInfo): boolean =>
     isRogue(s) || (!s.informational && s.state === 'error')
   const problems = sources.filter(isProblem)
@@ -482,6 +485,11 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
               {fmtAge(s.lastEventAt, nowTick)}
             </span>
           )}
+          {/* A warning names its source and opens it: the row in Settings,
+              not the page that holds it (#590). */}
+          {!manage && isAgentRow(s) && (
+            <button data-testid={`capture-open-${s.id}`} onClick={() => onNavigate(settingsTarget('captureControl', { source: s.id }))} className="text-xs text-redlog-text-dim underline shrink-0">{t('settings.agents')}</button>
+          )}
           {manage && (
             <span className="flex items-center gap-1.5 shrink-0">
               {/* Two independent axes, so two controls. A hook can be
@@ -525,10 +533,10 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
                   their upstream does (mitmproxy in DNS mode, the launched
                   browser, a terminal pane). Claiming "always on" would
                   overstate it, so the state column speaks for itself. */}
-              {!s.configPath && !s.hookId && s.id.startsWith('agent-') && (
-                <button onClick={() => onNavigate(settingsTarget('captureControl'))} className="text-xs text-redlog-text-dim underline">{t('settings.agents')}</button>
+              {isAgentRow(s) && (
+                <button onClick={() => onNavigate(settingsTarget('captureControl', { source: s.id }))} className="text-xs text-redlog-text-dim underline">{t('settings.agents')}</button>
               )}
-              {!s.configPath && !s.hookId && !s.id.startsWith('agent-') && (
+              {!s.configPath && !s.hookId && !isAgentRow(s) && (
                 <span className="text-xs font-mono text-redlog-text-faint">{t('capture.passive')}</span>
               )}
             </span>

@@ -522,7 +522,8 @@ describe('renderer views render without throwing', () => {
   // the capture wizard — still lands on capture sources rather than nowhere.
   it('the capture-sources deep link still resolves after the restructure', async () => {
     renderView(<Settings request={{ page: 'captureControl' }} />)
-    expect(await screen.findByText('Pack: Host monitors')).toBeTruthy()
+    // The group's heading and the jump link to it (#557) carry the same title.
+    expect((await screen.findAllByText('Pack: Host monitors')).length).toBe(2)
   })
 
   it('an issue that names a Settings page opens it', async () => {
@@ -539,6 +540,7 @@ describe('renderer views render without throwing', () => {
     const onNavigate = vi.fn()
     renderView(<ScreenshotsView onNavigate={onNavigate} />)
     fireEvent.click(await screen.findByText('Periodic capture settings →'))
-    expect(onNavigate).toHaveBeenCalledWith('settings/captureControl')
+    // Lands on the screenshot group, not just the page (#590).
+    expect(onNavigate).toHaveBeenCalledWith('settings/captureControl?source=screenshot')
   })
 })

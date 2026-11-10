@@ -11,7 +11,7 @@ import { listAnchors, computeChainHead, chainHeadHash } from './chain-anchor'
 import { listOperators, getPrimaryOperator, getPrimaryOperatorTokenHash } from './db/operators'
 import { getSanitizedFields, countSanitizedEvents } from './sanitize'
 import { isOutOfScope, isPersonalDomain, scopeMaskReplacements, type ScopeForSanitize } from './scope-sanitize'
-import { BODY_REF_FOR } from './redact-export'
+import { BODY_REF_FOR, scopeBodyRefsToDrop } from './redact-export'
 import { getDoNotExportIds } from './db/do-not-export'
 import { isAttachmentId, type ExportAttachment } from './export-attachments'
 
@@ -308,12 +308,12 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
       try {
         if (!data) data = JSON.parse(row.data as string) as Record<string, unknown>
         const scopeRepl = scopeMaskReplacements(data, row.target_id as string | null, scope)
-        if (scopeRepl) {
-          for (const [f, v] of Object.entries(scopeRepl)) data[f] = v
-          for (const f of Object.keys(scopeRepl)) {
-            const ref = BODY_REF_FOR[f]
-            if (ref && ref in data) delete data[ref]
-          }
+        // A preview-less body has only its ref; drop every ref, not just the
+        // ones whose preview was masked (#489).
+        const refsDropped = scopeBodyRefsToDrop(data, row.target_id as string | null, scope)
+        if (scopeRepl || refsDropped.length > 0) {
+          for (const [f, v] of Object.entries(scopeRepl ?? {})) data[f] = v
+          for (const ref of refsDropped) delete data[ref]
           outOfScopeMasked++
         }
       } catch { /* leave row as-is */ }
@@ -386,12 +386,12 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
       try {
         if (!data) data = JSON.parse(row.data as string) as Record<string, unknown>
         const scopeRepl = scopeMaskReplacements(data, row.target_id as string | null, scope)
-        if (scopeRepl) {
-          for (const [f, v] of Object.entries(scopeRepl)) data[f] = v
-          for (const f of Object.keys(scopeRepl)) {
-            const ref = BODY_REF_FOR[f]
-            if (ref && ref in data) delete data[ref]
-          }
+        // A preview-less body has only its ref; drop every ref, not just the
+        // ones whose preview was masked (#489).
+        const refsDropped = scopeBodyRefsToDrop(data, row.target_id as string | null, scope)
+        if (scopeRepl || refsDropped.length > 0) {
+          for (const [f, v] of Object.entries(scopeRepl ?? {})) data[f] = v
+          for (const ref of refsDropped) delete data[ref]
           outOfScopeMasked++
         }
       } catch { /* leave row as-is */ }

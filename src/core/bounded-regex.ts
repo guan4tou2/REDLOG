@@ -21,6 +21,12 @@ export interface BoundedRule {
    *  and a command matcher mean), and none when it does not match. The value
    *  is the group, or the whole match when the group did not take part. */
   once?: boolean
+  /** `text` is a list of lines joined by `\n`, and the rule is tested on each
+   *  line alone, so `^`, `$` and character classes never see a neighbour. One
+   *  entry per line that matches, `index` being the line's number and `value`
+   *  the line. Redaction uses it: its denylist regexes are written against one
+   *  token at a time. */
+  each?: boolean
 }
 
 export interface BoundedMatch { value: string; index: number }
@@ -43,9 +49,16 @@ parentPort.on('message', ({ rules, text }) => {
   const out = []
   for (let i = 0; i < rules.length; i++) {
     Atomics.store(words, 1, i)
-    const { source, flags, group, once } = rules[i]
-    const re = new RegExp(source, flags.includes('g') ? flags : flags + 'g')
+    const { source, flags, group, once, each } = rules[i]
     const found = []
+    if (each) {
+      const lineRe = new RegExp(source, flags.replace(/[gy]/g, ''))
+      const lines = text.split('\\n')
+      for (let n = 0; n < lines.length; n++) if (lineRe.test(lines[n])) found.push({ value: lines[n], index: n })
+      out.push(found)
+      continue
+    }
+    const re = new RegExp(source, flags.includes('g') ? flags : flags + 'g')
     let m
     if (once) {
       m = re.exec(text)

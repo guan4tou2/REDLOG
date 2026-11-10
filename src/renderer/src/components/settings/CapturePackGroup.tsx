@@ -5,6 +5,7 @@ import { Button } from '../Button'
 import { FieldGroup, type ConfigState } from './SettingsShared'
 import { SourceLastSeen } from './SourceLastSeen'
 import { CheckRow } from './CheckRow'
+import { SOURCE_ROW } from '../../lib/sourceRow'
 import { isMemberSelected, OPT_IN_MEMBERS } from '../../../../core/capture-packs'
 
 // One optional capture pack (Spec 035): a single switch for the project, and
@@ -27,9 +28,11 @@ export type PackMemberId = NonNullable<keyof NonNullable<ConfigState['packMember
  *  the clipboard's default is off: it is never collected because a pack was
  *  turned on, only because it was ticked (#224). */
 export function PackMember({
-  member, title, hint, warn, config, setConfig, t, health, packOn, children
+  member, sourceId, title, hint, warn, config, setConfig, t, health, packOn, children
 }: {
   member: PackMemberId
+  /** The capture health id a link lands on this row by (#590). */
+  sourceId?: string
   title: string
   hint: string
   /** Shown in amber under the hint: what turning this one on costs. */
@@ -47,7 +50,7 @@ export function PackMember({
   const on = isMemberSelected(config.packMembers, member)
   const optIn = OPT_IN_MEMBERS.has(member)
   return (
-    <div className="mt-2">
+    <div className={`mt-2 ${SOURCE_ROW}`} tabIndex={-1} data-source-id={sourceId}>
       <p className="text-xs font-semibold text-redlog-text-dim">{title}</p>
       <CheckRow
         checked={on}

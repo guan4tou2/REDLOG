@@ -1,5 +1,5 @@
 import { getSanitizedFields } from './sanitize'
-import { scopeMaskReplacements, isPersonalDomain, type ScopeForSanitize } from './scope-sanitize'
+import { scopeMaskReplacements, isOutOfScope, isUnclassifiedScope, isPersonalDomain, type ScopeForSanitize } from './scope-sanitize'
 import type { RedLogEvent } from './db/events'
 
 // The redaction every export MUST funnel through before event data leaves
@@ -34,6 +34,22 @@ export const BODY_REF_FOR: Record<string, string> = {
   output: 'output_ref',
   stdout: 'stdout_ref',
   stderr: 'stderr_ref'
+}
+
+/** The body-store pointers an out-of-scope or unclassified event must not carry
+ *  out, whether or not it has a preview to mask beside them (#489). A large
+ *  binary body is stored as `response_body_ref` alone: nothing in
+ *  SCOPE_SANITIZED_FIELDS is present, `scopeMaskReplacements` masks nothing,
+ *  and a ref left in place is how a consumer that follows it (HAR's
+ *  readBody) fetches the whole out-of-scope body. Returns the ref keys present
+ *  on `data`; empty when the event is in scope. */
+export function scopeBodyRefsToDrop(
+  data: Record<string, unknown>,
+  targetId: string | null | undefined,
+  scope: ScopeForSanitize | undefined
+): string[] {
+  if (!isOutOfScope(targetId, scope) && !isUnclassifiedScope(targetId, scope)) return []
+  return [...new Set(Object.values(BODY_REF_FOR))].filter((ref) => ref in data)
 }
 
 export interface RedactExportOpts {
@@ -72,6 +88,12 @@ export function redactEventForExport(e: RedLogEvent, scopeOrOpts?: ScopeForSanit
       if (data === e.data) data = { ...e.data }
       for (const [f, v] of Object.entries(scopeRepl)) { data[f] = v; maskedFields.push(f) }
     }
+  }
+
+  // An out-of-scope event keeps no body-store pointer at all, preview or not.
+  for (const ref of scopeBodyRefsToDrop(data, e.targetId, scope)) {
+    if (data === e.data) data = { ...e.data }
+    delete data[ref]
   }
 
   // Drop the body-store pointer for any masked body field, so a ref-following

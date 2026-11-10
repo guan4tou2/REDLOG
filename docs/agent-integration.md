@@ -169,17 +169,23 @@ Direct REST API for scripts and custom agents. Runs on `127.0.0.1:6660` (configu
 ### Authentication
 
 ```bash
-TOKEN=$(cat ~/.redlog/api-token)
 PORT=$(cat ~/.redlog/api-port)
 
+# The token goes to curl as a config on stdin (`-K -`). `-H "Authorization:
+# Bearer …"` would put it in the argument list that `ps` shows to every user
+# on the host.
+
 # GET request
-curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:$PORT/api/status
+curl -K - http://127.0.0.1:$PORT/api/status <<EOF
+header = "Authorization: Bearer $(cat ~/.redlog/api-token)"
+EOF
 
 # POST request
-curl -X POST http://127.0.0.1:$PORT/api/marker \
-  -H "Authorization: Bearer $TOKEN" \
+curl -K - -X POST http://127.0.0.1:$PORT/api/marker \
   -H "Content-Type: application/json" \
-  -d '{"title":"Finding","severity":"high"}'
+  -d '{"title":"Finding","severity":"high"}' <<EOF
+header = "Authorization: Bearer $(cat ~/.redlog/api-token)"
+EOF
 ```
 
 ### Endpoints
