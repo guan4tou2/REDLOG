@@ -1,0 +1,54 @@
+{
+  "platform": "darwin",
+  "arch": "arm64",
+  "node": "v26.13.0",
+  "shellCount": 2500,
+  "flows": 500,
+  "largestShellPayloadBytes": 8704,
+  "report": [
+    {
+      "format": "json",
+      "elapsedMs": 1042,
+      "baselineRssMiB": 188,
+      "peakRssMiB": 261,
+      "worstMainDelayMs": 13,
+      "pulses": 94,
+      "artifactBytes": 24979788,
+      "sha256": "86caf34ca1d5fc12f4743f19107556353d3261505ad008fea209eff492a7acd0",
+      "included": 3500
+    },
+    {
+      "format": "ndjson",
+      "elapsedMs": 1025,
+      "baselineRssMiB": 308,
+      "peakRssMiB": 404,
+      "worstMainDelayMs": 10,
+      "pulses": 93,
+      "artifactBytes": 24452400,
+      "sha256": "e809c0a9486f738a27b617a73fcb5968409641102171823cac61ea4e21236806",
+      "included": 3500
+    },
+    {
+      "format": "bundle",
+      "elapsedMs": 2713,
+      "baselineRssMiB": 425,
+      "peakRssMiB": 428,
+      "worstMainDelayMs": 1,
+      "pulses": 251,
+      "artifactBytes": 25215560,
+      "sha256": "e3c9b22211db57adbe8d595568c3c8f17fe06faae99378cb70fa5b260fad7e59",
+      "included": 3500
+    },
+    {
+      "format": "har",
+      "elapsedMs": 997,
+      "baselineRssMiB": 443,
+      "peakRssMiB": 451,
+      "worstMainDelayMs": 1,
+      "pulses": 92,
+      "artifactBytes": 528085,
+      "sha256": "ec3393e32060ddd93194ca40f805afa24d1f2877266e4cfd9e8b35fc18473c02",
+      "included": 1000
+    }
+  ]
+}
