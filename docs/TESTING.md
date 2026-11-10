@@ -128,6 +128,37 @@ UI events prove rendering and interaction, not producer coverage.
   [the release walkthrough](RELEASE-SMOKE-TEST.md). Exact prior package results
   and remaining limitations are in [the package matrix](PACKAGED-SMOKE.md).
 
+### Export workload at project scale
+
+`test/export-workflow-perf.test.ts` is opt-in (`REDLOG_PERF=1`) and drives the
+real preview, approve and execute IPC for JSON, NDJSON, bundle and HAR. Size and
+a stall bound come from the environment; with none set it is the original
+3,500-event workload and asserts no timing. Run it alone, on a build with
+`out/main/export-worker.js` (`npm run build:export-worker`).
+
+| Variable | Meaning | Default |
+| --- | --- | ---: |
+| `REDLOG_PERF_SHELL` | shell events | 2500 |
+| `REDLOG_PERF_FLOWS` | HTTP exchanges, two events each | 500 |
+| `REDLOG_PERF_OUTPUT_LINES` | stdout lines per shell event | 512 |
+| `REDLOG_PERF_MAX_STALL_MS` | fail if any format's longest main-thread stall exceeds this | none |
+| `REDLOG_PERF_TIMEOUT_MS` | test timeout | 120000 |
+| `REDLOG_PERF_REPORT` | write the JSON result here | none |
+
+About 198k events (150,000 shell, 24,000 exchanges) with small payloads:
+
+```sh
+REDLOG_PERF=1 REDLOG_PERF_SHELL=150000 REDLOG_PERF_FLOWS=24000 REDLOG_PERF_OUTPUT_LINES=4 \
+REDLOG_PERF_TIMEOUT_MS=3600000 REDLOG_PERF_REPORT=/tmp/export-198k.json \
+npx vitest run test/export-workflow-perf.test.ts --no-file-parallelism
+```
+
+Add `REDLOG_PERF_MAX_STALL_MS=<ms>` to turn the longest stall into a pass/fail
+check. Pick the bound from a measured run on the same machine; a number from
+another machine says nothing. The fixture is synthetic, so this does not stand
+in for the original Windows workload tracked in #660. The smaller, always-on
+guard against a main-thread scan is `test/export-main-thread-stall.test.ts`.
+
 ## Races a test cannot reproduce
 
 Some loss only happens under load: #333 lost a short command's output in about
