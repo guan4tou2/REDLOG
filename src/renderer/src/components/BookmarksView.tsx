@@ -1,4 +1,3 @@
-import { useContainerWidth } from '../hooks/useContainerWidth'
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, useId } from 'react'
 import { useI18n } from '../i18n'
 import { confirm } from './ConfirmDialog'
@@ -9,8 +8,10 @@ import { ListFooter } from './ListFooter'
 import { formatDateTime } from '../lib/time'
 import { EmptyState } from './EmptyState'
 import { LoadingSpinner } from './Feedback'
-import { Flag, ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { Flag, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from './Button'
+import { toast } from './Toast'
+import { BOOKMARKS_CHANGED } from './EvidenceHeader'
 
 // A hash of the mark's title used to pick one of eight hues. It grouped
 // nothing an operator could rely on -- two unrelated marks share a colour as
@@ -27,18 +28,19 @@ function readPinned(): string[] {
 }
 
 export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: number) => void } = {}): JSX.Element {
-  const [containerRef, containerWidth] = useContainerWidth<HTMLDivElement>()
-  const narrow = containerWidth !== null && containerWidth < 720
+  // One column at every width: the list, then one bookmark's detail or editor
+  // in its place, then back. The list's search, scroll and selection survive
+  // the round trip (below).
   const [detailOpen, setDetailOpen] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   const listPosition = useRef(0)
   const selectedRow = useRef<HTMLButtonElement | null>(null)
   useLayoutEffect(() => {
-    if (narrow && !detailOpen && listRef.current) {
+    if (!detailOpen && listRef.current) {
       listRef.current.scrollTop = listPosition.current
       selectedRow.current?.focus({ preventScroll: true })
     }
-  }, [narrow, detailOpen])
+  }, [detailOpen])
   const [marks, setMarks] = useState<Bookmark[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -101,6 +103,7 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
     try {
       setMarks(await window.redlog.bookmarks.list())
       setLoadError(null)
+      window.dispatchEvent(new Event(BOOKMARKS_CHANGED))
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : String(error))
     } finally {
@@ -135,8 +138,8 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
   }
 
   return (
-    <div ref={containerRef} data-testid="bookmarks-workspace" className="flex h-full min-w-0">
-      {(marks.length > 0 || !creating || (narrow && !detailOpen)) && <div hidden={narrow && detailOpen} className={`${marks.length > 0 && !narrow ? 'w-80 shrink-0 border-r border-redlog-border' : 'flex-1 min-w-0'} flex flex-col`}>
+    <div data-testid="bookmarks-workspace" className="flex h-full min-w-0">
+      {(marks.length > 0 || !creating || !detailOpen) && <div hidden={detailOpen} className="flex-1 min-w-0 flex flex-col">
         <div className="p-2 border-b border-redlog-border">
           <div className="flex items-center justify-between mb-2 gap-1">
             <span className="text-xs font-semibold text-redlog-text-dim uppercase tracking-wider flex-1 truncate">
@@ -148,6 +151,11 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
               {t('bookmarks.capture')}
             </Button>
           </div>
+          {marks.length > 0 && (
+            // Gives way when the window is short (small window at high zoom): a line here
+            // pushed the list under the status bar. The empty state carries the same fact.
+            <p className="mb-2 hidden rounded border border-redlog-border bg-redlog-surface px-3 py-2 text-xs text-redlog-text-dim [@media(min-height:640px)]:block"><span aria-hidden className="mr-1.5">ⓘ</span><span data-testid="bookmarks-scope-note">{t('bookmarks.scopeNote')}</span></p>
+          )}
           <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs ${
             browserTab?.connected ? 'bg-green-500/10 text-green-400' : 'bg-redlog-elevated text-redlog-text-dim'
           }`}>
@@ -158,9 +166,10 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
             }
           </div>
         </div>
-        {/* Search bar — hidden until 5+ marks (audit #22). Filters title / URL /
-            note case-insensitively; live as the user types. */}
-        {marks.length >= 5 && (
+        {/* Search filters title / URL / note case-insensitively, live as the
+            user types. It is always there: a list that grows past one screen
+            is found by searching, and the field must not appear mid-session. */}
+        {marks.length > 0 && (
           <div className="px-2 py-1.5 border-b border-redlog-border">
             <input
               value={search}
@@ -179,7 +188,7 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
         )}
         {loading && <LoadingSpinner label={t('common.loading')} />}
         <div ref={listRef} onScroll={() => {
-          if (!narrow || !detailOpen) listPosition.current = listRef.current?.scrollTop ?? 0
+          if (!detailOpen) listPosition.current = listRef.current?.scrollTop ?? 0
         }} className="flex-1 min-h-0 overflow-auto" {...listNav.containerProps} aria-label={t('bookmarks.title', { count: paged.total })}>
           {visibleMarks.map((m, i) => {
             const isPinned = pinned.has(m.id)
@@ -206,6 +215,7 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
                   {isPinned && <span className="text-xs text-amber-400 shrink-0" aria-hidden="true">★</span>}
                 </div>
                 {m.url && <div title={m.url} className="text-xs text-redlog-cyan/70 truncate mt-0.5 font-mono pl-4">{m.url}</div>}
+                {m.note && <div className="text-xs text-redlog-text-dim truncate mt-0.5 pl-4">{m.note.split('\n')[0]}</div>}
                 <div className="text-xs text-redlog-text-faint mt-0.5 pl-4">
                   {formatDateTime(m.createdAt)}
                 </div>
@@ -230,8 +240,8 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
         </div>
       </div>}
 
-      {(marks.length > 0 || creating) && <div hidden={narrow && !detailOpen} data-testid="bookmark-detail-pane" className="min-w-0 flex-1 overflow-auto p-pad">
-        {narrow && detailOpen && (
+      {(marks.length > 0 || creating) && <div hidden={!detailOpen} data-testid="bookmark-detail-pane" className="min-w-0 flex-1 overflow-auto p-pad">
+        {detailOpen && (
           <Button data-testid="bookmarks-back" size="compact" level="quiet" onClick={() => setDetailOpen(false)}>
             <ChevronLeft size={14} aria-hidden />{t('bookmarks.backToList')}
           </Button>
@@ -257,10 +267,6 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
               onStep={(d) => { const n = visibleMarks[idx + d]; if (n) setSelected(n) }}
               canStepPrev={idx > 0}
               canStepNext={idx >= 0 && idx < visibleMarks.length - 1}
-              onClose={() => {
-                setDetailOpen(false)
-                if (!narrow) { setSelected(null); selectedRow.current = null }
-              }}
             />
           )
         })()}
@@ -287,13 +293,22 @@ function BookmarkForm({ browserTab, onSave, onCancel, initial }: {
   const [note, setNote] = useState(initial?.note ?? '')
   const { t } = useI18n()
 
+  const [saving, setSaving] = useState(false)
   const submit = async (): Promise<void> => {
-    if (initial) {
-      await window.redlog.bookmarks.update(initial.id, { title, url, note })
-    } else {
-      await window.redlog.bookmarks.create({ title: title || 'Untitled', url: url || undefined, note })
+    if (!title.trim() || saving) return
+    setSaving(true)
+    try {
+      if (initial) {
+        await window.redlog.bookmarks.update(initial.id, { title, url, note })
+      } else {
+        await window.redlog.bookmarks.create({ title, url: url || undefined, note })
+      }
+      onSave()
+    } catch (e) {
+      // The draft stays on screen: nothing was saved, and saying so is the point.
+      toast(t('bookmarks.saveFailed'), { type: 'error', why: t('bookmarks.saveFailedWhy'), detail: e instanceof Error ? e.message : String(e) })
+      setSaving(false)
     }
-    onSave()
   }
 
   return (
@@ -333,7 +348,7 @@ function BookmarkForm({ browserTab, onSave, onCancel, initial }: {
       </div>
 
       <div className="flex gap-2 pt-1">
-        <Button level="primary" onClick={submit}>
+        <Button level="primary" disabled={!title.trim() || saving} onClick={submit}>
           {initial ? t('bookmarks.update') : t('bookmarks.save')}
         </Button>
         <Button level="secondary" onClick={onCancel}>{t('bookmarks.cancel')}</Button>
@@ -342,7 +357,7 @@ function BookmarkForm({ browserTab, onSave, onCancel, initial }: {
   )
 }
 
-function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, onTogglePin, onStep, canStepPrev = false, canStepNext = false, onClose }: {
+function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, onTogglePin, onStep, canStepPrev = false, canStepNext = false }: {
   mark: Bookmark
   onUpdate: () => void
   onDelete: () => void
@@ -354,7 +369,6 @@ function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, 
   onStep?: (delta: -1 | 1) => void
   canStepPrev?: boolean
   canStepNext?: boolean
-  onClose?: () => void
 }): JSX.Element {
   const [editing, setEditing] = useState(false)
   const { t } = useI18n()
@@ -414,20 +428,10 @@ function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, 
         </div>
         <div className="flex flex-wrap gap-1">
           {onOpenInTimeline && (
-            <Button size="compact" level="quiet" onClick={() => onOpenInTimeline(mark.createdAt)} >{t('loot.openInTimeline')}</Button>
+            <Button size="compact" level="quiet" onClick={() => onOpenInTimeline(mark.createdAt)} >{t('bookmarks.goToTime')}</Button>
           )}
           <Button size="compact" level="quiet" onClick={() => setEditing(true)} >{t('bookmarks.edit')}</Button>
           <Button size="compact" level="quiet" onClick={handleDelete} >{t('bookmarks.delete')}</Button>
-          {onClose && (
-            <button
-              type="button"
-              data-testid="bookmark-detail-close"
-              onClick={onClose}
-              title={t('httpHistory.closeDetail')}
-              aria-label={t('httpHistory.closeDetail')}
-              className="w-6 flex items-center justify-center text-xs bg-redlog-elevated text-redlog-text-dim rounded hover:text-redlog-text hover:bg-redlog-elevated-hover"
-            ><X size={14} aria-hidden /></button>
-          )}
         </div>
       </div>
 

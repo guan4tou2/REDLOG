@@ -4,6 +4,10 @@ Use the smallest test layer that proves the behavior. The current suites are
 `test/` (Vitest) and `e2e/` (Playwright/Electron); installed-package journeys
 reuse `e2e/` against an actual executable. Historical results are not new runs.
 
+目前覆蓋、證據等級與 macOS 優先的剩餘驗收集中在
+[Spec 064 測試覆蓋矩陣](../specs/064-recording-first-workspace/test-coverage-matrix.md)。
+各次執行的結果留在 dated record；不把一次完整回歸變成本機每次修改的必跑清單。
+
 ## Commands
 
 Run the repository gates in this order before pushing:
@@ -27,7 +31,9 @@ selection and headers before changing product code or skipping database tests.
 | --- | --- | --- |
 | One behavior | `npx vitest run test/<file>.test.ts` | The selected domain, storage or rendered behavior; native modules must already use the Node ABI. |
 | Local iteration | `npm run test:watch` | Vitest watch mode; same ABI requirement. |
+| Changed source unit tests | `npm run test:changed` | Rebuilds for Node, then uses Vitest's import graph against `origin/main`; no automatic pass when no tests are selected. |
 | Source app journey | `npm run build` then `npm run e2e -- e2e/<file>.spec.ts` | Real Electron/IPC interaction with isolated test homes. |
+| Core source workflows | `npm run build` then `npm run e2e:core` | Export/delivery, evidence/query/Session/return and network recovery; 33 cases in 3 files. Other affected journeys must be selected explicitly. |
 | Whole source journey suite | `npm run e2e` | All source journeys; explicit platform/installed-only skips remain skips. |
 | Package contents/signature | `npm run verify:package-resources` after packaging | Shipped adapters, verifier, manifests and macOS resource seal. |
 | Installed app | Set `REDLOG_PACKAGED_APP` and run the relevant `e2e/packaged-*.spec.ts` | The actual installed executable and shipped resources. |
@@ -43,10 +49,12 @@ npm run e2e:smoke -- --list
 
 # 正式執行需明確指定候選與 commit。正常 2 次啟動：初次 + 重啟讀回。
 REDLOG_PACKAGED_APP='/absolute/path/to/RedLog' \
-REDLOG_EXPECTED_BUILD=d2917021 npm run e2e:smoke
+REDLOG_EXPECTED_BUILD="$(git rev-parse --short=8 HEAD)" npm run e2e:smoke
 ```
 
 入口會先檢查 executable、commit 及 mitmdump，再啟動單一 packaged-smoke；不自動 retry、不加其他 suite。JSON report 每次存入獨立暫存資料夾，離開前沿用 `verify-smoke-report.mjs` 拒絕 skipped／flaky／not-exercised。About 在同一 App 開始時檢查，不為版本查核另啟動一個 App。直接執行原有 Playwright 命令仍可用於 CI 或刻意指定的驗收。
+
+以上 commit 必須是產生該安裝包的乾淨 checkout；測另一個已知候選時明確指定它的 Build，不能把目前來源版本套到舊安裝包。
 
 ## Local iteration and process reuse
 
@@ -68,7 +76,7 @@ would trade desktop interruptions for contaminated results.
 | 候選安裝包／資源／recording 交付基線 | `npm run e2e:smoke` | 2，包含刻意重啟 |
 | 外部 Shell 接入或匯出 UI／失敗恢復 | `e2e/export-preview.spec.ts` | 1，8 cases 共用 |
 | Activity／搜尋／saved-content Reader | `e2e/http-body-search.spec.ts` | 1 |
-| 首次設定操作流程 | `e2e/first-run.spec.ts --grep 'the first run'` | 1，11 cases 共用 |
+| 首次設定操作流程 | `e2e/first-run.spec.ts --grep 'the first run'` | 1，14 cases 共用 |
 | AI provider parser／privacy | 選對應 provider 或 privacy case | 每個被選的隔離案例 1 次 |
 | 改設定元件與 source workflow | 先 Vitest；必要時才選 capture-settings-interaction | 完整檔案 3 次，包含 2 個隔離故障案例 |
 
@@ -136,6 +144,22 @@ event names and sizes only, never command output.
 
 ## Keep the suite focused
 
+日常修改先用 `test:changed`，需要跨 IPC／磁碟證據時選該功能的 E2E；共用查詢／交付流程可用 `e2e:core`。完整 `npm test` 與 CI Electron shards 保留原規則，不以核心選取取代提交／發版門檻。上輪的 118 是一次整合驗收選取，不是每次改動都要重跑的固定流程。
+
+`test:changed` 需要已更新的 `origin/main`。Vitest 依 import graph 選取；動態檔案、Shell hooks、打包資源不保證被追蹤，仍按本文件的 coverage owners 明確指定。設定或 package 改動可能觸發全量，沒有選到測試也不代表功能已驗證；不使用 `passWithNoTests` 或刪除平台測試製造通過。
+
+`e2e:core` 不包含首次接入、插件／AI 安裝、OS 權限與全部視覺操作；相關變更仍加選 `first-run`、`plugin-explore`、`capture-settings-interaction`、`official-agent-capture` 或安裝版 smoke。它不另造一套簡化 fixture，也不把單一按鈕的存在當作完整使用流程。
+
+已收斂的重複守門與保留的行為責任：
+
+| 移除的 source-string suite | 保留／補強的行為測試 |
+| --- | --- |
+| `shared-event-filter`（6 cases） | `shared-filter-views`：各視圖實際請求與搜尋分頁；`events-ipc-count-match`：偽造 renderer scope 不得擴大 direct／paged／parsed／HTTP 查詢 |
+| `transcript-completeness`（3 cases） | `transcript-completeness-ui`：讀取失敗、下一頁失敗、已載入內容與部分 Markdown |
+| `http-flow-query-contract`（2 cases） | `http-auto-load`、`http-flow-page`：實際 flow 分頁、失敗、上限與載入更多 |
+
+App-shell 的五個子頁籤往返由 Targets／Evidence 兩條原有流程負責，不再額外重播相同導航。HTTP seed 每次檢查寫入結果，呈現以 locator assertion 等待，不用三段固定 sleep。
+
 Prefer observable behavior over assertions about source spelling. Keep unique
 regressions for lost evidence, wrong attribution, privacy and terminal control.
 Remove a duplicate only after identifying its retained coverage owner. An
@@ -178,7 +202,7 @@ REDLOG_BUILD_ID=$(git rev-parse --short=8 HEAD) npx electron-builder --mac dmg -
 
 ```sh
 REDLOG_PACKAGED_APP='/absolute/path/to/RedLog.app/Contents/MacOS/RedLog' \
-REDLOG_EXPECTED_BUILD=d2917021 \
+REDLOG_EXPECTED_BUILD="$(git rev-parse --short=8 HEAD)" \
 npx playwright test e2e/http-body-search.spec.ts --reporter=line
 ```
 

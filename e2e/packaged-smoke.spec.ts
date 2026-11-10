@@ -100,11 +100,26 @@ test.describe('packaged app', () => {
       })
 
       await test.step('create a project', async () => {
+        await page.getByRole('button', { name: 'Create new project' }).click()
         await page.getByPlaceholder('e.g. Client-Pentest-Q3').fill('pkg-smoke')
-        await page.getByRole('button', { name: 'Create' }).click()
+        await page.getByRole('button', { name: 'Create project', exact: true }).click()
         await page.waitForSelector('[data-testid="view-root"]', { timeout: 30_000 })
         await expectAppBuild(app,page,process.env.REDLOG_EXPECTED_BUILD)
         if (process.env.REDLOG_EXPECTED_BUILD) await openView(page,'dashboard')
+        // An installed RedLog may already own its default port. This isolated
+        // smoke must not stop the operator's proxy or depend on that port being
+        // free. Use the real settings bridge to restart only this candidate.
+        const reservation = http.createServer()
+        await new Promise<void>(resolve => reservation.listen(0, '127.0.0.1', resolve))
+        const isolatedProxyPort = (reservation.address() as { port: number }).port
+        await new Promise<void>((resolve, reject) => reservation.close(error => error ? reject(error) : resolve()))
+        await page.evaluate(async port => {
+          const cfg = await window.redlog.config.get()
+          await window.redlog.config.save({ ...cfg, httpCapture: { ...(cfg.httpCapture as object), port } })
+          await window.redlog.httpCapture.stop()
+          const status = await window.redlog.httpCapture.start()
+          if (status.state !== 'running') throw new Error(status.error ?? 'Isolated HTTP capture did not start')
+        }, isolatedProxyPort)
       })
 
       await test.step('the built-in terminal records a command with its exit code and a cast', async () => {
@@ -349,7 +364,8 @@ test.describe('packaged app', () => {
         await page.waitForLoadState('domcontentloaded')
         await page.waitForSelector('[data-testid="project-picker"], [data-testid="view-root"]', { timeout: 30_000 })
         if (await page.getByTestId('project-picker').count()) {
-          await page.getByText('pkg-smoke').first().click()
+          // Stitch 01: a click selects a project, a double click opens it.
+          await page.getByText('pkg-smoke').first().dblclick()
           await page.waitForSelector('[data-testid="view-root"]', { timeout: 30_000 })
         }
         await expect.poll(async () => shellEnd(await events(page), 'echo redlog-ok-builtin'), { timeout: 20_000 }).toBeTruthy()
@@ -362,9 +378,7 @@ test.describe('packaged app', () => {
         await page.locator('section').filter({ has: setup }).first().screenshot({ path: test.info().outputPath('capture-setup-entry.png') })
         await setup.click()
         // Daily capture repair opens terminal settings, not the first-run guide.
-        const select = page.getByTestId('settings-page-select')
-        if (await select.count()) await expect(select).toHaveValue('hooks')
-        else await expect(page.locator('[data-settings-page="hooks"][aria-current="page"]')).toBeVisible()
+        await expect(page.getByTestId('settings-content')).toHaveAttribute('data-page', 'hooks')
         expect(shellEnd(await events(page), 'echo redlog-ok-builtin')).toBeTruthy()
       })
     } catch (error) {

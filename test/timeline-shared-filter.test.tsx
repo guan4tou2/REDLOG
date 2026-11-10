@@ -28,10 +28,11 @@ const firstPageOnly = (b: TimelineBridge, first: ReturnType<typeof page>): void 
   b.queryPage.mockImplementation(async (opts: { cursor?: string | null }) => opts.cursor ? new Promise(() => {}) : first)
 }
 // Select the one drawn event, as a click on its dot does.
-const selectOnlyDot = (): void => {
-  const dot = document.querySelector('[data-timeline-event]')
-  if (!dot) throw new Error('no event dot drawn')
-  fireEvent.click(dot)
+// The dot only exists once the stored view mode has loaded and switched the
+// Timeline to the swim lanes (Spec 069), so wait for it rather than assume it.
+const selectOnlyDot = async (): Promise<void> => {
+  await waitFor(() => expect(document.querySelector('[data-timeline-event]')).not.toBeNull())
+  fireEvent.click(document.querySelector('[data-timeline-event]')!)
 }
 
 // Spec 038 US1: the Timeline draws what the shared filter admits, over the
@@ -138,7 +139,7 @@ describe('the Timeline on the shared filter', () => {
     b.queryPage.mockResolvedValue(page([makeEvent('sel', T0, 'shell')]))
     mount()
     await waitFor(() => expect(status()).toMatch(/\b1 event/))
-    selectOnlyDot()
+    await selectOnlyDot()
     b.queryPage.mockResolvedValue(page([makeEvent('d1', T0 - 5, 'dns')]))
     b.matchIds.mockResolvedValue([])
     act(() => { filterApi.setAgentType('dns') })
@@ -181,7 +182,9 @@ describe('the Timeline on the shared filter', () => {
     b.matchIds.mockResolvedValue([])
     mount()
     await waitFor(() => expect(status()).toMatch(/\b1 event/))
-    selectOnlyDot()
+    await selectOnlyDot()
+    // The amendment's chip lives in the body, which a double-click opens.
+    fireEvent.doubleClick(document.querySelector('[data-timeline-event]')!)
     fireEvent.click(await screen.findByTestId('marker-amend-resolve-original'))
     await screen.findByTestId('timeline-outside-filter')
     expect(status()).toMatch(/\b1 event/)

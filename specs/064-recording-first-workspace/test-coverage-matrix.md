@@ -1,6 +1,43 @@
 # Spec 064：目前測試覆蓋與執行責任
 
-基準：main `d2917021`／Mac arm64 DMG，SHA-256 `0a3042357c6c4c5da7166f0da814a69ad963dad431edc93edf5ff2836a13de7e`。這張是目前子能力盤點；[acceptance.md](acceptance.md) 的完整 UX／CT 及五人／全平台門檻仍未全部通過，不回填歷史 NOT RUN 為全面 PASS。
+## 目前來源碼驗證（2026-11-09）
+
+基準：main `c614cbf3`，macOS 27.0.1 arm64、Node v26.13.0、Electron 44.4.1。完整 unit **5932 passed／41 skipped**；主要 Electron 使用流程 **110 passed**，插件／來源設定另補 **8 passed**，兩組選取沒有重複 spec。此為來源碼正式建置，不是新安裝包或全平台人工驗收。
+
+[main CI](https://github.com/guan4tou2/REDLOG/actions/runs/42573715951) 的 Windows／macOS／Ubuntu unit 與 Linux Electron 三個 shard 已全部成功。CI 的「architecture」只驗 export 可達性，不代表完整架構收斂完成。
+
+| 能力 | 目前證據／覆蓋責任 | 尚缺的驗收 |
+| --- | --- | --- |
+| 專案、主導覽、首次設定 | `e2e/app-shell.spec.ts`、`e2e/first-run.spec.ts`；七個主入口、設定、Scope、來源導向、重複 Enter 與終端返回 | 新 macOS 安裝包、全新使用者完成率及 OS 權限 |
+| 活動／Session／Transcript | `e2e/evidence-views.spec.ts`；Session、查詢、Reader、Timeline 往返、閱讀中新增事件、跨專案清理 | CT-01／02 全部配對與錨點組合、真實使用者任務量測 |
+| 已保存 cast／外部 PTY | `e2e/cast-content-reader.spec.ts` 的固定 2 MB cast 分頁、尾端搜尋、逐位元組另存；`e2e/external-session.spec.ts` 的實際 PTY canary | 新包的真實長指令／多終端／Terminal App origin；固定 cast fixture 不代表真實 producer 擷取 |
+| HTTP 與恢復 | `e2e/network-state-recovery.spec.ts` 的 failed → starting → running；HTTP Reader／scope／request-response 在主要 110 案內 | 系統 CA／真實瀏覽器信任與路由；先前真實 mitmdump 證據見 dated record，不以 UI seed 取代 |
+| 官方 AI 安裝與授權 | `e2e/official-agent-capture.spec.ts`：經插件頁安裝、返回來源、授權、正式 watcher 讀 JSONL、排除／停用／移除、歷史讀回 | JSONL 為合成 fixture，未驗證真實 Claude Code／Codex 客戶端產生完整流程 |
+| 插件探索／來源設定 | 補驗 `e2e/plugin-explore.spec.ts`、`e2e/capture-settings-interaction.spec.ts`，8 passed；搜尋、需處理、單欄返回、讀取失敗、保存重試、雙語及 800px／200% | 更新／解除安裝中斷與非受管檔案的完整失敗矩陣；本機匯入屬另批能力 |
+| 匯出 | `e2e/export-preview.spec.ts` 與 `evidence-views` 的預覽／固定選取／政策／重試／成品讀回；unit owns snapshot／hash／遮蔽 | CT-05–07 的完整附件／跨目標成品矩陣；完整有界查詢與 bundle／HAR 收斂另由 #661 |
+| Reader 狀態 | 共用 ContentDescriptor／ContentRef、cast／HTTP／AI 的現有 unit 與 E2E | #591：Shell／HTTP／AI × 五種內容狀態 × 活動／Timeline／Reader 的同資料結論矩陣 |
+| Pivot／IP／CDP | `e2e/network-state-recovery.spec.ts` 與對應 unit；失敗不等於無節點、IP 獨立恢復、CDP timeout／retry | 真實瀏覽器掉線／重新接入及系統環境人工驗收 |
+| 版面／色彩 | `visual-reference` 三組截圖、實際檢視部分主要頁面；design tokens／palette unit | 截圖擷取不是全部頁面像素驗收；#592 的任意值 hex 守門與按鈕語意仍需處理 |
+
+詳細執行選取、41 項 skip 原因與證據層級見 [本輪執行紀錄](../../docs/records/2026-11-09/MACOS-TEST-CLOSEOUT.md)。完整 UX／CT 仍以 [acceptance.md](acceptance.md) 及 [contract-acceptance.md](contract-acceptance.md) 逐項為準，不因 unit 或 GUI 通過數量直接升級全部契約。
+
+## 尚未完成：依 macOS 優先排序
+
+| 順序 | 工作與完成條件 | 追蹤 |
+| --- | --- | --- |
+| 1 | f10c6645 的固定 macOS 安裝副本已通過 Build／資源／ad-hoc 簽章／hash 與 recording → export → restart；仍需真正下載的 Gatekeeper／notarization、OS 權限及一般退出提示 | #226、#457 |
+| 2 | 真實 Terminal App／Shell、實際瀏覽器 HTTPS 與 AI 客戶端，各完成接入 → 新資料保存 → Reader → 交付；保留失敗恢復與來源依據 | #593、#434、#489；CT-08／09 不以環境旗標取代 |
+| 3 | 本批已共用 Reader 五態並補跨 Reader／空 stderr／未知來源回歸；特殊真實 producer 與全平台人工狀態仍需專項驗收（見下方本批紀錄） | #591、#546、PR #565 |
+| 4 | 確認 token 任意 hex 守門及按鈕例外，完成空／載入／錯誤、鍵盤與視覺人工檢查；五人使用者量測仍未執行 | #592、#558、#457 |
+| 延後 | 原 Windows 約 200k 事件端到端效能；不以 macOS 子基準或 PowerShell 安裝 smoke 代替 | #660（#587 子項） |
+
+本批 macOS 整合的責任邊界、實際測試與外部限制見 [2026-11-10 整合驗收](../../docs/records/2026-11-10/MACOS-WORKFLOW-CLOSEOUT.md)。Timeline 分頁／live／Inspector／viewport、匯出 iterator／唯讀 worker 及來源事實已實作；不再將它們與尚未開放的第三方 UI／Manifest 平台混成同一項未完成工作。此紀錄不回填下方歷史安裝包或整體 CT 為 PASS。
+
+Marketplace、本機匯入、第三方可執行 UI、Burp／DNS 等新增來源不得因本表自動變成當前版本必做的驗收項。
+
+## 歷史子能力盤點（d2917021 安裝包）
+
+以下保留舊 Mac arm64 DMG，SHA-256 `0a3042357c6c4c5da7166f0da814a69ad963dad431edc93edf5ff2836a13de7e` 的證據。它不是 c614cbf3 安裝版；下表的舊進度不取代上方目前來源碼矩陣，也不回填完整 UX／CT 的 NOT RUN。
 
 | 能力／對應 | Unit／DB contract 責任 | Electron／安裝版證據 | 原生人工／尚缺 |
 | --- | --- | --- | --- |
@@ -22,9 +59,9 @@
 - Native acceptance owns OS／終端 App 身分／權限／一般模式確認；不把 E2E bypass 視為通過。
 - Timeline 仍在產品內。排序、定位、虛擬化等契約保留；等 Activity parity 完成才遷移泳道特有斷言。本批不刪舊 UI 測試、不加相容 shim。
 
-## 本批驗證界線
+## 歷史整理批次的驗證界線
 
-本批整理不啟動 App。CI path／單一 smoke 入口／report validator 使用非 GUI 測試；FirstRun 固定等待改為明確畫面與 PID 條件，只做 Playwright collection。新的等待條件須在下一次已安排的 E2E／CI 驗證，不能因此把本批標成全產品 E2E 通過。
+當時的整理批次沒有啟動 App。CI path／單一 smoke 入口／report validator 使用非 GUI 測試；FirstRun 固定等待改為明確畫面與 PID 條件，只做 Playwright collection。這些歷史結果不取代頁首目前候選的實際執行證據。
 
 ## 2026-10-29 後續來源碼驗證
 

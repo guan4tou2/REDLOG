@@ -48,6 +48,9 @@ test.describe('packaged PowerShell matrix', () => {
   test('each edition loads the installed profile, pairs commands and records real exit codes and output', async () => {
     test.setTimeout(300_000)
     expect(editions.length, 'at least Windows PowerShell 5.1').toBeGreaterThan(0)
+    for (const tag of (process.env.REDLOG_REQUIRE_PS_EDITIONS ?? '').split(',').filter(Boolean)) {
+      expect(editions.map(edition => edition.tag), `Required edition ${tag} is installed`).toContain(tag)
+    }
     const { app, page, tmpHome } = await launchWithTempHome(exe)
     const restore: Array<() => void> = []
     try {

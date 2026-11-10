@@ -9,11 +9,12 @@
 //   • ChainEmitter        — writes verdict as `system.*` event, chained/signed
 //   • BadgeSurface        — updates the operator's IP badge state
 //   • AdherenceCounter    — accumulates the post-hoc scope-adherence report
-//   • ViolationLog        — the recent scope violations the UI lists
+//   • ObservationLog        — the recent scope violations the UI lists
 //
 // Adding a Surface = implement the interface, register with AlertBus.
 // Nothing else in the subsystem changes — that's what the seam buys.
 
+import { SCOPE_VIOLATION_SUBTYPE } from '../scope-vocabulary'
 import { insertEvent } from '../db/events'
 import { eventBus } from '../event-bus'
 import type { Verdict, IPVerdict, ScopeVerdict, Authority } from './policy'
@@ -84,7 +85,7 @@ export class ChainEmitter implements Surface {
       case 'scope':
         return {
           agentType: 'system',
-          subtype: 'scope_violation',
+          subtype: SCOPE_VIOLATION_SUBTYPE,
           data: {
             target: v.signal.target,
             action: v.signal.action.slice(0, 200),
@@ -191,9 +192,9 @@ export class AdherenceCounter implements Surface {
   reset(): void { this.byTarget.clear() }
 }
 
-// ─── ViolationLog — flat rolling list for the ScopePanel UI ─────────────────
+// ─── ObservationLog — flat rolling list for the ScopePanel UI ─────────────────
 
-export interface ViolationRow {
+export interface ObservationLogRow {
   target: string
   command: string
   timestamp: number
@@ -204,9 +205,9 @@ export interface ViolationRow {
  *  ScopePanel. Distinct from AdherenceCounter (which dedups by target
  *  for the post-hoc summary) — this preserves every occurrence, capped
  *  at `maxRows` so a long engagement doesn't leak memory. */
-export class ViolationLog implements Surface {
-  readonly name = 'violation-log'
-  private rows: ViolationRow[] = []
+export class ObservationLog implements Surface {
+  readonly name = 'observation-log'
+  private rows: ObservationLogRow[] = []
   private maxRows: number
 
   constructor(maxRows = 500) { this.maxRows = maxRows }
@@ -223,7 +224,7 @@ export class ViolationLog implements Surface {
     if (this.rows.length > this.maxRows) this.rows.shift()
   }
 
-  list(): ViolationRow[] { return [...this.rows] }
+  list(): ObservationLogRow[] { return [...this.rows] }
   count(): number { return this.rows.length }
   reset(): void { this.rows = [] }
 }

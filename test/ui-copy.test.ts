@@ -5,7 +5,7 @@ import { repoRelative } from './helpers/repo-path'
 import glob from 'fast-glob'
 
 // AGENTS.md: "Avoid unnecessary secondary labels and descriptions. Let the
-// layout do the explaining." `docs/UIUX-CONTROLS-AND-COPY.md` §2 is the test,
+// layout do the explaining." `docs/UIUX-STANDARD.md §25.2 is the test,
 // and until now nothing ran it. A rule that only lives in a prompt is advice;
 // the reviewer reads it and the next agent does not.
 //

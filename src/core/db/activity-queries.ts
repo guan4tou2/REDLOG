@@ -135,6 +135,17 @@ function sourceEvent(db: ReturnType<typeof getReadonlyDB>, row: Record<string, u
   const table = row.tier === 'logged' ? 'events_logged' : 'events'
   return rowToEvent({ ...(db.prepare(`SELECT * FROM ${table} WHERE rowid=? AND id=?`).get(row._row, row.id) as Record<string, unknown>), tier: row.tier })
 }
+/** The paired command_end's exit code, for the list row. Only shell commands:
+ * a tool_result or http_response has no exit code to show. */
+function commandResult(db: ReturnType<typeof getReadonlyDB>, row: Record<string, unknown>, key: string): { exitCode: number | null } | null {
+  if (JSON.parse(key)[1] !== 'command' || typeof row.result_id !== 'string') return null
+  const hit = db.prepare(`SELECT tier,_row,id FROM temp.activity_projection_v1 WHERE id=? LIMIT 1`).get(row.result_id) as Record<string, unknown> | undefined
+  if (!hit) return null
+  const end = sourceEvent(db, hit)
+  const code = end.data?.exit_code
+  const n = typeof code === 'number' ? code : typeof code === 'string' && /^-?\d+$/.test(code) ? Number(code) : NaN
+  return { exitCode: Number.isFinite(n) ? n : null }
+}
 function ctes(req: ActivityRequest, s: ReturnType<typeof setup>): { sql: string; params: unknown[] } {
   syncProjection(s.db)
   const sql = `WITH hit_ids AS MATERIALIZED (${s.sql}), projected AS MATERIALIZED (
@@ -190,17 +201,20 @@ export function queryActivityPage(request: ActivityRequest): ActivityPage {
       ,paged AS (SELECT * FROM counted ${past} ORDER BY sort_at DESC,ak DESC LIMIT ?)
       SELECT paged.*,anchor.*,
       (SELECT json_group_array(id) FROM (SELECT p.id FROM projected p WHERE p.ak=paged.ak ORDER BY p.timestamp,p.id LIMIT ${PREVIEW})) AS source_ids,
-      (SELECT json_group_array(id) FROM (SELECT m.id FROM projected m WHERE m.ak=paged.ak AND m.matched=1 ORDER BY m.timestamp,m.id LIMIT ${PREVIEW})) AS matched_ids
+      (SELECT json_group_array(id) FROM (SELECT m.id FROM projected m WHERE m.ak=paged.ak AND m.matched=1 ORDER BY m.timestamp,m.id LIMIT ${PREVIEW})) AS matched_ids,
+      (SELECT r.id FROM projected r WHERE r.ak=paged.ak AND r.role='result' ORDER BY r.timestamp DESC,r.id DESC LIMIT 1) AS result_id
       FROM paged JOIN projected anchor ON anchor.id=paged.anchor_id ORDER BY paged.sort_at DESC,paged.ak DESC`).all(...c.params, ...(s.cursor ? [s.cursor.ts, s.cursor.ts, s.cursor.key] : []), limit + 1) as Array<Record<string, unknown>>
     if (!rows.length && s.cursor) throw new Error('Activity cursor no longer references a page')
     const hasMore = rows.length > limit
     const picked = rows.slice(0, limit)
     const items: ActivitySummary[] = picked.map(row => {
       const anchor = sourceEvent(db, row), key = activityKey(anchor), sourceIds = JSON.parse(String(row.source_ids)) as string[], matchedIds = JSON.parse(String(row.matched_ids)) as string[]
+      const result = commandResult(db, row, key)
       return {
         id: activityId(key), key, projectId: request.projectId, kind: JSON.parse(key)[1], state: row.pairing_state, ...activityClassification(anchor), anchor,
         firstAt: row.first_at, lastAt: row.last_at, matchedCount: row.matched_count, sourceCount: row.source_count, contextCount: Number(row.source_count) - Number(row.matched_count),
-        sourcePreview: { ids: sourceIds, hasMore: Number(row.source_count) > sourceIds.length }, matchedPreview: { ids: matchedIds, hasMore: Number(row.matched_count) > matchedIds.length }
+        sourcePreview: { ids: sourceIds, hasMore: Number(row.source_count) > sourceIds.length }, matchedPreview: { ids: matchedIds, hasMore: Number(row.matched_count) > matchedIds.length },
+        ...(result ? { result } : {})
       } as ActivitySummary
     })
     const last = picked.at(-1)

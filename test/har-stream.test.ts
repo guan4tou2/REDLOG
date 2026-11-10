@@ -1,0 +1,48 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, beforeEach, expect, it } from 'vitest'
+import { initDB, closeDB, getDB } from '../src/core/db/index'
+import { addExportEvent } from './helpers/export-fixtures'
+import { takeExportSnapshot } from '../src/core/export-plan'
+import { exportHar } from '../src/core/har-export'
+import { writeApprovedHar } from '../src/core/har-export-stream'
+import { iterateSnapshotEvents } from '../src/core/export-selection'
+
+let dir: string
+beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-har-stream-')); initDB(dir) })
+afterEach(() => { closeDB(); fs.rmSync(dir, { recursive: true, force: true }) })
+const event = (id: string, timestamp: number, data: Record<string, unknown>) => addExportEvent('events_logged', id, timestamp,
+  { agentType: 'scanner', targetId: 'example.test', subtype: String(data.subtype), data })
+
+it('streams the exact approved HAR bytes across page boundaries, duplicate requests, tied times and partial streams', () => {
+  getDB().transaction(() => {
+    for (let i = 0; i < 530; i++) {
+      event(`req-${i}`, 1000 + i, { subtype: 'http_request_start', flow_id: `f-${i}`, method: 'GET', url: `https://example.test/${i}` })
+      event(`res-${i}`, 2000 + i, { subtype: 'http_response', flow_id: `f-${i}`, status: 200, content_length: 2,
+        response_body: { encoding: 'text', data: 'ok', size: 2 } })
+    }
+    event('duplicate', 500, { subtype: 'http_request_start', flow_id: 'f-0', method: 'POST', url: 'https://example.test/old' })
+    event('tie', 500, { subtype: 'http_request_start', flow_id: 'tie', method: 'GET', url: 'https://example.test/tie' })
+    for (const [id, flow, ts, sub] of [['chunk', 'partial', 50, 'http_response_chunk'], ['ws', 'partial', 40, 'ws_message'],
+      ['end', 'partial', 1, 'websocket_end'], ['ws-only', 'ws-only', 40, 'ws_message']] as const) {
+      event(id, ts, { subtype: sub, flow_id: flow, seq: 1, message_count: 1, url: 'https://example.test/events',
+        response_body: { encoding: 'text', data: 'tail', size: 4 }, ws_body: { encoding: 'text', data: 'message', size: 7 } })
+    }
+  })()
+  const snapshot = takeExportSnapshot()
+  const includeEventIds = new Set([...iterateSnapshotEvents(snapshot)].map(event => event.id))
+  event('not-approved', 99, { subtype: 'http_request_start', flow_id: 'new', url: 'https://example.test/not-approved' })
+  const options = { snapshot, includeEventIds }
+  const file = path.join(dir, 'out.har')
+  writeApprovedHar(file, options)
+  expect(fs.readFileSync(file, 'utf8')).toBe(exportHar(options))
+  expect(() => writeApprovedHar(file, options)).toThrow(/exist/i)
+})
+
+it('writes the same empty HAR without inventing an exchange or a partial flow', () => {
+  const options = { snapshot: takeExportSnapshot(), includeEventIds: new Set<string>() }
+  const file = path.join(dir, 'empty.har')
+  writeApprovedHar(file, options)
+  expect(fs.readFileSync(file, 'utf8')).toBe(exportHar(options))
+})

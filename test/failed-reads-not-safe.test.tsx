@@ -25,7 +25,7 @@ const bridge = (over: Record<string, unknown> = {}): void => {
     loot: { getCount: vi.fn().mockResolvedValue(0) },
     chain: { length: vi.fn().mockResolvedValue(0) },
     scope: {
-      getViolationCount: vi.fn().mockResolvedValue(0),
+      getObservationCount: vi.fn().mockResolvedValue(0),
       isConfigured: vi.fn().mockResolvedValue(true)
     },
     config: { get: vi.fn().mockResolvedValue({ scope: { targets: ['10.0.0.1'], excludeTargets: [] } }) },
@@ -41,7 +41,7 @@ describe('useAppCounts', () => {
   it('reports scope as unknown, not configured and clean, when it cannot be read — and recovers on retry', async () => {
     bridge()
     const scope = (window as unknown as { redlog: { scope: Record<string, ReturnType<typeof vi.fn>> } }).redlog.scope
-    scope.getViolationCount.mockRejectedValueOnce(new Error('db'))
+    scope.getObservationCount.mockRejectedValueOnce(new Error('db'))
     scope.isConfigured.mockRejectedValueOnce(new Error('db'))
     const { result } = renderHook(() => useAppCounts())
     await waitFor(() => expect(result.current.loading).toBe(false))

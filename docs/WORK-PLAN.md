@@ -18,7 +18,7 @@
 | 原始產品需求與工具／平台測試集合 | [#295](https://github.com/guan4tou2/REDLOG/issues/295)、[#296](https://github.com/guan4tou2/REDLOG/issues/296) | 不當作三套功能清單 |
 | 功能契約、任務與 feature 狀態 | [Spec 索引](../specs/README.md) → 各 feature 的 spec／plan／tasks | 不因母單關閉就升 Verified |
 | 穩定領域語意 | [domain/](domain/glossary.md)；capture、scope、query、selection 契約 | 不由歷史審查重新定義 |
-| UI 標準與文案必要性 | [UIUX-STANDARD](UIUX-STANDARD.md)、[Controls and copy](UIUX-CONTROLS-AND-COPY.md) | 視覺提案不能改保存／授權語意 |
+| UI 標準與文案必要性 | [UIUX-STANDARD](UIUX-STANDARD.md)（含 §25 控制項與文案） | 視覺提案不能改保存／授權語意 |
 | 全產品視覺工作與頁面矩陣 | [Forensic Editorial](UIUX-FORENSIC-EDITORIAL.md)、Spec 062 T087–T092 | 不以本次局部 UI 修正代替 |
 | 每次實測的版本、步驟、產物與限制 | 各 spec verification／acceptance；跨 feature 紀錄放 [records/](records/README.md) | 不把歷史產物 hash 移到新版本 |
 | 跨平台與五位使用者環境缺口 | [#457](https://github.com/guan4tou2/REDLOG/issues/457)，回填原驗收文件 | 不新增另一份完整測試矩陣 |

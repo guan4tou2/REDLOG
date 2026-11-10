@@ -1,6 +1,7 @@
+import { contentState } from '../../../core/content-contract'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { useEffect, useRef, useState } from 'react'
-import type { ContentAnchor, ContentDescriptor, ContentFindCursor, ContentWindow } from '../../../core/content-contract'
+import type { ContentAnchor, ContentDescriptor, ContentFindCursor, ContentWindow, ContentUnavailable } from '../../../core/content-contract'
 import { safeDisplay, hasUnsafeText } from '../lib/evidenceText'
 import { useI18n } from '../i18n'
 import { useReadState } from '../lib/readState'
@@ -15,6 +16,7 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, expanded 
   const [history, setHistory] = useState<number[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [unavailable, setUnavailable] = useState<ContentUnavailable | null>(null)
   const [changed, setChanged] = useState(false)
   const [needle, setNeedle] = useState('')
   const [findCursor, setFindCursor] = useState<ContentFindCursor | undefined>()
@@ -72,16 +74,16 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, expanded 
   const read = async (offset = 0, direction: 'next' | 'previous' | 'initial' = 'initial'): Promise<void> => {
     if (!descriptor.ref) return
     const seq = ++generation.current
-    setBusy(true); setError(null); setChanged(false)
+    setBusy(true); setError(null); setUnavailable(null); setChanged(false)
     try {
       const reply = await globalThis.window.redlog.content.read({ ref: descriptor.ref,
         ...(direction === 'next' && window?.nextCursor ? { cursor: window.nextCursor } : { offset }) })
       if (!alive.current || seq !== generation.current) return
-      if (!reply.ok) { setError(t(`content.status.${reply.status}`)); setChanged(reply.status === 'changed'); return }
+      if (!reply.ok) { setError(t(`content.status.${reply.status}`)); setUnavailable(reply.status); setChanged(reply.status === 'changed'); return }
       setHistory(prev => direction === 'next' && window ? [...prev, window.offset] : direction === 'previous' ? prev.slice(0, -1) : [])
       setWindow(reply.value)
       setSelection(null)
-    } catch (e) { if (alive.current && seq === generation.current) setError(String(e)) }
+    } catch (e) { if (alive.current && seq === generation.current) { setError(String(e)); setUnavailable('failed') } }
     finally { if (alive.current && seq === generation.current) setBusy(false) }
   }
   useEffect(() => { void read(initialOffset) }, [descriptor.ref?.version, initialOffset])
@@ -90,13 +92,13 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, expanded 
     const seq = ++generation.current
     const query = needle
     let cursor = findCursor
-    setBusy(true); setError(null); setChanged(false); setNotFound(false)
+    setBusy(true); setError(null); setUnavailable(null); setChanged(false); setNotFound(false)
     try {
       // A scan budget is a continuation, never a negative search result.
       while (alive.current && seq === generation.current) {
         const reply = await globalThis.window.redlog.content.find({ ref: descriptor.ref, needle: query, ...(cursor ? { cursor } : {}) })
         if (!alive.current || seq !== generation.current || query !== input.current) return
-        if (!reply.ok) { setError(t(`content.status.${reply.status}`)); setChanged(reply.status === 'changed'); return }
+        if (!reply.ok) { setError(t(`content.status.${reply.status}`)); setUnavailable(reply.status); setChanged(reply.status === 'changed'); return }
         if (reply.value.match) {
           setFindCursor(reply.value.nextCursor ?? undefined)
           await read(reply.value.match.offset)
@@ -105,7 +107,7 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, expanded 
         if (!reply.value.hasMore || !reply.value.nextCursor) { setNotFound(true); setFindCursor(undefined); return }
         cursor = reply.value.nextCursor
       }
-    } catch (e) { if (alive.current && seq === generation.current) setError(String(e)) }
+    } catch (e) { if (alive.current && seq === generation.current) { setError(String(e)); setUnavailable('failed') } }
     finally { if (alive.current && seq === generation.current) setBusy(false) }
   }
   const matchAt = needle ? window?.text.indexOf(needle) ?? -1 : -1
@@ -114,8 +116,9 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, expanded 
   const fragmentEnd=window&&fragment?Math.min(raw?.length??0,fragment.end-window.offset):0
   const highlightAt=needle?matchAt:raw&&fragmentEnd>fragmentStart?new TextDecoder().decode(raw.subarray(0,fragmentStart)).length:-1
   const highlightLength=needle?needle.length:raw&&fragmentEnd>fragmentStart?new TextDecoder().decode(raw.subarray(fragmentStart,fragmentEnd)).length:0
-  if (!descriptor.ref) return <p role="status" className="text-xs text-amber-300">{t(`content.status.${descriptor.status}`)}</p>
-  return <div className="min-w-0 space-y-2">
+  const state = contentState(unavailable ? { ...descriptor, status: unavailable } : descriptor)
+  if (!descriptor.ref) return <p role="status" data-content-state={state} className="text-xs text-amber-300">{t(`content.status.${descriptor.status}`)}</p>
+  return <div data-content-state={state} className="min-w-0 space-y-2">
     <div className="flex flex-wrap items-center gap-2">
       <input type="search" aria-label={t('content.find')} value={needle} disabled={descriptor.format === 'binary'}
         onChange={e => { input.current = e.target.value; setNeedle(e.target.value); setFindCursor(undefined); setNotFound(false); generation.current++; setBusy(false) }}
@@ -133,10 +136,10 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, expanded 
     {deliveryError && <p role="alert" className="text-xs text-amber-300">{deliveryError}</p>}
     {error && <div role="alert" className="text-xs text-amber-300 break-words">{error} <Button onClick={() => changed ? onReload() : void read(window?.offset ?? 0)}>{t('common.retry')}</Button></div>}
     {notFound && <p role="status" className="text-xs text-redlog-text-dim">{t('content.notFound')}</p>}
-    {descriptor.capture === 'partial' && <p role="status" className="text-xs text-amber-300">{t('content.partial')}</p>}
+    {state === 'truncated' && <p role="status" className="text-xs text-amber-300">{t('content.partial')}</p>}
     {descriptor.format === 'binary' && <p className="text-xs text-redlog-text-dim">{t('content.binary')}</p>}
     {window && <>
-      <pre ref={pre} onMouseUp={captureSelection} onKeyUp={captureSelection} tabIndex={0} className={`${expanded ? 'max-h-[70vh]' : 'max-h-80'} overflow-auto whitespace-pre-wrap break-words bg-redlog-elevated p-3 text-xs font-mono`}>{highlightAt >= 0 ? <>{safeDisplay(window.text.slice(0, highlightAt))}<mark className="bg-redlog-accent/25 text-redlog-text">{safeDisplay(window.text.slice(highlightAt, highlightAt + highlightLength))}</mark>{safeDisplay(window.text.slice(highlightAt + highlightLength))}</> : safeDisplay(window.text) || t('content.empty')}</pre>
+      <pre ref={pre} onMouseUp={captureSelection} onKeyUp={captureSelection} tabIndex={0} className={`${expanded ? 'max-h-[70vh]' : 'max-h-80'} overflow-auto whitespace-pre-wrap break-words bg-redlog-elevated p-3 text-xs font-mono`}>{highlightAt >= 0 ? <>{safeDisplay(window.text.slice(0, highlightAt))}<mark className="bg-redlog-accent/25 text-redlog-text">{safeDisplay(window.text.slice(highlightAt, highlightAt + highlightLength))}</mark>{safeDisplay(window.text.slice(highlightAt + highlightLength))}</> : safeDisplay(window.text) || (state === 'empty' ? t('content.empty') : '')}</pre>
       <div className="flex flex-wrap items-center gap-2 text-xs text-redlog-text-dim">
         <span className="font-mono">{window.offset}–{window.end} / {window.total} B</span>
         <Button disabled={busy || window.offset === 0} onClick={() => void read(history.at(-1) ?? Math.max(0, window.offset - 65536), 'previous')}>{t('content.previous')}</Button>
@@ -146,7 +149,11 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, expanded 
   </div>
 }
 
-export function EventContentReader({ projectId, eventId, active = true, anchor }: { projectId: string; eventId: string; active?: boolean; anchor?: ContentAnchor }): JSX.Element {
+/** Reader state held by a parent that wants to open it from elsewhere. */
+export type ReaderMode = 'closed' | 'inline' | 'expanded'
+export interface ReaderControl { mode: ReaderMode; setMode: (mode: ReaderMode) => void }
+
+export function EventContentReader({ projectId, eventId, active = true, anchor, expanded: expandedProp, onExpandedChange }: { projectId: string; eventId: string; active?: boolean; anchor?: ContentAnchor; expanded?: boolean; onExpandedChange?: (expanded: boolean) => void }): JSX.Element {
   const { t } = useI18n()
   const fields = useReadState(async () => {
     const reply = await window.redlog.content.list({ projectId, eventId })
@@ -154,14 +161,18 @@ export function EventContentReader({ projectId, eventId, active = true, anchor }
     return reply.value
   }, true, [projectId, eventId])
   const [selected, setSelected] = useState<string | null>(anchor?.ref.field ?? null)
-  const [expanded,setExpanded]=useState(false)
+  const [ownExpanded,setOwnExpanded]=useState(false)
+  const expanded=expandedProp??ownExpanded
+  const setExpanded=(next:boolean):void=>{if(onExpandedChange)onExpandedChange(next);else setOwnExpanded(next)}
   const root=useRef<HTMLDivElement>(null)
   useFocusTrap(root,expanded&&active)
   useEffect(()=>{if(!active)setExpanded(false)},[active])
   const [visited, setVisited] = useState<Set<string>>(new Set())
-  const current = fields.state.value?.find(f => f.field === selected)
-    ?? fields.state.value?.find(f => f.status === 'available' && ['stdout', 'output', 'full', 'response_body', 'output_body'].includes(f.field))
-    ?? fields.state.value?.[0]
+  const visibleFields = fields.state.value?.filter(field => field.field !== 'stderr'
+    || (contentState(field) !== 'empty' && field.status !== 'not-captured'))
+  const current = visibleFields?.find(f => f.field === selected)
+    ?? visibleFields?.find(f => f.status === 'available' && ['stdout', 'output', 'full', 'response_body', 'output_body'].includes(f.field))
+    ?? visibleFields?.[0]
   useEffect(() => {
     if (current) setVisited(prev => prev.has(current.field) ? prev : new Set([...prev, current.field]))
   }, [current?.field])
@@ -176,16 +187,16 @@ export function EventContentReader({ projectId, eventId, active = true, anchor }
         field?.focus();field?.select()
       }
     }}
-    className={expanded?'fixed inset-3 z-[60] rounded border border-redlog-border bg-redlog-bg p-4 overflow-auto space-y-2 shadow-xl':'min-w-0 space-y-2'} aria-busy={fields.state.phase === 'loading'}>
+    className={expanded?'fixed inset-3 z-[60] rounded-xl border border-redlog-border bg-redlog-bg p-pad overflow-auto space-y-2 shadow-xl':'min-w-0 space-y-2'} aria-busy={fields.state.phase === 'loading'}>
     {fields.state.phase === 'loading' && <span role="status">{t('search.loading')}</span>}
     {fields.state.phase === 'failed' && <div role="alert" className="text-amber-300 text-xs">{fields.state.error} <Button onClick={fields.retry}>{t('common.retry')}</Button></div>}
     {fields.state.phase === 'loaded' && !current && <p className="text-xs text-redlog-text-dim">{t('content.noText')}</p>}
     {current && <>
-      <div className="flex flex-wrap gap-2 items-center"><Button size="compact" level="quiet" onClick={()=>setExpanded(value=>!value)}>{t(expanded?'content.collapseReader':'content.expandReader')}</Button>
+      <div className="flex flex-wrap gap-2 items-center"><Button size="compact" level="quiet" onClick={()=>setExpanded(!expanded)}>{t(expanded?'content.collapseReader':'content.expandReader')}</Button>
       <select aria-label={t('content.field')} value={current.field} onChange={e => setSelected(e.target.value)} className="max-w-full bg-redlog-elevated border border-redlog-border rounded px-2 py-1 text-sm">
-        {fields.state.value?.map(f => <option key={f.field} value={f.field}>{t(`content.field.${f.field}`)}</option>)}
+        {visibleFields?.map(f => <option key={f.field} value={f.field}>{f.storage === 'terminal-cast' ? t('content.terminalOutput') : t(`content.field.${f.field}`)}</option>)}
       </select></div>
-      {fields.state.value?.filter(field => visited.has(field.field) || field.field === current.field).map(field =>
+      {visibleFields?.filter(field => visited.has(field.field) || field.field === current.field).map(field =>
         <div key={`${projectId}:${eventId}:${field.field}:${field.ref?.version}`} hidden={field.field !== current.field}>
           <ContentFieldReader descriptor={field} onReload={fields.retry} expanded={expanded} fragment={anchor?.ref.field===field.field?anchor:undefined} initialOffset={anchor?.ref.field===field.field?anchor.start:0} onMark={()=>setExpanded(false)} />
         </div>)}

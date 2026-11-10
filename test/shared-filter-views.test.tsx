@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import type { SharedFilter } from '../src/renderer/src/lib/FilterContext'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { installTimelineBridge } from './helpers/timeline-bridge'
+import en from '../src/renderer/src/i18n/en.json'
 
 const base = (): SharedFilter => ({
   targetId: null, agentType: null, timeRange: null, inScopeOnly: false, hidePersonal: true, tier: 'all'
@@ -91,6 +92,27 @@ const NOTICE: Partial<Record<View, Partial<Record<string, string>>>> = {
 // SC-004: on every view that shows the FilterBar, a lit chip is applied or
 // disclosed. Each view carries it into its read, or says why it cannot.
 describe('every event view honours every shared-filter chip', () => {
+  // Retains the pagination contract formerly checked by reading SearchPanel's
+  // source: exercise the real callback with non-default shared predicates.
+  it('search carries the same shared predicates into the next page', async () => {
+    state.filter = { ...base(), targetId: 'h1', agentType: 'shell',
+      timeRange: { since: 10, before: 20 }, inScopeOnly: true }
+    events.runQuery.mockResolvedValueOnce({
+      items: [{ id: 'filtered-command', timestamp: 11, engagementId: 'eng',
+        sessionId: 's', operatorId: 'op', agentType: 'shell', targetId: 'h1',
+        data: { subtype: 'command_end', command: 'nmap', exit_code: 0 } }],
+      hasMore: true, nextCursor: 'filtered-page-2'
+    }).mockResolvedValue(emptyPage)
+    await mountView('search')
+    fireEvent.click(await screen.findByRole('button', { name: en['search.loadMore'] }))
+    await waitFor(() => expect(events.runQuery).toHaveBeenCalledTimes(2))
+    const [first, next] = events.runQuery.mock.calls.map(call => call[0])
+    expect(next.cursor).toBe('filtered-page-2')
+    expect(next.filter).toEqual(first.filter)
+    expect(next.filter).toMatchObject({ targetId: 'h1', agentType: 'shell',
+      since: 10, before: 20, inScopeOnly: true, hidePersonal: true })
+  })
+
   for (const view of ['search', 'transcript', 'loot', 'http'] as View[]) {
     for (const chip of CHIPS) {
       it(`${view} × ${chip.name}`, async () => {
@@ -125,7 +147,7 @@ describe('every event view honours every shared-filter chip', () => {
   // The keystroke's search is debounced and closed over the filter it was
   // typed under. A chip flipped inside that window searched at once, then the
   // stale one landed after it and put the old filter back on screen
-  // (e2e/personal-traffic-visibility.spec.ts, intermittently).
+  // (e2e/evidence-views.spec.ts, intermittently).
   it('search: a chip flipped while a keystroke is pending is the read that lands last', async () => {
     const { SearchPanel } = await import('../src/renderer/src/components/SearchPanel')
     const r = await mountView('search')

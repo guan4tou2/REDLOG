@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '../Button'
 import { FieldGroup, type ConfigState } from './SettingsShared'
-import { confirmGraded } from '../ConfirmDialog'
 import { SourceLastSeen } from './SourceLastSeen'
 import { CheckRow } from './CheckRow'
 import { useCaptureHealth } from '../../lib/useCaptureHealth'
@@ -10,6 +9,14 @@ import type { AgentKind, AgentCaptureSourceConfig } from '../../../../core/agent
 
 type T = (key: string, vars?: Record<string, string | number>) => string
 type Source = { id: string; label: string; root: string; detected: boolean }
+
+const MANAGE_KEY = {
+  'not-installed': 'settings.agents.installOnPlugins',
+  'update-available': 'settings.agents.updateOnPlugins',
+  inactive: 'settings.agents.enableOnPlugins',
+  conflict: 'settings.agents.manageOnPlugins',
+  error: 'settings.agents.manageOnPlugins'
+} as const
 
 // One source entry, one place.
 //
@@ -20,9 +27,12 @@ type Source = { id: string; label: string; root: string; detected: boolean }
 // different screens (this panel, Plugins, the capture-health card) are now
 // told here, in the health card's own vocabulary, with the recovery action
 // next to the sentence that says something is wrong.
-function AgentRow({ item, source, active, config, setConfig, t, mutate, busy, health, sessions }: {
+function AgentRow({ item, source, active, config, setConfig, t, onOpenPlugins, focused, health, sessions }: {
   item: OfficialAgentPlugin; source?: Source; active: boolean; config: ConfigState; setConfig: (c: ConfigState) => void; t: T
-  mutate: (kind: AgentKind, operation: 'install' | 'uninstall') => Promise<void>; busy: boolean
+  /** Spec 066: install, update and removal live on the Plugins page; this row
+   *  only points at the integration's detail there. */
+  onOpenPlugins?: (pluginId: string) => void
+  focused: boolean
   sessions: Array<{ sessionId: string; cwd?: string; recording: boolean }>
   health?: CaptureSourceInfo
 }): JSX.Element {
@@ -73,20 +83,6 @@ function AgentRow({ item, source, active, config, setConfig, t, mutate, busy, he
       if (!current.workPaths?.includes(dir)) changeScope([...(current.workPaths ?? []), dir])
     } catch (e) { setError(String((e as Error).message ?? e)) } finally { setPicking(false) }
   }
-  /** Removing the integration is a machine-wide change, and the operator has
-   *  to be told what stops and what stays before it happens — not after. */
-  const uninstall = async (): Promise<void> => {
-    const ok = await confirmGraded({
-      title: t('settings.agents.removeTitle'),
-      message: t('settings.agents.removeWhy'),
-      level: 'plain',
-      confirmLabel: t('settings.agents.removeConfirm'),
-      cancelLabel: t('common.cancel'),
-      consequences: [t('settings.agents.removeStops'), t('settings.agents.removeKeeps')]
-    })
-    if (!ok) return
-    await mutate(item.agentKind, 'uninstall')
-  }
   const pickSource = async (): Promise<void> => {
     const project = latest.current.engagement.id
     setPicking(true); setError(null)
@@ -98,33 +94,34 @@ function AgentRow({ item, source, active, config, setConfig, t, mutate, busy, he
     } catch (e) { setError(String((e as Error).message ?? e)) } finally { setPicking(false) }
   }
   const root = value.sourceRoot ?? source?.root
-  return <section aria-label={source?.label ?? item.name} data-testid={`agent-source-${item.agentKind}`} data-detected={source?.detected ? 'true' : 'false'} className="py-4 space-y-3 min-w-0">
+  const rowRef = useRef<HTMLElement | null>(null)
+  // Spec 066 FR-021: arriving from an integration's detail lands on this row.
+  useEffect(() => { if (focused) rowRef.current?.scrollIntoView?.({ block: 'center' }) }, [focused])
+  return <section ref={rowRef} aria-label={source?.label ?? item.name} data-testid={`agent-source-${item.agentKind}`} data-detected={source?.detected ? 'true' : 'false'} className="py-4 space-y-3 min-w-0">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <strong className="text-sm text-redlog-text">{source?.label ?? item.name}</strong>
-      {item.state === 'update-available' ? <Button level="secondary" type="button" data-testid={`agent-update-${item.agentKind}`} disabled={busy} onClick={() => void mutate(item.agentKind, 'install')}>{t('settings.agents.updateCapture')}</Button> : item.state === 'not-installed' ? <Button level="secondary" type="button" data-testid={`agent-install-${item.agentKind}`} disabled={busy} onClick={() => void mutate(item.agentKind, 'install')}>{t('settings.agents.installCapture')}</Button>
-        : item.state === 'installed' && !active ? <Button level="secondary" type="button" data-testid={`agent-restore-${item.agentKind}`} disabled={busy} onClick={() => void mutate(item.agentKind, 'install')}>{t('settings.agents.restoreCapture')}</Button>
-        : item.state === 'installed' ? <CheckRow
-          inputTestId={`agent-enabled-${item.agentKind}`}
-          checked={projectRecording}
-          disabled={busy || picking || !paths.length}
-          onChange={(next) => update({ ...value, enabled: next, installationId: item.installationId, startedAt: next ? Date.now() : value.startedAt, scopeChangedAt: undefined })}
-          label={t(scopeChanged ? 'settings.agents.confirmScope' : 'settings.agents.enableProject')}
-        /> : null}
+      {item.state === 'installed' && active ? <CheckRow
+        inputTestId={`agent-enabled-${item.agentKind}`}
+        checked={projectRecording}
+        disabled={picking || !paths.length}
+        onChange={(next) => update({ ...value, enabled: next, installationId: item.installationId, startedAt: next ? Date.now() : value.startedAt, scopeChangedAt: undefined })}
+        label={t(scopeChanged ? 'settings.agents.confirmScope' : 'settings.agents.enableProject')}
+      /> : <Button level="secondary" type="button" data-testid={`agent-manage-${item.agentKind}`} disabled={!onOpenPlugins} onClick={() => onOpenPlugins?.(item.pluginId)}>{t(MANAGE_KEY[item.state === 'installed' ? 'inactive' : item.state])}</Button>}
     </div>
-    {(item.state === 'conflict' || item.state === 'error') && <div className="space-y-2"><p role="alert" className="text-xs text-red-400 break-words">{item.error}</p><Button level="quiet" onClick={() => { void window.redlog.plugins.openFolder().catch(e => setError(String(e))) }}>{t('plugins.openFolder')}</Button></div>}
+    {(item.state === 'conflict' || item.state === 'error') && <p role="alert" className="text-xs text-red-400 break-words">{item.error}</p>}
     {health?.lastError && <p role="alert" className="text-xs text-red-400 break-words">{health.lastError.message}</p>}
     {item.state === 'installed' && <>
       {scopeChanged && <p role="status" data-testid={`agent-scope-changed-${item.agentKind}`} className="text-xs text-amber-400">{t('settings.agents.scopeChanged')}</p>}
       <div className="space-y-2">
-        {paths.length > 0 && <ul aria-label={t('settings.agents.projectWork')} className="space-y-1">{paths.map(dir => <li key={dir} className="flex flex-wrap items-center gap-2 text-xs"><span className="min-w-0 flex-1 break-all font-mono">{dir}</span><Button level="secondary" type="button" disabled={busy || picking} aria-label={t('settings.agents.removeWork', { path: dir })} onClick={() => changeScope(paths.filter(p => p !== dir))}>{t('settings.agents.removeDirectory')}</Button></li>)}</ul>}
-        <Button level="secondary" type="button" data-testid={`agent-add-path-${item.agentKind}`} disabled={busy || picking} onClick={() => void pick()}>{t('settings.agents.pickWork')}</Button>
+        {paths.length > 0 && <ul aria-label={t('settings.agents.projectWork')} className="space-y-1">{paths.map(dir => <li key={dir} className="flex flex-wrap items-center gap-2 text-xs"><span className="min-w-0 flex-1 break-all font-mono">{dir}</span><Button level="secondary" type="button" disabled={picking} aria-label={t('settings.agents.removeWork', { path: dir })} onClick={() => changeScope(paths.filter(p => p !== dir))}>{t('settings.agents.removeDirectory')}</Button></li>)}</ul>}
+        <Button level="secondary" type="button" data-testid={`agent-add-path-${item.agentKind}`} disabled={picking} onClick={() => void pick()}>{t('settings.agents.pickWork')}</Button>
       </div>
       {sessions.length > 0 && <details className="text-xs"><summary className="min-h-8 content-center cursor-pointer text-redlog-text-dim">{t('settings.agents.sessions')} ({sessions.length})</summary><ul className="space-y-2" aria-label={t('settings.agents.sessions')}>{sessions.map(session => {
         const excluded = value.excludedSessions?.includes(session.sessionId) === true
         return <li key={session.sessionId} className="flex flex-wrap items-center gap-2 text-xs">
           <code className="min-w-0 flex-1 break-all">{session.sessionId}</code>
           <span className="text-redlog-text-dim">{t(excluded ? 'settings.agents.sessionExcluded' : session.recording ? 'settings.agents.sessionRecording' : 'settings.agents.sessionPaused')}</span>
-          <Button level="secondary" type="button" disabled={busy || picking || !projectRecording} data-testid={`agent-session-${session.sessionId}`} onClick={() => {
+          <Button level="secondary" type="button" disabled={picking || !projectRecording} data-testid={`agent-session-${session.sessionId}`} onClick={() => {
             const next = new Set(value.excludedSessions ?? [])
             if (excluded) next.delete(session.sessionId); else next.add(session.sessionId)
             update({ ...value, excludedSessions: [...next], ...(excluded ? { sessionStarts: { ...value.sessionStarts, [session.sessionId]: Date.now() } } : {}) })
@@ -139,9 +136,9 @@ function AgentRow({ item, source, active, config, setConfig, t, mutate, busy, he
           <p className="text-redlog-text-dim">{t(source?.detected ? 'settings.agents.detected' : 'settings.agents.notDetected')}</p>
           <code className="block break-all" data-testid={`agent-root-${item.agentKind}`}>{root}</code>
           <div className="flex flex-wrap gap-2">
-            <Button level="secondary" type="button" data-testid={`agent-source-path-${item.agentKind}`} disabled={busy || picking} onClick={() => void pickSource()}>{t('settings.agents.changeSource')}</Button>
-            {value.sourceRoot !== undefined && <Button level="secondary" type="button" disabled={busy || picking} onClick={() => update({ ...value, sourceRoot: undefined, enabled: false, startedAt: undefined, scopeChangedAt: value.enabled ? Date.now() : undefined })}>{t('settings.agents.defaultSource')}</Button>}
-            <Button level="secondary" type="button" data-testid={`agent-remove-${item.agentKind}`} disabled={busy || picking} onClick={() => void uninstall()}>{t('settings.agents.removeCapture')}</Button>
+            <Button level="secondary" type="button" data-testid={`agent-source-path-${item.agentKind}`} disabled={picking} onClick={() => void pickSource()}>{t('settings.agents.changeSource')}</Button>
+            {value.sourceRoot !== undefined && <Button level="secondary" type="button" disabled={picking} onClick={() => update({ ...value, sourceRoot: undefined, enabled: false, startedAt: undefined, scopeChangedAt: value.enabled ? Date.now() : undefined })}>{t('settings.agents.defaultSource')}</Button>}
+            <Button level="secondary" type="button" data-testid={`agent-manage-${item.agentKind}-details`} disabled={!onOpenPlugins} onClick={() => onOpenPlugins?.(item.pluginId)}>{t('settings.agents.manageOnPlugins')}</Button>
           </div>
         </div>
       </details>
@@ -150,18 +147,24 @@ function AgentRow({ item, source, active, config, setConfig, t, mutate, busy, he
   </section>
 }
 
-export default function AgentsPanel({ t, config, setConfig }: { t: T; config: ConfigState; setConfig: (c: ConfigState) => void }): JSX.Element {
+export default function AgentsPanel({ t, config, setConfig, onOpenPlugins, focusAgentKind, onFocusHandled }: {
+  t: T; config: ConfigState; setConfig: (c: ConfigState) => void
+  /** Open the Plugins page on this integration's detail (view only). */
+  onOpenPlugins?: (pluginId: string) => void
+  /** The row a link from the Plugins page asked for. */
+  focusAgentKind?: string | null
+  onFocusHandled?: () => void
+}): JSX.Element {
   const [items, setItems] = useState<OfficialAgentPlugin[] | null>(null)
   const [sources, setSources] = useState<Source[]>([])
   const [sessions, setSessions] = useState<Array<{ agentKind: string; sessionId: string; cwd?: string; recording: boolean }>>([])
   const [active, setActive] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
   const generation = useRef(0)
   // The same snapshot the dashboard's capture card reads, so the row here and
   // the card there cannot disagree about when a source last delivered.
   const agentSignature = JSON.stringify(config.agentTailer?.sources ?? {})
-  const { health, refresh: refreshHealth } = useCaptureHealth(5_000, agentSignature)
+  const { health } = useCaptureHealth(5_000, agentSignature)
   const load = useCallback(async () => {
     const token = ++generation.current; setError(null)
     try {
@@ -181,19 +184,12 @@ export default function AgentsPanel({ t, config, setConfig }: { t: T; config: Co
     const timer = setInterval(() => void refresh(), 5_000)
     return () => { current = false; clearInterval(timer) }
   }, [config.engagement.id, agentSignature])
-  const mutate = async (kind: AgentKind, operation: 'install' | 'uninstall'): Promise<void> => {
-    setBusy(true); setError(null)
-    try {
-      const result = await (operation === 'install' ? window.redlog.plugins.installOfficialAgent(kind) : window.redlog.plugins.uninstallOfficialAgent(kind))
-      await load()
-      refreshHealth()
-      if (!result.ok) setError(result.error)
-    } catch (e) { setError(String((e as Error).message ?? e)) } finally { setBusy(false) }
-  }
+  // Handled once the row has rendered (the effect inside the row scrolls to it).
+  useEffect(() => { if (focusAgentKind && items) onFocusHandled?.() }, [focusAgentKind, items])
   return <FieldGroup title={t('settings.agents')}>
     {error && <div role="alert" className="mb-3 text-xs text-red-400"><p>{error}</p><Button level="secondary" type="button" onClick={() => void load()} className="underline">{t('common.retry')}</Button></div>}
     {!items && !error && <p role="status" className="text-xs text-redlog-text-dim">{t('common.loading')}</p>}
-    <div data-testid="agent-sources" className="divide-y divide-redlog-border">{items?.map(item => <AgentRow key={item.agentKind} item={item} source={sources.find(s => s.id === item.agentKind)} active={active.includes(item.pluginId)} config={config} setConfig={setConfig} t={t} mutate={mutate} busy={busy} sessions={sessions.filter(s => s.agentKind === item.agentKind)} health={health?.sources.find(s => s.id === `agent-${item.agentKind}`)} />)}</div>
+    <div data-testid="agent-sources" className="divide-y divide-redlog-border">{items?.map(item => <AgentRow key={item.agentKind} item={item} source={sources.find(s => s.id === item.agentKind)} active={active.includes(item.pluginId)} config={config} setConfig={setConfig} t={t} onOpenPlugins={onOpenPlugins} focused={focusAgentKind === item.agentKind} sessions={sessions.filter(s => s.agentKind === item.agentKind)} health={health?.sources.find(s => s.id === `agent-${item.agentKind}`)} />)}</div>
     {items?.some(item => item.state === 'installed') && <>
       <CheckRow
         checked={config.agentTailer?.emitThinking ?? false}

@@ -1,5 +1,6 @@
+import { commandOutputState } from '../../../core/content-contract'
 import { useReadState } from '../lib/readState'
-import { EventContentReader } from './EventContentReader'
+import { EventContentReader, type ReaderControl } from './EventContentReader'
 import { Button } from './Button'
 // Structured detail-panel bodies for specific event types, pulled out of
 // Timeline.tsx. Each renders in the inspector when its event type is selected.
@@ -59,17 +60,36 @@ function LateOutput({ commandId }: { commandId: string }): JSX.Element {
   )
 }
 
-/** Structured detail body for a shell command_end event. */
-export function CommandEndDetail({ data, projectId, eventId }: { data: Record<string, unknown>; projectId: string; eventId: string }): JSX.Element {
+/** Said once on a command_start nothing has closed. Amber, not red: this is
+ * "not known to have ended", and an old start may be an interrupted command. */
+export function CommandUnfinishedNote(): JSX.Element {
   const { t } = useI18n()
-  const [readerOpen, setReaderOpen] = useState(false)
+  return (
+    <p role="status" className="mt-2 text-xs text-amber-300">
+      <strong className="font-semibold">{t('timeline.command.unfinished')}</strong> — {t('timeline.command.unfinishedHint')}
+    </p>
+  )
+}
+
+/** Structured detail body for a shell command_end event. */
+export function CommandEndDetail({ data, projectId, eventId, reader }: {
+  data: Record<string, unknown>; projectId: string; eventId: string
+  /** Held by the Timeline so its bar can open the same Reader. */
+  reader?: ReaderControl
+}): JSX.Element {
+  const { t } = useI18n()
+  const [ownReaderOpen, setOwnReaderOpen] = useState(false)
+  const readerOpen = reader ? reader.mode !== 'closed' : ownReaderOpen
+  const setReaderOpen = (open: boolean): void => { if (reader) reader.setMode(open ? 'inline' : 'closed'); else setOwnReaderOpen(open) }
+  const outputState = commandOutputState(data)
   const hasStdout = typeof data.stdout === 'string'
   const hasStderr = typeof data.stderr === 'string'
   const stdoutRef = asRef(data.stdout_ref)
   const stderrRef = asRef(data.stderr_ref)
+  const hasStreamedOutput = (data.late_output === true || data.output_streamed === true) && typeof data.command_id === 'string'
   return (
     <div className="mt-2 space-y-1.5">
-      {hasStdout && (
+      {hasStdout && ((data.stdout as string).length > 0 || Number(data.stdout_bytes) > 0 || data.stdout_truncated === true) && (
         <CollapsibleStream
           label={t('timeline.detail.stdout')}
           content={data.stdout as string}
@@ -80,7 +100,7 @@ export function CommandEndDetail({ data, projectId, eventId }: { data: Record<st
         />
       )}
 
-      {hasStderr && (
+      {hasStderr && ((data.stderr as string).length > 0 || Number(data.stderr_bytes) > 0 || data.stderr_truncated === true) && (
         <CollapsibleStream
           label={t('timeline.detail.stderr')}
           content={data.stderr as string}
@@ -91,16 +111,17 @@ export function CommandEndDetail({ data, projectId, eventId }: { data: Record<st
         />
       )}
 
-      {(stdoutRef || stderrRef) && <>
-        <Button size="compact" level="quiet" aria-expanded={readerOpen} onClick={() => setReaderOpen(open => !open)}>{t('content.savedContent')}</Button>
-        {readerOpen && <EventContentReader projectId={projectId} eventId={eventId} />}
+      {(stdoutRef || stderrRef || readerOpen) && <>
+        <Button size="compact" level="quiet" aria-expanded={readerOpen} onClick={() => setReaderOpen(!readerOpen)}>{t('content.savedContent')}</Button>
+        {readerOpen && <EventContentReader projectId={projectId} eventId={eventId} {...(reader ? { expanded: reader.mode === 'expanded', onExpandedChange: (x: boolean) => reader.setMode(x ? 'expanded' : 'inline') } : {})} />}
       </>}
-      {(data.late_output === true || data.output_streamed === true) && typeof data.command_id === 'string' && (
-        <LateOutput commandId={data.command_id} />
+      {hasStreamedOutput && (
+        <LateOutput commandId={data.command_id as string} />
       )}
       {/* v0.9.6 (T2/T3): say what happened to this command's output. */}
-      {!hasStdout && !hasStderr && !stdoutRef && !stderrRef && (
+      {!readerOpen && !hasStreamedOutput && ['empty', 'recorded', 'unbracketed', 'not-captured'].includes(outputState) && (
         <IoAbsenceNote
+          data={data}
           builtin={data.source === 'builtin-terminal'}
           io={data.io as Record<string, unknown> | undefined}
         />
@@ -164,28 +185,28 @@ export function EvidenceFileDetail({ data }: { data: Record<string, unknown> }):
 
 /** v0.9.6 (T2): explains the absence — or the on-disk location — of a shell
  *  command's output, so an empty panel is never ambiguous. */
-export function IoAbsenceNote({ builtin, io }: { builtin: boolean; io?: Record<string, unknown> }): JSX.Element {
+export function IoAbsenceNote({ builtin, io, data }: { builtin: boolean; io?: Record<string, unknown>; data?: Record<string, unknown> }): JSX.Element {
   const { t } = useI18n()
-  const len = typeof io?.len === 'number' ? (io.len as number) : null
-  const bracketed = len !== null && !io?.unbracketed
+  const state = commandOutputState(data ?? { source: builtin ? 'builtin-terminal' : undefined, io })
+  const len = typeof io?.len === 'number' ? (io.len as number) : 0
 
-  if (bracketed && len > 0) {
+  if (state === 'recorded') {
     return (
       <p className="text-xs text-emerald-400/80 font-mono px-2 py-1 rounded border border-emerald-600/30 bg-emerald-900/10">
         {t('timeline.detail.ioOnDisk', { size: formatBytes(len) })}
       </p>
     )
   }
-  if (bracketed && len === 0) {
+  if (state === 'empty') {
     return (
       <p className="text-xs text-redlog-text-dim font-mono px-2 py-1 rounded border border-redlog-border/60 bg-redlog-bg/40">
-        {t('timeline.detail.ioNone')}
+        {t('content.empty')}
       </p>
     )
   }
   return (
     <p className="text-xs text-amber-400/80 font-mono px-2 py-1 rounded border border-amber-600/30 bg-amber-900/10">
-      {t(builtin ? 'timeline.detail.ioUnbracketed' : 'timeline.detail.ioNotCaptured')}
+      {t(state === 'unbracketed' ? 'timeline.detail.ioUnbracketed' : 'timeline.detail.ioNotCaptured')}
     </p>
   )
 }
@@ -198,10 +219,13 @@ export function IoAbsenceNote({ builtin, io }: { builtin: boolean; io?: Record<s
  *  v0.15: when a tool_call or tool_result is selected, `paired` carries the
  *  other half so both the request and its return read in one panel. */
 export function AgentTurnDetail(
-  { data, paired, allLoaded }: {
+  { data, paired, allLoaded, projectId, eventId, reader }: {
     data: Record<string, unknown>
     paired?: { kind: 'call' | 'result'; data: Record<string, unknown> }
     allLoaded?: boolean
+    projectId?: string
+    eventId?: string
+    reader?: ReaderControl
   }
 ): JSX.Element {
   const { t } = useI18n()
@@ -230,6 +254,11 @@ export function AgentTurnDetail(
   const pairedCallInput = paired?.kind === 'call'
     ? (paired.data.tool_input as Record<string, unknown> | undefined) : undefined
   const pairedCallStr = pairedCallInput ? safePretty(pairedCallInput) : ''
+
+  if (projectId && eventId && reader && reader.mode !== 'closed') return (
+    <div className="mt-2"><EventContentReader key={eventId} projectId={projectId} eventId={eventId}
+      expanded={reader.mode === 'expanded'} onExpandedChange={expanded => reader.setMode(expanded ? 'expanded' : 'inline')} /></div>
+  )
 
   return (
     <div className="mt-2 space-y-1.5">
@@ -329,6 +358,34 @@ export function BrowserConsoleDetail({ data }: { data: Record<string, unknown> }
           ['url', data.url]
         ]}
       />
+    </div>
+  )
+}
+
+// ── Any other source ─────────────────────────────────────────────────
+
+const GENERIC_MAX_FIELDS = 40
+const GENERIC_MAX_VALUE = 500
+
+function genericValue(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.length}]`
+  if (value && typeof value === 'object') return `{${Object.keys(value).length}}`
+  const text = String(value)
+  return text.length > GENERIC_MAX_VALUE ? `${text.slice(0, GENERIC_MAX_VALUE)}…` : text
+}
+
+/** The Reader for a source with no reader of its own (Spec 069 FR-007): the
+ *  fields the event actually recorded, as text. Values are never interpreted,
+ *  nested ones are only counted, and nothing here can throw on an odd shape. */
+export function GenericEventDetail({ data }: { data: Record<string, unknown> | undefined }): JSX.Element {
+  const { t } = useI18n()
+  const entries = Object.entries(data ?? {}).filter(([, v]) => v !== undefined && v !== null && v !== '')
+  if (entries.length === 0) return <></>
+  return (
+    <div className="mt-2" data-testid="generic-event-detail">
+      <p className="mb-1 text-xs text-redlog-text-dim">{t('timeline.detail.genericFields')}</p>
+      <MetadataGrid entries={entries.slice(0, GENERIC_MAX_FIELDS).map(([k, v]): [string, unknown] => [k, genericValue(v)])} />
+      {entries.length > GENERIC_MAX_FIELDS && <p className="mt-1 text-xs text-redlog-text-dim">{t('timeline.detail.genericMore', { count: entries.length - GENERIC_MAX_FIELDS })}</p>}
     </div>
   )
 }

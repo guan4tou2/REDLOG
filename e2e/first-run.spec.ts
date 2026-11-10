@@ -40,11 +40,11 @@ test('skipping setup before any action keeps recovery and unverified states acro
     const config = await skippedPage.evaluate(() => window.redlog.config.get())
     await skippedPage.getByTestId('first-run-later').click()
     await openView(skippedPage, 'dashboard')
-    await expect(skippedPage.getByRole('heading', { name: 'Get this engagement fully recorded' })).toBeVisible()
+    await expect(skippedPage.getByRole('heading', { name: 'First run: confirm the capture sources you need are recording' })).toBeVisible()
     await skippedPage.reload()
     await openView(skippedPage, 'dashboard')
     await openCaptureProof(skippedPage)
-    await expect(skippedPage.getByRole('heading', { name: 'Get this engagement fully recorded' })).toBeVisible()
+    await expect(skippedPage.getByRole('heading', { name: 'First run: confirm the capture sources you need are recording' })).toBeVisible()
     await expect(skippedPage.getByTestId('first-run-strip')).toHaveAttribute('data-core-ready', 'false')
     await expect(skippedPage.getByTestId('first-run-commands-status')).toHaveText('○ Not verified')
     await expect(skippedPage.getByTestId('first-run-http-status')).toHaveText('○ Not verified')
@@ -178,7 +178,7 @@ test.describe.serial('the first run', () => {
 
   test('keeps the other capture sources one disclosure away', async () => {
     // The disclosure opens the capture card, which names the two core
-    // captures and keeps everything else behind "all sources". It used to
+    // captures and keeps everything else behind "Other capture sources". It used to
     // assert the shell hook's capability line from the onboarding checklist;
     // that checklist is gone — it described the same two capabilities a second
     // time, in a third vocabulary — so the assertion is now the card itself.
@@ -188,13 +188,13 @@ test.describe.serial('the first run', () => {
     await expect(core).toBeVisible()
     await expect(core.locator('[data-testid="capture-core-commands"]')).toBeVisible()
     await expect(core.locator('[data-testid="capture-core-http"]')).toBeVisible()
-    await expect(page.getByRole('button', { name: /all sources/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Other capture sources/ })).toBeVisible()
     await page.click('[data-testid="first-run-more-sources"]')
   })
 
   test('installs the selected shell adapter with its shared runtime', async () => {
     await page.click('[data-testid="first-run-more-sources"]')
-    await page.getByRole('button', { name: /all sources/ }).click()
+    await page.getByRole('button', { name: /Other capture sources/ }).click()
     await page.getByRole('button', { name: 'install', exact: true }).first().click()
     // Which adapter "the first available source" is depends on the platform,
     // and so does what it installs. The POSIX adapters are `available: false`
@@ -224,7 +224,7 @@ test.describe.serial('the first run', () => {
     await expect(page.getByTestId('first-run-later')).toHaveCount(0)
   })
 
-  test('keeps work actions above setup and recent evidence beside the pending web source', async () => {
+  test('keeps work actions above the single-column setup and recent evidence', async () => {
     for (const [width, height] of [[1600, 900], [800, 600]]) {
       await resizeMainWindow(app, width, height)
       const commands = page.getByTestId('first-run-commands')
@@ -238,8 +238,7 @@ test.describe.serial('the first run', () => {
       expect(r.y).toBeGreaterThanOrEqual(c.y + c.height)
       expect(Math.abs(r.x - c.x)).toBeLessThanOrEqual(1)
       expect(r.x + r.width).toBeLessThanOrEqual(c.x + c.width + 1)
-      if (width === 1600) expect(Math.abs(h.y - c.y)).toBeLessThanOrEqual(1)
-      else expect(h.y).toBeGreaterThanOrEqual(r.y + r.height)
+      expect(h.y).toBeGreaterThanOrEqual(r.y + r.height)
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     }
     await resizeMainWindow(app, 1280, 800)
@@ -283,11 +282,8 @@ test.describe.serial('the first run', () => {
     await expect(setup).toBeVisible()
     await setup.focus()
     await page.keyboard.press('Enter')
-    // Below the sidebar breakpoint the page list is a <select>.
-    const select = page.getByTestId('settings-page-select')
-    if (await select.count()) await expect(select).toHaveValue('hooks')
-    else await expect(page.locator('[data-settings-page="hooks"][aria-current="page"]')).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Get this engagement fully recorded' })).toHaveCount(0)
+    await expect(page.getByTestId('settings-content')).toHaveAttribute('data-page', 'hooks')
+    await expect(page.getByRole('heading', { name: 'First run: confirm the capture sources you need are recording' })).toHaveCount(0)
     await openView(page, 'dashboard')
     await expect(page.getByTestId('first-run-strip')).toHaveCount(0)
     await expect(setup).toBeVisible()
@@ -304,11 +300,11 @@ test.describe.serial('the first run', () => {
     await openView(page, 'terminal')
     await expect.poll(pids).toHaveLength(1)
     const first = await pids()
-    await expect(page.getByTestId('view-root').getByText(String(first[0]), {exact:true})).toBeVisible()
+    await expect(page.getByTestId('terminal-meta-pid').getByText(String(first[0]), {exact:true})).toBeVisible()
     expect(first.length).toBe(1)
     await openView(page, 'timeline')
     await openView(page, 'terminal')
-    await expect(page.getByTestId('view-root').getByText(String(first[0]), {exact:true})).toBeVisible()
+    await expect(page.getByTestId('terminal-meta-pid').getByText(String(first[0]), {exact:true})).toBeVisible()
     await expect.poll(pids, {message:'a second shell was spawned'}).toEqual(first)
   })
 })

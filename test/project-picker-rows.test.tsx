@@ -36,21 +36,47 @@ describe('project list', () => {
   it('opens a project from a real button, so Tab and Enter work', async () => {
     const { open } = mount({ projects: [project('p1', 'Proj')] })
     const row = await screen.findByRole('button', { name: 'Proj' })
-    fireEvent.click(row)
+    fireEvent.keyDown(row, { key: 'Enter' })
     await waitFor(() => expect(open).toHaveBeenCalledWith('p1'))
+  })
+
+  // Stitch 01: a click selects, a double click opens.
+  it('selects on click and opens on double click', async () => {
+    const { open } = mount({ projects: [project('p1', 'Proj'), project('p2', 'Other')] })
+    const second = await screen.findByRole('button', { name: 'Other' })
+    fireEvent.click(second.closest('[role="option"]') as HTMLElement)
+    expect(open).not.toHaveBeenCalled()
+    expect(second.closest('[role="option"]')?.getAttribute('aria-selected')).toBe('true')
+    fireEvent.doubleClick(second)
+    await waitFor(() => expect(open).toHaveBeenCalledWith('p2'))
+  })
+
+  it('moves the selection with the arrows and opens the selected row with Enter', async () => {
+    const { open } = mount({ projects: [project('p1', 'Proj'), project('p2', 'Other')] })
+    const first = await screen.findByRole('button', { name: 'Proj' })
+    expect(first.closest('[role="option"]')?.getAttribute('aria-selected')).toBe('true')
+    fireEvent.keyDown(first, { key: 'ArrowDown' })
+    const second = screen.getByRole('button', { name: 'Other' })
+    expect(second.closest('[role="option"]')?.getAttribute('aria-selected')).toBe('true')
+    fireEvent.keyDown(second, { key: 'Enter' })
+    await waitFor(() => expect(open).toHaveBeenCalledWith('p2'))
   })
 
   it('does not steal focus into "create" when there is something to open', async () => {
     mount({ projects: [project('p1', 'Proj')] })
     await screen.findByRole('button', { name: 'Proj' })
-    const name = screen.getByPlaceholderText('e.g. Client-Pentest-Q3')
-    expect(document.activeElement).not.toBe(name)
+    expect(screen.queryByPlaceholderText('e.g. Client-Pentest-Q3')).toBeNull()
   })
 
-  it('focuses the name field on a first run, where creating is the only action', async () => {
+  it('focuses the name field when creating and restores the trigger on cancel', async () => {
     mount({ projects: [] })
+    const trigger = screen.getByRole('button', { name: 'Create new project' })
+    trigger.focus()
+    fireEvent.click(trigger)
     const name = screen.getByPlaceholderText('e.g. Client-Pentest-Q3')
     await waitFor(() => expect(document.activeElement).toBe(name))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
   })
 
   it('says why a rename was refused instead of snapping back silently', async () => {
@@ -61,4 +87,23 @@ describe('project list', () => {
     fireEvent.keyDown(field, { key: 'Enter' })
     expect(await screen.findByText('Could not rename the project')).toBeTruthy()
   })
+  it('ignores repeated opens until the current open finishes', async () => {
+    const { open } = mount({ projects: [project('p1', 'Proj')] })
+    open.mockImplementation(() => new Promise(() => {}))
+    const row = await screen.findByRole('button', { name: 'Proj' })
+    fireEvent.doubleClick(row)
+    fireEvent.doubleClick(row)
+    expect(open).toHaveBeenCalledTimes(1)
+    expect((row as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('keeps duplicate names distinguishable by their paths', async () => {
+    mount({ projects: [project('a', 'Same'), project('b', 'Same')] })
+    await screen.findAllByRole('button', { name: 'Same' })
+    expect(screen.getByText('/tmp/a')).toBeTruthy()
+    expect(screen.getByText('/tmp/b')).toBeTruthy()
+    // Stitch 01 / Spec 068 D1′: the search box is always there.
+    expect(screen.queryByRole('searchbox')).not.toBeNull()
+  })
+
 })

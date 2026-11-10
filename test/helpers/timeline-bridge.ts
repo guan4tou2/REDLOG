@@ -22,6 +22,7 @@ export interface Page { items: Ev[]; hasMore: boolean; nextCursor: string | null
 export interface TimelineBridge {
   queryPage: Mock
   count: Mock
+  span: Mock
   matchIds: Mock
   runQuery: Mock
   query: Mock
@@ -33,16 +34,18 @@ export interface TimelineBridge {
 export const page = (items: Ev[], hasMore = false, nextCursor: string | null = null): Page =>
   ({ items, hasMore, nextCursor })
 
-export function installTimelineBridge(): TimelineBridge {
+export function installTimelineBridge(opts: { timelineMode?: 'lanes' | 'standard' } = {}): TimelineBridge {
+  const timelineMode = opts.timelineMode ?? 'lanes'
   const batchListeners = new Set<(events: Ev[]) => void>()
   const queryPage = vi.fn(async () => page([]))
   const count = vi.fn(async () => 0)
+  const span = vi.fn(async (): Promise<{ first: number; last: number } | null> => null)
   const matchIds = vi.fn(async (req: { ids: string[] }) => req.ids)
   const runQuery = vi.fn(async () => ({ items: [], hasMore: false, nextCursor: null }))
   const query = vi.fn(async () => [])
   const getById = vi.fn(async () => [])
   const events = {
-    queryPage, count, matchIds, runQuery, query, getById,
+    queryPage, count, span, matchIds, runQuery, query, getById,
     onNewBatch: (cb: (events: Ev[]) => void) => { batchListeners.add(cb); return () => batchListeners.delete(cb) },
     aggregateTargets: async () => [],
     distinctAgentTypes: async () => [],
@@ -63,7 +66,14 @@ export function installTimelineBridge(): TimelineBridge {
     platform: 'darwin',
     events,
     config: { get: async () => ({ scope: { targets: [], excludeTargets: [], personalDomains: [] } }), save: async () => true },
-    project: { active: async () => ({ id: 'p1', name: 'Proj' }) },
+    // The Timeline opens in standard mode (Spec 069); every consumer of this
+    // bridge asserts on the swim-lane dots and bands. The preference is written
+    // when the project is read, because several tests clear storage after
+    // installing the bridge and before mounting.
+    project: { active: async () => {
+      try { window.localStorage.setItem('redlog-timeline-mode:p1', timelineMode) } catch { /* no storage */ }
+      return { id: 'p1', name: 'Proj' }
+    } },
     operators: { list: async () => [] },
     plugins: { eventTypes: async () => [] }
   }
@@ -76,7 +86,7 @@ export function installTimelineBridge(): TimelineBridge {
     disconnect(): void {}
   }
   return {
-    queryPage, count, matchIds, runQuery, query, getById,
+    queryPage, count, span, matchIds, runQuery, query, getById,
     emitBatch: (evts) => { for (const cb of batchListeners) cb(evts) }
   }
 }

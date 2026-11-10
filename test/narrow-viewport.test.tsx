@@ -7,7 +7,7 @@
 // become a select above the content.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import Sidebar from '../src/renderer/src/components/Sidebar'
 import Settings from '../src/renderer/src/components/Settings'
@@ -49,7 +49,7 @@ beforeEach(() => {
     events: { getCount: vi.fn(async () => 0), onNewBatch: () => () => {} },
     loot: { getCount: vi.fn(async () => 0) },
     chain: { length: vi.fn(async () => 0) },
-    scope: { getViolationCount: vi.fn(async () => 0), isConfigured: vi.fn(async () => true) },
+    scope: { getObservationCount: vi.fn(async () => 0), isConfigured: vi.fn(async () => true) },
     config: { get: async () => structuredClone(CONFIG), save: async () => true },
     targetContext: { get: vi.fn(async () => null), onChange: () => () => {}, set: vi.fn() },
     project: { active: async () => ({ id: 'proj-a', name: 'A' }), close: async () => {} },
@@ -128,50 +128,72 @@ describe('the main sidebar in a narrow layout', () => {
   })
 })
 
-describe('Settings in a narrow layout', () => {
-  const draw = (): void => {
-    render(<I18nProvider><Settings request={{ page: 'scope' }} /></I18nProvider>)
+// #590: Settings is one column at every width — a list of pages, and a page
+// opened from it with a way back. The 212px category column and the narrow-only
+// select it needed are gone, so there is nothing left to switch between.
+describe('Settings is one column', () => {
+  const draw = (request: { page: 'scope' } | null): void => {
+    render(<I18nProvider><Settings request={request} /></I18nProvider>)
   }
   const ready = async (): Promise<void> => {
     await waitFor(() => expect(document.querySelector('[data-testid="settings-load-failed"]')).toBeNull())
-    await screen.findByRole('navigation', { name: '設定分類' })
+    await waitFor(() => expect(document.querySelector('[data-testid="settings-content"]')).not.toBeNull())
   }
 
-  it('lists its pages down the side when there is room', async () => {
-    draw()
+  it.each([['wide', WIDE], ['narrow', NARROW]])('opens on the list of pages when nothing asked for one (%s)', async (_name, size) => {
+    resizeTo(size)
+    draw(null)
     await ready()
+    expect(screen.getByTestId('settings-home')).toBeTruthy()
     expect(document.querySelectorAll('[data-settings-page]').length).toBeGreaterThan(5)
     expect(screen.queryByTestId('settings-page-select')).toBeNull()
+    expect(screen.queryByTestId('settings-back')).toBeNull()
   })
 
-  it('lists them as a select above the content when there is not', async () => {
-    resizeTo(NARROW)
-    draw()
+  it('is laid out as the Stitch prototype: three blocks, each row a title, a button, and where it applies', async () => {
+    draw(null)
     await ready()
+    const home = screen.getByTestId('settings-home')
+    for (const heading of ['擷取來源', '專案設定', '其他設定']) expect(within(home).getByText(heading)).toBeTruthy()
+    const row = home.querySelector('[data-settings-page="hooks"]') as HTMLElement
+    expect(row.textContent).toContain('指令與終端')
+    expect(row.textContent).toContain('本機')
+    expect(row.textContent).toContain('管理')
+    expect((home.querySelector('[data-settings-page="scope"]') as HTMLElement).textContent).toContain('前往範圍設定')
+    expect((home.querySelector('[data-settings-page="about"]') as HTMLElement).textContent).toContain('查看')
+    // Every page is still one click away, including the ones the prototype has no row for.
+    for (const id of ['hooks', 'browser', 'captureControl', 'scope', 'network', 'loot', 'retention', 'integrity', 'general', 'hud', 'plugins', 'about']) {
+      expect(home.querySelector(`[data-settings-page="${id}"]`), id).not.toBeNull()
+    }
+  })
+
+  it('lands on the page a link asked for, with a way back to the list', async () => {
+    draw({ page: 'scope' })
+    await ready()
+    expect(screen.queryByTestId('settings-home')).toBeNull()
     expect(document.querySelectorAll('[data-settings-page]')).toHaveLength(0)
-    const select = screen.getByTestId('settings-page-select') as HTMLSelectElement
-    // The page being shown is the one selected, and every page is reachable.
-    expect(select.value).toBe('scope')
-    const options = [...select.querySelectorAll('option')].map((o) => o.value)
-    expect(options).toEqual(expect.arrayContaining(['hooks', 'scope', 'general', 'about']))
+    fireEvent.click(screen.getByTestId('settings-back'))
+    expect(screen.getByTestId('settings-home')).toBeTruthy()
   })
 
-  it('switches page from the select', async () => {
-    resizeTo(NARROW)
-    draw()
+  it('opens a page from its row', async () => {
+    draw(null)
     await ready()
-    fireEvent.change(screen.getByTestId('settings-page-select'), { target: { value: 'about' } })
-    expect((screen.getByTestId('settings-page-select') as HTMLSelectElement).value).toBe('about')
+    fireEvent.click(document.querySelector('[data-settings-page="about"]') as HTMLElement)
+    expect(screen.queryByTestId('settings-home')).toBeNull()
+    expect(screen.getByTestId('settings-back')).toBeTruthy()
   })
 
-  it('brings the page rows back for a query', async () => {
-    resizeTo(NARROW)
-    draw()
+  it('shows one search result list without the category rows', async () => {
+    draw(null)
     await ready()
     fireEvent.change(screen.getByLabelText('搜尋設定…'), { target: { value: '範圍' } })
-    // A query brings the page rows back: the select has no way to say "these
-    // match".
-    await waitFor(() => expect(document.querySelectorAll('[data-settings-page]').length).toBeGreaterThan(0))
+    await waitFor(() => {
+      expect(document.querySelectorAll('[data-settings-page]')).toHaveLength(0)
+      const results = screen.getByTestId('settings-search-results')
+      expect(results.textContent).toContain('範圍')
+      expect(results.querySelectorAll('button').length).toBeGreaterThan(0)
+    })
   })
 })
 

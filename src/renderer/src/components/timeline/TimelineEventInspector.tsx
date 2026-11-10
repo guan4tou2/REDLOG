@@ -6,7 +6,7 @@ import { Button } from '../Button'
 
 import { useState } from 'react'
 import type { RedLogEvent } from '../../../../core/db/event-types'
-import { ChevronDown, ChevronLeft, ChevronRight, PanelBottom, PanelRight, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, PanelBottom, PanelRight, X } from 'lucide-react'
 import type { DetailLayout } from '../../lib/detailLayout'
 import { CausalGraph } from './CausalGraph'
 import { EventNoteField } from './EventNoteField'
@@ -16,9 +16,11 @@ import type { MarkerFold, MarkerValues } from '../../lib/markerFold'
 import { isMarkerAmendment } from '../../lib/markerFold'
 import { TierBadge } from '../TierBadge'
 import { ReplayCommand } from '../ReplayCommand'
-import { CommandEndDetail, AgentTurnDetail, BrowserConsoleDetail, EvidenceFileDetail } from '../TimelineEventDetails'
+import { CommandEndDetail, CommandUnfinishedNote, AgentTurnDetail, BrowserConsoleDetail, EvidenceFileDetail, GenericEventDetail } from '../TimelineEventDetails'
+import { hasSpecificEventDetail } from '../../lib/timelineEvents'
 import { HttpDetail } from '../HttpDetail'
 import { MarkerDetail } from '../MarkerDetail'
+import { EventContentReader, type ReaderControl } from '../EventContentReader'
 
 type Translate = (key: string, vars?: Record<string, string | number>) => string
 
@@ -37,6 +39,8 @@ export interface TimelineEventInspectorProps {
   effects: string[] | undefined
   fold: MarkerFold | undefined
   paired: { kind: 'call' | 'result'; data: Record<string, unknown> } | undefined
+  /** A command_start with no end among the loaded events. */
+  unfinished?: boolean
   allLoaded: boolean
   focusChainOn: boolean
   showJson: boolean
@@ -44,11 +48,9 @@ export interface TimelineEventInspectorProps {
   lookup: (id: string) => RedLogEvent | undefined
   /** Select an event and scroll the track to it. */
   onJump: (e: RedLogEvent) => void
-  /** Move the selection one row along the list the operator is reading.
-   *  Absent when there is no list to walk (a single filtered result). */
-  onStep?: (delta: -1 | 1) => void
-  canStepPrev?: boolean
-  canStepNext?: boolean
+  /** The saved-content Reader, opened from the bar or from the body's own
+   *  button; the state lives with the selection so both reach the same one. */
+  reader?: ReaderControl
   /** Dock position, and a toggle for it, so the control sits in the pane's own
    *  header (as on the HTTP log) rather than off on the toolbar. */
   layout?: DetailLayout
@@ -66,9 +68,9 @@ export interface TimelineEventInspectorProps {
 
 export function TimelineEventInspector({
   event, pluginTypes, tierChip, doNotExport: dneFlag, onToggleDoNotExport, onAround,
-  operatorLabel, titleOf, badges, effects, fold, paired, allLoaded, focusChainOn,
+  operatorLabel, titleOf, badges, effects, fold, paired, unfinished = false, allLoaded, focusChainOn,
   showJson, lookup, onJump, onSelect, onResolve, scrollToTs, onAmend, t,
-  onStep, canStepPrev = false, canStepNext = false,
+  reader,
   layout, onToggleLayout, onClose
 }: TimelineEventInspectorProps): JSX.Element {
   // Local, and deliberately not persisted: it survives stepping and following
@@ -96,34 +98,6 @@ export function TimelineEventInspector({
           the two actions drop to their own when there is no room for both. */}
       <div className="sticky top-0 z-10 -mx-4 px-4 pt-3 pb-2 mb-1 bg-redlog-surface border-b border-redlog-border/50 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
         <div className="flex items-center gap-2 min-w-0">
-          {/* Reading a capture is reading a sequence — what ran before this,
-              what came back after. The keyboard could already walk it, lane by
-              lane, and nothing on screen said so: an operator who opened the
-              pane from the list had to close it, move, and open the next one.
-              These step the list's own order, which is the order they were
-              just reading. */}
-          {onStep && (
-            <span className="flex items-center mr-0.5 shrink-0">
-              <button
-                type="button"
-                data-testid="detail-step-prev"
-                disabled={!canStepPrev}
-                onClick={() => onStep(-1)}
-                title={t('timeline.stepPrev')}
-                aria-label={t('timeline.stepPrev')}
-                className="w-5 h-5 flex items-center justify-center rounded-l border border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border disabled:opacity-35 disabled:hover:text-redlog-text-dim transition-colors"
-              ><ChevronLeft size={12} strokeWidth={2} aria-hidden /></button>
-              <button
-                type="button"
-                data-testid="detail-step-next"
-                disabled={!canStepNext}
-                onClick={() => onStep(1)}
-                title={t('timeline.stepNext')}
-                aria-label={t('timeline.stepNext')}
-                className="w-5 h-5 flex items-center justify-center rounded-r border border-l-0 border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border disabled:opacity-35 disabled:hover:text-redlog-text-dim transition-colors"
-              ><ChevronRight size={12} strokeWidth={2} aria-hidden /></button>
-            </span>
-          )}
           <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[toLane(event.agentType, event.data?.subtype as string | undefined, pluginTypes)] }} />
           <span className="text-xs font-mono font-semibold uppercase tracking-wider shrink-0 whitespace-nowrap" style={{ color: LANE_COLORS[toLane(event.agentType, event.data?.subtype as string | undefined, pluginTypes)] }}>
             {event.agentType}
@@ -223,14 +197,6 @@ export function TimelineEventInspector({
         <dd className="font-mono text-redlog-text-dim text-right truncate" title={event.hostname}>
           {event.hostname}
         </dd>
-        {event.targetId && (
-          <>
-            <dt className="text-redlog-text-faint">{t('timeline.detail.target')}</dt>
-            <dd className="font-mono text-redlog-text-dim text-right truncate" title={event.targetId}>
-              {event.targetId}
-            </dd>
-          </>
-        )}
       </dl>
       {/* v0.6.89.5 feature 3: full stacked-row of integrity badges next
           to the title so the operator sees every flag at once (the dot
@@ -447,15 +413,16 @@ export function TimelineEventInspector({
       {event.agentType === 'shell'
         && event.data?.subtype === 'command_end'
         && (
-          <CommandEndDetail projectId={event.engagementId} eventId={event.id} data={event.data as Record<string, unknown>} />
+          <CommandEndDetail projectId={event.engagementId} eventId={event.id} data={event.data as Record<string, unknown>} reader={reader} />
         )}
+      {unfinished && event.agentType === 'shell' && event.data?.subtype === 'command_start' && <CommandUnfinishedNote />}
       {/* v0.9.2 U1: agent-turn detail. Body text (user_message /
           assistant_message / thinking) shown open by default via
           CollapsibleStream so the operator sees the prompt/response
           on click without another expand. tool_call renders the
           parsed input JSON; tool_result its output stream. */}
       {event.agentType === 'agent' && (
-        <AgentTurnDetail
+        <AgentTurnDetail projectId={event.engagementId} eventId={event.id} reader={reader}
           data={event.data as Record<string, unknown>}
           paired={paired}
           allLoaded={allLoaded}
@@ -468,7 +435,7 @@ export function TimelineEventInspector({
           the raw-JSON toggle: unformatted, redaction-masked, in a 120px
           box. Same treatment as shell and agent events now. */}
       {event.agentType === 'scanner' && (
-        <HttpDetail projectId={event.engagementId} data={event.data as Record<string, unknown>} eventId={event.id} />
+        <HttpDetail projectId={event.engagementId} data={event.data as Record<string, unknown>} eventId={event.id} reader={reader} />
       )}
       {event.agentType === 'browser' && (
         <BrowserConsoleDetail data={event.data as Record<string, unknown>} />
@@ -476,6 +443,10 @@ export function TimelineEventInspector({
       {event.agentType === 'file_transfer' && event.data?.subtype === 'artifact_added' && (
         <EvidenceFileDetail data={event.data as Record<string, unknown>} />
       )}
+      {!hasSpecificEventDetail(event) && (reader && reader.mode !== 'closed'
+        ? <EventContentReader key={event.id} projectId={event.engagementId} eventId={event.id}
+            expanded={reader.mode === 'expanded'} onExpandedChange={expanded => reader.setMode(expanded ? 'expanded' : 'inline')} />
+        : <GenericEventDetail data={event.data as Record<string, unknown>} />)}
       {event.agentType === 'marker' && (
         <MarkerDetail
           key={event.id}

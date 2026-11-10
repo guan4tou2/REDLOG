@@ -67,10 +67,11 @@ it('keeps the open source and its reading position when another source page arri
   }
   render(<ActivityResults request={{parsed:{text:'id',conditions:[],tokens:[]}} as any}/>)
   fireEvent.click(await screen.findByTestId('activity-row'))
+  fireEvent.click(await screen.findByTestId('activity-read'))
   await screen.findByText('input',{selector:'pre'})
   fireEvent.click(screen.getByRole('button',{name:'activity.moreSources'}))
-  await waitFor(()=>expect(screen.getByRole('combobox',{name:'activity.sourceEvent'}).querySelectorAll('option')).toHaveLength(2))
-  expect((screen.getByRole('combobox',{name:'activity.sourceEvent'}) as HTMLSelectElement).value).toBe('start')
+  await waitFor(()=>expect(screen.getAllByTestId('reader-source-tab')).toHaveLength(2))
+  expect(screen.getAllByTestId('reader-source-tab').find(tab=>tab.getAttribute('aria-selected')==='true')?.getAttribute('data-event-id')).toBe('start')
   expect(screen.getByText('input',{selector:'pre'})).toBeTruthy()
 })
 

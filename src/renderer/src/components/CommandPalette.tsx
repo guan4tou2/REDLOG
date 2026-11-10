@@ -51,7 +51,7 @@ interface Item {
   run: () => void
 }
 
-// ⌘9 is Settings', so the sidebar's numbered run stops at eight — read from
+// ⌘9 is Settings', so the sidebar's numbered run stops at seven — read from
 // sidebarOrder so the palette cannot advertise a chord the sidebar does not.
 // Same detection App uses; read defensively because this module is imported
 // in tests where the preload bridge may be absent.
@@ -206,7 +206,7 @@ export function CommandPalette({
         run: () => onNavigate(view)
       })
     }
-    for(const view of ['timeline','transcript','scope','loot','bookmarks'])out.push({id:`nav:${view}`,section:'nav',icon:NAV_ICONS[view],label:t(`sidebar.${view}`),run:()=>onNavigate(view)})
+    for(const view of ['transcript','scope','loot','bookmarks'])out.push({id:`nav:${view}`,section:'nav',icon:NAV_ICONS[view],label:t(`sidebar.${view}`),run:()=>onNavigate(view)})
     out.push({
       id: 'nav:settings', section: 'nav', icon: SettingsIcon,
       label: t('sidebar.settings'), hint: `${MOD}9`, run: () => onNavigate('settings')

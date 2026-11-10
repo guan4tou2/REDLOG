@@ -46,8 +46,39 @@ describe('the Timeline restores the last selected event', () => {
     localStorage.setItem(KEY, 'e2')
     mount({ focusEventId: 'e1' })
     await waitFor(() => expect(document.querySelector('[data-timeline-event]')).not.toBeNull())
-    // The restore has had its one attempt, and stood aside for the focus.
+    // The restore has had its one attempt, and stood aside for the focus: the
+    // pane is open on the focused event, not on the stored one.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(screen.queryByTitle(DETAIL_HANDLE)).not.toBeNull()
+    expect(localStorage.getItem(KEY)).toBe('e1')
+  })
+})
+
+describe('a remembered selection older than the drawn range', () => {
+  let b: TimelineBridge
+  beforeEach(() => {
+    b = installTimelineBridge()
+    try { localStorage.clear() } catch { /* ignore */ }
+    b.queryPage.mockResolvedValueOnce({ ...page([makeEvent('e3', T0)]), hasMore: true, nextCursor: 'older' })
+    b.queryPage.mockResolvedValue(page([makeEvent('e1', T0 - 5000)]))
+  })
+  afterEach(() => { cleanup(); vi.restoreAllMocks() })
+
+  it('is loaded back to and opened, as a selection made in the list should be', async () => {
+    localStorage.setItem(KEY, 'e1')
+    b.matchIds.mockResolvedValue(['e1'])
+    mount()
+    expect(await screen.findByTitle(DETAIL_HANDLE)).not.toBeNull()
+    expect(localStorage.getItem(KEY)).toBe('e1')
+  })
+
+  it('stays quiet when the remembered event is gone or filtered out', async () => {
+    localStorage.setItem(KEY, 'gone')
+    b.matchIds.mockResolvedValue([])
+    mount()
+    await waitFor(() => expect(b.matchIds).toHaveBeenCalled())
     await new Promise((resolve) => setTimeout(resolve, 50))
     expect(screen.queryByTitle(DETAIL_HANDLE)).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })

@@ -12,6 +12,7 @@ import { render, cleanup, screen, fireEvent, act, within, waitFor } from '@testi
 import { I18nProvider } from '../src/renderer/src/i18n'
 
 import App from '../src/renderer/src/App'
+import { snapshotIssues, _resetIssues } from '../src/renderer/src/lib/issues'
 import OverlayApp from '../src/renderer/src/OverlayApp'
 import TimelinePanel from '../src/renderer/src/components/Timeline'
 import Settings from '../src/renderer/src/components/Settings'
@@ -161,8 +162,8 @@ function installBridge(): void {
     },
     screenshot: { capture: async () => '/tmp/x.jpg', read: async () => null },
     scope: {
-      getViolations: async () => ({ rows: [{ target: 'evil.com', command: 'curl evil.com', timestamp: Date.now() }], truncated: false }),
-      getViolationCount: async () => 1,
+      getObservations: async () => ({ rows: [{ target: 'evil.com', command: 'curl evil.com', timestamp: Date.now() }], truncated: false }),
+      getObservationCount: async () => 1,
       isConfigured: async () => true,
       getLastRecompute: async () => null
     },
@@ -298,6 +299,7 @@ describe('renderer views render without throwing', () => {
     // is expanded. Expanding is what puts the per-lane rows on screen, and a
     // lane label appearing proves the events flowed through toLane() into
     // populatedLanes without an undefined bucket.
+    fireEvent.click(await findByTestId('timeline-mode-lanes'))
     fireEvent.click(await findByTestId('timeline-band-commands'))
     const shellLabels = await findAllByText('Shell')
     expect(shellLabels.length).toBeGreaterThan(0)
@@ -401,7 +403,7 @@ describe('renderer views render without throwing', () => {
   it('capture card shows an informational plugin producer in the manage inventory', async () => {
     renderView(<App />)
     // Open the full inventory ("all sources (N)").
-    const manageBtn = await screen.findByText(/all sources/i)
+    const manageBtn = await screen.findByText(/Other capture sources/i)
     fireEvent.click(manageBtn)
     // The plugin producer's own label and the plugin tag both render.
     expect(await screen.findByText('pcap-capture')).toBeTruthy()
@@ -416,6 +418,20 @@ describe('renderer views render without throwing', () => {
     renderView(<StatusBar />)
     const clock = await screen.findByTestId('statusbar-uptime')
     await waitFor(() => expect(clock.getAttribute('title')).toMatch(/since this project was created .*not this session/))
+  })
+
+  // An errored external-IP lookup is a condition of its own (unknown, not bad),
+  // and it clears when a later read comes back without the error.
+  it('StatusBar raises a pending issue while the external IP lookup is erroring, and clears it after', async () => {
+    _resetIssues()
+    const redlog = (window as unknown as { redlog: { ip: { getStatus: () => Promise<unknown>; onStatus: (cb: (s: unknown) => void) => () => void } } }).redlog
+    let push: (s: unknown) => void = () => {}
+    redlog.ip.getStatus = async () => ({ externalIP: null, internalIP: '10.0.0.2', ipSafety: 'unknown', lastCheck: Date.now(), error: 'timeout' })
+    redlog.ip.onStatus = (cb) => { push = cb; return () => {} }
+    renderView(<StatusBar />)
+    await waitFor(() => expect(snapshotIssues().find((i) => i.id === 'ip')?.tier).toBe('pending'))
+    act(() => push({ externalIP: '203.0.113.7', internalIP: '10.0.0.2', ipSafety: 'unknown', lastCheck: Date.now(), error: null }))
+    await waitFor(() => expect(snapshotIssues().some((i) => i.id === 'ip')).toBe(false))
   })
 
   // #323: below the narrow threshold the bar stays on one line by giving up its
@@ -485,8 +501,10 @@ describe('renderer views render without throwing', () => {
 
   it('Settings exposes the artifact-rotation budgets under "Retention and cleanup"', async () => {
     renderView(<Settings />)
-    const tab = await screen.findByText('Retention and cleanup')
-    fireEvent.click(tab)
+    // The row is "Data & privacy" on the Stitch home; its page is still
+    // "Retention and cleanup", which is what this asserts it opens.
+    await screen.findByTestId('settings-home')
+    fireEvent.click(document.querySelector('[data-settings-page="retention"]') as HTMLElement)
     expect(await screen.findByText('Retention and disk budgets')).toBeTruthy()
     expect(screen.getByText('Terminal recording store budget (MB)')).toBeTruthy()
   })

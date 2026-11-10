@@ -14,7 +14,7 @@ exist.
 - TypeScript typecheck passed.
 - Production Electron build passed.
 - `git diff --check` passed.
-- Desktop E2E: `e2e/command-artifact-correlation.spec.ts` passed (1 test).
+- Desktop E2E: `e2e/command-artifact-correlation.spec.ts` (now in e2e/timeline-evidence.spec.ts) passed (1 test).
 
 ## Convergence Review
 

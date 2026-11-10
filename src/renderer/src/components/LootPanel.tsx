@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n/I18nContext'
 import { LoadingSpinner } from './Feedback'
-import { Gem } from 'lucide-react'
+import { Gem, ChevronDown, ChevronRight, Search } from 'lucide-react'
+import { Button } from './Button'
 import { EmptyState } from './EmptyState'
 import { formatDateTime } from '../lib/time'
 import { useListKeyboard } from '../lib/useListKeyboard'
@@ -19,6 +20,22 @@ interface LootEvent {
 }
 
 const PAGE_SIZE = 200
+
+type Translate = (key: string, vars?: Record<string, string | number>) => string
+
+/** A detected type by name; a type this build has no name for keeps its stored
+ *  one rather than a made-up word. */
+function lootTypeLabel(type: string, t: Translate): string {
+  const key = `loot.type.${type}`
+  const named = t(key)
+  return named === key ? type.replace(/_/g, ' ') : named
+}
+
+function lootConfidenceLabel(confidence: string, t: Translate): string {
+  const key = `loot.confidence.${confidence}`
+  const named = t(key)
+  return named === key ? confidence : named
+}
 
 function projectLootEvent(e: { id: string; timestamp: number; targetId?: string | null; data: Record<string, unknown> }): LootEvent {
   return {
@@ -42,6 +59,10 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
   const hasMoreRef = useRef(false)
   // Filter by loot type; null = show all. Chips appear at the top with counts.
   const [typeFilter, setTypeFilter] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  // Rows opened in place. Opening a row reads it; the Timeline is a button inside it.
+  const [open, setOpen] = useState<Set<string>>(new Set())
+  const toggleOpen = useCallback((id: string) => setOpen((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next }), [])
   const { t } = useI18n()
   const { filter: sharedFilter } = useSharedFilter()
 
@@ -141,10 +162,12 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
   // matches the operator sees, post-filter. Rows are not folded here: the store
   // already keeps one per secret per target (Spec 031), and folding on the
   // preview line merged distinct keys that share a PEM header.
+  const needle = query.trim().toLowerCase()
   const fullList = useMemo(() => lootEvents.map((le) => ({
     ...le,
-    matches: typeFilter ? le.matches.filter((m) => m.type === typeFilter) : le.matches
-  })).filter((le) => le.matches.length > 0), [lootEvents, typeFilter])
+    matches: le.matches.filter((m) => (!typeFilter || m.type === typeFilter)
+      && (!needle || [m.type.replace(/_/g, ' '), m.type, m.preview, le.source ?? '', le.targetId ?? ''].some((v) => v.toLowerCase().includes(needle))))
+  })).filter((le) => le.matches.length > 0), [lootEvents, typeFilter, needle])
 
   // §9: page the rows so a large haul doesn't mount all at once. `visibleList`
   // stays the name the render uses; it's now the windowed slice.
@@ -156,7 +179,7 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
   // me where this came from" are the same request. Nav spans the rendered rows.
   const listNav = useListKeyboard({
     count: visibleList.length,
-    onActivate: (i) => { const le = visibleList[i]; if (le) onOpenInTimeline?.(le.id, le.timestamp) },
+    onActivate: (i) => { const le = visibleList[i]; if (le) toggleOpen(le.id) },
     onJumpToTimeline: (i) => { const le = visibleList[i]; if (le) onOpenInTimeline?.(le.id, le.timestamp) }
   })
   // Header counts the whole haul, not just the loaded window.
@@ -182,28 +205,51 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
         </div>
       </div>
 
-      {/* Type chips, when there is more than one type to choose between */}
+      {/* Stitch 03: a section heading, and what a hit is and is not, beneath it. */}
+      <section data-testid="loot-disclaimer" className="text-xs">
+        <h2 className="text-sm font-semibold text-redlog-text">{t('loot.sectionTitle')}</h2>
+        <p className="mt-0.5 font-medium text-amber-300">{t('loot.disclaimerTitle')}</p>
+        <p className="mt-0.5 text-redlog-text-dim">{t('loot.disclaimerBody')}</p>
+      </section>
+
       {lootEvents.length > 0 && (() => {
         const typeCounts = new Map<string, number>()
         for (const le of lootEvents) for (const m of le.matches) typeCounts.set(m.type, (typeCounts.get(m.type) ?? 0) + 1)
-        const types = [...typeCounts.entries()].sort((a, b) => b[1] - a[1])
-        if (types.length < 2) return null
+        const types = [...typeCounts.entries()].sort((x, y) => y[1] - x[1])
+        const total = types.reduce((n, [, c]) => n + c, 0)
         return (
-          <div className="flex flex-wrap gap-1 items-center">
-            {types.map(([type, count]) => (
-              <button
-                key={type}
-                onClick={() => setTypeFilter(typeFilter === type ? null : type)}
-                className={`px-2 py-0.5 text-xs font-mono rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 ${
-                  typeFilter === type ? 'bg-red-500/20 text-red-300' : 'bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated-hover'
-                }`}
-              >
-                <span className={typeColor[type] || ''}>{type.replace(/_/g, ' ')}</span> <span className="text-redlog-text-faint">·{count}</span>
-              </button>
-            ))}
+          <div data-testid="loot-toolbar" className="flex flex-wrap items-center justify-between gap-3 rounded border border-redlog-border bg-redlog-surface p-2">
+            <div className="flex flex-wrap items-center gap-1">
+              <span className="mr-1 text-xs text-redlog-text-faint">{t('loot.typeFilter')}</span>
+              {[{ id: null as string | null, label: t('loot.allTypes'), count: total }, ...types.map(([id, count]) => ({ id: id as string | null, label: lootTypeLabel(id, t), count }))].map((chip) => (
+                <button
+                  key={chip.id ?? 'all'}
+                  type="button"
+                  aria-pressed={typeFilter === chip.id}
+                  onClick={() => setTypeFilter(chip.id === null || typeFilter === chip.id ? null : chip.id)}
+                  className={`px-2 py-0.5 text-xs font-mono rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 ${
+                    typeFilter === chip.id ? 'bg-red-500/20 text-red-300' : 'bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated-hover'
+                  }`}
+                >
+                  <span className={chip.id ? (typeColor[chip.id] || '') : ''}>{chip.label}</span> <span className="text-redlog-text-faint">·{chip.count}</span>
+                </button>
+              ))}
+            </div>
+            <label className="relative">
+              <span className="sr-only">{t('loot.searchLabel')}</span>
+              <Search size={14} aria-hidden className="pointer-events-none absolute left-2 top-1.5 text-redlog-text-faint" />
+              <input
+                data-testid="loot-search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t('loot.searchPlaceholder')}
+                className="w-56 rounded border border-redlog-border bg-redlog-bg py-1 pl-7 pr-2 text-xs text-redlog-text placeholder-redlog-muted focus:border-red-500/40 focus:outline-none"
+              />
+            </label>
           </div>
         )
       })()}
+      {needle && hasMore && <p data-testid="loot-search-scope" className="text-xs text-redlog-text-faint">{t('loot.searchLoadedOnly')}</p>}
 
       {loadError === 'initial' && lootEvents.length === 0 ? (
         <div data-testid="loot-load-error" role="alert" className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
@@ -238,7 +284,7 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
               icon={Gem}
               title={t('loot.noMatches')}
               reason={t('loot.noMatchesReason')}
-              action={{ label: t('loot.clearFilter'), onClick: () => setTypeFilter(null) }}
+              action={{ label: t('loot.clearFilter'), onClick: () => { setTypeFilter(null); setQuery('') } }}
             />
           )}
           {visibleList.map((le, i) => {
@@ -248,9 +294,9 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
               key={le.id || i}
               {...rowProps}
               ref={(el) => rowProps.ref(el)}
-              onClick={() => { rowProps.onClick(); onOpenInTimeline?.(le.id, le.timestamp) }}
-              className={`bg-redlog-surface border border-redlog-border rounded-lg p-3 ${onOpenInTimeline ? 'cursor-pointer hover:border-cyan-500/40 hover:bg-redlog-surface/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 transition-colors' : ''} ${rowProps['aria-selected'] ? 'border-redlog-accent/50' : ''}`}
-              title={onOpenInTimeline ? t('loot.openInTimelineHint') : undefined}
+              onClick={() => { rowProps.onClick(); toggleOpen(le.id) }}
+              aria-expanded={open.has(le.id)}
+              className={`bg-redlog-surface border border-redlog-border rounded-lg p-3 cursor-pointer hover:bg-redlog-elevated/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 transition-colors ${rowProps['aria-selected'] ? 'border-redlog-accent/50' : ''}`}
             >
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="text-redlog-text-dim text-xs">
@@ -263,27 +309,31 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
                   )}
                   <span> · {t('loot.items', { count: le.matches.length })}</span>
                 </div>
-                {onOpenInTimeline && (
-                  <span className="text-xs text-cyan-400/80 whitespace-nowrap shrink-0">
-                    {t('loot.openInTimeline')} →
-                  </span>
-                )}
+                <span aria-hidden className="shrink-0 text-redlog-text-faint">{open.has(le.id) ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</span>
               </div>
               {le.matches.map((m, j) => (
                 <div key={j} className="border-t border-redlog-border pt-1 mt-1 first:border-0 first:pt-0 first:mt-0">
                   <div className="flex items-center gap-2">
                     <span className={`text-xs font-mono ${typeColor[m.type] || 'text-redlog-text-dim'}`}>
-                      {m.type.replace(/_/g, ' ')}
+                      {lootTypeLabel(m.type, t)}
                     </span>
                     <span className={`text-xs px-1 rounded ${
                       m.confidence === 'high' ? 'bg-red-400/10 text-red-400' : 'bg-yellow-400/10 text-yellow-400'
                     }`}>
-                      {m.confidence}
+                      {lootConfidenceLabel(m.confidence, t)}
                     </span>
                   </div>
-                  <div title={m.preview} className="text-redlog-text-dim text-xs font-mono mt-0.5 truncate">{m.preview}</div>
+                  <div title={open.has(le.id) ? undefined : m.preview} className={`text-redlog-text-dim text-xs font-mono mt-0.5 ${open.has(le.id) ? 'whitespace-pre-wrap [overflow-wrap:anywhere]' : 'truncate'}`}>{m.preview}</div>
                 </div>
               ))}
+              {open.has(le.id) && (
+                <div data-testid="loot-detail" className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-redlog-border pt-2" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+                  <span className="text-xs italic text-redlog-text-faint">{t('loot.hitNotProof')}</span>
+                  {onOpenInTimeline && (
+                    <Button size="compact" data-testid="loot-locate" onClick={() => onOpenInTimeline(le.id, le.timestamp)}>{t('loot.openInTimeline')} →</Button>
+                  )}
+                </div>
+              )}
             </div>
             )
           })}

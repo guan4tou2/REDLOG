@@ -45,14 +45,8 @@ describe('per-batch work (W19)', () => {
     expect(SRC).toContain('rawEvents.filter((e) => !cache.checked.has(e.id))')
   })
 
-  it('flushes coalesce once the event set is large', () => {
-    // Every flush replaces the events array and invalidates every memo —
-    // ~68 ms per pass at 131k even with the index lazy. Asking for that 60
-    // times a second means the panel never paints.
-    expect(SRC).toMatch(/const BIG_SET = 5_000/)
-    expect(SRC).toMatch(/sortedRef\.current\.length > BIG_SET\) window\.setTimeout\(flush, SLOW_FLUSH_MS\)/)
-    // Small sets keep the frame-accurate path — a live tail should look live.
-    expect(SRC).toMatch(/else requestAnimationFrame\(flush\)/)
+  it('delegates live batching to the controller covered by timeline-live behavior tests', () => {
+    expect(SRC).toContain('useTimelineLive(eventFilterRef, generationRef, eventsMapRef, sortedRef')
   })
 })
 

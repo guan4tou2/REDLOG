@@ -4,6 +4,7 @@ import { Button } from './Button'
 import { eventTitle } from '../lib/eventTitle'
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useListKeyboard } from '../lib/useListKeyboard'
+import { useKeepScroll } from '../lib/useKeepScroll'
 import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
 import { CastResults, type CastHit } from './CastResults'
@@ -134,9 +135,11 @@ interface SearchPanelProps {
   browse?: boolean
   controlledQuery?: string
   viewMode?: 'events' | 'activities'
+  /** Empties the shared query field that owns the conditions. */
+  onClearQuery?: () => void
 }
 
-export function SearchPanel({ onOpenInTimeline, active = true, browse = false, controlledQuery, viewMode }: SearchPanelProps = {}): JSX.Element {
+export function SearchPanel({ onOpenInTimeline, active = true, browse = false, controlledQuery, viewMode, onClearQuery }: SearchPanelProps = {}): JSX.Element {
   const { filter: sharedFilter } = useSharedFilter()
   const [query, setQuery] = useState('')
   const [localMode, setMode] = useState<'events' | 'activities'>('events')
@@ -172,6 +175,8 @@ export function SearchPanel({ onOpenInTimeline, active = true, browse = false, c
   const searchSeqRef = useRef(0)
   const abortRef = useRef<AbortController | null>(null)
   const queryRef = useRef(query)
+  const resultsRef = useRef<HTMLDivElement>(null)
+  useKeepScroll(resultsRef, active)
   queryRef.current = query
   const { t } = useI18n()
   const parse: ParseOutcome | null = useMemo(() => query.trim() ? parseQuery(query) : null, [query])
@@ -361,7 +366,7 @@ export function SearchPanel({ onOpenInTimeline, active = true, browse = false, c
         )}
       </div>}
 
-      <div data-testid="search-results" className={`flex-1 overflow-auto min-h-0 ${query !== submitted ? 'opacity-50' : ''}`} inert={query !== submitted} aria-busy={query !== submitted || searching}>
+      <div data-testid="search-results" ref={resultsRef} className={`flex-1 overflow-auto min-h-0 ${query !== submitted ? 'opacity-50' : ''}`} inert={query !== submitted} aria-busy={query !== submitted || searching}>
         {parse && (
           <div className="mb-2">
             <QueryReadout outcome={parse} testId="search-query" unparsableTitle={t('search.queryUnparsable')} />
@@ -369,7 +374,7 @@ export function SearchPanel({ onOpenInTimeline, active = true, browse = false, c
         )}
         {(browse || mode === 'activities') && (browse || submitted.trim()) && (() => {
           const parsed = parseQuery(submitted)
-          return parsed.ok ? <div hidden={mode !== 'activities'}><ActivityResults active={active && mode === 'activities'} onExportSelection={setOperationExport} request={{ parsed: parsed.parsed, filter: buildSearchOpts(), ...(browse ? { excludeHousekeeping: true } : {}) }} onOpen={onOpenInTimeline} /></div> : null
+          return parsed.ok ? <div hidden={mode !== 'activities'}><ActivityResults active={active && mode === 'activities'} onExportSelection={setOperationExport} onClearQuery={onClearQuery} request={{ parsed: parsed.parsed, filter: buildSearchOpts(), ...(browse ? { excludeHousekeeping: true } : {}) }} onOpen={onOpenInTimeline} /></div> : null
         })()}
         <SearchCoverage coverage={bodyCoverage} />
         {mode === 'events' && toolSession && (

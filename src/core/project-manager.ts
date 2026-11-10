@@ -2,6 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { mkdirPrivate } from './private-fs'
+import { readProjectScope, type ProjectScopeSummary } from './config'
 
 export interface ProjectMeta {
   id: string
@@ -48,12 +49,36 @@ function dirSize(dir: string): number {
   return total
 }
 
-export function listProjects(): ProjectMeta[] {
-  const index = loadIndex()
-  return index.recent
+/** The projects that still exist on disk, newest first, without measuring them. */
+/** Where new projects are created. Each one gets its own folder in here, named
+ *  by RedLog — the picker shows this directory, not a guessed folder name. */
+export function projectsRoot(): string {
+  return PROJECTS_DIR
+}
+
+export function listProjectEntries(): ProjectMeta[] {
+  return loadIndex().recent
     .filter((p) => fs.existsSync(p.path))
-    .map((p) => ({ ...p, dbSize: dirSize(p.path) }))
     .sort((a, b) => b.lastOpened - a.lastOpened)
+}
+
+export function listProjects(): ProjectMeta[] {
+  return listProjectEntries().map((p) => ({ ...p, dbSize: dirSize(p.path) }))
+}
+
+/** One scope answer per project id, for the picker's badge (Spec 068). Read
+ *  only: it takes the entries it is given, never touches the index (so
+ *  `lastOpened` stays put) and never opens a project database. One project
+ *  that throws is `unknown` for that id and no other. */
+export function summarizeProjectScopes(
+  projects: readonly ProjectMeta[],
+  read: (projectDir: string) => ProjectScopeSummary = readProjectScope
+): Record<string, ProjectScopeSummary> {
+  const out: Record<string, ProjectScopeSummary> = {}
+  for (const p of projects) {
+    try { out[p.id] = read(p.path) } catch { out[p.id] = { state: 'unknown' } }
+  }
+  return out
 }
 
 export function createProject(name: string): ProjectMeta {

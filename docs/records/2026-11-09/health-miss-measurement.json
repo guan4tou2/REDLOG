@@ -1,0 +1,24 @@
+{
+  "platform": "darwin",
+  "arch": "arm64",
+  "node": "v26.13.0",
+  "rows": 200000,
+  "fixture": "synthetic agent bucket with no codex rows; unsigned SQL fixtures",
+  "query": "SELECT timestamp FROM events WHERE agent_type = 'agent' AND json_extract(data,'$.agent') = ? ORDER BY timestamp DESC LIMIT 1",
+  "plan": [
+    {
+      "id": 5,
+      "parent": 0,
+      "notused": 60,
+      "detail": "SEARCH events USING INDEX idx_events_agent_kind_ts (<expr>=?)"
+    }
+  ],
+  "firstMs": 0.06887499999720603,
+  "medianMs": 0.01804199999969569,
+  "maxMs": 0.20841700000164565,
+  "forcedScan": {
+    "firstMs": 909.81575,
+    "medianMs": 98.98137499999984,
+    "maxMs": 909.81575
+  }
+}

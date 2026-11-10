@@ -76,6 +76,23 @@ describe('HTTP History auto-load', () => {
     expect(screen.queryByRole('button', { name: 'browser.openSettings' })).toBeNull()
   })
 
+  it('keeps the way to the capture settings in the header once there is traffic', async () => {
+    installBridge([flowPage(0, 1, false)])
+    const { HttpHistoryPanel } = await import('../src/renderer/src/components/HttpHistoryPanel')
+    const open = vi.fn()
+    render(<HttpHistoryPanel onOpenSettings={open} />)
+    fireEvent.click(await screen.findByTestId('http-capture-settings'))
+    expect(open).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not draw it twice on an empty record, which already offers it', async () => {
+    installBridge([flowPage(0, 0, false)])
+    const { HttpHistoryPanel } = await import('../src/renderer/src/components/HttpHistoryPanel')
+    render(<HttpHistoryPanel onOpenSettings={vi.fn()} />)
+    await screen.findByRole('button', { name: 'browser.openSettings' })
+    expect(screen.queryByTestId('http-capture-settings')).toBeNull()
+  })
+
   it('clears the local status filter when All is chosen', async () => {
     const query = installBridge([flowPage(0, 1, false)])
     const { HttpHistoryPanel } = await import('../src/renderer/src/components/HttpHistoryPanel')

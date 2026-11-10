@@ -103,7 +103,7 @@ the row. Moving them is also the cheapest fix for the wrap.
   `timeline-layout-toggle`, `timeline-detail-close`, `detail-step-prev/next`)
   MUST survive the move. e2e asserts on them; a rename is a separate change
   with its own reason.
-- **FR-008**: `e2e/timeline-detail-header.spec.ts` MUST be updated **as part of
+- **FR-008**: `e2e/timeline-detail-header.spec.ts` (now in e2e/timeline-track.spec.ts) MUST be updated **as part of
   this change**, not after it. Its last assertion is
 
   ```ts

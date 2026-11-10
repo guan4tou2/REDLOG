@@ -4,7 +4,7 @@ import { Button } from './Button'
 import { useIssues, type Issue, type IssueFix } from '../lib/issues'
 import { anchorNowWithFeedback, verifyChainWithFeedback } from '../lib/chainActions'
 import { recountAll } from '../lib/useAppCounts'
-import { formatFreshness } from '../lib/time'
+import { formatDuration } from '../lib/time'
 import { useTick } from '../lib/useTick'
 import { useI18n } from '../i18n'
 
@@ -53,7 +53,7 @@ function IssueRow({ issue, onNavigate }: { issue: Issue; onNavigate: (v: string)
     <div
       data-testid={`dashboard-issue-${issue.id}`}
       data-tier={issue.tier}
-      className="relative flex items-start gap-3 p-4 pl-5 border-t border-redlog-border first:border-t-0"
+      className="relative flex items-start gap-gap p-pad border-t border-redlog-border first:border-t-0"
     >
       {/* §4: state rides a left colour block; the row's ground stays surface.
           Only attention fills — a pending condition is worth printing and not
@@ -69,7 +69,7 @@ function IssueRow({ issue, onNavigate }: { issue: Issue; onNavigate: (v: string)
             for this, and nothing read it — a chain that has been drifting for
             nine hours and one that broke a minute ago were the same line. */}
         <p className="text-xs text-redlog-text-faint mt-1 font-mono">
-          {t('issues.sinceAge', { age: formatFreshness(issue.since, t) })}
+          {t('issues.lasting', { duration: formatDuration(Date.now() - issue.since, t) })}
         </p>
       </div>
       <div className="flex items-center gap-2 shrink-0">
@@ -112,8 +112,9 @@ export function DashboardIssues({ onNavigate }: { onNavigate: (v: string) => voi
 
   return (
     <section data-testid="dashboard-issues">
-      <SectionLabel className="tracking-[0.15em] mb-3">
-        {t('issues.needsAction', { count: issues.length })}
+      <SectionLabel className="tracking-[0.15em] mb-3 flex items-center gap-2">
+        {t('issues.needsActionTitle')}
+        <span data-testid="dashboard-issues-count" className="rounded border border-redlog-border bg-redlog-elevated px-1.5 font-mono text-xs tabular-nums text-redlog-text-faint">{issues.length}</span>
       </SectionLabel>
       <div className="rounded-lg bg-redlog-surface border border-redlog-border shadow-card overflow-hidden">
         {/* Already attention-first, oldest-first: snapshotIssues sorts, and

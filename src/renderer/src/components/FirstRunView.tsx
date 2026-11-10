@@ -1,3 +1,4 @@
+import { DASHBOARD_COLUMN } from '../lib/pageColumn'
 // The first screen of a new engagement (docs/UIUX-STANDARD.md §22, design turn
 // 9a).
 //
@@ -183,7 +184,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
     : null
 
   if (preparing) return (
-    <div className="h-full overflow-auto p-pad space-y-4">
+    <div className="h-full overflow-auto p-pad"><div className={`${DASHBOARD_COLUMN} space-y-4`}>
       <div>
         <h2 className="text-lg font-semibold text-redlog-text">{t('firstRun.title')}</h2>
         <p className="text-xs text-redlog-text-dim mt-1">{t('firstRun.hint')}</p>
@@ -192,13 +193,14 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
         if (pending) activeDependencyInstalls.current.add(id); else activeDependencyInstalls.current.delete(id)
       }} source={preparationSource} preflight={preflight} failed={preflightFailed} onRecheck={checkRuntime}
         onSkip={() => setPreparing(false)} onLeave={() => onNavigate('timeline')} />
-    </div>
+    </div></div>
   )
 
   return (
-    <div className="h-full flex flex-col p-pad gap-gap overflow-auto">
+    <div className="h-full p-pad overflow-auto"><div className={`${DASHBOARD_COLUMN} flex flex-col gap-gap`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
+          <p className="text-xs font-semibold tracking-[0.15em] text-redlog-accent">{t('firstRun.eyebrow')}</p>
           <h2 className="text-lg font-semibold text-redlog-text">{t('firstRun.title')}</h2>
           <p className="text-xs text-redlog-text-dim mt-1">{t('firstRun.hint')}</p>
         </div>
@@ -235,11 +237,11 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
           data-first-run-lit={rows.length > 0 ? 'true' : 'false'}
           data-core-ready={ready ? 'true' : 'false'}
         >
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,26rem),1fr))] items-start gap-3 [&>*]:min-w-0">
+          <div className="grid grid-cols-1 items-start gap-3 [&>*]:min-w-0">
             <div className="min-w-0 space-y-4">
               <section data-testid="first-run-commands" className="border border-redlog-border rounded-lg p-3 text-xs space-y-2">
                 <div className="flex items-baseline justify-between gap-2">
-                  <p className="font-semibold text-redlog-text">{t('firstRun.commands.title')}</p>
+                  <p className="font-semibold text-redlog-text"><span className="mr-2 font-mono text-redlog-text-faint">01</span>{t('firstRun.commands.title')}</p>
                   <span
                     data-testid="first-run-commands-status"
                     className={commands !== 'none' ? 'text-emerald-500' : 'text-redlog-text-faint'}
@@ -303,10 +305,26 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
                   </div>
                 ) : null}
 
-                {/* Connect the operator's shell; the built-in fallback below is
-                    independent and can also provide command proof. */}
-                {(hostTarget || wslTarget) && (
-                  <div className="space-y-1.5 pt-1">
+                {/* Two independent ways to record commands, side by side: RedLog's
+                    own terminal needs nothing installed; the operator's own
+                    terminal needs the hook. Either one proves command capture. */}
+                <p className="text-redlog-text-dim">{t('firstRun.paths.intro')}</p>
+                <div data-testid="first-run-paths" className="space-y-2">
+                  <div data-testid="first-run-path-builtin" className="flex flex-wrap items-center justify-between gap-2 rounded border border-redlog-border-subtle bg-redlog-bg px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="flex flex-wrap items-center gap-1.5 font-medium text-redlog-text">{t('firstRun.paths.builtin')}
+                        <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 font-mono text-xs text-emerald-400">{t('firstRun.paths.builtinTag')}</span></p>
+                      <p className="mt-0.5 text-redlog-text-dim">{t('firstRun.paths.builtinWhy')}</p>
+                    </div>
+                    <Button size="compact" data-testid="first-run-builtin-toggle" aria-expanded={showBuiltin} onClick={() => setShowBuiltin((v) => !v)}>
+                      {t(showBuiltin ? 'firstRun.builtin.hide' : 'firstRun.builtin.show')}
+                    </Button>
+                  </div>
+                  {(hostTarget || wslTarget) && (
+                  <div data-testid="first-run-path-external" className="space-y-1.5 rounded border border-redlog-border-subtle bg-redlog-bg px-3 py-2">
+                    <p className="flex flex-wrap items-center gap-1.5 font-medium text-redlog-text">{t('firstRun.paths.external')}
+                      <span className="rounded border border-redlog-border bg-redlog-elevated px-1.5 font-mono text-xs text-redlog-text-dim">{t('firstRun.paths.externalTag')}</span></p>
+                    <p className="text-redlog-text-dim">{t('firstRun.paths.externalWhy')}</p>
                     <div className="flex flex-wrap gap-2">
                       {hostTarget && (
                         <Button
@@ -326,7 +344,8 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
                     {recording && <RecordTerminalFlow key={recording.kind === 'host' ? 'host' : recording.label} target={recording} onPrepare={() => openPreparation('commands')}
                       onSelectedLabel={recording.kind === 'host' ? setHostShellLabel : undefined} />}
                   </div>
-                )}
+                  )}
+                </div>
               </section>
               {rows.length > 0 && (
                 <div data-testid="first-run-recent">
@@ -350,11 +369,6 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
           </div>
         </div>
         <div className="w-full space-y-2">
-          <button type="button" data-testid="first-run-builtin-toggle" aria-expanded={showBuiltin}
-            onClick={() => setShowBuiltin((v) => !v)}
-            className="inline-flex items-center min-h-8 text-xs text-redlog-text-dim underline hover:text-redlog-text">
-            {t(showBuiltin ? 'firstRun.builtin.hide' : 'firstRun.builtin.show')}
-          </button>
           {showBuiltin && (
             <div className="h-[420px] min-h-[240px] border border-redlog-border rounded-lg overflow-hidden">
               <Suspense fallback={<div className="h-full bg-redlog-surface animate-pulse" />}><TerminalView /></Suspense>
@@ -379,7 +393,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
         </button>
         {showSources && <div className="mt-2">{renderCaptureCard()}</div>}
       </div>
-    </div>
+    </div></div>
   )
 }
 

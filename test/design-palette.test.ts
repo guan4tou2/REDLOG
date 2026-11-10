@@ -42,8 +42,13 @@ describe('the renderer palette', () => {
       'src/renderer/src/lib/timelineDomain.ts'
     ])
     const files = glob.sync('src/renderer/src/**/*.{ts,tsx}', { cwd: ROOT })
-    const offenders = files.filter((f) => !allowed.has(f)
-      && /['"`]#[0-9a-fA-F]{3,8}\b/.test(fs.readFileSync(path.join(ROOT, f), 'utf8')))
+    const offenders = files.filter((f) => {
+      const src = fs.readFileSync(path.join(ROOT, f), 'utf8')
+      // Even xterm/HUD files must use tokens in Tailwind classes. The string
+      // API exception below cannot exempt bg-[#...] on surrounding controls.
+      return /\[[^\]\n]*#[0-9a-fA-F]{3,8}\b/.test(src)
+        || (!allowed.has(f) && /['"`]#[0-9a-fA-F]{3,8}\b/.test(src))
+    })
     expect(offenders).toEqual([])
   })
 })

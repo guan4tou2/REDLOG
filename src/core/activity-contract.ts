@@ -25,6 +25,8 @@ export interface ActivitySummary extends ActivityRef {
   kind: ActivityKind; state: ActivityState; action: ActivityAction; toolAction: ToolAction
   provider: string | null; sourceSession: string | null
   anchor: RedLogEvent; firstAt: number; lastAt: number
+  /** Command Activities only, and only once a paired command_end exists. */
+  result?: { exitCode: number | null }
   matchedCount: number; sourceCount: number; contextCount: number
   matchedPreview: { ids: string[]; hasMore: boolean }
   sourcePreview: { ids: string[]; hasMore: boolean }

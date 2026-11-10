@@ -16,7 +16,7 @@ Settings 五分類及來源唯一入口以 Spec 064 為準。本文件不再要�
 不增加 Hero、行銷標語、裝飾性 3D、霓虹效果或為展示而設的動畫。
 使用者方向稿的標語屬視覺示意，不加入產品介面，也不承諾記錄所有行為。
 
-本文件補充 UIUX-STANDARD.md 與 UIUX-CONTROLS-AND-COPY.md。
+本文件補充 UIUX-STANDARD.md（含 §25 控制項與文案）。
 既有 domain contract、明確警告與證據正確性優先；只改視覺不得擴大擷取授權。
 
 ## 2. 參考與取捨

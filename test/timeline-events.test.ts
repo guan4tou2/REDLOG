@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, formatGap
+  isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, formatGap, unfinishedCommandIds
 } from '../src/renderer/src/lib/timelineEvents'
 
 // D1 decomposition: these were inline in Timeline.tsx (5000 lines, no direct
@@ -91,5 +91,19 @@ describe('formatGap', () => {
     expect(formatGap(45 * 60_000)).toBe('45m')
     expect(formatGap(2 * 3600_000)).toBe('2h')
     expect(formatGap((60 + 15) * 60_000)).toBe('1h15m')
+  })
+})
+
+describe('unfinishedCommandIds', () => {
+  const run = (id: string, sub: string, extra: Record<string, unknown> = {}) =>
+    ({ ...ev('shell', { subtype: sub, shell: 'zsh', terminalId: 't1', command: 'sleep 9', ...extra }), id, engagementId: 'e', sessionId: 's' }) as RedLogEvent
+  it('marks a start with no end, not a start that has one', () => {
+    const open = run('a', 'command_start', { command_id: 'c1' })
+    const done = run('b', 'command_start', { command_id: 'c2' })
+    const end = run('c', 'command_end', { command_id: 'c2', exit_code: 0 })
+    expect([...unfinishedCommandIds([open, done, end])]).toEqual(['a'])
+  })
+  it('leaves a start without a command_id alone: unpairable is not "running"', () => {
+    expect(unfinishedCommandIds([run('x', 'command_start')]).size).toBe(0)
   })
 })

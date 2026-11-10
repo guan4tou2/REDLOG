@@ -52,6 +52,27 @@ export function collapseCommandPairs(events: RedLogEvent[]): RedLogEvent[] {
   })
 }
 
+/** command_start rows whose source-scoped pair key has no command_end anywhere
+ * in `events`. "Unfinished" is a statement about what was loaded, not about the
+ * process: it may be running, interrupted, or ended outside this window, so
+ * callers say "running / unknown", never "failed". A start with no pair key
+ * cannot be matched at all and is left out rather than guessed at. */
+export function unfinishedCommandIds(events: RedLogEvent[]): Set<string> {
+  const ended = new Set<string>()
+  for (const event of events) {
+    if (event.agentType !== 'shell' || event.data?.subtype !== 'command_end') continue
+    const key = operationPairKey(event)
+    if (key) ended.add(key)
+  }
+  const out = new Set<string>()
+  for (const event of events) {
+    if (event.agentType !== 'shell' || event.data?.subtype !== 'command_start') continue
+    const key = operationPairKey(event)
+    if (key && !ended.has(key)) out.add(event.id)
+  }
+  return out
+}
+
 /** Compact duration for a compressed gap label — "2h", "45m". */
 export function formatGap(ms: number): string {
   const min = Math.round(ms / 60000)
@@ -59,4 +80,45 @@ export function formatGap(ms: number): string {
   const h = Math.floor(min / 60)
   const rem = min % 60
   return rem ? `${h}h${rem}m` : `${h}h`
+}
+
+/** Sources the Timeline inspector has a reader of its own for. Everything else
+ *  goes to the generic reader, so a new source needs no change to the core. */
+export function hasSpecificEventDetail(e: Pick<RedLogEvent, 'agentType' | 'data'>): boolean {
+  switch (e.agentType) {
+    case 'shell': case 'agent': case 'scanner': case 'browser': case 'marker': case 'screenshot':
+      return true
+    case 'file_transfer':
+      return e.data?.subtype === 'artifact_added'
+    default:
+      return false
+  }
+}
+
+type InlineBody = { data?: string; encoding?: string } | undefined
+
+/** An inline preview short enough to be shown in the body itself. */
+const inlineText = (body: InlineBody): string | null =>
+  body?.encoding === 'text' && typeof body.data === 'string' && body.data.length <= 65536 ? body.data : null
+
+/** A body that is saved (a ref, or inline but too large to show) and so is read
+ *  in the Reader rather than inline. */
+export const hasSavedBody = (inline: InlineBody, ref: unknown): boolean =>
+  !!(inline?.data || ref) && !inlineText(inline)
+
+const hasFileRef = (value: unknown): boolean =>
+  !!value && typeof (value as { file?: unknown }).file === 'string'
+
+/** Events with saved content the Reader can show: the same condition the body
+ *  uses to offer its own "Saved content" button, so the bar never opens an
+ *  empty Reader. */
+export function hasContentReader(e: Pick<RedLogEvent, 'agentType' | 'data'>): boolean {
+  const d = (e.data ?? {}) as Record<string, unknown>
+  if (e.agentType === 'shell' && d.subtype === 'command_end') return hasFileRef(d.stdout_ref) || hasFileRef(d.stderr_ref)
+  if (e.agentType === 'agent') return ['user_message', 'assistant_message', 'thinking', 'tool_call', 'tool_result'].includes(String(d.subtype))
+  if (e.agentType !== 'scanner') return !hasSpecificEventDetail(e) && Object.keys(d).length > 0
+  return hasSavedBody(d.request_body as InlineBody, d.request_body_ref)
+    || hasSavedBody(d.response_body as InlineBody, d.response_body_ref)
+    || hasSavedBody(d.ws_body as InlineBody, d.ws_body_ref)
+    || hasSavedBody(d.tcp_body as InlineBody, d.tcp_body_ref)
 }

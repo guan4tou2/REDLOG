@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   planScopeRecompute, scopeHash, MAX_RETRO_ROWS,
-  type CorpusEvent, type ExistingViolation, type ScopeSnapshot
+  type CorpusEvent, type ExistingObservation, type ScopeSnapshot
 } from '../src/core/scope-recompute'
 import { classifyScopeTarget, alertFloorFor } from '../src/core/alert/policies'
 import type { ScopeDistance } from '../src/core/alert/policy'
@@ -20,7 +20,7 @@ const ev = (o: Partial<CorpusEvent> & { target: string }): CorpusEvent => {
     source: 'shell', action: `curl ${o.target}`, tier: 'chained', ...o
   }
 }
-const viol = (o: Partial<ExistingViolation> & { target: string }): ExistingViolation => {
+const viol = (o: Partial<ExistingObservation> & { target: string }): ExistingObservation => {
   seq += 1
   return {
     id: `viol-${seq}`, sourceEventId: null, timestamp: 1_700_000_000_000 + seq * 1000,
@@ -37,7 +37,7 @@ const classifierFor = (scope: ScopeSnapshot) => (target: string): ScopeDistance 
   classifyScopeTarget(target, scope).distance
 
 const plan = (
-  corpus: CorpusEvent[], existing: ExistingViolation[], after: ScopeSnapshot, cap?: number
+  corpus: CorpusEvent[], existing: ExistingObservation[], after: ScopeSnapshot, cap?: number
 ): ReturnType<typeof planScopeRecompute> =>
   planScopeRecompute({ corpus, existing, after, classify: classifierFor(after), cap })
 
@@ -156,7 +156,7 @@ describe('withdrawing what no longer holds', () => {
     const p = plan([], [v], SCOPE(['*.target.com', 'evil.example']))
     expect(p.clear).toHaveLength(1)
     expect(p.clear[0]).toMatchObject({
-      violationId: v.id, distanceBefore: 'excluded', distanceAfter: 'in_scope', judgedBefore: 'live'
+      observationId: v.id, distanceBefore: 'excluded', distanceAfter: 'in_scope', judgedBefore: 'live'
     })
   })
 

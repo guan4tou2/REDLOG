@@ -29,7 +29,7 @@ before relying on what it says.
 when it answers something the heading, control or layout cannot: an error, a
 destructive consequence, a security or data-flow fact, a platform limit, or a
 command to run. Do not restate the title or explain what an off switch does.
-`docs/UIUX-CONTROLS-AND-COPY.md` §2 is the test.
+`docs/UIUX-STANDARD.md` §25.2 is the test.
 
 **Hard limits — these are not yours to decide:**
 

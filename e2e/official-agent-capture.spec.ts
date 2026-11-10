@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { mkdirSync, writeFileSync, appendFileSync, readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { launchWithTempHome, openTestProject, openView, openSettingsPage } from './helpers'
+import { launchWithTempHome, openTestProject, openView, openSettingsPage, installOfficialAgentOnPlugins, removeOfficialAgentOnPlugins } from './helpers'
 
 type AgentKind = 'claude-code' | 'codex'
 
@@ -89,9 +89,9 @@ for (const kind of ['claude-code', 'codex'] as const) test(`${kind}: new authori
     expect(await parserLoaded()).toBe(false)
     expect(await reads()).toEqual([])
     await openView(page, 'settings'); await openSettingsPage(page, 'captureControl')
-    await expect(page.getByTestId(`agent-install-${kind}`)).toBeVisible()
+    await expect(page.getByTestId(`agent-manage-${kind}`)).toBeVisible()
     expect(await page.getByTestId(`agent-enabled-${kind}`).count()).toBe(0)
-    await page.getByTestId(`agent-install-${kind}`).click()
+    await installOfficialAgentOnPlugins(page, kind)
     await expect(page.getByTestId(`agent-enabled-${kind}`)).toBeDisabled()
     expect(await reads()).toEqual([])
     await app.evaluate(({ dialog }, dir) => {
@@ -134,13 +134,14 @@ for (const kind of ['claude-code', 'codex'] as const) test(`${kind}: new authori
     await openView(page, 'search')
     await page.locator('#reading-tab-events').click()
     await page.getByTestId('search-input').fill('AI_OUTPUT_TAIL_SENTINEL')
-    await expect(page.getByRole('option')).toHaveCount(1)
-    await expect(page.getByRole('option')).toContainText('AI_OUTPUT_SENTINEL')
-    await openView(page, 'transcript')
+    await expect(page.getByTestId('search-results').getByRole('option')).toHaveCount(1)
+    await expect(page.getByTestId('search-results').getByRole('option')).toContainText('AI_OUTPUT_SENTINEL')
+    await openView(page, 'search')
+    await page.getByTestId('search-input').fill('')
+    await page.locator('#reading-tab-ai').click()
     const transcript=page.locator('[data-testid="transcript-body"]:visible')
     await expect(transcript.getByText(/AI_INPUT_SENTINEL/)).toBeVisible()
     const collapsed = transcript.locator('[data-testid="transcript-toggle"][data-expanded="false"]')
-    await expect(collapsed.first()).toBeVisible()
     while (await collapsed.count()) await collapsed.first().click()
     await expect(transcript.getByText('NEW_AUTHORIZED_SENTINEL', { exact: true })).toBeVisible()
     await expect(transcript.getByText('AI_REPLY_SENTINEL', { exact: true })).toBeVisible()
@@ -185,15 +186,9 @@ for (const kind of ['claude-code', 'codex'] as const) test(`${kind}: new authori
     expect(await reads()).toEqual([])
     expect(readFileSync(file).equals(bytes)).toBe(true)
     // A local removal is machine-wide, so it asks first and names what stops
-    // and what stays.
-    await page.getByTestId(`agent-details-${kind}`).locator('summary').click()
-    await page.getByTestId(`agent-remove-${kind}`).click()
-    const removal = page.getByRole('dialog', { name: 'Remove capture integration' })
-    await expect(removal).toBeVisible()
-    await expect(removal).toContainText('Every project on this computer stops recording this source.')
-    await expect(removal).toContainText('Records already captured are kept.')
-    await removal.getByRole('button', { name: 'Remove', exact: true }).click()
-    await expect(page.getByTestId(`agent-install-${kind}`)).toBeVisible()
+    // and what stays — on the Plugins page, its only entry (Spec 066).
+    await removeOfficialAgentOnPlugins(page, kind)
+    await expect(page.getByTestId(`agent-manage-${kind}`)).toBeVisible()
     expect(readFileSync(file).equals(bytes)).toBe(true)
     expect(existsSync(join(tmpHome, '.redlog', 'plugins', `official-ai-${kind}`))).toBe(false)
     // Project permission is tied to the removed installation, not any later one.
@@ -202,7 +197,7 @@ for (const kind of ['claude-code', 'codex'] as const) test(`${kind}: new authori
       cfg.agentTailer!.sources![kind]!.enabled = true
       await window.redlog.config.save(cfg)
     }, kind)
-    await page.getByTestId(`agent-install-${kind}`).click()
+    await installOfficialAgentOnPlugins(page, kind)
     await expect(page.getByTestId(`agent-enabled-${kind}`)).not.toBeChecked()
     appendFileSync(source, user('AFTER_REINSTALL_SENTINEL'))
     await page.waitForTimeout(500)
@@ -223,10 +218,8 @@ for (const kind of ['claude-code', 'codex'] as const) test(`${kind}: new authori
     const sidecarText = () => readdirSync(sidecarDir).filter(p => p.endsWith('.jsonl')).map(p => readFileSync(join(sidecarDir, p), 'utf8')).join('')
     await expect.poll(sidecarText).toContain('REACTIVATED_SENTINEL')
     expect(sidecarText()).not.toMatch(/WHILE_DISABLED_SENTINEL|AFTER_REINSTALL_SENTINEL/)
-    await page.getByTestId(`agent-details-${kind}`).locator('summary').click()
-    await page.getByTestId(`agent-remove-${kind}`).click()
-    await page.getByRole('dialog', { name: 'Remove capture integration' }).getByRole('button', { name: 'Remove', exact: true }).click()
-    await expect(page.getByTestId(`agent-install-${kind}`)).toBeVisible()
+    await removeOfficialAgentOnPlugins(page, kind)
+    await expect(page.getByTestId(`agent-manage-${kind}`)).toBeVisible()
     expect(await parserLoaded()).toBe(false)
     expect(existsSync(installedModule)).toBe(false)
     appendFileSync(source, user('AFTER_ACTIVE_UNINSTALL_SENTINEL'))
@@ -252,7 +245,7 @@ test('Claude source pause and individual exclusions omit raw content without sto
     writeFileSync(first, fixture.header(work)); writeFileSync(second, fixture.header(work))
     const project = await openTestProject(page, 'AI-session-privacy')
     await openView(page, 'settings'); await openSettingsPage(page, 'captureControl')
-    await page.getByTestId('agent-install-claude-code').click()
+    await installOfficialAgentOnPlugins(page, 'claude-code')
     await app.evaluate(({ dialog }, dir) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [dir] }) }, work)
     await page.getByTestId('agent-add-path-claude-code').click(); await page.getByTestId('agent-enabled-claude-code').check()
     await expect.poll(async () => (await page.evaluate(() => window.redlog.agents.sessions())).filter(s => s.recording).length).toBe(2)
