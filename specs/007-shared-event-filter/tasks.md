@@ -3,7 +3,7 @@
 ## Phase 1 — Contract and counterexamples
 
 - [x] T001 [US1] Add target and scope-before-limit counterexamples in `test/search-pagination.test.ts`.
-- [x] T002 [US2] Add renderer contract tests for Search, Transcript and HTTP History in `test/shared-event-filter.test.ts`.
+- [x] T002 [US2] Renderer filter contracts are exercised by `test/shared-filter-views.test.tsx`; pagination retains the same predicates. Active-project scope overrides are covered by `test/events-ipc-count-match.test.ts`. These behavior tests replace the original source-string guards.
 
 ## Phase 2 — Canonical query contract
 

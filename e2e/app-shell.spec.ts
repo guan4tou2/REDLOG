@@ -167,6 +167,8 @@ test.describe.serial('view-reachability', () => {
     await page.locator('[data-view-btn="scope"][role="tab"]').click()
     await expect(viewRoot()).toHaveAttribute('data-view', 'scope')
     await expect(page.getByTestId('targets-scope-header')).toBeVisible()
+    await page.locator('[data-view-btn="targets"][role="tab"]').click()
+    await expect(viewRoot()).toHaveAttribute('data-view', 'targets')
     await page.getByTestId('targets-scope-settings').click()
     await expect(viewRoot()).toHaveAttribute('data-view', 'settings')
   })
@@ -186,6 +188,8 @@ test.describe.serial('view-reachability', () => {
     await page.locator('[data-view-btn="bookmarks"][role="tab"]').click()
     await expect(viewRoot()).toHaveAttribute('data-view', 'bookmarks')
     await expect(header).toBeVisible()
+    await page.locator('[data-view-btn="screenshots"][role="tab"]').click()
+    await expect(viewRoot()).toHaveAttribute('data-view', 'screenshots')
   })
 
   test('the terminal names itself, explains its two capture tracks, and shows the active pane\'s state line', async () => {
@@ -229,24 +233,6 @@ test.describe.serial('view-reachability', () => {
     await expect(page.getByTestId('dashboard-scope-state')).toHaveText('Not set')
     await page.getByTestId('dashboard-open-activity').click()
     await expect(viewRoot()).toHaveAttribute('data-view', 'search')
-  })
-
-  test('scope, loot and bookmarks are reachable from the tab strip of their workspace', async () => {
-    await page.locator('nav [data-view-btn="targets"]').first().click()
-    for (const view of ['targets', 'scope']) {
-      const tab = page.locator(`[data-view-btn="${view}"][role="tab"]`)
-      await expect(tab, `${view} has no tab in the targets workspace`).toBeVisible()
-      await tab.click()
-      await expect(viewRoot()).toHaveAttribute('data-view', view)
-    }
-
-    await page.locator('nav [data-view-btn="screenshots"]').first().click()
-    for (const view of ['screenshots', 'loot', 'bookmarks']) {
-      const tab = page.locator(`[data-view-btn="${view}"][role="tab"]`)
-      await expect(tab, `${view} has no tab in the evidence workspace`).toBeVisible()
-      await tab.click()
-      await expect(viewRoot()).toHaveAttribute('data-view', view)
-    }
   })
 
   test('the transcript is reached through the Activity input/output tab', async () => {

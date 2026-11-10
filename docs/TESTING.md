@@ -31,7 +31,9 @@ selection and headers before changing product code or skipping database tests.
 | --- | --- | --- |
 | One behavior | `npx vitest run test/<file>.test.ts` | The selected domain, storage or rendered behavior; native modules must already use the Node ABI. |
 | Local iteration | `npm run test:watch` | Vitest watch mode; same ABI requirement. |
+| Changed source unit tests | `npm run test:changed` | Rebuilds for Node, then uses Vitest's import graph against `origin/main`; no automatic pass when no tests are selected. |
 | Source app journey | `npm run build` then `npm run e2e -- e2e/<file>.spec.ts` | Real Electron/IPC interaction with isolated test homes. |
+| Core source workflows | `npm run build` then `npm run e2e:core` | Export/delivery, evidence/query/Session/return and network recovery; 33 cases in 3 files. Other affected journeys must be selected explicitly. |
 | Whole source journey suite | `npm run e2e` | All source journeys; explicit platform/installed-only skips remain skips. |
 | Package contents/signature | `npm run verify:package-resources` after packaging | Shipped adapters, verifier, manifests and macOS resource seal. |
 | Installed app | Set `REDLOG_PACKAGED_APP` and run the relevant `e2e/packaged-*.spec.ts` | The actual installed executable and shipped resources. |
@@ -141,6 +143,22 @@ Settings → About → Debug log, reproduce, attach `~/.redlog/debug.log`. It ho
 event names and sizes only, never command output.
 
 ## Keep the suite focused
+
+日常修改先用 `test:changed`，需要跨 IPC／磁碟證據時選該功能的 E2E；共用查詢／交付流程可用 `e2e:core`。完整 `npm test` 與 CI Electron shards 保留原規則，不以核心選取取代提交／發版門檻。上輪的 118 是一次整合驗收選取，不是每次改動都要重跑的固定流程。
+
+`test:changed` 需要已更新的 `origin/main`。Vitest 依 import graph 選取；動態檔案、Shell hooks、打包資源不保證被追蹤，仍按本文件的 coverage owners 明確指定。設定或 package 改動可能觸發全量，沒有選到測試也不代表功能已驗證；不使用 `passWithNoTests` 或刪除平台測試製造通過。
+
+`e2e:core` 不包含首次接入、插件／AI 安裝、OS 權限與全部視覺操作；相關變更仍加選 `first-run`、`plugin-explore`、`capture-settings-interaction`、`official-agent-capture` 或安裝版 smoke。它不另造一套簡化 fixture，也不把單一按鈕的存在當作完整使用流程。
+
+已收斂的重複守門與保留的行為責任：
+
+| 移除的 source-string suite | 保留／補強的行為測試 |
+| --- | --- |
+| `shared-event-filter`（6 cases） | `shared-filter-views`：各視圖實際請求與搜尋分頁；`events-ipc-count-match`：偽造 renderer scope 不得擴大 direct／paged／parsed／HTTP 查詢 |
+| `transcript-completeness`（3 cases） | `transcript-completeness-ui`：讀取失敗、下一頁失敗、已載入內容與部分 Markdown |
+| `http-flow-query-contract`（2 cases） | `http-auto-load`、`http-flow-page`：實際 flow 分頁、失敗、上限與載入更多 |
+
+App-shell 的五個子頁籤往返由 Targets／Evidence 兩條原有流程負責，不再額外重播相同導航。HTTP seed 每次檢查寫入結果，呈現以 locator assertion 等待，不用三段固定 sleep。
 
 Prefer observable behavior over assertions about source spelling. Keep unique
 regressions for lost evidence, wrong attribution, privacy and terminal control.
