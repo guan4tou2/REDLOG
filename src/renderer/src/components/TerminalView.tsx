@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Terminal } from '@xterm/xterm'
+import { Terminal, type IDisposable } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
@@ -677,6 +677,12 @@ function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, onUnhoo
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
   const searchRef = useRef<SearchAddon | null>(null)
+  // False while xterm has paused its renderer; see the effect that sets it.
+  const visibleRef = useRef(true)
+  const fitIfVisible = useCallback((): void => {
+    if (!visibleRef.current) return
+    try { fitRef.current?.fit() } catch {}
+  }, [])
   const { t } = useI18n()
   // Set only when this pane's shell takes no hook, i.e. its commands are not
   // being recorded. A capture gap has to be visible where the operator is
@@ -824,15 +830,40 @@ function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, onUnhoo
       if (!runtime.alive) onExit()
     }
 
+    // xterm 6 pauses its renderer while the screen is off-screen and applies a
+    // resize only on resuming, yet its scrollbar already sizes the scroll range
+    // from the new row count. Output that lands in between clamps the scroll
+    // position and parks the pane in the middle of its scrollback. Hidden tabs
+    // and a terminal just re-attached to a new container are both paused, so
+    // refit only after xterm has painted again: that is the first moment its
+    // dimensions are current, and it does not depend on which of the two
+    // observers is told first.
+    const screen = term.element?.querySelector('.xterm-screen')
+    const observeVisibility = !!screen && typeof IntersectionObserver !== 'undefined'
+    visibleRef.current = !retained || !observeVisibility
+    let rendered: IDisposable | undefined
+    const visibility = observeVisibility
+      ? new IntersectionObserver((entries) => {
+        rendered?.dispose()
+        rendered = undefined
+        if (!entries[entries.length - 1].isIntersecting) { visibleRef.current = false; return }
+        rendered = term.onRender(() => {
+          rendered?.dispose()
+          visibleRef.current = true
+          fitIfVisible()
+        })
+        term.refresh(0, term.rows - 1)
+      }, { threshold: 0 })
+      : null
+    if (visibility && screen) visibility.observe(screen)
+
     const resizeObserver = new ResizeObserver(() => {
-      requestAnimationFrame(() => {
-        try { fitAddon.fit() } catch {}
-      })
+      requestAnimationFrame(fitIfVisible)
     })
     resizeObserver.observe(el)
 
     requestAnimationFrame(() => {
-      try { fitAddon.fit() } catch {}
+      fitIfVisible()
       if (retained) return
       window.redlog.terminal.spawn(id, term.cols || 80, term.rows || 24, shellId)
         .then(r => {
@@ -853,6 +884,11 @@ function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, onUnhoo
     })
 
     return () => {
+      // A frame queued by this mount must not refit a terminal that the next
+      // mount has already moved into its own container.
+      visibleRef.current = false
+      rendered?.dispose()
+      visibility?.disconnect()
       resizeObserver.disconnect()
       runtime.handlers = null
       if (!runtime.alive) disposePaneRuntime(id)
@@ -864,19 +900,17 @@ function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, onUnhoo
   useEffect(() => {
     if (!termRef.current) return
     termRef.current.options.fontSize = fontSize
-    fitRef.current?.fit()
-  }, [fontSize])
+    fitIfVisible()
+  }, [fontSize, fitIfVisible])
 
   useEffect(() => {
     if (active && fitRef.current) {
       requestAnimationFrame(() => {
-        try {
-          fitRef.current?.fit()
-          termRef.current?.focus()
-        } catch {}
+        fitIfVisible()
+        try { termRef.current?.focus() } catch {}
       })
     }
-  }, [active])
+  }, [active, fitIfVisible])
 
   return (
     <div className="w-full h-full flex flex-col">
