@@ -65,6 +65,27 @@ HTTP 和 Screenshots 沿用共同載入元件；載入狀態有可讀名稱。
 
 後續推送前五道檢查全部通過，完整 unit 為 4,342 passed / 28 skipped（134.94s）；production build 通過。
 
+## Read-state matrix across views（#558 第四項）
+
+第二個 journey 補其餘各 view 的「空／載入／失敗＋重試」矩陣，同一單一隔離程序、同一 IPC 注入模式，英文與繁中各跑一輪：
+
+| view | 通道 | pending | empty | failed |
+| --- | --- | --- | --- | --- |
+| dashboard | `config:get` | `dashboard-loading` 骨架 | （專案無資料＝first-run 畫面，另由 first-run 驗收覆蓋） | （各讀取 `.catch()` 吞掉，無整體錯誤畫面） |
+| targets | `events:aggregateTargets` | （設計上不閃空狀態：pending 時空狀態與錯誤都不出現） | `targets.empty` | `targets-load-error` |
+| loot | `events:queryPage`(loot) | spinner | `loot.empty` | `loot-load-error` |
+| timeline | `events:queryPage` | spinner（common.loading） | `timeline-empty-filtered`（預設帶 active conditions；`timeline.noEvents` 是無條件分支） | `timeline-load-failed` |
+| transcript | `events:queryPage` | `transcript.loading` 文本 | `transcript.empty` | `transcript-load-error` |
+| scope | `scope:getObservationCount`（五通道 `Promise.all` 之一） | spinner | `scope.observationsTitle` 標題（讀完才渲染） | `scope.loadFailed`（無 testid，以 role=alert＋retry 定位） |
+
+「部分」狀態兩個真實案例：targets 主讀取成功而 `config:get` 失敗 → `targets-scope-failed`（in-scope 未知，出自己的重試）；dashboard 在有資料的專案上 scope 計數失敗 → issue store 的 `dashboard-issue-scope`（`issues.scopeUnknown`），並透過該列自己的「重新檢查」修復按鈕走完復原，unknown 標題消失、轉為未設定範圍的 pending 狀態。search 的部分讀取（index／types／casts 失敗與 partial warning）已由 `e2e/ui-closeout.spec.ts` 覆蓋，不在本檔重複。
+
+**terminal 不進矩陣**：shell 立即建立，`terminal:list` 讀取失敗只是多開一個 tab，view 自身沒有空／載入／錯誤狀態可言；若未來出現清單語意再補。
+
+實作上的三個釘子：live admission 繞過 stub 通道（列經 `events:matchIds` 直接進 timeline 的 map），故 timeline 腳位起 `matchIds` 一併 stub 為 `[]` 到旅程結束；空／失敗分辨的關鍵是 pending release 走 resolver 佇列（一次 release 所有掛上讀取，transcript 分桶與 scope 五通道都是 `Promise.all`）；每個 pending 腳位結束時把該通道還原成 plain 值，否則同通道的下一輪 retry 會撞上還掛著的 `Promise.all` 成員。
+
+2026-11-04 macOS arm64 驗證：`npx playwright test e2e/layout-read-states.spec.ts` 2 passed（12.2秒）。
+
 ## Linux CI closeout
 
 PR #445 首次 Linux E2E 發現日期時間原生輸入欄位在窄容器仍超寬，以及舊 Target 清除測試依賴 chip 文字外層結構。
