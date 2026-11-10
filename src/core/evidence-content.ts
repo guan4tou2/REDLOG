@@ -11,6 +11,7 @@ const FIELDS: Array<{
   ref?: string
   encoding?: string
 }> = [
+  { field: 'event_data', path: '$' },
   { field: 'command', path: '$.command' }, { field: 'stdout', path: '$.stdout', ref: '$.stdout_ref' },
   { field: 'stderr', path: '$.stderr', ref: '$.stderr_ref' }, { field: 'full', path: '$.full' },
   { field: 'preview', path: '$.preview' }, { field: 'tool_input', path: '$.tool_input' }, { field: 'output', path: '$.output' },
@@ -105,7 +106,7 @@ function refOf(projectId: string, eventId: string, field: ContentField, source: 
 export function describeEventContent(projectId: string, eventId: string): ContentResult<ContentDescriptor[]> {
   return result(() => {
     const o = owner(projectId, eventId), descriptors: ContentDescriptor[] = []
-    for (const field of FIELDS) {
+    for (const field of FIELDS.filter(field => field.field !== 'event_data')) {
       const p = probe(o, field)
       if (field.field === 'stderr' && !p.kind && !p.ref && castRange(o, 'stdout')) continue
       // #550: a command that produced more than the inline threshold has its
@@ -126,6 +127,20 @@ export function describeEventContent(projectId: string, eventId: string): Conten
         continue
       const found = result(() => withSource(o, field, (source, partial) => ({ field: field.field, status: 'available' as const, ref: refOf(projectId, eventId, field.field, source), bytes: source.bytes, format: source.format, capture: partial ? 'partial' as const : 'unknown' as const })))
       descriptors.push(found.ok ? found.value : { field: field.field, status: found.status, ref: null, bytes: 0, format: 'utf8', capture: 'unknown' })
+    }
+    if (descriptors.length === 0 && o.agent_type === 'agent') {
+      const expected = ['user_message', 'assistant_message', 'thinking'].includes(o.subtype) ? 'full'
+        : o.subtype === 'tool_result' ? 'output' : o.subtype === 'tool_call' ? 'tool_input' : null
+      if (expected) descriptors.push({ field: expected, status: 'not-captured', ref: null, bytes: 0, format: 'utf8', capture: 'unknown' })
+    }
+    // Unknown providers remain readable after their adapter is disabled or
+    // removed. The fallback uses the same project/version-bound byte service;
+    // it never replaces a known field's missing or unreadable status.
+    if (descriptors.length === 0) {
+      const field = FIELDS.find(field => field.field === 'event_data')!
+      descriptors.push(withSource(o, field, (source, partial) => ({ field: field.field,
+        status: 'available', ref: refOf(projectId, eventId, field.field, source),
+        bytes: source.bytes, format: source.format, capture: partial ? 'partial' : 'unknown' })))
     }
     return descriptors
   })

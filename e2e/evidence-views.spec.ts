@@ -40,16 +40,17 @@ test.describe.serial('http-history-view: HTTP history is a flat per-request log'
   test.beforeAll(async () => {
     await resetShared()
     await openTestProject(page, 'http-history')
-    await page.waitForTimeout(1500)
     base = `http://127.0.0.1:${readFileSync(join(tmpHome, '.redlog', 'api-port'), 'utf-8').trim()}`
     token = readFileSync(join(tmpHome, '.redlog', 'api-token'), 'utf-8').trim()
 
-    const post = (data: Record<string, unknown>): Promise<Response> =>
-      fetch(`${base}/api/events/seed`, {
+    const post = async (data: Record<string, unknown>): Promise<void> => {
+      const response = await fetch(`${base}/api/events/seed`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({ agent_type: 'scanner', data })
       })
+      expect(response.ok).toBe(true)
+    }
     // A handful of flows against one host, then one lone request to another —
     // seeded last, so it is the newest row and lands at the top of the log.
     for (let i = 0; i < 8; i++) {
@@ -63,9 +64,7 @@ test.describe.serial('http-history-view: HTTP history is a flat per-request log'
       url: 'http://other.example/login', host: 'other.example' })
     await post({ subtype: 'http_response', flow_id: 'lone', status: 302,
       url: 'http://other.example/login', host: 'other.example', duration_ms: 30 })
-    await page.waitForTimeout(800)
     await openView(page, 'http_history')
-    await page.waitForTimeout(800)
   })
 
 
@@ -335,12 +334,12 @@ test.describe('activity-return-state', () => {
     expect(Math.abs(after - before), `scrollTop ${before} → ${after}`).toBeLessThan(4)
   })
 
-  async function seedShell(base: string, token: string, prefix: string, n: number): Promise<void> {
+  async function seedShell(base: string, token: string, prefix: string, n: number, withOutput = false): Promise<void> {
     for (let i = 0; i < n; i++) {
       const r = await fetch(`${base}/api/events/seed`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({ agent_type: 'shell', data: { subtype: 'command_start', command: `echo ${prefix}-${i}` } })
+        body: JSON.stringify({ agent_type: 'shell', data: { subtype: withOutput ? 'command_end' : 'command_start', command: `echo ${prefix}-${i}`, ...(withOutput ? { stdout: 'before line\n'.repeat(7000) + 'marker-tail-find\n' + 'after line\n'.repeat(7000), stderr: '', exit_code: 0 } : {}) } })
       })
       expect(r.ok).toBe(true)
     }
@@ -356,13 +355,25 @@ test.describe('activity-return-state', () => {
     await openTestProject(page, 'reader-return')
     const base = `http://127.0.0.1:${readFileSync(join(tmpHome, '.redlog', 'api-port'), 'utf8').trim()}`
     const token = readFileSync(join(tmpHome, '.redlog', 'api-token'), 'utf8').trim()
-    await seedShell(base, token, 'marker', 12)
+    await seedShell(base, token, 'marker', 12, true)
 
     await openView(page, 'search')
     await page.getByTestId('search-input').fill('marker')
+    await page.getByTestId('activity-source').selectOption('shell')
     await page.getByTestId('activity-row').nth(3).click()
     await page.getByTestId('activity-read').first().click()
     await expect(page.getByTestId('activity-reader')).toBeVisible()
+    const reader = page.getByTestId('activity-reader')
+    await reader.getByRole('combobox', { name: 'Content field' }).selectOption('stdout')
+    const find = reader.getByRole('searchbox', { name: 'Find in content' })
+    await find.fill('marker-tail-find')
+    await find.press('Enter')
+    const output = reader.locator('[data-content-state] pre')
+    await expect(output.locator('mark')).toHaveText('marker-tail-find')
+    await output.evaluate(el => { el.scrollTop = 180 })
+    const readingPosition = await output.evaluate(el => el.scrollTop)
+    expect(readingPosition).toBeGreaterThan(100)
+    const readingWindow = await output.textContent()
 
     await page.getByTestId('reader-locate').click()
     await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'timeline')
@@ -374,6 +385,10 @@ test.describe('activity-return-state', () => {
     await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'search')
     await expect(page.getByTestId('activity-reader')).toBeVisible()
     await expect(page.getByTestId('search-input')).toHaveValue('marker')
+    await expect(page.getByTestId('activity-source')).toHaveValue('shell')
+    await expect(find).toHaveValue('marker-tail-find')
+    await expect(output).toHaveText(readingWindow!)
+    expect(Math.abs(await output.evaluate(el => el.scrollTop) - readingPosition)).toBeLessThan(4)
     await expect(page.locator('[data-testid="activity-row"][aria-expanded="true"]')).toHaveCount(1)
     expect(await page.evaluate(() => localStorage.getItem('redlog-timeline-focus-event'))).toBe(selected)
   })

@@ -1,3 +1,7 @@
+import { useTimelineLive } from '../hooks/useTimelineLive'
+import { useTimelineInspector } from '../hooks/useTimelineInspector'
+import { useTimelineViewport, useTimelineZoom } from '../hooks/useTimelineViewport'
+import { useTimelinePages } from '../hooks/useTimelinePages'
 import { Button } from './Button'
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { readSelectedEventId, writeSelectedEventId } from '../lib/selectedEvent'
@@ -21,7 +25,6 @@ import { TimelineLanesHeader, countByLane, laneCountText } from './timeline/Time
 import { TypeLegend } from './timeline/TypeLegend'
 import { TimelineEventInspector } from './timeline/TimelineEventInspector'
 import { TimelineDetailBar } from './timeline/TimelineDetailBar'
-import type { ReaderMode } from './EventContentReader'
 import { resolveTimelineKey } from '../lib/timelineKeys'
 import { Rows3 } from 'lucide-react'
 import { formatTime } from '../lib/time'
@@ -154,7 +157,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // Keyed on rawEvents so it still finds a result the agent-turn collapse hides;
   // a partner not yet paged in is simply absent — a graceful no-op.
   const toolPairByUseId = useMemo(() => buildToolPairIndex(rawEvents), [rawEvents])
-  const [selectedEvent, setSelectedEvent] = useState<RedLogEvent | null>(null)
+  const { selectedEvent, selectedRef, setSelectedEvent, detailOpen, setDetailOpen, readerMode, setReader } = useTimelineInspector()
   // A selection made in another view that is older than the drawn range: it is
   // loaded back to and opened exactly like an explicit "open in Timeline".
   const [restoreFocusId, setRestoreFocusId] = useState<string | undefined>(undefined)
@@ -167,20 +170,11 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // Selecting shows the bar; the Inspector body is `detailOpen`, opened on
   // purpose (double-click, Enter, the bar's Details) or by arriving from
   // another page. It is only ever open while something is selected.
-  const [detailOpen, setDetailOpen] = useState(false)
-  // The saved-content Reader, held here so the bar and the body reach the
-  // same one. It belongs to one event (another selection reads as closed in
-  // the same render, so no Reader mounts for the wrong event) and to an open body.
-  const [readerState, setReaderState] = useState<{ id: string | null; mode: ReaderMode }>({ id: null, mode: 'closed' })
-  const readerMode: ReaderMode = readerState.id === (selectedEvent?.id ?? null) ? readerState.mode : 'closed'
-  const selectedIdForReader = selectedEvent?.id ?? null
-  const setReader = useCallback((mode: ReaderMode) => setReaderState({ id: selectedIdForReader, mode }), [selectedIdForReader])
-  useEffect(() => { if (!detailOpen) setReaderState({ id: null, mode: 'closed' }) }, [detailOpen])
+
   // The one contiguous range the panel draws: every admitted row from the
   // newest down to `pageCursor`, the keyset position the next page starts at.
   // A shared-filter change starts a new generation; a reply to an older one
   // is dropped, so rows for the old filter never land under the new one.
-  const [hasMore, setHasMore] = useState(false)
   // First to last loaded row, for the toolbar's "whole session" span. A loop,
   // not Math.max(...rows): a spread of a large page overflows the call stack.
   const loadedBounds = useMemo(() => {
@@ -204,12 +198,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
     const last = loadedBounds ? Math.max(projectBounds.last, loadedBounds.hi) : projectBounds.last
     return last - first
   }, [projectBounds, loadedBounds])
-  const pageCursorRef = useRef<string | null>(null)
-  // The same cursor as state, for what is computed from it (earlier matches).
-  const [pageCursor, setPageCursorState] = useState<string | null>(null)
-  const setPageCursor = (c: string | null): void => { pageCursorRef.current = c; setPageCursorState(c) }
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
   // "N of M": M counted over the same predicates as the pages. Pending until
   // it arrives, failed (with retry) rather than guessed.
   const [liveError, setLiveError] = useState<{ ids: RedLogEvent[] } | null>(null)
@@ -226,26 +214,17 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // v0.6.91 S4: persisted zoom. Clamped to [MIN_ZOOM, 6] so a garbage value in
   // storage — or one saved when zoom could go below the fit — can't produce a
   // broken layout.
-  const [zoom, setZoom] = useState<number>(() => {
-    try {
-      const raw = localStorage.getItem('redlog-timeline-zoom')
-      const n = raw ? parseFloat(raw) : NaN
-      return Number.isFinite(n) && n >= MIN_ZOOM && n <= 6 ? n : 1
-    } catch { return 1 }
-  })
+  const [zoom, setZoom] = useTimelineZoom(MIN_ZOOM)
   const [cluster, setCluster] = useState<{ x: number; y: number; events: RedLogEvent[] } | null>(null)
-  const [view, setView] = useState({ left: 0, width: 100 })
   const [drag, setDrag] = useState<{ x0: number; x1: number; w: number } | null>(null)
   // Where to put the view once a zoom from the minimap has re-rendered: a time
   // for a drag-to-zoom across the strip, a track fraction for a resized 重點視窗.
-  const pendingView = useRef<{ t0: number } | { frac: number } | null>(null)
   // A 重點視窗 resize in progress. The zoom lands on release; until then this is
   // the outline the operator is dragging.
   const [winDrag, setWinDrag] = useState<MinimapWindow | null>(null)
   // Cluster-item click needs a two-frame handshake: bump zoom so the events
   // split into distinct dots, then center on the picked one after re-render.
   // We can't scroll synchronously because TRACK_W hasn't grown yet.
-  const pendingCenterTs = useRef<number | null>(null)
   // v0.6.91 S4: hidden-lane visibility now persists across mounts so an
   // operator who solo'd "shell" doesn't lose that filter after a reload.
   // Stored as a JSON array of lane ids; unknown ids (renamed lanes from an
@@ -398,7 +377,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
     'redlog-timeline-follow-mode', true,
     { parse: (raw) => raw !== '0', serialize: (v) => (v ? '1' : '0') }
   )
-  const [atRightEdge, setAtRightEdge] = useState(true)
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000)
@@ -534,7 +512,6 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   const sortedRef = useRef<RedLogEvent[]>([])
   const { didPan, handleMouseDown } = useTimelinePan(scrollRef, () => setCluster(null))
   const didScrollToNow = useRef(false)
-  const pendingZoomAnchor = useRef<{ frac: number; cursorX: number } | null>(null)
   const { t } = useI18n()
 
   const laneLabels = useMemo(
@@ -651,10 +628,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // `created_at` so a late row with an older wall-clock could not be skipped;
   // a keyset never skips a row past its cursor, and a row that lands inside
   // the drawn range arrives on the live channel below.
-  const PAGE_ROWS = 200
   const MATCH_CHUNK = 1000
-  const selectedRef = useRef<RedLogEvent | null>(null)
-  selectedRef.current = selectedEvent
 
   const mergeRows = (rows: RedLogEvent[]): void => {
     for (const e of rows) {
@@ -678,140 +652,23 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
       .catch(() => { if (gen === generationRef.current) setLiveError({ ids: [] }) })
   }
 
-  const loadFirstPage = useCallback((): void => {
-    const gen = ++generationRef.current
-    eventsMapRef.current = new Map()
-    sortedRef.current = []
-    setPageCursor(null)
-    setEvents([])
-    setHasMore(false)
-    setLoadError(null)
-    setLiveError(null)
-    setOutsideFilter(false)
-    setLoading(true)
-    requestTotal(gen)
-    window.redlog.events.queryPage({ ...eventFilterRef.current, excludeHousekeeping: true, limit: PAGE_ROWS })
-      .then((page) => {
-        if (gen !== generationRef.current) return
-        mergeRows(page.items)
-        setEvents([...sortedRef.current])
-        setHasMore(page.hasMore)
-        setPageCursor(page.nextCursor)
-        setLoading(false)
-        checkSelection(gen)
-      })
-      .catch((err: unknown) => {
-        if (gen !== generationRef.current) return
-        setLoadError(err instanceof Error ? err.message : String(err))
-        setLoading(false)
-      })
-    // Reads only refs and state setters, so one instance serves every generation.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const filterKey = JSON.stringify(eventFilter)
-  useEffect(() => { loadFirstPage() }, [filterKey, loadFirstPage])
-
-  const loadMore = useCallback(() => {
-    if (loading || !hasMore || !pageCursorRef.current) return
-    const gen = generationRef.current
-    const from = pageCursorRef.current
-    setLoadError(null)
-    setLoading(true)
-    window.redlog.events.queryPage({
-      ...eventFilterRef.current, excludeHousekeeping: true, limit: PAGE_ROWS, cursor: from
-    })
-      .then((page) => {
-        if (gen !== generationRef.current) return
-        // A load-back moved the range past this page while it was in flight;
-        // its rows are already drawn and its cursor would step backwards.
-        if (pageCursorRef.current !== from) { setLoading(false); return }
-        mergeRows(page.items)
-        setEvents([...sortedRef.current])
-        setHasMore(page.hasMore)
-        setPageCursor(page.nextCursor)
-        setLoading(false)
-      })
-      .catch((err: unknown) => {
-        if (gen !== generationRef.current) return
-        setLoadError(err instanceof Error ? err.message : String(err))
-        setLoading(false)
-      })
-  }, [loading, hasMore])
-
-  const admitLiveRef = useRef<(batch: RedLogEvent[]) => Promise<void>>(async () => {})
-  useEffect(() => {
-    // v0.6.95 P0-4c + P1-12: batch listener + sorted-insert. Main sends
-    // `events:new-batch` with an Array<RedLogEvent> once per frame per burst;
-    // this handler folds them into the sorted array in one shot, then does a
-    // single setEvents / re-render.
-    let scheduled = false
-    const flush = (): void => {
-      scheduled = false
-      // Shallow copy so React sees a new reference and re-renders.
-      setEvents([...sortedRef.current])
-    }
-    // v0.11.7 (AUDIT W19): back off from a per-frame flush once the set is big.
-    //
-    // Every flush replaces the events array, which invalidates every memo on
-    // the panel. Measured at 131,833 events those cost ~65 ms per pass even
-    // with the search index gone lazy (laneEvents 18, effectsById 33, maxZoom
-    // 11, clusters and bins on top). A requestAnimationFrame schedule asks for
-    // that 60 times a second, so during heavy ingest the panel spends every
-    // frame recomputing and none of it painting.
-    //
-    // Under the threshold a frame-accurate flush is imperceptible and worth
-    // keeping — a live tail should look live. Over it, coalescing to ~4 Hz
-    // costs at most a quarter-second of staleness on a view whose own
-    // freshness badge counts in seconds, and hands the frames back.
-    const BIG_SET = 5_000
-    const SLOW_FLUSH_MS = 250
-    const scheduleFlush = (): void => {
-      if (scheduled) return
-      scheduled = true
-      if (sortedRef.current.length > BIG_SET) window.setTimeout(flush, SLOW_FLUSH_MS)
-      else requestAnimationFrame(flush)
-    }
-    // Spec 038 (research R10): every live row is admitted by the persistence
-    // layer, over the shared filter and the housekeeping rule, so the rows
-    // drawn live are the rows the pages would have returned. The renderer's
-    // own housekeeping check is gone: HOUSEKEEPING_SQL is the one rule.
-    const admit = async (batch: RedLogEvent[]): Promise<void> => {
-      const gen = generationRef.current
-      const admitted = new Set<string>()
-      for (let i = 0; i < batch.length; i += MATCH_CHUNK) {
-        const ids = batch.slice(i, i + MATCH_CHUNK).map((e) => e.id)
-        const hit = await window.redlog.events.matchIds({ ids, filter: eventFilterRef.current, excludeHousekeeping: true })
-        for (const id of hit) admitted.add(id)
-      }
-      if (gen !== generationRef.current) return
-      let added = 0
-      for (const e of batch) {
-        if (!admitted.has(e.id)) continue
-        // Same id arriving again is either a duplicate broadcast (both channels
-        // fire) or an updated payload. Overwrite the map entry but leave the
-        // sorted array position alone — id-based sort tiebreak keeps it stable.
-        if (!eventsMapRef.current.has(e.id)) {
-          added++
-          binarySearchInsert(sortedRef.current, e)
-        }
-        eventsMapRef.current.set(e.id, e)
-      }
+  const { pageCursorRef, pageCursor, hasMore, loading, loadError, loadFirstPage, loadMore, acceptPage } = useTimelinePages(eventFilterRef, generationRef, {
+    reset: gen => {
+      eventsMapRef.current = new Map()
+      sortedRef.current = []
+      setEvents([])
       setLiveError(null)
-      if (added === 0) return
-      // Each admitted row is one more of M, so N never passes M.
-      admitCount(added)
-      scheduleFlush()
-    }
-    admitLiveRef.current = admit
-    const unsubBatch = window.redlog.events.onNewBatch((batch) => {
-      if (!batch.length) return
-      admit(batch).catch(() => setLiveError({ ids: batch }))
-    })
-    return () => {
-      unsubBatch()
-    }
-  }, [])
+      setOutsideFilter(false)
+      requestTotal(gen)
+    },
+    rows: rows => { mergeRows(rows); setEvents([...sortedRef.current]) },
+    ready: checkSelection
+  })
+
+  const admitLiveRef = useTimelineLive(eventFilterRef, generationRef, eventsMapRef, sortedRef, {
+    publish: setEvents, count: admitCount,
+    failed: batch => setLiveError(batch ? { ids: batch } : null)
+  })
 
   const { timeStart, timeEnd, ticks } = useMemo(() => computeDomainBounds(events), [events])
 
@@ -876,6 +733,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
     [filterQueryDebounced]
   )
   const parsedQuery = parseOutcome?.ok ? parseOutcome.parsed : null
+  const filterKey = JSON.stringify(eventFilter)
   const queryKey = parsedQuery ? `${JSON.stringify(parsedQuery)}|${filterKey}` : null
 
   // Which loaded rows the query matches, checked by id and cached per query
@@ -1088,9 +946,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
 
   // v0.6.91 S4: persist zoom, hidden lanes, and selected-event id so a
   // Timeline reload lands the operator back where they were.
-  useEffect(() => {
-    try { localStorage.setItem('redlog-timeline-zoom', String(zoom)) } catch { /* ignore */ }
-  }, [zoom])
+
   useEffect(() => {
     // v0.6.99 A: hidden-lanes is per-project. An operator who solo'd "shell"
     // for triage on Project A shouldn't carry that into Project B's fresh
@@ -1198,37 +1054,14 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // array — far cheaper than the DOM nodes it removes. The buffer is one
   // viewport on each side, which is what stops nodes popping in during a drag
   // and covers the gap between a scroll event and this state landing.
+  const { view, atRightEdge, updateView, afterLayout, pendingView, pendingCenterTs, pendingZoomAnchor } = useTimelineViewport(
+    scrollRef, { width: TRACK_W, start: timeStart, end: timeEnd, map: timeMap },
+    { hasMore, loading, loadMore }, { enabled: followMode, revision: events }
+  )
   const visibleClusters = useMemo(
     () => filterVisibleClusters(clusters, TRACK_W, view.left, view.width),
     [clusters, view.left, view.width, TRACK_W]
   )
-
-  const updateView = useCallback(() => {
-    const el = scrollRef.current
-    if (!el || TRACK_W <= 0) return
-    setView({ left: (el.scrollLeft / TRACK_W) * 100, width: Math.min(100, (el.clientWidth / TRACK_W) * 100) })
-    // v0.6.91 W2: track "am I at the right edge" so the follow badge can flip
-    // between LIVE and behind. 10px slop covers scrollbar rounding and pixel
-    // snapping across DPRs.
-    setAtRightEdge(el.scrollLeft + el.clientWidth >= TRACK_W - 10)
-    // Auto-load-more when scrolled to the earliest edge (audit #3). Was
-    // click-driven with a "load more" chip; users hitting the left edge with
-    // more history to pull would just see empty space and not realise there
-    // was a button.
-    if (hasMore && !loading && el.scrollLeft < 80) loadMore()
-  }, [TRACK_W, hasMore, loading, loadMore])
-
-  // v0.6.91 W2: follow mode auto-scroll. When enabled AND the operator was
-  // at the right edge, snap to the new right edge whenever fresh events land
-  // (or the track's virtual width grows). We piggyback on `events` changing
-  // rather than the onNew callback so a batch of events arriving in the same
-  // frame only produces one scroll write.
-  useEffect(() => {
-    if (!followMode || !atRightEdge) return
-    const el = scrollRef.current
-    if (!el || TRACK_W <= 0) return
-    el.scrollLeft = Math.max(0, TRACK_W - el.clientWidth)
-  }, [events, followMode, atRightEdge, TRACK_W])
 
   // Drag across the minimap to zoom the main view to that window; click to jump.
   const onMinimapDown = useCallback((e: React.MouseEvent) => {
@@ -1464,37 +1297,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
 
   // After a cursor-anchored zoom re-renders with the new TRACK_W, restore the
   // scroll so the timestamp that was under the pointer stays under the pointer.
-  useLayoutEffect(() => {
-    const a = pendingZoomAnchor.current
-    const el = scrollRef.current
-    if (!a || !el) return
-    pendingZoomAnchor.current = null
-    el.scrollLeft = a.frac * TRACK_W - a.cursorX
-  }, [TRACK_W])
-
-  // After a minimap drag-to-zoom re-renders, place the selected window at the
-  // left edge; then refresh the viewport indicator whenever the track resizes.
-  useLayoutEffect(() => {
-    const el = scrollRef.current
-    if (el && pendingView.current) {
-      const pv = pendingView.current
-      pendingView.current = null
-      const span = (timeEnd - timeStart) || 1
-      const x = 'frac' in pv ? pv.frac * TRACK_W : ((pv.t0 - timeStart) / span) * TRACK_W
-      el.scrollLeft = Math.max(0, Math.min(x, TRACK_W - el.clientWidth))
-    }
-    // Cluster-item click scheduled a center-scroll for after zoom re-render.
-    if (el && pendingCenterTs.current !== null) {
-      const ts = pendingCenterTs.current
-      pendingCenterTs.current = null
-      el.scrollLeft = Math.max(0, Math.min(toX(ts) - el.clientWidth / 2, TRACK_W - el.clientWidth))
-    }
-    updateView()
-    // v0.11.6 (V7): `timeMap` is in the deps because toggling gap compression
-    // changes the ts→px mapping without changing TRACK_W. Without it the
-    // scroll position stays put while everything under it moves, which lands
-    // the operator on empty track.
-  }, [TRACK_W, timeMap, updateView, timeStart, timeEnd, loading])
+  useLayoutEffect(afterLayout, [afterLayout, loading])
 
   const toggleBand = useCallback((band: BandId) => {
     setCollapsedBands((prev) => {
@@ -1804,12 +1607,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
         if (loadBackCancelRef.current) return
         if (gen !== generationRef.current) { setLoadBack(null); return }
         // Another page landed first; ask again from where the range now ends.
-        if (pageCursorRef.current !== from) continue
-        mergeRows(page.items)
+        if (!acceptPage(page, gen, from)) continue
         loaded += page.items.length
-        setEvents([...sortedRef.current])
-        setHasMore(page.hasMore)
-        setPageCursor(page.nextCursor)
         setLoadBack({ state: 'loading', loaded })
         if (!page.hasMore) break
       }
@@ -1820,7 +1619,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
       if (!loadBackCancelRef.current && gen === generationRef.current) setLoadBack(quiet ? null : { state: 'failed', eventId })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scrollToEvent])
+  }, [scrollToEvent, acceptPage])
 
   useEffect(() => {
     if (loadBack?.state !== 'loading') return
@@ -2112,7 +1911,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
                 onClick={() => {
                   const batch = liveError.ids
                   setLiveError(null)
-                  if (batch.length > 0) void admitLiveRef.current(batch).catch(() => setLiveError({ ids: batch }))
+                  if (batch.length > 0) void admitLiveRef.current(batch).catch(() => {})
                   else loadFirstPage()
                 }}
                 className="underline hover:text-amber-200"

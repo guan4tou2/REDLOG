@@ -106,6 +106,20 @@ test.describe('packaged app', () => {
         await page.waitForSelector('[data-testid="view-root"]', { timeout: 30_000 })
         await expectAppBuild(app,page,process.env.REDLOG_EXPECTED_BUILD)
         if (process.env.REDLOG_EXPECTED_BUILD) await openView(page,'dashboard')
+        // An installed RedLog may already own its default port. This isolated
+        // smoke must not stop the operator's proxy or depend on that port being
+        // free. Use the real settings bridge to restart only this candidate.
+        const reservation = http.createServer()
+        await new Promise<void>(resolve => reservation.listen(0, '127.0.0.1', resolve))
+        const isolatedProxyPort = (reservation.address() as { port: number }).port
+        await new Promise<void>((resolve, reject) => reservation.close(error => error ? reject(error) : resolve()))
+        await page.evaluate(async port => {
+          const cfg = await window.redlog.config.get()
+          await window.redlog.config.save({ ...cfg, httpCapture: { ...(cfg.httpCapture as object), port } })
+          await window.redlog.httpCapture.stop()
+          const status = await window.redlog.httpCapture.start()
+          if (status.state !== 'running') throw new Error(status.error ?? 'Isolated HTTP capture did not start')
+        }, isolatedProxyPort)
       })
 
       await test.step('the built-in terminal records a command with its exit code and a cast', async () => {

@@ -115,7 +115,8 @@ const hasFileRef = (value: unknown): boolean =>
 export function hasContentReader(e: Pick<RedLogEvent, 'agentType' | 'data'>): boolean {
   const d = (e.data ?? {}) as Record<string, unknown>
   if (e.agentType === 'shell' && d.subtype === 'command_end') return hasFileRef(d.stdout_ref) || hasFileRef(d.stderr_ref)
-  if (e.agentType !== 'scanner') return false
+  if (e.agentType === 'agent') return ['user_message', 'assistant_message', 'thinking', 'tool_call', 'tool_result'].includes(String(d.subtype))
+  if (e.agentType !== 'scanner') return !hasSpecificEventDetail(e) && Object.keys(d).length > 0
   return hasSavedBody(d.request_body as InlineBody, d.request_body_ref)
     || hasSavedBody(d.response_body as InlineBody, d.response_body_ref)
     || hasSavedBody(d.ws_body as InlineBody, d.ws_body_ref)

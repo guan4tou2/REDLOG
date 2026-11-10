@@ -104,14 +104,16 @@ export interface ExportAttachmentCounts {
 
 /** Events whose captured output or body was cut short. The Event is still
  *  exported; the reader needs to know the text they see is not all of it. */
-export function countTruncatedOutputs(events: readonly RedLogEvent[]): number {
-  return events.filter(event => capturedContentIsPartial(event.data)).length
+export function countTruncatedOutputs(events: Iterable<RedLogEvent>): number {
+  let count = 0
+  for (const event of events) if (capturedContentIsPartial(event.data)) count++
+  return count
 }
 
 /** Terminal recordings among these Events that the app never closed, and the
  *  commands they left running: recovered after a crash, so cut off rather than
  *  finished (#290). */
-export function countInterrupted(events: readonly RedLogEvent[]): { recordings: number; commands: number } {
+export function countInterrupted(events: Iterable<RedLogEvent>): { recordings: number; commands: number } {
   let recordings = 0, commands = 0
   for (const e of events) {
     if (e.agentType !== 'shell') continue
@@ -123,8 +125,10 @@ export function countInterrupted(events: readonly RedLogEvent[]): { recordings: 
 
 /** Recording pauses among these Events. Counts what the export carries: a
  *  selection that filters system Events out will not show its pauses. */
-export function countPauseWindows(events: readonly RedLogEvent[]): number {
-  return events.filter(e => e.agentType === 'system' && e.data.subtype === 'recording_paused').length
+export function countPauseWindows(events: Iterable<RedLogEvent>): number {
+  let count = 0
+  for (const event of events) if (event.agentType === 'system' && event.data.subtype === 'recording_paused') count++
+  return count
 }
 
 /** `reason` of a `capture_gap` that names none: the AI-source pause gap. */
@@ -138,7 +142,7 @@ const UNSPECIFIED_GAP_REASON = 'unspecified'
  *  delivery is unknown, not loss, so it is never added into `skippedUnits`
  *  whatever count it carries. Units differ by source, so there is no total
  *  across reasons. Like pause windows this counts what the export carries. */
-export function countCaptureGaps(events: readonly RedLogEvent[]): CaptureGapCount[] {
+export function countCaptureGaps(events: Iterable<RedLogEvent>): CaptureGapCount[] {
   const byReason = new Map<string, CaptureGapCount>()
   for (const e of events) {
     if ((e.agentType !== 'scanner' && e.agentType !== 'system') || e.data.subtype !== 'capture_gap') continue
@@ -156,18 +160,23 @@ export function countCaptureGaps(events: readonly RedLogEvent[]): CaptureGapCoun
 
 /** Flows among these Events that have SSE chunks or WebSocket messages and
  *  neither a request nor a response — what a HAR holds in `partialFlows`. */
-export function countPartialHttpFlows(events: readonly RedLogEvent[]): number {
+export function countPartialHttpFlows(events: Iterable<RedLogEvent>): number {
   return partialHttpFlowSegments(events).size
 }
 
-function partialHttpFlowSegments(events: readonly RedLogEvent[]): Map<string, RedLogEvent[]> {
-  const segmented = new Map<string, RedLogEvent[]>()
+function partialHttpFlowSegments(events: Iterable<RedLogEvent>, selectedIds: ReadonlySet<string> = new Set(), excluded: (event: RedLogEvent) => boolean = () => false) {
+  const segmented = new Map<string, { first: { timestamp: number; targetId: string | null }; url?: string; selected: boolean; allExcluded: boolean }>()
   const exchanged = new Set<string>()
   for (const event of events) {
     const flowId = event.data.flow_id
     if (typeof flowId !== 'string' || !flowId) continue
     if (event.data.subtype === 'http_response_chunk' || event.data.subtype === 'ws_message') {
-      segmented.set(flowId, [...(segmented.get(flowId) ?? []), event])
+      const row = segmented.get(flowId) ?? { first: { timestamp: event.timestamp, targetId: event.targetId }, selected: false, allExcluded: true }
+      if (event.timestamp < row.first.timestamp) row.first = { timestamp: event.timestamp, targetId: event.targetId }
+      if (row.url === undefined && typeof event.data.url === 'string') row.url = event.data.url
+      row.selected ||= selectedIds.has(event.id)
+      row.allExcluded &&= excluded(event)
+      segmented.set(flowId, row)
     } else if (event.data.subtype === 'http_request_start' || event.data.subtype === 'http_response') exchanged.add(flowId)
   }
   for (const flowId of exchanged) segmented.delete(flowId)
@@ -181,20 +190,20 @@ function partialHttpFlowSegments(events: readonly RedLogEvent[]): Map<string, Re
  *  cannot match a flow that has neither, and neither can a host or text filter
  *  a flow whose segments name no URL. */
 export function countPartialHttpFlowsOutside(
-  snapshotEvents: readonly RedLogEvent[],
+  snapshotEvents: Iterable<RedLogEvent>,
   selectedIds: ReadonlySet<string>,
   bounds: { since?: number; before?: number; targetId?: string; http?: { method?: string; statusPrefix?: string; host?: string; text?: string } },
   excluded: (event: RedLogEvent) => boolean
 ): number {
   if (bounds.http?.method || bounds.http?.statusPrefix) return 0
   let outside = 0
-  for (const segments of partialHttpFlowSegments(snapshotEvents).values()) {
-    if (segments.some(event => selectedIds.has(event.id)) || segments.every(excluded)) continue
-    const first = segments.reduce((a, b) => (b.timestamp < a.timestamp ? b : a))
+  for (const segments of partialHttpFlowSegments(snapshotEvents, selectedIds, excluded).values()) {
+    if (segments.selected || segments.allExcluded) continue
+    const first = segments.first
     if (bounds.since != null && first.timestamp < bounds.since) continue
     if (bounds.before != null && first.timestamp > bounds.before) continue
     if (bounds.targetId && first.targetId?.toLowerCase() !== bounds.targetId.toLowerCase()) continue
-    const url = segments.map(event => event.data.url).find((value): value is string => typeof value === 'string')
+    const url = segments.url
     const host = bounds.http?.host?.toLowerCase()
     const text = bounds.http?.text?.toLowerCase()
     if ((host || text) && !url) continue
@@ -205,7 +214,7 @@ export function countPartialHttpFlowsOutside(
   return outside
 }
 
-export function countReferencedAttachments(events: readonly RedLogEvent[]): number {
+export function countReferencedAttachments(events: Iterable<RedLogEvent>): number {
   const references = new Set<string>()
   for (const event of events) {
     if (event.agentType === 'screenshot' && typeof event.data.filename === 'string') references.add(`screenshot:${event.data.filename}`)
@@ -224,7 +233,7 @@ export function countReferencedAttachments(events: readonly RedLogEvent[]): numb
 /** Bundle paths of the operator-added artifacts these events carry, minus
  *  those whose event scope masking drops. */
 export function referencedArtifacts(
-  events: readonly RedLogEvent[],
+  events: Iterable<RedLogEvent>,
   options: { scope?: ScopeForSanitize; maskOutOfScope?: boolean } = {}
 ): Set<string> {
   const out = new Set<string>()
@@ -239,7 +248,7 @@ export function referencedArtifacts(
 
 export function countExportAttachments(
   projectDir: string,
-  events: readonly RedLogEvent[],
+  events: Iterable<RedLogEvent>,
   options: { scope?: ScopeForSanitize; maskOutOfScope?: boolean; exclude?: ReadonlySet<string> } = {}
 ): ExportAttachmentCounts {
   const referencedScreenshots = new Set<string>()
@@ -456,17 +465,20 @@ export function createExportPlan(
   return Object.freeze(plan)
 }
 
+/** The JSON-array digest without materializing the array or its serialized text. */
+export function fingerprintSequence(values: Iterable<unknown>): { digest: string; count: number } {
+  const hash = createHash('sha256').update('[')
+  let count = 0
+  for (const value of values) {
+    if (count++) hash.update(',')
+    hash.update(JSON.stringify(value) ?? 'null')
+  }
+  return { digest: hash.update(']').digest('hex'), count }
+}
+
 export function fingerprintValue(value: unknown): string {
-  const hash = createHash('sha256')
-  if (Array.isArray(value)) {
-    hash.update('[')
-    for (let index = 0; index < value.length; index++) {
-      if (index) hash.update(',')
-      hash.update(JSON.stringify(value[index]) ?? 'null')
-    }
-    hash.update(']')
-  } else hash.update(JSON.stringify(value))
-  return hash.digest('hex')
+  if (Array.isArray(value)) return fingerprintSequence(value).digest
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex')
 }
 
 export type ExportPlanClaim =
@@ -519,7 +531,7 @@ export function takeExportSnapshot(): ExportSnapshot {
 }
 
 /** Count exchanges, not request+response rows, against the frozen policy. */
-export function countOutOfScopeHttpFlows(events: readonly RedLogEvent[], scope: { targets: string[]; excludeTargets: string[] }): number {
+export function countOutOfScopeHttpFlows(events: Iterable<RedLogEvent>, scope: { targets: string[]; excludeTargets: string[] }): number {
   const flows = new Set<string>()
   for (const event of events) {
     const d = event.data

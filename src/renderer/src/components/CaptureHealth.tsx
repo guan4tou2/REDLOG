@@ -98,9 +98,10 @@ function coreCommandState(readiness: ReturnType<typeof computeCaptureReadiness>,
  *  complete when a command source is active; HTTP(S) speaks the single HTTP
  *  vocabulary from httpCaptureState, and carries what the mitmproxy row used
  *  to say beneath it — that row is not repeated while this line is shown. */
-function CoreCaptureLine({ readiness, http, listenAddress, source, sources, proxyError, unsavedGapEvents, verification, onNavigate, age, t }: {
+function CoreCaptureLine({ readiness, readUnknown, http, listenAddress, source, sources, proxyError, unsavedGapEvents, verification, onNavigate, age, t }: {
   readiness: ReturnType<typeof computeCaptureReadiness>
   http: HttpCaptureState
+  readUnknown: boolean
   /** host:port the managed proxy is listening on, or null when it is not up (#254). */
   listenAddress: string | null
   source: CaptureSourceInfo | undefined
@@ -118,17 +119,17 @@ function CoreCaptureLine({ readiness, http, listenAddress, source, sources, prox
   const { cmd, cmdLast, ownShell } = coreCommandState(readiness, sources)
   const verified = http === 'ready' && !!verification
   const httpWord = http === 'ready' ? t(verified ? 'capture.httpVerified' : 'capture.httpAwaitingTraffic') : t(`capture.http.${http}`)
-  const cmdTone: Tone = cmd === 'ready' ? 'ok' : cmd === 'error' ? 'err' : 'off'
-  const httpTone: Tone = verified ? 'ok' : http === 'ready' || http === 'starting' ? 'warn' : http === 'failed' ? 'err' : 'off'
+  const cmdTone: Tone = readUnknown ? 'warn' : cmd === 'ready' ? 'ok' : cmd === 'error' ? 'err' : 'off'
+  const httpTone: Tone = verified ? 'ok' : http === 'ready' || http === 'starting' || http === 'recorded' || http === 'unknown' ? 'warn' : http === 'failed' ? 'err' : 'off'
   return (
     <ul data-testid="capture-core" className="text-xs">
-      <li data-testid="capture-core-commands" data-state={cmd} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-redlog-border-subtle px-pad py-2 min-h-11">
+      <li data-testid="capture-core-commands" data-state={readUnknown ? 'unknown' : cmd} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-redlog-border-subtle px-pad py-2 min-h-11">
         <button onClick={() => onNavigate(settingsTarget('hooks'))} className="w-28 shrink-0 min-h-8 text-left text-sm font-medium text-redlog-text hover:underline">{t('capture.group.commands')}</button>
         <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
           {ownShell && <Tag tone="neutral">{ownShell.installed === true
             ? t('capture.tag.hookInstalled', { shell: ownShellVars(ownShell).shell || t('capture.tag.shell') })
             : t('capture.tag.hookMissing')}</Tag>}
-          {cmd === 'ready' && <Tag tone="ok">{t('capture.tag.running')}</Tag>}
+          {!readUnknown && cmd === 'ready' && <Tag tone="ok">{t('capture.tag.running')}</Tag>}
           {/* Installed is not recording (FR-015): what the operator's own shell
               has actually sent, beside the tags that say what is set up. */}
           {ownShell && (
@@ -137,7 +138,7 @@ function CoreCaptureLine({ readiness, http, listenAddress, source, sources, prox
             </span>
           )}
         </span>
-        <StatusLight tone={cmdTone}>{t(`capture.state.${cmd}`)}</StatusLight>
+        <StatusLight tone={cmdTone}>{t(readUnknown ? 'capture.http.unknown' : `capture.state.${cmd}`)}</StatusLight>
         <span data-testid="capture-core-commands-age" className="w-16 text-right font-mono tabular-nums text-redlog-text-faint">{age(cmdLast)}</span>
       </li>
       <li data-testid="capture-core-http" data-state={http} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-pad py-2 min-h-11">
@@ -199,7 +200,7 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
   // Same three colours as every other row: running, failed, or neither.
   const httpDot = (s: HttpCaptureState): string =>
     s === 'ready' ? 'bg-emerald-500'
-      : s === 'failed' ? 'bg-red-500' : 'bg-redlog-elevated-hover'
+      : s === 'failed' ? 'bg-red-500' : s === 'recorded' || s === 'unknown' || s === 'starting' ? 'bg-amber-500' : 'bg-redlog-elevated-hover'
 
   // v0.9.7: this card is an exception report, not an inventory. It used to
   // list all eight sources unconditionally, so the healthy majority pushed the
@@ -253,7 +254,8 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
   // its explanation, and the separate line is gone.
   const http = httpCaptureState(
     sources.find((s) => s.id === 'mitmproxy'),
-    capture.managedHttpProxy
+    capture.managedHttpProxy,
+    unknown === undefined ? 'ok' : 'unknown'
   )
 
   // "Something is wrong", and nothing else. A source that is switched off is a
@@ -561,6 +563,7 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
         </div>
         {/* #217: both core captures, always named. */}
         <CoreCaptureLine
+          readUnknown={unknown !== undefined}
           readiness={readiness}
           http={http}
           verification={capture.managedHttpProxy?.httpsVerification}

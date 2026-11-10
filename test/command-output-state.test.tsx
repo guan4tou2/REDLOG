@@ -30,6 +30,7 @@ const CASES: Array<[string, Record<string, unknown>, CommandOutputState]> = [
   ['bracketed span, nothing printed', { ...base, source: 'builtin-terminal', io: { off: 0, len: 0 } }, 'empty'],
   ['built-in terminal, no span', { ...base, source: 'builtin-terminal' }, 'unbracketed'],
   ['unbracketed span', { ...base, source: 'builtin-terminal', io: { off: 0, len: 9, unbracketed: true } }, 'unbracketed'],
+  ['captured empty stdout', { ...base, stdout: '', stderr: '' }, 'empty'],
   ['external shell', { ...base, source: 'auto-relay' }, 'not-captured']
 ]
 
@@ -43,11 +44,11 @@ describe('commandOutputState', () => {
 // note for a state (inline text, a saved reference with its own button) is not
 // listed.
 const TRANSCRIPT_KEY: Partial<Record<CommandOutputState, string>> = {
-  recorded: 'transcript.note.recorded', empty: 'transcript.note.empty', saved: 'transcript.note.saved',
+  recorded: 'transcript.note.recorded', empty: 'content.empty', saved: 'transcript.note.saved',
   unbracketed: 'transcript.note.unbracketed', 'not-captured': 'transcript.note.uncaptured'
 }
 const TIMELINE_KEY: Partial<Record<CommandOutputState, string>> = {
-  recorded: 'timeline.detail.ioOnDisk', empty: 'timeline.detail.ioNone',
+  recorded: 'timeline.detail.ioOnDisk', empty: 'content.empty',
   unbracketed: 'timeline.detail.ioUnbracketed', 'not-captured': 'timeline.detail.ioNotCaptured'
 }
 
@@ -74,7 +75,7 @@ describe('one command_end, one answer in every reader', () => {
   })
 
   it.each(CASES.filter(([, , state]) => TIMELINE_KEY[state]))('timeline: %s', (_name, data, state) => {
-    render(<IoAbsenceNote builtin={data.source === 'builtin-terminal'} io={data.io as Record<string, unknown> | undefined} />)
+    render(<IoAbsenceNote data={data} builtin={data.source === 'builtin-terminal'} io={data.io as Record<string, unknown> | undefined} />)
     expect(screen.getByText(new RegExp(TIMELINE_KEY[state]!.replace('.', '\\.')))).toBeTruthy()
   })
 })

@@ -1052,7 +1052,7 @@ export default function TranscriptView({ onOpenInTimeline, active = true, readin
                         ? 'text-amber-400/80 border-amber-600/30 bg-amber-900/10'
                         : 'text-amber-400/80 border-amber-600/30 bg-amber-900/10'
                 }`}>
-                  {b.outputNote === 'pending' ? '⏳ ' : ''}{t(`transcript.note.${b.outputNote}`, { size: fmtBytes(b.outputBytes ?? 0) })}
+                  {b.outputNote === 'pending' ? '⏳ ' : ''}{t(b.outputNote === 'empty' ? 'content.empty' : `transcript.note.${b.outputNote}`, { size: fmtBytes(b.outputBytes ?? 0) })}
                 </p>
               )}
               {savedSource && (big || b.outputNote === 'recorded' || reading) && <div className="px-2.5 pb-2 min-w-0">

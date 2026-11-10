@@ -48,11 +48,11 @@ describe('httpCaptureState', () => {
     expect(httpCaptureState(undefined, proxy('failed'))).toBe('failed')
   })
 
-  it('counts recorded requests over process state, for an externally run proxy', () => {
+  it('keeps past traffic separate from unconfirmed external proxy operation', () => {
     // An operator running their own mitmproxy has no managed process at all.
-    // Traffic came through; the card must not call that stopped.
-    expect(httpCaptureState(src({ lastEventAt: 1 }), proxy('stopped'))).toBe('ready')
-    expect(httpCaptureState(src({ lastEventAt: 1 }), undefined)).toBe('ready')
+    // The record exists; neither installation failure nor current capture is inferred from it.
+    expect(httpCaptureState(src({ lastEventAt: 1 }), proxy('stopped'))).toBe('recorded')
+    expect(httpCaptureState(src({ lastEventAt: 1 }), undefined)).toBe('recorded')
     expect(httpCaptureState(src({ lastEventAt: null }), undefined)).toBe('stopped')
   })
 
@@ -65,7 +65,7 @@ describe('httpCaptureState', () => {
     expect(httpCaptureState(src({ installed: false, lastEventAt: 1 }), proxy('running'))).toBe('ready')
     // Same rule when the probe has a reason to be wrong: an operator's own
     // mitmproxy, outside RedLog, with nothing of ours on PATH.
-    expect(httpCaptureState(src({ installed: false, lastEventAt: 1 }), proxy('unavailable'))).toBe('ready')
+    expect(httpCaptureState(src({ installed: false, lastEventAt: 1 }), proxy('unavailable'))).toBe('recorded')
     // Never fed and uninstalled, with nothing running, is still unset.
     expect(httpCaptureState(src({ installed: false, lastEventAt: null }), proxy('stopped'))).toBe('unset')
   })
@@ -86,7 +86,7 @@ describe('httpCaptureState', () => {
   })
 
   it('survives a health payload with no mitmproxy row', () => {
-    expect(httpCaptureState(undefined, proxy('running'))).toBe('stopped')
+    expect(httpCaptureState(undefined, proxy('running'))).toBe('ready')
     expect(httpCaptureState(undefined, proxy('unavailable'))).toBe('unset')
     expect(httpCaptureState(undefined, undefined)).toBe('stopped')
   })
@@ -94,7 +94,7 @@ describe('httpCaptureState', () => {
   it('never throws, whatever combination arrives', () => {
     const sourceStates: HttpCaptureSource['state'][] = ['ready', 'unset', 'off', 'error']
     const proxyStates: HttpProxyStatus['state'][] = ['stopped', 'starting', 'running', 'unavailable', 'failed']
-    const valid = new Set(['unset', 'off', 'stopped', 'starting', 'listening', 'ready', 'failed'])
+    const valid = new Set(['unset', 'off', 'stopped', 'starting', 'listening', 'ready', 'failed', 'recorded', 'unknown'])
     for (const s of sourceStates) {
       for (const p of proxyStates) {
         for (const installed of [true, false, undefined]) {

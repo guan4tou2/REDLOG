@@ -23,6 +23,16 @@ it.each([false,true])('preserves exact JSON and NDJSON bytes (PII scrub %s)', as
     expect(fs.readdirSync(dir)).toHaveLength(4)
   } finally {fs.rmSync(dir,{recursive:true,force:true})}
 })
+it('streams the Timeline envelope without duplicate amendment payloads', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-timeline-worker-'))
+  try {
+    const meta = { selection: { kind: 'all' }, exportPlan: metadata.exportPlan }
+    for (const rows of [[], events]) {
+      const file = await writeApprovedEventExport(dir, 'timeline', rows, meta, false, () => true)
+      expect(fs.readFileSync(file, 'utf8')).toBe(JSON.stringify({ ...meta, events: rows, amendments: [] }, null, 2))
+    }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }) }
+})
 it('hashes event arrays exactly as before without a giant intermediate JSON string', () => {
   expect(fingerprintValue(events)).toBe(createHash('sha256').update(JSON.stringify(events)).digest('hex'))
 })

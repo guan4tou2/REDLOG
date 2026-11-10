@@ -17,8 +17,8 @@ const scrub=text=>{for(const [re,value] of replacements)text=text.replace(re,val
 const write=text=>{const buffer=Buffer.from(scrub(text));let offset=0;while(offset<buffer.length)offset+=fs.writeSync(workerData.fd,buffer,offset,buffer.length-offset)};
 const metadata=workerData.metadata;
 let suffix='';
-if(workerData.format==='json'){
- const document=JSON.stringify({config:metadata.config,events:[],exportedAt:metadata.exportedAt,exportPlan:metadata.exportPlan},null,2);
+if(workerData.format!=='ndjson'){
+ const document=JSON.stringify(workerData.format==='timeline'?{...metadata,events:[],amendments:[]}:{config:metadata.config,events:[],exportedAt:metadata.exportedAt,exportPlan:metadata.exportPlan},null,2);
  const index=document.lastIndexOf('"events": []')+'"events": '.length;
  write(document.slice(0,index));suffix=document.slice(index+2);
 }
@@ -32,7 +32,7 @@ parentPort.on('message',message=>{
    }
    parentPort.postMessage({ready:true});
   }else if(message.end){
-   if(workerData.format==='json')write((count?'\\n  ]':'[]')+suffix);
+   if(workerData.format!=='ndjson')write((count?'\\n  ]':'[]')+suffix);
    fs.fsyncSync(workerData.fd);parentPort.postMessage({done:true});
   }
  }catch(error){parentPort.postMessage({error:error.message});}
@@ -41,8 +41,8 @@ parentPort.postMessage({ready:true});
 `
 
 export async function writeApprovedEventExport(
-  outDir: string, format: 'json' | 'ndjson', events: readonly RedLogEvent[],
-  metadata: { config: unknown; exportedAt: string; exportPlan: { id: string; fingerprint: string } } | null,
+  outDir: string, format: 'json' | 'ndjson' | 'timeline', events: Iterable<RedLogEvent>,
+  metadata: { config?: unknown; exportedAt?: string; exportPlan: { id: string; fingerprint: string }; selection?: unknown; window?: {fromMs: number; toMs: number} } | null,
   scrubPii: boolean, isAllowed: (completed?: boolean) => boolean
 ): Promise<string> {
   fs.mkdirSync(outDir, { recursive: true })
@@ -56,8 +56,10 @@ export async function writeApprovedEventExport(
   }
   const identity = fs.fstatSync(fd, { bigint: true })
   const ownsDestination = () => {
-    const named = fs.lstatSync(file, { bigint: true })
-    return named.isFile() && named.ino === identity.ino && named.dev === identity.dev
+    try {
+      const named = fs.lstatSync(file, { bigint: true })
+      return named.isFile() && named.ino === identity.ino && named.dev === identity.dev
+    } catch { return false }
   }
   let worker: Worker | undefined
   let closed = false
@@ -85,9 +87,18 @@ export async function writeApprovedEventExport(
       worker!.once('exit', exited)
     })
     await response()
-    for (let offset = 0; offset < events.length; offset += 16) {
+    let batch: RedLogEvent[] = []
+    for (const event of events) {
+      batch.push(event)
+      if (batch.length < 16) continue
       const ready = response()
-      worker.postMessage({ rows: events.slice(offset, offset + 16) })
+      worker.postMessage({ rows: batch })
+      batch = []
+      await ready
+    }
+    if (batch.length) {
+      const ready = response()
+      worker.postMessage({ rows: batch })
       await ready
     }
     const done = response()

@@ -473,6 +473,18 @@ export function openReadOnlyDB(): Database.Database {
   return new Database(currentDbPath, { readonly: true })
 }
 
+/** A worker may inspect an existing project but cannot migrate or append to it. */
+export function openReadonlyProjectDB(projectDir: string, engagementId: string): void {
+  closeDB()
+  const dbPath = path.join(projectDir, 'timeline.db')
+  db = new Database(dbPath, { readonly: true, fileMustExist: true })
+  roDb = db
+  currentDbPath = dbPath
+  currentProjectDir = projectDir
+  boundEngagement = engagementId
+  generation++
+}
+
 export function getDB(): Database.Database {
   if (!db) throw new Error('Database not initialized')
   return db
@@ -509,7 +521,7 @@ export function closeDB(): void {
   generation++
   currentProjectDir = null
   currentDbPath = null
-  try { writable?.close() } finally { readonly?.close() }
+  try { writable?.close() } finally { if (readonly !== writable) readonly?.close() }
 }
 
 export function getProjectDir(): string {
