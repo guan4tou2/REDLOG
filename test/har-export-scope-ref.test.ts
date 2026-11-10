@@ -21,7 +21,8 @@ vi.mock('../src/core/sanitize', () => ({ getSanitizedFields: () => ({}) }))
 const { exportHar } = await import('../src/core/har-export')
 
 const REF = { sha256: 'c'.repeat(64), file: `${'c'.repeat(64)}.body`, size: 4_000_000, encoding: 'base64' }
-const SECRET = 'T1VULU9GLVNDT1BFLUJPRFk='
+// Built at run time: a literal base64 string here reads to secret scanners as a credential.
+const SECRET = Buffer.from('OUT-OF-SCOPE-BODY').toString('base64')
 
 function flow(targetId: string | null): RedLogEvent[] {
   const base = { engagementId: 'e', sessionId: 's', operatorId: 'o', agentType: 'scanner', hostname: 'h', sourceIP: '10.0.0.1', createdAt: 1 }
