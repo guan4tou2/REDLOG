@@ -213,7 +213,14 @@ function buildBlocks(events: Ev[], names: Record<string, string>, t: (k: string,
         // (#591): nothing printed is not "not captured", and output saved by
         // reference is not either.
         const state = commandOutputState(d)
-        if (state === 'recorded') { outputNote = 'recorded'; outputBytes = io?.len }
+        // `inline` with no text left (the relay's clean() stripped it all, or
+        // the cap cut it) still counted bytes: it is output the row cannot
+        // show, so it is the saved-output state, not a row with nothing.
+        if (state === 'inline') {
+          outputNote = 'saved'
+          outputBytes = Number(d.stdout_bytes ?? 0) + Number(d.stderr_bytes ?? 0) || undefined
+        }
+        else if (state === 'recorded') { outputNote = 'recorded'; outputBytes = io?.len }
         else if (state === 'empty') outputNote = 'empty'
         else if (state === 'saved') outputNote = 'saved'
         else if (state === 'unbracketed') outputNote = 'unbracketed'

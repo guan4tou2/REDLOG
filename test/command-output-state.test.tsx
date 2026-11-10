@@ -74,6 +74,22 @@ describe('one command_end, one answer in every reader', () => {
     expect(await screen.findByText(new RegExp(TRANSCRIPT_KEY[state]!.replace('.', '\\.')))).toBeTruthy()
   })
 
+  // `inline` with no text to show: the relay strips terminal control sequences
+  // and can be left with '' while the byte count says output existed. Matching
+  // no render branch, the row used to show neither output nor a note.
+  it.each([
+    ['stdout cut at the cap, no text left', { ...base, stdout: '', stdout_bytes: 5000, stdout_truncated: true }],
+    ['stdout stripped to nothing', { ...base, stdout: '', stderr: '', stdout_bytes: 12, stderr_bytes: 0 }],
+    ['stderr stripped to nothing', { ...base, stdout: '', stderr: '', stdout_bytes: 0, stderr_bytes: 7 }]
+  ])('transcript: inline with no text still says where the output is: %s', async (_name, data) => {
+    expect(commandOutputState(data)).toBe('inline')
+    installTranscript(data)
+    render(<TranscriptView />)
+    await screen.findByText('$ ls')
+    fireEvent.click(await screen.findByTestId('transcript-toggle'))
+    expect(await screen.findByText(/transcript\.note\.saved/)).toBeTruthy()
+  })
+
   it.each(CASES.filter(([, , state]) => TIMELINE_KEY[state]))('timeline: %s', (_name, data, state) => {
     render(<IoAbsenceNote data={data} builtin={data.source === 'builtin-terminal'} io={data.io as Record<string, unknown> | undefined} />)
     expect(screen.getByText(new RegExp(TIMELINE_KEY[state]!.replace('.', '\\.')))).toBeTruthy()
