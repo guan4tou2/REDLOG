@@ -1,7 +1,7 @@
-import { test, expect, type ElectronApplication, type Page } from '@playwright/test'
+import { test, expect, type ElectronApplication, type Page, type Locator } from '@playwright/test'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { launchWithTempHome, openView, resizeMainWindow } from './helpers'
+import { launchWithTempHome, openView, openSettingsPage, resizeMainWindow } from './helpers'
 
 // Visual reference set (spec 069 audit): the main pages, one data set, one
 // locale, at three presentations — written to test-results/visual/<variant>/
@@ -50,6 +50,22 @@ async function capture(path: string): Promise<void> {
   writeFileSync(path, Buffer.from(png, 'base64'))
 }
 
+async function expectHairline(locator: Locator): Promise<void> {
+  // Chromium snaps borders to device pixels at body zoom 0.9. A declared 1px
+  // border can report 0.555556px on Retina; compare with the same CSS width at
+  // the same zoom instead of mixing declared CSS pixels and snapped widths.
+  const width = await locator.evaluate(el => {
+    const reference = document.createElement('span')
+    reference.style.cssText = 'position:absolute;visibility:hidden;border-top:1px solid'
+    el.append(reference)
+    const expected = getComputedStyle(reference).borderTopWidth
+    const actual = getComputedStyle(el).borderTopWidth
+    reference.remove()
+    return { actual, expected }
+  })
+  expect(width.actual).toBe(width.expected)
+}
+
 async function setZoom(zoom: number): Promise<void> {
   const win = await app.browserWindow(page)
   await win.evaluate((w, z) => w.webContents.setZoomFactor(z), zoom)
@@ -61,6 +77,17 @@ test.beforeAll(async () => {
   app = launched.app
   page = launched.page
   tmpHome = launched.tmpHome
+  // UI references must not capture the operator's live network addresses.
+  await app.evaluate(({ ipcMain, BrowserWindow }) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      const send = win.webContents.send.bind(win.webContents)
+      win.webContents.send = (channel, ...args) => {
+        if (channel !== 'ip:status') send(channel, ...args)
+      }
+    }
+    ipcMain.removeHandler('ip:getStatus')
+    ipcMain.handle('ip:getStatus', () => ({ ipSafety: 'safe', publicIP: '192.0.2.10', internalIP: '192.0.2.20', lastCheck: 0 }))
+  })
   await page.evaluate(() => localStorage.setItem('redlog-locale', 'zh-TW'))
 
   // A picker with something in it, captured before any project is open.
@@ -124,6 +151,31 @@ test.beforeAll(async () => {
 test.afterAll(async () => { if (app) await app.close() })
 
 test.describe.serial('visual-reference', () => {
+  test('card spacing follows both density settings without changing the shared palette', async () => {
+    await openView(page, 'dashboard')
+    const rootDensity = await page.evaluate(() => document.documentElement.getAttribute('data-density'))
+    try {
+      for (const [density, pad] of [['comfortable', '16px'], ['tight', '10px']] as const) {
+        await page.evaluate(d => document.documentElement.setAttribute('data-density', d), density)
+        for (const id of ['ip-status-card', 'dashboard-record-summary']) {
+          const card = page.getByTestId(id)
+          await expect(card).toHaveCSS('padding-left', pad)
+          await expect(card).toHaveCSS('padding-top', pad)
+          await expect(card).toHaveCSS('border-radius', '8px')
+          await expectHairline(card)
+          await expect(card).toHaveCSS('border-top-color', 'rgb(116, 116, 124)')
+          await expect(card).toHaveCSS('background-color', 'rgb(26, 26, 29)')
+        }
+        await expect(page.getByTestId('capture-card').locator(':scope > div').first()).toHaveCSS('padding-left', pad)
+      }
+    } finally {
+      await page.evaluate(d => {
+        if (d === null) document.documentElement.removeAttribute('data-density')
+        else document.documentElement.setAttribute('data-density', d)
+      }, rootDensity)
+    }
+  })
+
   for (const variant of VARIANTS) {
     test(`captures the main pages: ${variant.name}`, async () => {
       test.setTimeout(180_000)
@@ -140,9 +192,45 @@ test.describe.serial('visual-reference', () => {
             const width = await page.getByTestId('dashboard-header').evaluate(el => (el.parentElement as HTMLElement).offsetWidth)
             expect(width).toBeLessThanOrEqual(980)
           }
+          if (view === 'settings' && await page.getByTestId('settings-content').getAttribute('data-page') !== 'home') {
+            await page.getByTestId('settings-back').click()
+          }
           // Lazy panes show a quiet loading line first; let them settle.
           await page.waitForTimeout(900)
           await capture(join(dir, `${String(i + 1).padStart(2, '0')}-${view}.png`))
+          if (view === 'settings') {
+            await openSettingsPage(page, 'plugins')
+            await expect(page.getByTestId('plugin-search')).toBeVisible()
+            const firstPlugin = page.locator('[data-testid^="plugin-details-"]').first()
+            await expect(firstPlugin).toBeVisible()
+            await expect(firstPlugin).toHaveCSS('border-radius', '8px')
+            await expect(firstPlugin).toHaveCSS('background-color', 'rgb(26, 26, 29)')
+            await capture(join(dir, '13-plugins-list.png'))
+            await firstPlugin.click()
+            await expect(page.locator('section[data-testid^="plugin-detail-"]')).toBeVisible()
+            const captureCard = page.locator('[data-testid^="plugin-card-capture-"]')
+            await expect(captureCard).toHaveCSS('border-radius', '8px')
+            await expect(captureCard).toHaveCSS('background-color', 'rgb(26, 26, 29)')
+            await capture(join(dir, '14-plugin-detail.png'))
+            await page.locator('[data-testid^="plugin-back-"]').click()
+            await page.getByTestId('settings-back').click()
+          }
+          if (view === 'terminal') {
+            await expect(page.getByTestId('terminal-header').locator('..')).toHaveCSS('background-color', 'rgb(18, 18, 20)')
+            await page.getByTestId('terminal-about-open').click()
+            const dialog = page.getByTestId('terminal-about')
+            await expect(dialog).toHaveCSS('border-radius', '12px')
+            await expectHairline(dialog)
+            await expect(dialog).toHaveCSS('background-color', 'rgb(26, 26, 29)')
+            const fits = await dialog.evaluate(el => {
+              const box = el.getBoundingClientRect()
+              return box.left >= 0 && box.right <= window.innerWidth && box.top >= 0 && box.bottom <= window.innerHeight
+            })
+            expect(fits, 'terminal dialog stays inside the window at larger text').toBe(true)
+            await capture(join(dir, '12-terminal-dialog.png'))
+            await page.keyboard.press('Escape')
+            await expect(dialog).toHaveCount(0)
+          }
         }
       } catch (e) {
         console.log(`[DBG] ${variant.name}: ${(e as Error).message.split('\n').slice(0, 5).join(' | ')}`)

@@ -474,7 +474,7 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
           onClose={() => setConfirmGrant(null)}
           label={consentTitle}
           testId="plugin-consent-dialog"
-          panelClassName="bg-redlog-surface border border-red-900/50 rounded-lg p-4 max-w-md mx-4"
+          panelClassName="bg-redlog-surface border border-red-900/50 rounded-xl p-pad max-w-md mx-4"
         >
           <h3 className="text-sm font-semibold text-red-400 mb-1">{consentTitle}</h3>
           <p className="text-xs text-redlog-text-dim mb-2">{consentBody}</p>

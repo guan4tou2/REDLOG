@@ -330,7 +330,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
 
   const current = tabs.find((tb) => tb.id === activeTab) ?? null
   return (
-    <div className="flex flex-col h-full bg-[#0a0a0a]">
+    <div className="flex flex-col h-full bg-redlog-bg">
       <TerminalHeader onAbout={() => setAboutOpen(true)} onSearch={() => setSearchOpen(true)} />
       {/* Tab bar */}
       <div className="flex items-center h-9 bg-redlog-bg border-b border-redlog-border px-1 shrink-0 gap-0.5">
@@ -340,7 +340,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
             onClick={() => setActiveTab(tab.id)}
             className={`group flex items-center gap-1.5 px-3 h-7 rounded-md text-xs cursor-pointer transition-colors ${
               activeTab === tab.id
-                ? 'bg-[#1a1a1a] text-redlog-text'
+                ? 'bg-redlog-elevated text-redlog-text'
                 : 'text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]'
             }`}
           >
@@ -496,7 +496,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
 
       {/* Search bar (visible when toggled) */}
       {searchOpen && (
-        <div className="flex items-center gap-2 px-2 py-1 border-b border-redlog-border bg-[#0f0f0f]">
+        <div className="flex items-center gap-2 px-2 py-1 border-b border-redlog-border bg-redlog-surface">
           <input
             autoFocus
             value={searchQuery}
@@ -543,7 +543,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
 
       {current && <SessionMeta tab={current} shellName={shells.find((s) => s.id === current.shellId)?.label} />}
       <Modal open={aboutOpen} onClose={() => setAboutOpen(false)} label={t('terminal.aboutTitle')} testId="terminal-about"
-        panelClassName="w-[520px] max-w-[95vw] rounded-lg border border-redlog-border bg-redlog-surface p-4 shadow-xl">
+        panelClassName="w-[520px] max-w-[95vw] rounded-xl border border-redlog-border bg-redlog-surface p-pad shadow-xl">
         <h2 className="text-sm font-semibold text-redlog-text">{t('terminal.aboutTitle')}</h2>
         <div className="mt-3 space-y-3 text-xs text-redlog-text-dim">
           <section className="rounded border border-redlog-border bg-redlog-elevated p-3">

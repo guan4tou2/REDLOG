@@ -53,7 +53,7 @@ function IssueRow({ issue, onNavigate }: { issue: Issue; onNavigate: (v: string)
     <div
       data-testid={`dashboard-issue-${issue.id}`}
       data-tier={issue.tier}
-      className="relative flex items-start gap-3 p-4 pl-5 border-t border-redlog-border first:border-t-0"
+      className="relative flex items-start gap-gap p-pad border-t border-redlog-border first:border-t-0"
     >
       {/* §4: state rides a left colour block; the row's ground stays surface.
           Only attention fills — a pending condition is worth printing and not

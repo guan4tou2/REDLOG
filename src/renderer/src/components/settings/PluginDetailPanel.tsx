@@ -67,7 +67,7 @@ function HealthLine({ health, t, id }: { health: OfficialHealth; t: T; id: strin
  *  defined inside another one is a new type on every render. */
 function Card({ title, children, testId }: { title: string; children: React.ReactNode; testId?: string }): JSX.Element {
   return (
-    <div data-testid={testId} className="rounded border border-redlog-border bg-redlog-surface/50 p-3 space-y-2">
+    <div data-testid={testId} className="rounded-lg border border-redlog-border bg-redlog-surface p-pad space-y-2">
       <h3 className="text-xs font-semibold text-redlog-text border-b border-redlog-border pb-1.5">{title}</h3>
       {children}
     </div>
@@ -105,7 +105,7 @@ export default function PluginDetailPanel({ p, vm, t, busy, onEnable, onDisable,
         <span className="text-xs font-mono text-redlog-text-faint break-all">{p.id}</span>
       </div>
 
-      <div className="rounded border border-redlog-border bg-redlog-surface/50 p-3 space-y-3">
+      <div className="rounded-lg border border-redlog-border bg-redlog-surface p-pad space-y-3">
         <div className="space-y-1.5">
           <div className="flex items-center gap-2 flex-wrap">
             <PluginIcon kind={kind} tone={tone} size={20} />
@@ -218,7 +218,7 @@ export default function PluginDetailPanel({ p, vm, t, busy, onEnable, onDisable,
         </dl>
       </Card>
 
-      <details data-testid={`plugin-specs-${p.id}`} className="rounded border border-redlog-border bg-redlog-surface/50 p-3 text-xs">
+      <details data-testid={`plugin-specs-${p.id}`} className="rounded-lg border border-redlog-border bg-redlog-surface p-pad text-xs">
         <summary className="cursor-pointer font-semibold text-redlog-text">{t('plugins.card.specs')}</summary>
         <dl className="mt-2 space-y-1.5">
           <div className="flex justify-between gap-3"><dt className="text-redlog-text-dim">{t('plugins.spec.id')}</dt><dd className="font-mono break-all text-right">{p.id}</dd></div>
@@ -228,7 +228,7 @@ export default function PluginDetailPanel({ p, vm, t, busy, onEnable, onDisable,
         </dl>
       </details>
 
-      <details data-testid="plugin-advanced" className="rounded border border-redlog-border bg-redlog-surface/50 px-2 py-2 text-xs">
+      <details data-testid="plugin-advanced" className="rounded border border-redlog-border bg-redlog-surface px-2 py-2 text-xs">
         <summary className="cursor-pointer font-semibold text-redlog-text">{t('plugins.card.advanced')}</summary>
         <PluginSampleTester t={t} />
       </details>

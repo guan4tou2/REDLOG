@@ -122,7 +122,7 @@ function CoreCaptureLine({ readiness, http, listenAddress, source, sources, prox
   const httpTone: Tone = verified ? 'ok' : http === 'ready' || http === 'starting' ? 'warn' : http === 'failed' ? 'err' : 'off'
   return (
     <ul data-testid="capture-core" className="text-xs">
-      <li data-testid="capture-core-commands" data-state={cmd} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-redlog-border-subtle px-4 py-2 min-h-11">
+      <li data-testid="capture-core-commands" data-state={cmd} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-redlog-border-subtle px-pad py-2 min-h-11">
         <button onClick={() => onNavigate(settingsTarget('hooks'))} className="w-28 shrink-0 min-h-8 text-left text-sm font-medium text-redlog-text hover:underline">{t('capture.group.commands')}</button>
         <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
           {ownShell && <Tag tone="neutral">{ownShell.installed === true
@@ -140,7 +140,7 @@ function CoreCaptureLine({ readiness, http, listenAddress, source, sources, prox
         <StatusLight tone={cmdTone}>{t(`capture.state.${cmd}`)}</StatusLight>
         <span data-testid="capture-core-commands-age" className="w-16 text-right font-mono tabular-nums text-redlog-text-faint">{age(cmdLast)}</span>
       </li>
-      <li data-testid="capture-core-http" data-state={http} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 min-h-11">
+      <li data-testid="capture-core-http" data-state={http} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-pad py-2 min-h-11">
         <button onClick={() => onNavigate(settingsTarget('browser'))} className="w-28 shrink-0 min-h-8 text-left text-sm font-medium text-redlog-text hover:underline">{t('capture.group.http')}</button>
         <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
           {/* Where to point a tool (#254). */}
@@ -423,7 +423,7 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
     : http === 'ready' && !httpsVerified ? t('capture.listeningIsNotTrust') : ''
 
   const inventory = (
-    <div data-testid={manage ? 'capture-inventory' : 'capture-problems'} className={manage ? 'grid grid-cols-1 gap-y-1 px-4 py-2' : 'grid grid-cols-2 gap-x-6 gap-y-1.5 border-t border-redlog-border-subtle px-4 py-2'}>
+    <div data-testid={manage ? 'capture-inventory' : 'capture-problems'} className={manage ? 'grid grid-cols-1 gap-y-1 px-pad py-2' : 'grid grid-cols-2 gap-x-6 gap-y-1.5 border-t border-redlog-border-subtle px-pad py-2'}>
       {shown.map((s) => {
         // The core line already says this about mitmproxy; the inventory
         // row keeps its state word and controls, not a second copy.
@@ -546,7 +546,7 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
       <div data-testid="capture-card" className={`rounded-lg border shadow-card overflow-hidden bg-redlog-surface ${
         dark ? 'border-red-900/60' : 'border-redlog-border'
       }`}>
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-redlog-border-subtle px-4 py-3">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-redlog-border-subtle px-pad py-3">
           <div className="flex min-w-0 items-start gap-2.5">
             <span aria-hidden className={`mt-0.5 h-8 w-[3px] shrink-0 rounded-full ${barColor}`} />
             <div className="min-w-0">
@@ -574,7 +574,7 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
           t={t}
         />
         {cta && (
-          <div className="flex items-center gap-3 border-t border-redlog-border-subtle px-4 py-2">
+          <div className="flex items-center gap-3 border-t border-redlog-border-subtle px-pad py-2">
             <Button size="compact" level="quiet" disabled={busy !== null} onClick={cta.run}>{cta.label}</Button>
             <button onClick={() => onNavigate(settingsTarget('hooks'))} className="text-xs text-redlog-text-dim hover:text-redlog-text underline">
               {t('capture.openHooks')}
@@ -594,7 +594,7 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
             them at 18:00. The counter is the one thing on this card that
             never clears. */}
         {capture.dbErrorTotal > 0 && (
-          <div data-testid="capture-db-gaps" className="border-t border-redlog-border-subtle px-4 py-2 flex items-center gap-2 text-xs">
+          <div data-testid="capture-db-gaps" className="border-t border-redlog-border-subtle px-pad py-2 flex items-center gap-2 text-xs">
             <span className="text-redlog-danger">!</span>
             <span className="text-redlog-text-dim">
               {t('capture.dbGaps', {
@@ -604,11 +604,11 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
             </span>
           </div>
         )}
-        <div data-testid="capture-footer" className="flex flex-wrap items-center justify-between gap-2 border-t border-redlog-border-subtle bg-redlog-bg px-4 py-2 text-xs text-redlog-text-faint">
+        <div data-testid="capture-footer" className="flex flex-wrap items-center justify-between gap-2 border-t border-redlog-border-subtle bg-redlog-bg px-pad py-2 text-xs text-redlog-text-faint">
           <span>{footNote}</span>
           {onSetup && <Button size="compact" data-testid="capture-open-setup" onClick={onSetup}>{t('capture.openSetup')}</Button>}
         </div>
-        <div className="border-t border-redlog-border-subtle px-4">
+        <div className="border-t border-redlog-border-subtle px-pad">
           <button
             data-testid="capture-more-sources"
             aria-expanded={manage}
@@ -621,7 +621,7 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
         </div>
         {manage && <>
           {inventory}
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-redlog-border-subtle bg-redlog-bg px-4 py-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-redlog-border-subtle bg-redlog-bg px-pad py-2">
             <span className="text-xs text-redlog-text-faint">{t('capture.manageNote')}</span>
             <Button size="compact" level="quiet" data-testid="capture-manage-sources" onClick={() => onNavigate(settingsTarget('captureControl'))}>{t('capture.manageSources')}</Button>
           </div>

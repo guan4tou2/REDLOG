@@ -102,7 +102,7 @@ export default function IPStatusCard(): JSX.Element {
     return () => { sequence.current++; unsub() }
   }, [read])
 
-  const shell = 'rounded-lg bg-redlog-surface border border-redlog-border p-4 space-y-3 shadow-card'
+  const shell = 'rounded-lg bg-redlog-surface border border-redlog-border p-pad space-y-3 shadow-card'
   if (!status) {
     return (
       <div data-testid="ip-status-card" className={shell}>

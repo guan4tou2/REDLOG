@@ -42,7 +42,7 @@ export function PluginRow({ p, vm, t, description, onSelect }: {
       data-testid={`plugin-details-${p.id}`}
       aria-label={p.name}
       onClick={onSelect}
-      className={`group w-full text-left flex items-center justify-between gap-3 rounded border bg-redlog-surface/50 p-3 transition-colors hover:bg-redlog-elevated/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${tone === 'bad' ? 'border-red-500/40' : 'border-redlog-border'}`}
+      className={`group w-full text-left flex items-center justify-between gap-gap rounded-lg border bg-redlog-surface p-pad transition-colors hover:bg-redlog-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-redlog-bg focus-visible:ring-redlog-accent/40 ${tone === 'bad' ? 'border-red-500/40' : 'border-redlog-border'}`}
     >
       <span className="flex items-start gap-3 min-w-0">
         <span className="w-8 h-8 shrink-0 rounded border border-redlog-border bg-redlog-bg flex items-center justify-center">
