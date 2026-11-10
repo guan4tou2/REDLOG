@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { FieldGroup, Field, ListField, type ConfigState } from './SettingsShared'
 import CapturePackGroup, { PackMember } from './CapturePackGroup'
 import AgentsPanel from './AgentsPanel'
@@ -5,6 +6,7 @@ import ExternalCaptureGroup from './ExternalCaptureGroup'
 import { SourceLastSeen } from './SourceLastSeen'
 import { CheckRow } from './CheckRow'
 import { useCaptureHealth } from '../../lib/useCaptureHealth'
+import { landOnSourceRow, SOURCE_ROW } from '../../lib/sourceRow'
 
 /** Which health row speaks for a pack member. The health ids are the source
  *  names the capture runtime uses; the pack member ids are the config keys. */
@@ -16,7 +18,7 @@ const MEMBER_HEALTH_ID: Record<string, string> = {
 }
 
 export default function CaptureControlPage({
-  config, setConfig, t, onOpenPlugins, onOpenIntegration, focusAgentKind, onFocusHandled
+  config, setConfig, t, onOpenPlugins, onOpenIntegration, focusSource, onFocusHandled
 }: {
   config: ConfigState
   setConfig: (c: ConfigState) => void
@@ -24,7 +26,9 @@ export default function CaptureControlPage({
   onOpenPlugins?: () => void
   /** Spec 066: open the Plugins page on one integration's detail. */
   onOpenIntegration?: (pluginId: string) => void
-  focusAgentKind?: string | null
+  /** The capture health id of the row to land on (#590): `agent-<kind>`,
+   *  `screenshot`, a host-monitor member or an external hook. */
+  focusSource?: string | null
   onFocusHandled?: () => void
 }): JSX.Element {
   // The same snapshot the dashboard's capture card reads. Every source row on
@@ -34,6 +38,26 @@ export default function CaptureControlPage({
   const { health } = useCaptureHealth(5_000, captureSignature)
   const healthOf = (id: string): CaptureSourceInfo | undefined =>
     health?.sources.find(s => s.id === id)
+  // Agent rows land themselves (AgentsPanel). Every other row is found by its
+  // `data-source-id`; the pack and the external list read their state before
+  // they draw, so the row may not exist yet.
+  const agentKind = focusSource?.startsWith('agent-') ? focusSource.slice('agent-'.length) : null
+  useEffect(() => {
+    if (!focusSource || agentKind) return
+    const land = (): boolean => {
+      const row = document.querySelector<HTMLElement>(`[data-source-id="${focusSource}"]`)
+      if (!row) return false
+      landOnSourceRow(row); onFocusHandled?.()
+      return true
+    }
+    if (land()) return
+    const observer = new MutationObserver(() => { if (land()) observer.disconnect() })
+    observer.observe(document.querySelector('[data-testid="settings-content"]') ?? document.body, { childList: true, subtree: true })
+    // A row that is not drawn (its pack is off) must not hold the request.
+    const giveUp = setTimeout(() => { observer.disconnect(); onFocusHandled?.() }, 4_000)
+    return () => { observer.disconnect(); clearTimeout(giveUp) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusSource])
   return (
     <>
       {/* Spec 049: the four-bullet "what every project records" list is gone.
@@ -42,9 +66,10 @@ export default function CaptureControlPage({
           capture inventory, where they carry whether they are actually feeding
           the record — which is what an operator came here to find out. */}
       {/* Optional AI integrations are installed per tool and authorized per project. */}
-      <AgentsPanel config={config} setConfig={setConfig} t={t} onOpenPlugins={onOpenIntegration} focusAgentKind={focusAgentKind} onFocusHandled={onFocusHandled} />
+      <AgentsPanel config={config} setConfig={setConfig} t={t} onOpenPlugins={onOpenIntegration} focusAgentKind={agentKind} onFocusHandled={onFocusHandled} />
 
 
+      <div data-source-id="screenshot" tabIndex={-1} className={SOURCE_ROW}>
       <FieldGroup title={t('settings.screenshotGroup')}>
         <div className="flex items-center gap-2 flex-wrap">
           {[
@@ -118,6 +143,7 @@ export default function CaptureControlPage({
           </div>
         </details>
       </FieldGroup>
+      </div>
 
       <CapturePackGroup
         pack="hostMonitors" title={t('settings.packHostMonitors')} hint={t('settings.packHostMonitorsHint')}
@@ -129,7 +155,7 @@ export default function CaptureControlPage({
             three host monitors meant an operator who wanted those three took
             it without deciding to. */}
         <PackMember
-          member="clipboard" title={t('settings.clipboardGroup')}
+          member="clipboard" sourceId={MEMBER_HEALTH_ID.clipboard} title={t('settings.clipboardGroup')}
           hint={t('settings.clipboardEnableHint')} warn={t('settings.clipboardScopeWarn')}
           health={healthOf(MEMBER_HEALTH_ID.clipboard)} packOn={config.packs?.hostMonitors === true}
           config={config} setConfig={setConfig} t={t}
@@ -143,7 +169,7 @@ export default function CaptureControlPage({
         </PackMember>
 
         <PackMember
-          member="fileWatcher" title={t('settings.fileWatcherGroup')}
+          member="fileWatcher" sourceId={MEMBER_HEALTH_ID.fileWatcher} title={t('settings.fileWatcherGroup')}
           hint={t('settings.fileWatcherEnableHint')}
           health={healthOf(MEMBER_HEALTH_ID.fileWatcher)} packOn={config.packs?.hostMonitors === true}
           config={config} setConfig={setConfig} t={t}
@@ -164,7 +190,7 @@ export default function CaptureControlPage({
         </PackMember>
 
         <PackMember
-          member="processMonitor" title={t('settings.processMonitorGroup')}
+          member="processMonitor" sourceId={MEMBER_HEALTH_ID.processMonitor} title={t('settings.processMonitorGroup')}
           hint={t('settings.processMonitorEnableHint')}
           health={healthOf(MEMBER_HEALTH_ID.processMonitor)} packOn={config.packs?.hostMonitors === true}
           config={config} setConfig={setConfig} t={t}
@@ -181,7 +207,7 @@ export default function CaptureControlPage({
         {/* The blind spot, stated where the operator turns it on — not
             only in a system event they might scroll past. */}
         <PackMember
-          member="connectionMonitor" title={t('settings.connectionMonitorGroup')}
+          member="connectionMonitor" sourceId={MEMBER_HEALTH_ID.connectionMonitor} title={t('settings.connectionMonitorGroup')}
           hint={t('settings.connectionMonitorEnableHint')} warn={t('settings.connectionMonitorSynNote')}
           health={healthOf(MEMBER_HEALTH_ID.connectionMonitor)} packOn={config.packs?.hostMonitors === true}
           config={config} setConfig={setConfig} t={t}

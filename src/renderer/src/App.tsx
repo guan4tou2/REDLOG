@@ -111,7 +111,7 @@ export default function App(): JSX.Element {
   const [markerHeldFrame, setMarkerHeldFrame] = useState<string | undefined>(undefined)
   const [dropping, setDropping] = useState(false)
   // The Settings page a link asked for; see lib/navigation.ts.
-  const [settingsRequest, setSettingsRequest] = useState<{ page: SettingsPage; scopeCandidate?: string } | null>(null)
+  const [settingsRequest, setSettingsRequest] = useState<{ page: SettingsPage; scopeCandidate?: string; sourceId?: string } | null>(null)
   const { t } = useI18n()
   const narrow = useNarrowViewport()
 
@@ -134,8 +134,8 @@ export default function App(): JSX.Element {
   // so a target that names a Settings page opens that page.
   const [readingRequest, setReadingRequest] = useState<{ mode: 'io' | 'ai'; at: number } | null>(null)
   const navigate = useCallback((target: string): void => {
-    const { view: next, settingsPage, scopeCandidate } = parseTarget(target)
-    setSettingsRequest(settingsPage ? { page: settingsPage, scopeCandidate } : null)
+    const { view: next, settingsPage, scopeCandidate, sourceId } = parseTarget(target)
+    setSettingsRequest(settingsPage ? { page: settingsPage, scopeCandidate, sourceId } : null)
     setReturnTo(null)
     setReadingRequest(next === 'transcript' ? { mode: 'io', at: Date.now() } : null)
     setView((next === 'transcript' ? 'search' : next) as View)
@@ -457,7 +457,7 @@ export default function App(): JSX.Element {
             {view === 'screenshots' && <ScreenshotsView onNavigate={navigate} />}
             {(view === 'search' || workspaceProject === project.id) && <div hidden={view !== 'search'} className={view === 'search' ? 'h-full min-h-0' : undefined}><RecordingWorkspace key={project.id} externalQuery={activityQuery} requestedReading={readingRequest} active={view === 'search'} onOpenInTimeline={openInTimeline} onOpenTimeline={openTimeline} /></div>}
             {view === 'targets' && <TargetView onOpenInTimeline={(ts) => openInTimeline('', ts)} />}
-            {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => openInTimeline('', ts)} onOpenSettings={(candidate) => navigate(settingsTarget('scope', candidate))} />}
+            {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => openInTimeline('', ts)} onOpenSettings={(candidate) => navigate(settingsTarget('scope', { candidate }))} />}
             {view === 'loot' && <LootPanel onOpenInTimeline={openInTimeline} />}
             {view === 'bookmarks' && <BookmarksView onOpenInTimeline={(ts) => openInTimeline('', ts)} />}
             {view === 'http_history' && <Suspense fallback={<PaneLoading />}><HttpHistoryPanel onOpenInTimeline={openInTimeline} onOpenSettings={() => navigate(settingsTarget('browser'))} /></Suspense>}

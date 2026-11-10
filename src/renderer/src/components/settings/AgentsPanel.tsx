@@ -4,6 +4,7 @@ import { FieldGroup, type ConfigState } from './SettingsShared'
 import { SourceLastSeen } from './SourceLastSeen'
 import { CheckRow } from './CheckRow'
 import { useCaptureHealth } from '../../lib/useCaptureHealth'
+import { landOnSourceRow, SOURCE_ROW } from '../../lib/sourceRow'
 import type { OfficialAgentPlugin } from '../../../../core/plugins/official-agents'
 import type { AgentKind, AgentCaptureSourceConfig } from '../../../../core/agent-capture-policy'
 import { addWorkPath } from '../../../../core/agent-capture-policy'
@@ -128,8 +129,8 @@ function AgentRow({ item, source, active, config, setConfig, t, onOpenPlugins, f
   const root = value.sourceRoot ?? source?.root
   const rowRef = useRef<HTMLElement | null>(null)
   // Spec 066 FR-021: arriving from an integration's detail lands on this row.
-  useEffect(() => { if (focused) rowRef.current?.scrollIntoView?.({ block: 'center' }) }, [focused])
-  return <section ref={rowRef} aria-label={source?.label ?? item.name} data-testid={`agent-source-${item.agentKind}`} data-detected={source?.detected ? 'true' : 'false'} className="py-4 space-y-3 min-w-0">
+  useEffect(() => { if (focused) landOnSourceRow(rowRef.current) }, [focused])
+  return <section ref={rowRef} tabIndex={-1} aria-label={source?.label ?? item.name} data-testid={`agent-source-${item.agentKind}`} data-source-id={`agent-${item.agentKind}`} data-detected={source?.detected ? 'true' : 'false'} className={`py-4 space-y-3 min-w-0 ${SOURCE_ROW}`}>
     <div className="flex flex-wrap items-center justify-between gap-3">
       <strong className="text-sm text-redlog-text">{source?.label ?? item.name}</strong>
       {item.state === 'installed' && active ? <CheckRow

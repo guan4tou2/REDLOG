@@ -4,6 +4,7 @@ import { SetupAndTeardown } from './ManualStepList'
 import { SourceLastSeen } from './SourceLastSeen'
 import { useRevalidateOnFocus } from '../../hooks/useRevalidateOnFocus'
 import { useReadState } from '../../lib/readState'
+import { SOURCE_ROW } from '../../lib/sourceRow'
 
 // Capture RedLog cannot start.
 //
@@ -109,7 +110,7 @@ export default function ExternalCaptureGroup({ t, onOpenPlugins }: {
                   : known ? t('settings.externalIdle')
                     : t('settings.externalNotRunning')
           return (
-            <div key={hook.id} className="rounded border border-redlog-border bg-redlog-surface/50 p-3">
+            <div key={hook.id} tabIndex={-1} data-source-id={hook.id} className={`rounded border border-redlog-border bg-redlog-surface/50 p-3 ${SOURCE_ROW}`}>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-medium text-redlog-text">{hook.name}</span>
                 <span className={`text-xs px-1.5 py-0.5 rounded ${
