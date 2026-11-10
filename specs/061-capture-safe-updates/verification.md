@@ -13,3 +13,7 @@
 - 此案包含在最終安裝副本驗收：合計 5 PASS／0 SKIP／0 FAIL，25.6 秒；同 report validator 通過。完整 unit suite 4,480 PASS／31 SKIP／0 FAIL，包含既有 update-flow／status／anchor／marker／prefs 回歸。
 
 這是 T030–T032 的 Mac 手動替換子案例與更新前後證據延續，不表示 Windows 自動更新、Linux 套件更新、候選下載／稍後／取消、原生退出確認、錨定故障重試或所有 live sources 已實測。E2E 的退出不代替操作者 quit confirmation。T001–T032 的完整 checkbox、Spec 062 T012／T013 與跨平台 gate 保留；未發布新版。
+
+## 2026-11-10：tasks 對帳
+
+只對照程式碼與單元／元件測試，沒有跑任何原生流程。13 項中 10 項（T001、T002、T004、T010、T012、T020、T022、T030、T031、T032）勾選；T003、T011、T021 仍開啟，缺額與依據見 [tasks.md](tasks.md) 末段。這些勾選不改變上面的結論：Windows 自動更新、Linux 套件更新、候選下載／稍後／取消、原生退出確認仍是 NOT RUN，Spec 061 維持 Draft。
