@@ -360,7 +360,7 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
             label: t('screenshots.captureNow'),
             onClick: () => { void captureScreenshotWithFeedback(t) }
           }}
-          secondary={{ label: t('screenshots.emptySettings'), onClick: () => onNavigate(settingsTarget('captureControl')) }}
+          secondary={{ label: t('screenshots.emptySettings'), onClick: () => onNavigate(settingsTarget('captureControl', { source: 'screenshot' })) }}
         />
       ) : (
         <>

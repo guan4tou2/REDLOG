@@ -79,17 +79,23 @@ function SettingsHomeRow({ row, title, desc, status, onOpen, t }: {
 
 /** `request` is the page a link asked for (lib/navigation.ts). A new object
  *  per request, so asking again for the same page switches back to it. */
-export default function Settings({ request = null }: { request?: { page: SettingsPage; scopeCandidate?: string } | null } = {}): JSX.Element {
+export default function Settings({ request = null }: { request?: { page: SettingsPage; scopeCandidate?: string; sourceId?: string } | null } = {}): JSX.Element {
   const [config, setConfig] = useState<ConfigState | null>(null)
   // `null` is the home list. Settings is one column: a list of pages, and a
   // page opened from it with a way back (#590) — no second sidebar. A link that
   // names a page (`request`) lands on that page directly.
   const [tab, setTab] = useState<SettingsPage | null>(request?.page ?? null)
-  useEffect(() => { if (request) setTab(request.page) }, [request])
   // Spec 066: a link between an integration's plugin detail and its Capture
   // sources row. View-only; each side clears it once it has landed.
   const [pluginFocus, setPluginFocus] = useState<{ pluginId: string } | null>(null)
-  const [captureFocus, setCaptureFocus] = useState<string | null>(null)
+  // The capture source (health id) the Capture sources page should land on:
+  // from a dashboard warning (`request.sourceId`) or from a plugin's detail.
+  const [captureFocus, setCaptureFocus] = useState<string | null>(request?.sourceId ?? null)
+  useEffect(() => {
+    if (!request) return
+    setTab(request.page)
+    setCaptureFocus(request.sourceId ?? null)
+  }, [request])
   const [pageQuery, setPageQuery] = useState('')
   // The setting a search result points at: after its page renders, the text is
   // scrolled into view and marked briefly.
@@ -341,12 +347,12 @@ export default function Settings({ request = null }: { request?: { page: Setting
         )}
         {tab === 'captureControl' && <CaptureControlPage config={config} setConfig={setConfig} t={t} onOpenPlugins={() => setTab('plugins')}
           onOpenIntegration={(pluginId) => { setPluginFocus({ pluginId }); setTab('plugins') }}
-          focusAgentKind={captureFocus} onFocusHandled={() => setCaptureFocus(null)} />}
+          focusSource={captureFocus} onFocusHandled={() => setCaptureFocus(null)} />}
         {tab === 'loot' && <LootRulesGroup config={config} setConfig={setConfig} t={t} />}
         {tab === 'retention' && <RetentionPage config={config} setConfig={setConfig} t={t} />}
         {tab === 'integrity' && <IntegrityPanel t={t} />}
         {tab === 'plugins' && <PluginsPanel t={t} config={config} focus={pluginFocus} onFocusHandled={() => setPluginFocus(null)}
-          onOpenCaptureSources={(agentKind) => { setCaptureFocus(agentKind); setTab('captureControl') }} />}
+          onOpenCaptureSources={(agentKind) => { setCaptureFocus(`agent-${agentKind}`); setTab('captureControl') }} />}
         {tab === 'about' && <AboutPage t={t} />}
       </div>
 

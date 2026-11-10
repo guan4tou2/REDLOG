@@ -276,7 +276,11 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
     <section data-testid="first-run-http" data-nonce={attempt.nonce} className="border border-redlog-border rounded-lg p-3 text-xs space-y-2">
       <div className="flex items-baseline justify-between gap-2">
         <p className="font-semibold text-redlog-text"><span className="mr-2 font-mono text-redlog-text-faint">02</span>{t('firstRun.http.title')}</p>
-        <span
+        {/* While the proxy runs there is one client, and its row below already
+            says "not verified" — the badge would be the same word twice. It
+            speaks when it adds something: no proxy yet, or verified (with or
+            without proof of CA trust). */}
+        {(!running || verified) && <span
           data-testid="first-run-http-status"
           data-ca-trust={verified ? (trustVerified ? 'proven' : 'unproven') : 'none'}
           className={verified ? (trustVerified ? 'text-emerald-500' : 'text-amber-300') : 'text-redlog-text-faint'}
@@ -284,7 +288,7 @@ export function HttpCaptureStep({ onVerified, onPrepare, paused = false }: {
           {verified
             ? (trustVerified ? t('firstRun.core.verified') : t('firstRun.core.capturedTrustUnproven'))
             : t('firstRun.core.pending')}
-        </span>
+        </span>}
       </div>
       {status.verificationState && (status.verificationEvidence || status.verificationState === 'unknown' || status.verificationState === 'invalidated') && (
         <p data-testid="http-verification-history" className="text-redlog-text-faint">
