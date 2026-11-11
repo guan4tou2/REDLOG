@@ -89,9 +89,9 @@ export function parseTimeParam(raw: string | null, name: string): IntParam {
  *  linear (test/secret-patterns-linear.test.ts), so matching 1 MiB takes
  *  under 50 ms; what bounds this is recording the result. Text that is
  *  nothing but distinct secrets — crypt hashes, one every 14 characters —
- *  writes one loot event holding every value: at this length 18.7k values,
- *  the worst case measured, took 164–278 ms; at 512 Ki, 367–535 ms. */
-export const LOOT_SCAN_MAX_CHARS = 256 * 1024
+ *  writes one loot event holding every value: the worst case measured took
+ *  87 ms at this length, 164–278 ms at 256 Ki and 367–535 ms at 512 Ki. */
+export const LOOT_SCAN_MAX_CHARS = 128 * 1024
 
 /** Documented maxima for `limit` (docs/api-reference.md). */
 export const API_LIMITS = {

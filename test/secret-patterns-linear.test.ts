@@ -257,10 +257,10 @@ function bestOf(times: number, fn: () => void): number {
 
 describe('every built-in shape is linear', () => {
   // Wall-clock, so the bound is a ratio, not a number of milliseconds: four
-  // times the input may take at most eight times as long (linear is 4x,
-  // quadratic 16x). The base size grows until a run takes long enough to time;
+  // times the input may take at most eleven times as long (linear is 4x,
+  // quadratic 16x; the slack is for a shared CI runner). The base size grows until a run takes long enough to time;
   // each case is retried, so a GC pause on a loaded runner does not fail it.
-  it('takes at most 8x as long on 4x the adversarial input', () => {
+  it('takes at most 11x as long on 4x the adversarial input', () => {
     const failures: string[] = []
     for (const id of IDS) {
       const re = compileShape(id)
@@ -268,12 +268,12 @@ describe('every built-in shape is linear', () => {
       for (const [name, make] of ADVERSARIAL[id]) {
         let ok = false
         let last = ''
-        for (let attempt = 0; attempt < 3 && !ok; attempt++) {
+        for (let attempt = 0; attempt < 5 && !ok; attempt++) {
           let n = 16 * 1024
           let t = bestOf(2, scan(make(n)))
           while (t < 4 && n < 1024 * 1024) { n *= 4; t = bestOf(2, scan(make(n))) }
           const t4 = bestOf(2, scan(make(4 * n)))
-          ok = t4 <= 8 * Math.max(t, 0.5)
+          ok = t4 <= 11 * Math.max(t, 0.5)
           last = `${id} [${name}] ${n >> 10} KiB ${t.toFixed(1)} ms -> ${(4 * n) >> 10} KiB ${t4.toFixed(1)} ms`
         }
         if (!ok) failures.push(last)

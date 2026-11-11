@@ -161,7 +161,7 @@ let any token holder put chosen provenance on screen.
 **Body:** `{ text, targetId?, source? }`
 
 **Response:** `{ findings: [{ type, value, confidence }] }` or `503` if detector unavailable.
-`413` when `text` is longer than 262 144 characters; nothing is scanned.
+`413` when `text` is longer than 131 072 characters; nothing is scanned.
 
 ---
 

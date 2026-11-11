@@ -560,7 +560,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
                     <th className={`px-2 py-1.5 font-medium ${columns.tier === 'wide' ? 'w-[25%]' : 'w-[30%]'}`}>{t('httpHistory.colHost')}</th>
                     <th className="px-2 py-1.5 font-medium">{t('httpHistory.colUrl')}</th>
                   </>
-                  : <th className="px-2 py-1.5 font-medium truncate">{t('httpHistory.colHost')} / {t('httpHistory.colUrl')}</th>}
+                  : <th className="px-2 py-1.5 font-medium truncate" title={`${t('httpHistory.colHost')} / ${t('httpHistory.colUrl')}`}>{t('httpHistory.colHost')} / {t('httpHistory.colUrl')}</th>}
                 {columns.detail && <>
                   <th className="px-2 py-1.5 font-medium w-28">{t('httpHistory.colType')}</th>
                   <th className="px-2 py-1.5 font-medium w-20 text-right" aria-sort={ariaSort('size')}>
@@ -607,9 +607,9 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
                     className="border-b border-redlog-border-subtle/30 hover:bg-redlog-elevated/30 cursor-pointer focus-visible:outline-none focus-visible:bg-redlog-elevated/50"
                     onClick={() => { rowProps.onClick(); openDetail(eventId) }}
                   >
-                    <td className="px-2 py-1 text-redlog-text-faint tabular-nums truncate">{formatTime(f.timestamp, { seconds: true })}</td>
+                    <td className="px-2 py-1 text-redlog-text-faint tabular-nums truncate" title={formatTime(f.timestamp, { seconds: true })}>{formatTime(f.timestamp, { seconds: true })}</td>
                     <td className={`px-2 py-1 font-semibold truncate ${methodClass}`} title={f.method}>{f.method}</td>
-                    <td className={`px-2 py-1 truncate ${statusClass}`}>{f.status ?? '—'}</td>
+                    <td className={`px-2 py-1 truncate ${statusClass}`} title={String(f.status ?? '—')}>{f.status ?? '—'}</td>
                     <td className="px-2 py-1 text-redlog-text-dim">
                       {/* Host apart: host over its scope word. Host and path in
                           one cell: host and scope word share the first line,
@@ -618,7 +618,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
                         <span className="block min-w-0 truncate" title={f.host}>{f.host}</span>
                         {/* No scope at all is a fact about the project, not the row: the
                             status bar's scope chip says it on every page. */}
-                        {scopeState !== 'in-scope' && scopeState !== 'no-scope' && <span data-testid="http-scope-state" data-scope={scopeState} className={`block shrink-0 truncate text-xs ${scopeState === 'out-of-scope' ? 'text-amber-400' : 'text-redlog-text-faint'}`}>{t(`httpScope.${scopeState}`)}</span>}
+                        {scopeState !== 'in-scope' && scopeState !== 'no-scope' && <span data-testid="http-scope-state" data-scope={scopeState} className={`block shrink-0 text-xs ${scopeState === 'out-of-scope' ? 'text-amber-400' : 'text-redlog-text-faint'}`}>{t(`httpScope.${scopeState}`)}</span>}
                       </span>
                       {!columns.hostApart && <span className="block truncate text-redlog-text" title={f.url}>{urlPath}</span>}
                     </td>
@@ -627,8 +627,8 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
                       <td className="px-2 py-1 text-redlog-text-dim truncate" title={f.contentType}>
                         {f.contentType.replace(/^application\//, '').replace(/;.*/, '')}
                       </td>
-                      <td className="px-2 py-1 text-redlog-text-dim text-right truncate">{f.size !== null ? formatBytes(f.size) : '—'}</td>
-                      <td className="px-2 py-1 text-redlog-text-dim text-right truncate">{f.durationMs !== null ? `${f.durationMs}ms` : '—'}</td>
+                      <td className="px-2 py-1 text-redlog-text-dim text-right truncate" title={f.size !== null ? formatBytes(f.size) : '—'}>{f.size !== null ? formatBytes(f.size) : '—'}</td>
+                      <td className="px-2 py-1 text-redlog-text-dim text-right truncate" title={f.durationMs !== null ? `${f.durationMs}ms` : '—'}>{f.durationMs !== null ? `${f.durationMs}ms` : '—'}</td>
                     </>}
                   </tr>
                 )

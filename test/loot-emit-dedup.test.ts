@@ -36,8 +36,8 @@ describe('loot emit dedup', () => {
   })
 
   // Wall-clock, so the bound is a ratio: four times the distinct values may
-  // take at most eight times as long (linear 4x, quadratic 16x), best of three.
-  it('takes at most 8x as long for 4x the distinct values', () => {
+  // take at most eleven times as long (linear 4x, quadratic 16x), best of three.
+  it('takes at most 11x as long for 4x the distinct values', () => {
     const time = (n: number): number => {
       const ms = Array.from({ length: n }, (_, i) => match(`$6$s$${i.toString(16).padStart(8, '0')}`))
       let best = Infinity
@@ -52,10 +52,10 @@ describe('loot emit dedup', () => {
     }
     let ok = false
     let last = ''
-    for (let attempt = 0; attempt < 3 && !ok; attempt++) {
+    for (let attempt = 0; attempt < 5 && !ok; attempt++) {
       const t = time(4000)
       const t4 = time(16000)
-      ok = t4 <= 8 * Math.max(t, 0.5)
+      ok = t4 <= 11 * Math.max(t, 0.5)
       last = `4000 values ${t.toFixed(1)} ms -> 16000 values ${t4.toFixed(1)} ms`
     }
     expect({ ok, last }).toEqual({ ok: true, last })

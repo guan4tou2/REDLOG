@@ -166,14 +166,14 @@ describe('limit and time query parameters', () => {
 describe('input caps on main-thread work', () => {
   it('a loot scan over the cap is a 413 and is never handed to the detector', async () => {
     const before = lootCalls.length
-    const r = await call('POST', '/api/loot/scan', JSON.stringify({ text: 'x'.repeat(256 * 1024 + 1) }))
+    const r = await call('POST', '/api/loot/scan', JSON.stringify({ text: 'x'.repeat(128 * 1024 + 1) }))
     expect(r.status).toBe(413)
-    expect(r.json()).toEqual({ error: 'text exceeds 262144 characters' })
+    expect(r.json()).toEqual({ error: 'text exceeds 131072 characters' })
     expect(lootCalls.length).toBe(before)
   })
   it('a loot scan at the cap reaches the detector', async () => {
     const before = lootCalls.length
-    await call('POST', '/api/loot/scan', JSON.stringify({ text: 'x'.repeat(256 * 1024) }))
+    await call('POST', '/api/loot/scan', JSON.stringify({ text: 'x'.repeat(128 * 1024) }))
     expect(lootCalls.length).toBe(before + 1)
   })
   it('a search query over 1000 characters is a 400 naming the reason', async () => {
