@@ -16,11 +16,11 @@ const ev = (id: string, over: Record<string, unknown> = {}) => ({
   data: { command: id, subtype: 'command_end', exit_code: 2 }, ...over
 })
 const summary = (id: string) => ({
-  id, kind: 'command', toolAction: 'unknown', provider: null, firstAt: 1000, anchor: ev(id), matchedCount: 1, sourceCount: 1, contextCount: 0, result: { exitCode: 2 }
+  id, kind: 'command', toolAction: 'unknown', provider: null, firstAt: 1000, anchor: ev(id), matchedCount: 1, sourceCount: 1, contextCount: 0, result: { exitCode: 2 }, sourcePreview: { ids: [id], hasMore: false }
 })
 
 let push: (events: unknown[]) => void = () => {}
-const api = { activityPage: vi.fn(), activityMembers: vi.fn() }
+const api = { activityPage: vi.fn(), activityMembers: vi.fn(), query: vi.fn() }
 function mount(): void {
   api.activityPage.mockResolvedValue({ items: [summary('a')], hasMore: false, nextCursor: null, totalGroups: 1, totalMatches: 1, snapshot: {} })
   api.activityMembers.mockResolvedValue({ items: [{ event: ev('a'), matched: true }], hasMore: false, nextCursor: null, sourceCount: 1, matchedCount: 1, snapshot: {} })
@@ -65,4 +65,17 @@ it('says the hash section is a stored snapshot, not a verification', async () =>
   expect(integrity.textContent).toContain('activity.reader.integrityNote')
   expect(integrity.textContent).toContain('hash-a')
   expect(integrity.textContent).toContain('a')
+})
+
+it('offers the events around an operation in its expanded row, from the Timeline window, and reads them only when asked', async () => {
+  mount()
+  api.query.mockImplementation(async (opts: { order?: string }) => opts.order === 'oldest'
+    ? [ev('later', { timestamp: 4000, engagementId: 'p', agentType: 'marker', sessionId: 'x', data: { title: 'later-note' } })] : [])
+  fireEvent.click(await screen.findByTestId('activity-row'))
+  const toggle = await screen.findByTestId('activity-around-toggle')
+  expect(api.query).not.toHaveBeenCalled()
+  fireEvent.click(toggle)
+  const row = await screen.findByTestId('activity-around-event')
+  expect(row.textContent).toContain('later-note')
+  expect(api.query.mock.calls.map(([opts]) => [opts.since, opts.before, opts.order])).toEqual([[1000 - 300_000, 1000, 'newest'], [1000, 1000 + 300_000, 'oldest']])
 })
