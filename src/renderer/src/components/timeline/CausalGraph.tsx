@@ -303,7 +303,7 @@ export function CausalGraph({ anchorId, pluginTypes, titleOf, onSelect, t }: Cau
           type="button"
           data-testid="causal-graph-enlarge"
           onClick={() => { setHoveredBig(null); setEnlarged(true) }}
-          className="mt-2 shrink-0 text-xs px-1.5 py-0.5 rounded border border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border transition-colors whitespace-nowrap"
+          className="mt-2 shrink-0 text-xs px-1.5 py-0.5 min-h-7 rounded border border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border transition-colors whitespace-nowrap"
         >{t('timeline.causalGraph.enlarge')}</button>
       </div>
 
@@ -324,7 +324,7 @@ export function CausalGraph({ anchorId, pluginTypes, titleOf, onSelect, t }: Cau
             onClick={() => setEnlarged(false)}
             title={t('common.close')}
             aria-label={t('common.close')}
-            className="w-5 h-5 flex items-center justify-center rounded border border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border transition-colors"
+            className="relative w-5 h-5 flex items-center justify-center rounded border border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border transition-colors after:absolute after:-inset-1"
           ><X size={12} strokeWidth={1.75} aria-hidden /></button>
         </div>
         {/* `min-h-0` so the canvas gets the leftover height rather than
