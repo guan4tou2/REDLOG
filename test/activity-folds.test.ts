@@ -26,6 +26,18 @@ describe('foldSystemRuns', () => {
     expect(shape(foldSystemRuns(items, true))).toEqual(['a', 'b', 'v', 'fold(c,d,e)@3'])
   })
 
+  // Real-app audit: with no scope configured, every observed host files one
+  // 範圍未判定 row, and the activity log was a column of them. Unjudged is
+  // not a finding — nothing is outside an undrawn boundary — so it folds.
+  it('folds unjudged scope rows (no scope configured), and keeps each one reachable', () => {
+    const unjudged = (id: string): ActivitySummary =>
+      ({ id, anchor: { id, agentType: 'system', data: { subtype: 'scope_violation', distance: 'in_scope', authority: 'unknown' } } } as unknown as ActivitySummary)
+    const judged = (id: string): ActivitySummary =>
+      ({ id, anchor: { id, agentType: 'system', data: { subtype: 'scope_violation', distance: 'in_scope', authority: 'fact' } } } as unknown as ActivitySummary)
+    const items = [item('cmd', 'shell'), unjudged('u1'), unjudged('u2'), unjudged('u3'), unjudged('u4'), item('cmd2', 'shell'), judged('j1'), judged('j2'), judged('j3')]
+    expect(shape(foldSystemRuns(items, true))).toEqual(['cmd', 'fold(u1,u2,u3,u4)@1', 'cmd2', 'j1', 'j2', 'j3'])
+  })
+
   it('only folds the system agent type, not other capture of the system', () => {
     const items = [item('p', 'process'), item('f', 'file'), item('c', 'clipboard')]
     expect(shape(foldSystemRuns(items, true))).toEqual(['p', 'f', 'c'])

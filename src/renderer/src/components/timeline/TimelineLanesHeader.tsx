@@ -69,7 +69,7 @@ export function TimelineLanesHeader({
       <button
         data-testid="timeline-lanes-collapse"
         onClick={onCollapse}
-        className="shrink-0 px-2 py-0.5 rounded border border-redlog-border/60 text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
+        className="shrink-0 px-2 py-0.5 min-h-7 rounded border border-redlog-border/60 text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
       >
         {t('timeline.lanes.collapse')}
       </button>

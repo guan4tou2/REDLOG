@@ -110,6 +110,7 @@
   "timeline.title": "Attack Timeline",
   "timeline.events": "Total {{count}} events",
   "timeline.loadMore": "Load more",
+  "timeline.loadedEvents": "{{count}} events loaded",
   "timeline.rangeOfTotal": "{{shown}} of {{total}} events · scroll back for older",
   "timeline.rangeTotalPending": "{{shown}} of … events",
   "timeline.totalUnavailable": "{{shown}} events · total unavailable",

@@ -139,7 +139,7 @@ export function TimelineEventInspector({
               title={t(layout === 'bottom' ? 'timeline.layoutToRight' : 'timeline.layoutToBottom')}
               aria-label={t(layout === 'bottom' ? 'timeline.layoutToRight' : 'timeline.layoutToBottom')}
               aria-pressed={layout === 'right'}
-              className="w-5 h-5 flex items-center justify-center rounded border border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border transition-colors"
+              className="relative w-5 h-5 flex items-center justify-center rounded border border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border transition-colors after:absolute after:-inset-1"
             >
               {layout === 'bottom'
                 ? <PanelBottom size={12} strokeWidth={1.75} aria-hidden />
@@ -153,7 +153,7 @@ export function TimelineEventInspector({
               onClick={onClose}
               title={t('httpHistory.closeDetail')}
               aria-label={t('httpHistory.closeDetail')}
-              className="w-5 h-5 flex items-center justify-center rounded border border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border transition-colors"
+              className="relative w-5 h-5 flex items-center justify-center rounded border border-redlog-border/60 bg-redlog-elevated/40 text-redlog-text-dim hover:text-redlog-text hover:border-redlog-border transition-colors after:absolute after:-inset-1"
             ><X size={12} strokeWidth={1.75} aria-hidden /></button>
           )}
         </div>
@@ -381,7 +381,7 @@ export function TimelineEventInspector({
           data-testid="causal-graph-toggle"
           aria-expanded={graphOpen}
           onClick={() => setGraphOpen((v) => !v)}
-          className="flex items-center gap-1 text-xs text-redlog-text-dim hover:text-redlog-text transition-colors"
+          className="flex min-h-7 items-center gap-1 text-xs text-redlog-text-dim hover:text-redlog-text transition-colors"
         >
           {graphOpen
             ? <ChevronDown size={12} strokeWidth={2} aria-hidden />

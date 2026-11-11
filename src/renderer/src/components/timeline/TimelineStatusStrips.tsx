@@ -70,7 +70,7 @@ export function FocusChainBadge({ size, active, meta, onExit, t }: {
       </span>
       <button
         onClick={onExit}
-        className="text-redlog-text-dim hover:text-redlog-text leading-none w-4 h-4 flex items-center justify-center rounded hover:bg-white/10"
+        className="relative text-redlog-text-dim hover:text-redlog-text leading-none w-4 h-4 flex items-center justify-center rounded hover:bg-white/10 after:absolute after:-inset-1.5"
         title={t('timeline.focusChain.exit')}
         aria-label={t('timeline.focusChain.exit')}
       >×</button>
@@ -108,14 +108,16 @@ export function HighlightInput({ value, onChange, inputRef, onFocus, onBlur, t }
         placeholder={t('timeline.search.placeholder')}
         title={t('timeline.search.hint')}
         aria-label={t('timeline.search.label')}
-        className="pl-5 pr-6 py-0.5 h-6 w-[220px] text-xs font-mono bg-redlog-surface/70 border border-dashed border-redlog-border rounded text-redlog-text placeholder:text-redlog-text-faint focus:outline-none focus:border-redlog-accent/60"
+        className="pl-5 pr-7 py-0.5 h-7 w-[220px] text-xs font-mono bg-redlog-surface/70 border border-dashed border-redlog-border rounded text-redlog-text placeholder:text-redlog-text-faint focus:outline-none focus:border-redlog-accent/60"
       />
       {value && (
         <button
           onClick={() => onChange('')}
           title={t('timeline.search.clear')}
           aria-label={t('timeline.search.clear')}
-          className="absolute right-1 top-1/2 -translate-y-1/2 text-redlog-text-dim hover:text-redlog-text leading-none w-4 h-4 flex items-center justify-center rounded hover:bg-white/10"
+          // The glyph stays 16px; the ::after widens what takes the click to
+          // 28px (27 CSS px is ≈24 device px under body zoom 0.9).
+          className="absolute right-1 top-1/2 -translate-y-1/2 text-redlog-text-dim hover:text-redlog-text leading-none w-4 h-4 flex items-center justify-center rounded hover:bg-white/10 after:absolute after:-inset-1.5"
         >×</button>
       )}
     </div>
