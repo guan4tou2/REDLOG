@@ -124,7 +124,7 @@ export default function SourceSessionPicker({kind,provider,value,onChange}: {
         onClick={()=>open?close(true):openList()}
         onKeyDown={e=>{if(!open&&(e.key==='ArrowDown'||e.key==='ArrowUp')){e.preventDefault();openList()}}}
         className="inline-flex max-w-full min-w-0 items-center gap-2 rounded border border-redlog-border bg-redlog-elevated px-2 py-1 text-xs hover:bg-redlog-elevated-hover">
-        <span className="truncate">{label}</span>
+        <span className="truncate" title={label}>{label}</span>
         <ChevronDown size={14} aria-hidden className="shrink-0 text-redlog-text-dim" />
       </button>
       {open && <div onMouseDown={e=>{if(e.target!==field.current)e.preventDefault()}}
@@ -141,8 +141,8 @@ export default function SourceSessionPicker({kind,provider,value,onChange}: {
             onClick={()=>choose(entry)}
             className={`cursor-pointer px-3 py-1.5 text-xs ${index===active?'bg-redlog-elevated-hover':''} ${(entry?.token ?? '')===(value?.token ?? '')?'text-redlog-text':'text-redlog-text-dim'}`}>
             {entry
-              ? <><div className="truncate">{sessionLabel(entry,t)}</div>
-                <div className="truncate font-mono text-[11px] text-redlog-text-faint">{entry.sessionId} · {entry.captureSessionId.slice(-8)}</div></>
+              ? <><div className="truncate" title={sessionLabel(entry,t)}>{sessionLabel(entry,t)}</div>
+                <div className="truncate font-mono text-xs text-redlog-text-faint" title={`${entry.sessionId} · ${entry.captureSessionId}`}>{entry.sessionId} · {entry.captureSessionId.slice(-8)}</div></>
               : t('workspace.allSessions')}
           </li>)}
         </ul>

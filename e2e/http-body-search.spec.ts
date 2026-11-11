@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { readFileSync, writeFileSync, mkdirSync, appendFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
-import { launchWithTempHome, openTestProject, openView, resizeMainWindow, expectAppBuild } from './helpers'
+import { launchWithTempHome, openTestProject, openView, resizeMainWindow, expectAppBuild, pickSourceSession } from './helpers'
 
 test('Search opens indexed Activity output and returns from original evidence without losing the query', async ({}, testInfo) => {
   test.setTimeout(120_000)
@@ -204,15 +204,13 @@ test('Search opens indexed Activity output and returns from original evidence wi
     await page.getByPlaceholder('What happened?').fill('Exact saved output fragment')
     await page.getByRole('button',{name:'Save marker',exact:true}).click()
     await expect(page.getByRole('dialog')).toHaveCount(0)
-    await expect.poll(()=>page.getByLabel('Source session',{exact:true}).locator('option').count()).toBeGreaterThan(1)
-    await page.getByLabel('Source session',{exact:true}).selectOption({index:1})
+    await pickSourceSession(page,1)
     await expect(page.locator('[role="tabpanel"]:visible [data-block-id]')).toHaveCount(1)
     await page.getByRole('tab',{name:'AI conversations',exact:true}).click()
     await page.getByTestId('search-input').fill(aiMarker)
     await expect(page.locator('[role="tabpanel"]:visible [data-block-id]')).toContainText([aiMarker])
     await page.getByLabel('AI source',{exact:true}).selectOption('claude-code')
-    await expect.poll(()=>page.getByLabel('Source session',{exact:true}).locator('option').count()).toBe(2)
-    await page.getByLabel('Source session',{exact:true}).selectOption({index:1})
+    await pickSourceSession(page,1)
     await page.getByTestId('search-input').fill('')
     await expect(page.locator('[role="tabpanel"]:visible [data-block-id]')).toContainText([aiMarker])
     const late='LATE-SESSION-MESSAGE-793'
