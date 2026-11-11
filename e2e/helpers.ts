@@ -292,3 +292,23 @@ export async function resetSharedApp(
   await resizeMainWindow(app, size[0], size[1])
   await page.evaluate((l) => { localStorage.clear(); localStorage.setItem('redlog-locale', l) }, locale)
 }
+
+/**
+ * Pick one entry of the Source session picker (#561). The picker is a listbox
+ * behind a trigger button, not a native <select>, so `selectOption` no longer
+ * reaches it. `which` is an option index (0 is "All sessions") or text that
+ * exactly one option contains (the raw session id is on the option's second line).
+ */
+export async function pickSourceSession(page: Page, which: number | string): Promise<void> {
+  await page.locator('button[aria-haspopup="listbox"]').first().click()
+  const options = page.getByRole('listbox').getByRole('option')
+  if (typeof which === 'number') {
+    await expect.poll(() => options.count()).toBeGreaterThan(which)
+    await options.nth(which).click()
+  } else {
+    const target = options.filter({ hasText: which })
+    await expect(target).toHaveCount(1)
+    await target.click()
+  }
+  await expect(page.getByRole('listbox')).toHaveCount(0)
+}

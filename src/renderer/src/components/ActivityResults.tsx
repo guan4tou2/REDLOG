@@ -11,6 +11,7 @@ import { formatDate, formatTime, useDisplayZone, zoneLabel } from '../lib/time'
 import { Button } from './Button'
 import { activityResultLabel } from '../lib/commandStatus'
 import { ActivityReader, sourceName } from './ActivityReader'
+import { ActivityAround } from './ActivityAround'
 
 const ROW_GRID = 'grid grid-cols-[72px_130px_minmax(0,1fr)_24px] gap-x-3 items-center'
 
@@ -156,6 +157,7 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
                 {typeof item.anchor.data.pid === 'number' && <span>· {t('activity.reader.field.pid')} <span className="font-mono">{item.anchor.data.pid}</span></span>}
               </p>
             </div>
+            <ActivityAround item={item} projectId={request.projectId} scope={{ inScopeOnly: request.filter?.inScopeOnly, hidePersonal: request.filter?.hidePersonal }} />
           </div>}
           </div>
         </div>

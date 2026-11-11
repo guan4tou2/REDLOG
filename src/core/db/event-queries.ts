@@ -245,6 +245,10 @@ export interface EventQueryOptions extends Omit<EventFilter, 'tier'> {
    *  logged-tier-only queries (rare — mostly a debug affordance). */
   tier?: 'all' | 'chained' | 'logged'
   snapshot?: ExportSnapshot
+  /** Which end `limit` keeps. Default newest first; `oldest` makes a window
+   *  with a lower bound return the rows nearest that bound. Rows come back in
+   *  the order asked for. */
+  order?: 'newest' | 'oldest'
 }
 
 export interface HttpFlowPage {
@@ -362,6 +366,7 @@ export function queryEvents(opts: EventQueryOptions): RedLogEvent[] {
 
   const limit = opts.limit ?? 200
   const tier = opts.tier ?? 'all'
+  const order = opts.order === 'oldest' ? 'ASC' : 'DESC'
   const snap = opts.snapshot
 
   // Per-arm WHERE: the shared filter for that tier, the shared conditions,
@@ -407,17 +412,17 @@ export function queryEvents(opts: EventQueryOptions): RedLogEvent[] {
   let sql: string
   let bind: unknown[]
   if (tier === 'chained') {
-    sql = `${chainedSelect} ORDER BY timestamp DESC, _row DESC LIMIT ?`
+    sql = `${chainedSelect} ORDER BY timestamp ${order}, _row ${order} LIMIT ?`
     bind = [...chainedParams, limit]
   } else if (tier === 'logged') {
-    sql = `${loggedSelect} ORDER BY timestamp DESC, _row DESC LIMIT ?`
+    sql = `${loggedSelect} ORDER BY timestamp ${order}, _row ${order} LIMIT ?`
     bind = [...loggedParams, limit]
   } else {
     sql = `SELECT * FROM (
-             SELECT * FROM (${chainedSelect} ORDER BY timestamp DESC, _row DESC LIMIT ?)
+             SELECT * FROM (${chainedSelect} ORDER BY timestamp ${order}, _row ${order} LIMIT ?)
              UNION ALL
-             SELECT * FROM (${loggedSelect} ORDER BY timestamp DESC, _row DESC LIMIT ?)
-           ) ORDER BY timestamp DESC, _row DESC LIMIT ?`
+             SELECT * FROM (${loggedSelect} ORDER BY timestamp ${order}, _row ${order} LIMIT ?)
+           ) ORDER BY timestamp ${order}, _row ${order} LIMIT ?`
     bind = [...chainedParams, limit, ...loggedParams, limit, limit]
   }
 

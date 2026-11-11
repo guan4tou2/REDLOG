@@ -1,7 +1,7 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { launchWithTempHome, mainWindowSize, resetSharedApp, openTestProject, openView, resizeMainWindow } from './helpers'
+import { launchWithTempHome, mainWindowSize, resetSharedApp, openTestProject, openView, resizeMainWindow, pickSourceSession } from './helpers'
 
 // The evidence readers (HTTP history, Search/Activity, Transcript, filtered
 // export, scope) driven from seeded projects. One Electron launch for the file;
@@ -650,10 +650,7 @@ test.describe('ai-transcript-journey', () => {
       await page.locator('#reading-tab-ai').click()
       const panel = page.locator('#reading-panel-ai')
       await page.getByRole('combobox', { name: 'AI source' }).selectOption('claude-code')
-      const session = page.getByRole('combobox', { name: 'Source session' })
-      await expect(session.locator('option', { hasText: 'alpha-session' })).toHaveCount(1)
-      const alpha = await session.locator('option', { hasText: 'alpha-session' }).getAttribute('value')
-      await session.selectOption(alpha!)
+      await pickSourceSession(page, 'alpha-session')
 
       // One session: its turns are here, the other session's are not.
       await expect(panel).toContainText('alpha reply about tickets')
@@ -672,7 +669,10 @@ test.describe('ai-transcript-journey', () => {
 
       await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'search')
       await expect(page.locator('#reading-tab-ai')).toHaveAttribute('aria-selected', 'true')
-      await expect(session).toHaveValue(alpha!)
+      // The picker is a listbox now: the kept pick is the option marked selected.
+      await page.locator('button[aria-haspopup="listbox"]').first().click()
+      await expect(page.getByRole('listbox').getByRole('option', { selected: true })).toContainText('alpha-session')
+      await page.keyboard.press('Escape')
       await expect(page.getByTestId('search-input')).toHaveValue('kerberoast')
       await expect(panel).toContainText('kerberoast the alpha domain')
     } catch (e) {
