@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 
-// v0.13.0 (docs/DESIGN-logged-tier-retention.md §12): row-level retention
+// v0.13.0 (docs/design/DESIGN-logged-tier-retention.md §12): row-level retention
 // on events_logged. Age is primary, chained summary event fires on
 // count > 0, pause is respected, chained table is untouched.
 

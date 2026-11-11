@@ -4,7 +4,7 @@ import path from 'path'
 import os from 'os'
 import crypto from 'crypto'
 
-// v0.15 (docs/DESIGN-two-tier-chain.md §7.5 / §8): the logged tier is
+// v0.15 (docs/design/DESIGN-two-tier-chain.md §7.5 / §8): the logged tier is
 // deliberately un-chained, so an export folds one cheap digest over it and
 // records it as a chained `system.logged_tier_digest` event — an anchored
 // snapshot of the tier with no per-row write-path cost. This locks that

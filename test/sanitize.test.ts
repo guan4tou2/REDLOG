@@ -121,7 +121,7 @@ describeDB('sanitize (four-layer redaction, layer 4)', () => {
   })
 
   // Export looks the fields up up to three times per event; preparing per call
-  // was the largest share of export time (docs/PERF-AUDIT-2026-11.md §4).
+  // was the largest share of export time (docs/records/2026-11-01/PERF-AUDIT-2026-11.md §4).
   describe('getSanitizedFields statement reuse', () => {
     const lookupPrepares = (spy: { mock: { calls: unknown[][] } }): number =>
       spy.mock.calls.filter((c) => String(c[0]).includes('FROM sanitized_events WHERE source_event_id')).length

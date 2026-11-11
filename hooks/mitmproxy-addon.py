@@ -1028,7 +1028,7 @@ def _client_addr(flow) -> str:
     it as source port -> pid (from the socket table the connection monitor
     reads) -> the shell command_start that owns that pid, and writes the result
     into `_causes`; see src/core/socket-attribution.ts and
-    docs/DESIGN-traffic-attribution.md 2.3.
+    docs/design/DESIGN-traffic-attribution.md 2.3.
 
     Without it that whole join is dead: `socketCausesFor` has no port to look
     up, returns [], and every request in the timeline is unattributed. The DNS

@@ -6,7 +6,7 @@ import {
 import { classifyScopeTarget, alertFloorFor } from '../src/core/alert/policies'
 import type { ScopeDistance } from '../src/core/alert/policy'
 
-// docs/DESIGN-core-and-capture.md §1, design turn 8a. This is a policy for
+// docs/design/DESIGN-core-and-capture.md §1, design turn 8a. This is a policy for
 // re-judging evidence after the rules change, in a tool whose whole claim is
 // that the record cannot be rewritten — so, like the eviction planner, most of
 // these tests are about what it must REFUSE to do, and about the counts it

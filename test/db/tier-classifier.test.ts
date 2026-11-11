@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { classifyTier } from '../../src/core/db/events'
 
-// v0.13.0 two-tier chain (docs/DESIGN-two-tier-chain.md §11.1). Every real
+// v0.13.0 two-tier chain (docs/design/DESIGN-two-tier-chain.md §11.1). Every real
 // (agent_type, subtype) pair emitted anywhere in src/ must resolve to
 // exactly one tier — chained or logged. Unknown pairs default to `chained`
 // as the fail-safe direction.

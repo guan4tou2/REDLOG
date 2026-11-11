@@ -1,7 +1,7 @@
 // Raw store — the bytes a producer actually sent, kept verbatim.
 //
 // This is the physical basis of the "unified format does not distort the
-// record" guarantee (docs/DESIGN-plugin-kernel.md §4). Every event carries a
+// record" guarantee (docs/design/DESIGN-plugin-kernel.md §4). Every event carries a
 // `rawRef` that points here; the envelope's normalised fields are a summary
 // of these bytes, never a replacement for them. The chain hashes the envelope,
 // the envelope carries the raw sha256, so the raw bytes are attested without

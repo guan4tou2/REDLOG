@@ -1,5 +1,9 @@
 # Packaged smoke matrix
 
+> **Status:** current  
+> **Scope:** smoke checks run against an installed artifact, not the source checkout  
+> **Last verified:** not re-verified in this pass
+
 Run this after the unit, typecheck and production-build gates. It verifies the
 artifact an operator installs, rather than the source checkout.
 

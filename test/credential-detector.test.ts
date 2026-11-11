@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { detectCredentialUse } from '../src/core/credential-detector'
 
-// docs/DESIGN-core-and-capture.md §4d. Two failure modes matter and pull
+// docs/design/DESIGN-core-and-capture.md §4d. Two failure modes matter and pull
 // against each other: a false negative silently drops a real credential use
 // (the lane goes empty again), and a false positive teaches the operator the
 // lane lies. Both are tested. The third, non-negotiable property: the secret

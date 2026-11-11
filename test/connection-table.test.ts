@@ -5,7 +5,7 @@ import {
   type Connection
 } from '../src/core/connection-table'
 
-// docs/DESIGN-core-and-capture.md §2.1. The parsers are where the platform
+// docs/design/DESIGN-core-and-capture.md §2.1. The parsers are where the platform
 // quirks live — BSD's `addr.port`, IPv6 zones, the pid column landing in a
 // different place per OS — so this is where the real risk is, and it can all
 // be tested without a socket.

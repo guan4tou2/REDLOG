@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 
-// v0.13.0 (docs/DESIGN-two-tier-chain.md §7 + §11.4): the bundle carries
+// v0.13.0 (docs/design/DESIGN-two-tier-chain.md §7 + §11.4): the bundle carries
 // both `events.jsonl` (chained tier) and `events_logged.jsonl`
 // (supporting-evidence tier). Manifest bundleVersion bumps 1 → 2 and
 // gains a `tiers` field. This test locks the shape.

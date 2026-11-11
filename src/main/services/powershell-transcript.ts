@@ -8,7 +8,7 @@ import { noteDbError } from '../../core/capture-health'
 import type { ProjectIdentity } from '../../core/project-runtime'
 import { parseStartTranscript, type TranscriptCommand } from '../../core/start-transcript'
 
-// PowerShell Start-Transcript follower (docs/DESIGN-core-and-capture.md §2.3).
+// PowerShell Start-Transcript follower (docs/design/DESIGN-core-and-capture.md §2.3).
 //
 // The design's decision for thin Windows capture: PowerShell writes a full
 // session transcript (start-transcript-hook.ps1), and RedLog follows it —

@@ -1,5 +1,9 @@
 # Redaction: capture full, sanitize on export
 
+> **Status:** current — the layering below is implemented; the opening "currently capture-time destructive" paragraph predates it  
+> **Scope:** redaction from capture to export  
+> **Last verified:** spot-checked 2026-11-11 at `9f60882d`: `src/core/ingest.ts` step 4 detects redaction spans without rewriting the captured text; the rest not re-verified in this pass
+
 RedLog's redaction is currently **capture-time destructive**: high-entropy tokens in the raw text get replaced with `[REDACTED_ENTROPY_x.x]` placeholders before the event lands in the DB ([src/core/redaction.ts](../src/core/redaction.ts)). The span offsets are kept in a sibling `redactions` field, but the original bytes are gone.
 
 For an evidence tool this is the wrong default. Redaction at capture is a lossy edit of the record before the hash chain closes over it — the exact thing the chain exists to prevent. False positives can't be un-redacted; investigators can't answer "what actually came out of that command"; and a sanitized entry looks identical to a genuinely empty one.
@@ -94,7 +98,7 @@ The exported bundle serves the sanitized copies; the source DB and hash chain ar
 ## Migration
 
 - `redact()` in [src/core/redaction.ts](../src/core/redaction.ts): stop substituting placeholders, keep returning span list.
-- [src/core/api-server.ts:362](../src/core/api-server.ts:362) already writes `data.redactions`; it just needs to also stop overwriting the source field.
+- [src/core/api-server.ts:362](../src/core/api-server.ts) already writes `data.redactions`; it just needs to also stop overwriting the source field.
 - Config key `redaction.storePreview` becomes a display-layer setting (default: mask on).
 - Add event types `system.secret_revealed`, `system.sanitized` to [docs/event-schema.md](event-schema.md).
 - New table `sanitized_events(source_event_id PRIMARY KEY, field, sanitized_value, replacement_hash, created_at, oplog_sanitized_event_id)`.

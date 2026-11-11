@@ -1,4 +1,4 @@
-# RedLog PowerShell Start-Transcript hook (docs/DESIGN-core-and-capture.md §2.3)
+# RedLog PowerShell Start-Transcript hook (docs/design/DESIGN-core-and-capture.md §2.3)
 #
 # The problem this solves: shell-hook.ps1 records a command, its exit code and
 # duration automatically, but the OUTPUT only when the operator remembers to

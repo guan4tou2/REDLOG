@@ -1,5 +1,9 @@
 # Release checklist
 
+> **Status:** current  
+> **Scope:** steps for cutting a release under the installed-package policy  
+> **Last verified:** not re-verified in this pass
+
 Use this checklist for the current installed-package policy. The former
 v0.9-era UI names, fixed test counts and portable-launch checks are retired.
 Record actual run IDs/results; never turn an untested platform into a pass.

@@ -1,4 +1,4 @@
-// PowerShell Start-Transcript parsing (docs/DESIGN-core-and-capture.md §2.3).
+// PowerShell Start-Transcript parsing (docs/design/DESIGN-core-and-capture.md §2.3).
 //
 // Windows capture was thin: shell-hook.ps1 records a command, its exit code and
 // duration, but the OUTPUT only when the operator remembers to prefix with

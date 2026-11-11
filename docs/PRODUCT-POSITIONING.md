@@ -1,5 +1,9 @@
 # Product Positioning
 
+> **Status:** current  
+> **Scope:** who RedLog is for and what it will not do  
+> **Last verified:** not re-verified in this pass
+
 Written 2026-08-10 against v0.11.5. **Revised 2026-08-21** — the core moved
 from *defensibility* to *knowability*; see `DESIGN-core-and-capture.md` for the
 review that produced the change and what it does to capture coverage.

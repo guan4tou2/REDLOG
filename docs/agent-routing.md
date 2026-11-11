@@ -1,5 +1,9 @@
 # Agents
 
+> **Status:** current  
+> **Scope:** which subagent to use in Claude Code sessions on this repository; not product documentation  
+> **Last verified:** not re-verified in this pass (the model table was not compared with the agent definitions)
+
 Four subagents, one rule: **every one is a 5.5 model**. The main thread runs
 Sonnet 5.5, and nothing here falls back to an older family.
 

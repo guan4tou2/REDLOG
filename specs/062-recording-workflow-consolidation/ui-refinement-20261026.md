@@ -14,7 +14,7 @@ new Activity/I/O/conversation workspace or five-entry navigation is implemented.
 The user confirmed **Forensic Editorial / Obsidian Red** for the complete
 Electron app, including all 11 work views plus Settings and system surfaces.
 The current full-product requirements and acceptance matrix are maintained in
-[UIUX-FORENSIC-EDITORIAL.md](../../docs/UIUX-FORENSIC-EDITORIAL.md). The sequence
+[UIUX-FORENSIC-EDITORIAL.md](../../docs/design/UIUX-FORENSIC-EDITORIAL.md). The sequence
 below records the earlier bounded source-row increment; subsequent planning follows Spec 064 and its recording-first acceptance gates.
 
 

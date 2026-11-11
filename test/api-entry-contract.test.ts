@@ -7,7 +7,7 @@ import path from 'path'
 import os from 'os'
 
 // R3-0: characterization of the loopback API's single entry gate
-// (docs/DESIGN-project-runtime.md §3, step R3: "loopback/host/token/size/
+// (docs/design/DESIGN-project-runtime.md §3, step R3: "loopback/host/token/size/
 // project-identity checks stay in one unskippable entry").
 //
 // These tests pin what `handleRequest` in src/core/api-server.ts does TODAY, in

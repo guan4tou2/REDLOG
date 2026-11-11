@@ -1,4 +1,4 @@
-// credential_use producer (docs/DESIGN-core-and-capture.md §4d).
+// credential_use producer (docs/design/DESIGN-core-and-capture.md §4d).
 //
 // "Which credentials did I use, where" is one of the questions an after-action
 // review asks most, and the `credential_use` lane had no built-in producer —

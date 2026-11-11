@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 
-// Per-project token isolation (docs/DESIGN-OPEN-ITEMS.md §2, PRD A3): each
+// Per-project token isolation (docs/archive/DESIGN-OPEN-ITEMS.md §2, PRD A3): each
 // engagement carries its own API secret, so a token from one project does not
 // authenticate another and a finished engagement's token can be revoked
 // independently. DB-backed, so it rides the native-module guard.

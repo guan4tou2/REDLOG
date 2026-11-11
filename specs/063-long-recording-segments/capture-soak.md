@@ -135,7 +135,7 @@ WS 的 `http-bodies/` 在重啟後不再長大，不是沒存：server 每條連
 
 crash 與 quit 的結果相同：被殺的 proxy 手上的事件由 marker 的上界涵蓋，沒有無聲遺失。
 
-這一輪也是第一輪帶 `/api/health` 探測的：373 次中 5 次超過 1 秒、1 次超過 5 秒（最長 6.0 秒），全部落在 burst 期間或重開之後。**burst 時 App 的 API 停頓超過 addon 的 5 秒 POST timeout**，這同時解釋了兩件事：64-slot 佇列在 burst 時會滿（4 個 worker 都卡在等 App 回應），以及 WS run 重開後的那一筆 `delivery-unconfirmed`。停頓的位置（同步 SQLite ingest、索引寫入或其他）未查；[PERF-AUDIT-2026-11](../../docs/PERF-AUDIT-2026-11.md) 的 ingest 項目是第一個該對照的地方。
+這一輪也是第一輪帶 `/api/health` 探測的：373 次中 5 次超過 1 秒、1 次超過 5 秒（最長 6.0 秒），全部落在 burst 期間或重開之後。**burst 時 App 的 API 停頓超過 addon 的 5 秒 POST timeout**，這同時解釋了兩件事：64-slot 佇列在 burst 時會滿（4 個 worker 都卡在等 App 回應），以及 WS run 重開後的那一筆 `delivery-unconfirmed`。停頓的位置（同步 SQLite ingest、索引寫入或其他）未查；[PERF-AUDIT-2026-11](../../docs/records/2026-11-01/PERF-AUDIT-2026-11.md) 的 ingest 項目是第一個該對照的地方。
 
 ### 這一節之前的兩次失敗
 

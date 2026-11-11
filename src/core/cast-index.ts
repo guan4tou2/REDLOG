@@ -8,7 +8,7 @@ import { ftsTerms } from './query/fts-match'
 
 // Full-text search over terminal recordings.
 //
-// docs/DESIGN-core-and-capture.md §2.4 calls this the highest-leverage single
+// docs/design/DESIGN-core-and-capture.md §2.4 calls this the highest-leverage single
 // capability in that note, because it closes two gaps with one mechanism. Tool
 // output was replayable but not queryable — you could watch the nmap run back
 // but not ask which run mentioned 445. And an `ssh` into a jump host produces

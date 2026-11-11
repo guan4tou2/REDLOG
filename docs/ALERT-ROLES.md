@@ -1,5 +1,9 @@
 # Alert Roles — how RedLog warns without lying
 
+> **Status:** current  
+> **Scope:** the two warning roles and their authority, for the alerting surfaces cited from `src/core/alert/`  
+> **Last verified:** not re-verified in this pass
+
 Written 2026-08-14. Applies `DECOMPOSITION-METHOD.md` to the **alerting** subsystem
 (`ip-monitor.ts`, `scope-monitor.ts`, and the badge/flash/event/webhook surfaces they
 feed). It is the 10th subsystem in the map and the first one whose members are

@@ -10,7 +10,7 @@ import path from 'path'
  * The `screenshot:read` / `screenshot:deleteFile` IPC guards, plugin
  * extraction, and any other "resolve then check inside root" call should
  * route through this helper rather than reinventing it. Audit P1-2
- * (docs/WINDOWS_COMPAT_AUDIT.md).
+ * (docs/records/2026-08-01/WINDOWS_COMPAT_AUDIT.md).
  */
 export function isInsideDir(root: string, target: string): boolean {
   // Pick the same-shape path lib as the input's OS so `path.relative` walks

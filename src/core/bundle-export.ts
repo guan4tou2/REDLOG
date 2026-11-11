@@ -218,7 +218,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
 
   const db = getDB()
 
-  // v0.15 (docs/DESIGN-two-tier-chain.md §7.5 / §8): fold one cheap digest over
+  // v0.15 (docs/design/DESIGN-two-tier-chain.md §7.5 / §8): fold one cheap digest over
   // the logged tier and append it as a chained `system.logged_tier_digest`
   // event BEFORE the events.jsonl dump below for direct API exports, so
   // the snapshot ships inside that bundle's chained tier and the next OTS
@@ -344,7 +344,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   files.push({ path: 'events.jsonl', ...sha256File(eventsPath) })
 
   // 1b. v0.13.0: events_logged.jsonl — the supporting-evidence tier
-  // (docs/DESIGN-two-tier-chain.md sec.7.1). Same insertion-order dump as
+  // (docs/design/DESIGN-two-tier-chain.md sec.7.1). Same insertion-order dump as
   // events.jsonl, minus the chain columns (they are always NULL on
   // logged rows). The bundled verifier IGNORES this file with a summary
   // line; only the chained tier is part of the audit-verified chain.

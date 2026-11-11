@@ -1,4 +1,4 @@
-// Size-pressure eviction for the HTTP body store (docs/DESIGN-core-and-capture.md
+// Size-pressure eviction for the HTTP body store (docs/design/DESIGN-core-and-capture.md
 // §6, salvaged design from PR #8's artifact-gc/pin).
 //
 // The body store keeps full captured request/response bodies as

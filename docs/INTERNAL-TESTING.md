@@ -1,5 +1,9 @@
 # 內測快速開始
 
+> **狀態**：current  
+> **範圍**：內測候選的安裝、核對與第一次紀錄  
+> **最後核對**：本次整理未重新核對（not re-verified in this pass）
+
 使用隨候選包提供的 `candidate.json` 核對 commit、平台與 SHA-256。公開下載的
 0.18.6 不代表包含目前分支的修正；不要只看版本號。正式安裝路徑是 Mac DMG、
 Windows NSIS、Linux x64 DEB，不需要 portable。Mac 目前未公證，下載隔離與

@@ -1,5 +1,9 @@
 # Windows 與 WSL：安裝與開始記錄
 
+> **狀態**：current  
+> **範圍**：Windows 與 WSL 安裝包使用者的安裝與開始紀錄  
+> **最後核對**：本次整理未重新核對（not re-verified in this pass）
+
 這份文件以目前 main 內測候選為準，適用安裝包使用者。不需要 Node.js、Visual Studio 或編譯工具；從原始碼開發請看 [Windows 開發指南](windows-development.md)。
 
 ## 1. 安裝 App

@@ -1,6 +1,10 @@
 # Architecture
 
-核對日期：2026-10-30；來源基準 `ae0544b5`。本頁描述目前責任與檔案位置，feature 完成度見 [Spec 索引](../specs/README.md)，後續順序見 [工作計畫](WORK-PLAN.md)。不以檔案行數、資料夾數量或舊版本能力宣告取代契約與驗收。
+> **狀態**：current  
+> **範圍**：程式／檔案架構、責任與查找方式  
+> **最後核對**：2026-10-30 依 `ae0544b5` 寫成；2026-11-11 於 `9f60882d` 只核對本頁點名的路徑、目錄與頂層區域，責任敘述未重新核對
+
+本頁描述目前責任與檔案位置，feature 完成度見 [Spec 索引](../specs/README.md)，後續順序見 [工作計畫](WORK-PLAN.md)。不以檔案行數、資料夾數量或舊版本能力宣告取代契約與驗收。
 
 ## 1. Process / layer model
 
@@ -130,15 +134,18 @@ Bundle／HAR 是主要交付入口；既有 JSON／NDJSON／Timeline 保留。op
 | 路徑 | 放什麼／不放什麼 |
 |---|---|
 | `src/core/`、`db/`、`query/`、`alert/`、`plugins/` | 領域 Module、純契約、持久化與查詢；不引入 Electron 來方便 UI |
-| `src/main/`、`ipc/`、`services/` | Electron／OS Adapter、生命週期與 seam 接線；不複製 core 政策 |
+| `src/main/`、`ipc/`、`services/`（含 `services/producers/`） | Electron／OS Adapter、生命週期與 seam 接線；不複製 core 政策 |
 | `src/preload/` | renderer 可呼叫的明確 Interface；同步型別與授權／錯誤語意 |
-| `src/renderer/src/components/`、`lib/`、`i18n/` | 既有閱讀／設定／操作、純投影與兩語系；沿用 controls／tokens |
+| `src/renderer/src/components/`、`hooks/`、`lib/`、`i18n/`、`styles/` | 既有閱讀／設定／操作、純投影與兩語系；沿用 controls／tokens |
 | `hooks/`、`shell/`、`cli/` | 外部接入、傳輸、工具入口；不另存一套 project identity 或 pause 契約 |
 | `plugins/`、`optional-plugins/`、`resources/` | bundled 貢獻、選配整合與打包靜態資源；runtime 可變設定不寫回這裡 |
 | `test/`、`e2e/`、`scripts/`、`tools/` | 行為測試、實際 App 任務、工程 gate、離線 verifier；沿用 fixture 與測試選取，不按新文件分類搬測試 |
 | `specs/NNN-slug/` | feature spec／plan／tasks／verification；穩定編號，不搬到 active／done 子目錄 |
-| `docs/`、`domain/`、`records/`、`archive/` | 長期入口／標準、領域契約、日期證據、過期提案；見 [文件入口](README.md) |
+| `docs/`、`design/`、`domain/`、`research/`、`records/`、`archive/` | 長期入口／標準、現行設計、領域契約、研究筆記、日期證據、過期提案；見 [文件入口](README.md) |
 | `design/`、`examples/` | 設計來源、可維護的公開範例；不是執行紀錄 |
+| `prototypes/` | 靜態 HTML 參考原型（`app-reference/`、`stitch/`）；不是產品來源，也不代表已實作 |
+| `redlog-share-worker/` | 獨立分享服務（見 §7）；不是桌面 App 的一部分 |
+| `.specify/` | Spec Kit 範本、腳本與 [constitution](../.specify/memory/constitution.md)；feature 文件仍放 `specs/` |
 | `out/`、`dist/`、`test-results/` 等生成輸出 | build／候選／測試 artifacts；不當作來源或搬入 docs，依 `.gitignore` 管理 |
 
 本次實際調整的是文件入口與日期紀錄。產品來源保留原位置：只有觀測到同一知識跨多個呼叫點漂移，或兩個真實 Adapter 需要同一 Interface，才在相關 feature 批次調整 seam／Module。先畫責任與測試面，再做必要搬移；不按行數拆檔、不新增泛用 `common/`／barrel 只為讓目錄看起來整齊。
@@ -181,7 +188,7 @@ esbuild 打包後會是 temporal-dead-zone 崩潰——而 **vitest 看不到**�
 未列出的 pair 預設 chained。**任何 join 或聚合都必須考慮兩張表**——語料大半在 logged 層
 （所有 HTTP、DNS、browser console、agent thinking）。
 
-已知的例外：`searchEvents` 只查 `events`。這是既有行為，不是這輪造成的。
+已知的例外：原本只查 `events` 的 `searchEvents` 已不存在；`/api/events/search` 改用 `parseQuery` 與 [`executeEventQuery`](../src/core/db/event-queries.ts)（Spec 026）。兩表是否都涵蓋，以該檔為準（2026-11-11 補記）。
 
 ### 腳本化編輯要 assert
 

@@ -16,7 +16,7 @@
  *
  * Switching is not a transaction: the old open stops, then the new one
  * begins. A failed open is cleaned up and reported; it does not bring the old
- * project back. docs/DESIGN-project-runtime.md.
+ * project back. docs/design/DESIGN-project-runtime.md.
  */
 
 import type { ProjectMeta } from './project-manager'

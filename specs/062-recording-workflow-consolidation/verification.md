@@ -1843,7 +1843,7 @@ candidate quit normally and Node SQLite was restored. No repackaging or push.
 
 User confirmed the whole Electron product: 11 work views plus Settings, project
 selection/onboarding, Export/HUD/dialogs/notifications and all states. Canonical
-requirements and acceptance matrix are in docs/UIUX-FORENSIC-EDITORIAL.md.
+requirements and acceptance matrix are in docs/design/UIUX-FORENSIC-EDITORIAL.md.
 T091/T092 remain open; this is not a completed whole-App visual redesign.
 
 RED: extended the existing design-tokens action-fill assertion to check the

@@ -7,7 +7,7 @@ import path from 'path'
 // database is told which engagement it belongs to when the project opens, and
 // a row that names a different one is refused, whichever path it came by.
 // Two such paths were found and closed by name (scope recompute, cast
-// backfill); this is for the ones nobody has found. docs/DESIGN-project-runtime.md.
+// backfill); this is for the ones nobody has found. docs/design/DESIGN-project-runtime.md.
 
 let events: typeof import('../src/core/db/events') | null = null
 let dbmod: typeof import('../src/core/db/index') | null = null

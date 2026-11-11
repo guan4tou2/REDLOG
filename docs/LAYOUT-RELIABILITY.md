@@ -1,5 +1,9 @@
 # Layout Reliability
 
+> **狀態**：current  
+> **範圍**：對話框、表格與長文字的排版契約（下方基準 commit 是當次修正的基準）  
+> **最後核對**：本次整理未重新核對（not re-verified in this pass）
+
 本輪是排版可靠性修正，以 `main` 的 `d2917021` 為基準。分支：`codex/layout-reliability`。
 不包含 Spec 064 的 Activity、Content Viewer、導覽整併、Settings 重構或換色。
 

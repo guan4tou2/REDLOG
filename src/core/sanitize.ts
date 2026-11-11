@@ -147,7 +147,7 @@ export function sanitize(input: SanitizeInput): SanitizeResult {
 
 // One prepared statement per connection. Export reads this up to three times
 // per event (plan, redact, NDJSON), and preparing it per call dominated the
-// export profile (docs/PERF-AUDIT-2026-11.md §4). Keyed by the Database object
+// export profile (docs/records/2026-11-01/PERF-AUDIT-2026-11.md §4). Keyed by the Database object
 // rather than module state: closeDB()/initDB() makes a new connection, and a
 // statement from a closed one throws.
 const sanitizedFieldsStmt = new WeakMap<Database.Database, Database.Statement>()

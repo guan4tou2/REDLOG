@@ -6,7 +6,7 @@ import { formatTime } from '../lib/time'
 import { useInfiniteScroll } from '../lib/useInfiniteScroll'
 import { ListFooter } from './ListFooter'
 
-// Search hits inside terminal recordings (docs/DESIGN-core-and-capture.md
+// Search hits inside terminal recordings (docs/design/DESIGN-core-and-capture.md
 // §2.4).
 //
 // The question this answers is "where is the output of that scan" — so the

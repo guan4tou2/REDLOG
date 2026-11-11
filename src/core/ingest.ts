@@ -9,7 +9,7 @@
 // different things depending on which door it came through.
 //
 // `ingest()` is that door. Both the REST route and the in-process producers
-// call it. It owns the order (docs/DESIGN-plugin-kernel.md §3):
+// call it. It owns the order (docs/design/DESIGN-plugin-kernel.md §3):
 //
 //   pause gate → causes → enrich (stamps) → redaction spans → insertEvent
 //   (raw stored, envelope hashed) → publish → alert dispatch → companions
@@ -294,7 +294,7 @@ export function ingest(input: IngestInput): IngestResult {
   eventBus.publish(event, { bypassPause: input.bypassPause })
   noteStartEvent(agentType, data, event.id)
   // Record pid → this command_start so later traffic on that pid's sockets can
-  // cite it (docs/DESIGN-traffic-attribution.md §2.3).
+  // cite it (docs/design/DESIGN-traffic-attribution.md §2.3).
   if (agentType === 'shell' && data.subtype === 'command_start') {
     noteCommandPid(data.pid as number | undefined, event.id)
   }

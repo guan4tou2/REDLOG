@@ -1,4 +1,4 @@
-// Scope-aware export masking (docs/DESIGN-OPEN-ITEMS.md §3, PRD A2).
+// Scope-aware export masking (docs/archive/DESIGN-OPEN-ITEMS.md §3, PRD A2).
 //
 // The four-layer redaction model masks DETECTED spans (a token that looks like
 // a secret). It says nothing about SCOPE: an event whose target is out of the

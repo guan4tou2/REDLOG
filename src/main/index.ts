@@ -140,7 +140,7 @@ let forceQuit = false
 const dependencyInstalls = new Map<PreflightCommand, AbortController>()
 // Which open a timer or a late `.then` belongs to, and the stop that reaches
 // all of them. The chain sample, the logged-tier sweep and the spool drain
-// are its timers; stopProject closes it first. docs/DESIGN-project-runtime.md.
+// are its timers; stopProject closes it first. docs/design/DESIGN-project-runtime.md.
 // It is also the one place an event's identity comes from: `current()` is the
 // open's context, read when writing, so an operator changed in Settings is
 // the one recorded from the next write on. Once stopProject has closed it,
@@ -834,7 +834,7 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
           (ev.shortfallBytes > 0 ? ` (still ${ev.shortfallBytes} bytes over budget; in-scope ${kind}s kept)` : ''))
       }
     }
-    // v0.13.0: row-level logged-tier sweep (docs/DESIGN-logged-tier-retention.md).
+    // v0.13.0: row-level logged-tier sweep (docs/design/DESIGN-logged-tier-retention.md).
     // Runs on project open AND periodically — see the interval below.
     const loggedSwept = sweepLoggedTier(config.retention?.loggedTier, opening)
     if (loggedSwept.deleted > 0) {

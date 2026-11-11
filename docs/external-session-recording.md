@@ -1,5 +1,9 @@
 # External terminal session recording
 
+> **Status:** current  
+> **Scope:** explicitly recorded external shells (`redlog-session`)  
+> **Last verified:** not re-verified in this pass
+
 Install the current Bash or Zsh hook through RedLog, then open a new shell.
 Python 3 is required. Start an explicitly recorded shell with `redlog-session`,
 or one interactive command with `redlog-session -- ssh user@host`.

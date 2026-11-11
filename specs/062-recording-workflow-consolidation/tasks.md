@@ -237,7 +237,7 @@ ui-refinement-20261026.md. No completed whole-app audit is implied.
 
 ## Forensic Editorial foundation — 2026-10-26
 
-Full product scope and exact page/state matrix: [UIUX-FORENSIC-EDITORIAL.md](../../docs/UIUX-FORENSIC-EDITORIAL.md).
+Full product scope and exact page/state matrix: [UIUX-FORENSIC-EDITORIAL.md](../../docs/design/UIUX-FORENSIC-EDITORIAL.md).
 The earlier T087 source-row increment is retained as history; the next sequence
 is foundation, T089 core work views, T088/T090 evidence/settings/delivery, then
 full acceptance. T089 also covers the remaining evidence work views it names.

@@ -7,7 +7,7 @@ const DOMAIN_RE = /\b([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z]
 // The EXTRACTION MECHANISMS are generic, named strategies that live in core (a
 // shared library); the TOOL KNOWLEDGE — which command targets which host — is
 // declarative data that lives OUTSIDE core, in the bundled `builtin-tools` pack
-// (E1 Option B, docs/DESIGN-E1-target-extractor-plugins.md). Core no longer
+// (E1 Option B, docs/design/DESIGN-E1-target-extractor-plugins.md). Core no longer
 // carries any per-tool table at all: at startup `initPlugins()` registers the
 // pack's rows through the same `registerTargetExtractors` path any plugin uses,
 // so built-ins and third-party extractors are one uniform list. Disabling the

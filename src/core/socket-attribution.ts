@@ -1,4 +1,4 @@
-// Socket → pid → command attribution (docs/DESIGN-traffic-attribution.md §2.3,
+// Socket → pid → command attribution (docs/design/DESIGN-traffic-attribution.md §2.3,
 // PRD B3).
 //
 // "Which command produced this traffic?" is answered here. Traffic events carry

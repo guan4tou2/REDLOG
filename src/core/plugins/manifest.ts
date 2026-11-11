@@ -17,7 +17,7 @@ const RETIRED_KEYS: Record<string, string> = {
   exporters: 'RedLog has no host to run plugin code of this kind',
   monitors: 'RedLog has no host to run plugin code of this kind',
   // Mappers normalise raw bytes posted to POST /api/ingest, which was never
-  // built (docs/DESIGN-plugin-kernel.md §3); a registered mapper ran nowhere.
+  // built (docs/design/DESIGN-plugin-kernel.md §3); a registered mapper ran nowhere.
   mappers: 'nothing applies mappers yet — producers post normalised events to POST /api/events'
 }
 
@@ -246,7 +246,7 @@ export function validateManifest(raw: unknown, dir: string): ManifestParse {
   // Every referenced file (hooks + code) must stay inside the plugin dir and exist.
   // Uses `path.isAbsolute` so `C:\foo`, `c:/foo`, `\\?\C:\`, `\foo\bar` are
   // caught on Windows — the old `rel.startsWith('/')` check missed them.
-  // Audit P1-1 (docs/WINDOWS_COMPAT_AUDIT.md).
+  // Audit P1-1 (docs/records/2026-08-01/WINDOWS_COMPAT_AUDIT.md).
   for (const rel of collectFileRefs(contributes)) {
     if (isAbsolute(rel)) return { ok: false, error: `unsafe absolute path escapes plugin dir: ${rel}` }
     if (normalize(rel).split(/[\\/]/).includes('..')) {

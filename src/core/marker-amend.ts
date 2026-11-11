@@ -1,4 +1,4 @@
-// Writing a correction to a marker (docs/DESIGN-core-and-capture.md §1, design
+// Writing a correction to a marker (docs/design/DESIGN-core-and-capture.md §1, design
 // turn 8b).
 //
 // There is no edit. The `events` table refuses UPDATE and DELETE outright — two

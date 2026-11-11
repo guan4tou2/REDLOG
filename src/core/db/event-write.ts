@@ -33,7 +33,7 @@ function prepareEnvelope(data: Record<string, unknown>, env: EnvelopeInput | und
 // Tier assignment is data-driven from (agent_type, subtype). The rubric:
 //   Q1. Would a court/blue team ask for THIS row alone?  → chained.
 //   Q2. Does it earn keep via `_causes` to a chained row? → logged.
-// See docs/DESIGN-two-tier-chain.md §2 for the full table and reasoning.
+// See docs/design/DESIGN-two-tier-chain.md §2 for the full table and reasoning.
 // Anything not listed here defaults to `chained` — unknown-source rows
 // are treated as high-value evidence until an operator (or a plugin
 // manifest) opts them into `logged`.
@@ -270,7 +270,7 @@ export function canonicalStringify(v: unknown): string {
   return '{' + parts.join(',') + '}'
 }
 
-// v0.15 logged-tier integrity (docs/DESIGN-two-tier-chain.md §7.5 / §8): the
+// v0.15 logged-tier integrity (docs/design/DESIGN-two-tier-chain.md §7.5 / §8): the
 // logged tier is deliberately un-chained and un-signed — see the events_logged
 // schema comment in db/index.ts. That is the tier, not an oversight, so it has
 // no per-row tamper-evidence by design. Rather than pay a per-row hash on the
@@ -453,7 +453,7 @@ export function insertEvent(
   // v0.13.0: two-tier dispatch. The chained arm is the ENTIRE historical
   // body of insertEvent (hash + Ed25519 sign + INSERT into `events`). The
   // logged arm skips the chain machinery entirely and lands in
-  // `events_logged`. See docs/DESIGN-two-tier-chain.md §4.
+  // `events_logged`. See docs/design/DESIGN-two-tier-chain.md §4.
   const tier = classifyTier(agentType, data)
   if (tier === 'logged') return insertLoggedEvent(agentType, data, opts)
   return insertChainedEvent(agentType, data, opts)

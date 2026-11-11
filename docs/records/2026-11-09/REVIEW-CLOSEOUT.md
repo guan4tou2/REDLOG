@@ -18,7 +18,7 @@
 | 主線索引查詢 | 0.069 ms | 0.018 ms |
 | 相同 fixture 強制全掃描 | 909.816 ms | 98.981 ms |
 
-實際計畫使用 `idx_events_agent_kind_ts`。主線已修正此來源分類查詢的掃描問題，先前建議「再建立 lastSeen 快取」需重新評估收益。此數據僅證明這條查詢；Windows 開專案 29.8 秒、匯出記憶體及時間軸 frame time 仍須使用原 workload 重測。重測腳本為 `docs/perf-audit-2026-11/bench-health-miss.ts`，可透過既有 run.mjs 執行。
+實際計畫使用 `idx_events_agent_kind_ts`。主線已修正此來源分類查詢的掃描問題，先前建議「再建立 lastSeen 快取」需重新評估收益。此數據僅證明這條查詢；Windows 開專案 29.8 秒、匯出記憶體及時間軸 frame time 仍須使用原 workload 重測。重測腳本為 `docs/records/2026-11-01/perf-audit-2026-11/bench-health-miss.ts`，可透過既有 run.mjs 執行。
 
 ## 仍需完成的工程工作
 

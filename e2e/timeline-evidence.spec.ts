@@ -569,7 +569,7 @@ test.describe.serial('active-target-context: active target context', () => {
   })
 })
 
-// docs/DESIGN-core-and-capture.md §2.1, verified in a running app.
+// docs/design/DESIGN-core-and-capture.md §2.1, verified in a running app.
 //
 // The connection monitor shells out to ss/netstat, which an e2e cannot drive
 // deterministically — that path is covered by the parser fixtures in

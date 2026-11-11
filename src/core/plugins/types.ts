@@ -187,7 +187,7 @@ export interface PluginContributes {
   tailers?: string
 }
 
-/** What role a plugin plays (docs/DESIGN-plugin-kernel.md §2). `pack` is a
+/** What role a plugin plays (docs/design/DESIGN-plugin-kernel.md §2). `pack` is a
  *  bundle of several roles — the bundled starter pack is one. The kernel uses
  *  it to decide which plugins are capture *sources* for the health card. */
 export type PluginKind = 'producer' | 'mapper' | 'enrichment' | 'exporter' | 'pack'
@@ -208,7 +208,7 @@ export interface PluginManifest {
   homepage?: string
   /** PLUGIN_API_VERSION this plugin was written against */
   redlogApi: number
-  /** Envelope schema version this plugin emits (docs/DESIGN-plugin-kernel.md
+  /** Envelope schema version this plugin emits (docs/design/DESIGN-plugin-kernel.md
    *  §3). Defaults to the current ENVELOPE_SCHEMA_VERSION. */
   schemaVersion?: number
   kind?: PluginKind

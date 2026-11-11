@@ -5,7 +5,7 @@ import os from 'os'
 import crypto from 'crypto'
 
 // The raw store is the physical basis of "unified format does not distort the
-// record" (docs/DESIGN-plugin-kernel.md §4): the bytes a producer sent are
+// record" (docs/design/DESIGN-plugin-kernel.md §4): the bytes a producer sent are
 // kept verbatim and a ref (file, off, len, sha256) points at them. It needs a
 // project dir, so it rides the same native-module guard as the other
 // DB-backed suites.
