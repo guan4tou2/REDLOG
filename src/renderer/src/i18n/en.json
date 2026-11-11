@@ -1570,6 +1570,7 @@
   "transcript.queryUnparsable": "This query was not run",
   "query.unparsable.empty-condition-value": "“{{token}}” is a half-typed condition with no value. Give it one, or wrap it in double quotes to search for it as text.",
   "query.unparsable.unterminated-quote": "“{{token}}” has an unclosed quote.",
+  "query.unparsable.too-long": "A query can be at most {{token}} characters.",
   "transcript.queryToolSession": "Tool-use {{tool}} resolved within session {{session}}",
   "transcript.queryToolSessionOthers": "The same tool-use ID also occurs in {{count}} other session(s); add a session: condition to choose.",
   "transcript.queryCoverage": "Search covers stored event text and saved text bodies. Search recording content in Operations.",

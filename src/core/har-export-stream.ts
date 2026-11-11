@@ -33,11 +33,23 @@ export function writeApprovedHar(file: string, opts: NonNullable<Parameters<type
     .sort((a,b) => (metadata.get(a)!.req ?? metadata.get(a)!.res!) - (metadata.get(b)!.req ?? metadata.get(b)!.res!))
   const partials = [...new Set([...chunks.keys(), ...messages.keys()])]
     .filter(id => !requests.has(id) && !responses.has(id)).sort((a,b) => metadata.get(a)!.first - metadata.get(b)!.first)
+  // One lookup per flow, so each must be an index probe. `flow_id` is indexed
+  // only by the two partial indexes in db/index.ts, and SQLite uses a partial
+  // index only when the query repeats its WHERE terms — without the subtype
+  // lists this scanned every scanner row once per flow, and a whole-project
+  // HAR went quadratic (#695). The two lists together cover every subtype
+  // createHarDocument reads.
+  const flowRows = getReadonlyDB().prepare(`SELECT *, 'logged' AS tier FROM events_logged
+      WHERE agent_type='scanner' AND subtype IN ('http_request_start', 'http_response')
+        AND json_extract(data,'$.flow_id')=? AND rowid<=?
+    UNION ALL
+    SELECT *, 'logged' AS tier FROM events_logged
+      WHERE agent_type='scanner' AND subtype IN ('http_response_chunk', 'ws_message', 'websocket_end', 'http_error', 'tcp_message', 'tcp_end')
+        AND json_extract(data,'$.flow_id')=? AND rowid<=?
+    ORDER BY timestamp DESC,id DESC`)
   const readFlow = (id: string) => {
-    // This is the same indexed namespace used by HTTP pair/stream queries.
-    const rows = getReadonlyDB().prepare(`SELECT *, 'logged' AS tier FROM events_logged
-      WHERE agent_type='scanner' AND json_extract(data,'$.flow_id')=? AND rowid<=?
-      ORDER BY timestamp DESC,id DESC`).iterate(id, opts.snapshot!.loggedMaxRowId) as IterableIterator<Record<string, unknown>>
+    const max = opts.snapshot!.loggedMaxRowId
+    const rows = flowRows.iterate(id, max, id, max) as IterableIterator<Record<string, unknown>>
     const events: RedLogEvent[] = []
     for (const row of rows) {
       if (!opts.includeEventIds!.has(String(row.id))) continue

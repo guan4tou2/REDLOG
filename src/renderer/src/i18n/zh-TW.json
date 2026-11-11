@@ -1570,6 +1570,7 @@
   "transcript.queryUnparsable": "這個查詢沒有被送出",
   "query.unparsable.empty-condition-value": "「{{token}}」是打到一半的條件，缺少值。補上值，或加雙引號當作文字搜尋。",
   "query.unparsable.unterminated-quote": "「{{token}}」的引號沒有結束。",
+  "query.unparsable.too-long": "查詢最多 {{token}} 個字元。",
   "transcript.queryToolSession": "tool-use {{tool}} 解析於 session {{session}}",
   "transcript.queryToolSessionOthers": "同一個 tool-use ID 也出現在另外 {{count}} 個 session；加上 session: 條件可以指定。",
   "transcript.queryCoverage": "搜尋涵蓋已保存的事件與文字輸出；錄影內容請至操作紀錄搜尋。",

@@ -79,14 +79,15 @@ Primary event ingestion. The server strips any `operator_id` from the body (attr
 
 #### `GET /api/events/search`
 
-**Query params:** `q` (min 2 chars, the app's query language — see
+**Query params:** `q` (2 to 1000 chars, the app's query language — see
 [SPEC-search-query-semantics.md](domain/SPEC-search-query-semantics.md)),
 `limit` (default 100, max 1000), `cursor` (the `nextCursor` of the previous page)
 
 **Response:** `{ count: number, events: Event[], hasMore: boolean, nextCursor: string | null, toolSession? }`
 
 `hasMore: false` means the answer is complete. Follow `nextCursor` until it is.
-`400` for an unparsable query (`reason`, `token`) or a cursor the store cannot
+`400` for an unparsable query (`reason`, `token`; a `q` over 1000 characters is
+`reason: "too-long"`) or a cursor the store cannot
 read; `500` when the search itself fails — never an empty `events` list.
 
 #### `GET /api/events/count`
@@ -160,6 +161,7 @@ let any token holder put chosen provenance on screen.
 **Body:** `{ text, targetId?, source? }`
 
 **Response:** `{ findings: [{ type, value, confidence }] }` or `503` if detector unavailable.
+`413` when `text` is longer than 16 384 characters; nothing is scanned.
 
 ---
 

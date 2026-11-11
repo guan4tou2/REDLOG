@@ -39,7 +39,7 @@ import { ingest, type LootDetectorLike } from './ingest'
 import { isInsideDir } from './paths'
 import { getProjectDir } from './db/index'
 import { extractBodyToSidecar, readBody as readHttpBody, type BodyRef } from './http-body-store'
-import { parseJsonObjectBody, parseRecordingAction, parseLimitParam, parseTimeParam, API_LIMITS } from './api-request'
+import { parseJsonObjectBody, parseRecordingAction, parseLimitParam, parseTimeParam, API_LIMITS, LOOT_SCAN_MAX_CHARS } from './api-request'
 import { resolveContainedFile } from './contained-file'
 import { MARKER_TITLE_MAX, MARKER_NOTES_MAX, capMarkerText } from './marker-text'
 
@@ -519,7 +519,12 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         json(res, 503, { error: 'Loot detector not available' })
         return
       }
-      const findings = lootDetectorRef.scan(String(body.text ?? ''), body.targetId as string | undefined, body.source as string | undefined)
+      const text = String(body.text ?? '')
+      if (text.length > LOOT_SCAN_MAX_CHARS) {
+        json(res, 413, { error: `text exceeds ${LOOT_SCAN_MAX_CHARS} characters` })
+        return
+      }
+      const findings = lootDetectorRef.scan(text, body.targetId as string | undefined, body.source as string | undefined)
       json(res, 200, { findings })
       return
     }

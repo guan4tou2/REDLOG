@@ -54,7 +54,15 @@ export interface ParsedQuery {
  * text, and may contain whitespace, so the escape and a phrase are one
  * spelling. Unquoted text is unchanged.
  */
-export type ParseFailure = 'empty-condition-value' | 'unterminated-quote'
+export type ParseFailure = 'empty-condition-value' | 'unterminated-quote' | 'too-long'
+
+/** Longest query any surface runs (docs/api-reference.md, `GET
+ *  /api/events/search`). Each free-text term is one FTS lookup in the events
+ *  index and one in the body index, on the main thread; a pasted blob of
+ *  thousands of terms added most of a second to every search (#695). Refused
+ *  here so the API, the search box and a stored filter all stop at the same
+ *  length. The failure's `token` is the limit. */
+const MAX_QUERY_CHARS = 1000
 
 export type ParseOutcome =
   | { ok: true; parsed: ParsedQuery }
@@ -84,6 +92,7 @@ function tokenize(input: string): { tokens: string[] } | { unterminated: string 
 }
 
 export function parseQuery(input: string): ParseOutcome {
+  if (input.length > MAX_QUERY_CHARS) return { ok: false, reason: 'too-long', token: String(MAX_QUERY_CHARS) }
   const scan = tokenize(input)
   if ('unterminated' in scan) {
     return { ok: false, reason: 'unterminated-quote', token: scan.unterminated }
