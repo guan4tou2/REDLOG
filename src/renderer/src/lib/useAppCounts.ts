@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react'
+import { createThrottledRead, type ThrottledRead } from './throttledRead'
 
 // Shared counts that Sidebar, DashboardView, and StatusBar all need.
 // Centralises the fetch + batch subscription so each consumer doesn't
@@ -76,9 +77,8 @@ const listeners = new Set<() => void>()
 let consumers = 0
 let detach: (() => void) | null = null
 let want: Want = { live: false, configured: false, done: false }
-let inFlight = false
-let timer: ReturnType<typeof setTimeout> | null = null
-let lastLiveRound = -Infinity
+/** Paces rounds while anyone is mounted; replaced on the next first mount. */
+let pacer: ThrottledRead | null = null
 /** Bumped when the last consumer leaves, so a round that outlives every
  *  consumer cannot write into the next mount's counts. */
 let generation = 0
@@ -91,7 +91,6 @@ function set(patch: Partial<State>): void {
 async function round(): Promise<void> {
   const take = want, gen = generation
   want = { live: false, configured: false, done: false }
-  inFlight = true
   const r = window.redlog
   const apply = (patch: Partial<State>): void => { if (gen === generation) set(patch) }
   const reads: Array<Promise<unknown>> = []
@@ -112,28 +111,17 @@ async function round(): Promise<void> {
       .catch(() => apply({ configuredFailed: true })))
   }
   try { await Promise.all(reads) } finally {
-    if (gen === generation) {
-      inFlight = false
-      if (take.done) apply({ loading: false })
-      pump()
-    }
+    if (take.done) apply({ loading: false })
   }
 }
 
-/** Start the next round if one is wanted and none is in flight. A round that
- *  carries only live counts waits out LIVE_INTERVAL_MS from the previous live
- *  round; anything the operator or a mount asked for goes at once. */
+/** Start the next round if one is wanted. One round is in flight at most. A
+ *  round that carries only live counts waits out LIVE_INTERVAL_MS from the
+ *  previous round; anything the operator or a mount asked for goes as soon as
+ *  nothing is in flight. */
 function pump(): void {
-  if (inFlight || (!want.live && !want.configured)) return
-  const liveOnly = !want.configured && !want.done
-  const wait = liveOnly ? lastLiveRound + LIVE_INTERVAL_MS - Date.now() : 0
-  if (wait > 0) {
-    timer ??= setTimeout(() => { timer = null; pump() }, wait)
-    return
-  }
-  if (timer) { clearTimeout(timer); timer = null }
-  if (want.live) lastLiveRound = Date.now()
-  void round()
+  if (!want.live && !want.configured) return
+  pacer?.request({ immediate: want.configured || want.done })
 }
 
 let queued = false
@@ -148,6 +136,8 @@ function ask(next: Partial<Want>): void {
 const everything = (): void => ask({ live: true, configured: true, done: true })
 
 function attach(): () => void {
+  const paced = createThrottledRead({ read: round, minIntervalMs: LIVE_INTERVAL_MS })
+  pacer = paced
   const unsub = window.redlog.events.onNewBatch(() => ask({ live: true }))
   // A saved config can change what "configured" means (a scope target added
   // from Settings or from the Targets view). Without this the status bar
@@ -157,6 +147,8 @@ function attach(): () => void {
   window.addEventListener('redlog:config-saved', onConfigSaved)
   return () => {
     unsub()
+    paced.dispose()
+    if (pacer === paced) pacer = null
     window.removeEventListener(RECOUNT_EVENT, everything)
     window.removeEventListener('redlog:config-saved', onConfigSaved)
   }
@@ -178,12 +170,9 @@ export function useAppCounts(): AppCounts {
     return () => {
       if (--consumers > 0) return
       detach?.(); detach = null
-      if (timer) { clearTimeout(timer); timer = null }
       generation++
       state = INITIAL
       want = { live: false, configured: false, done: false }
-      inFlight = false
-      lastLiveRound = -Infinity
     }
   }, [])
   return {

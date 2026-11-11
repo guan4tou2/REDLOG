@@ -3,6 +3,7 @@ import { FieldGroup } from './SettingsShared'
 import { CheckRow } from './CheckRow'
 import { Button } from '../Button'
 import { formatDateTime } from '../../lib/time'
+import { runMutation } from '../../lib/mutation'
 import type { UpdateStatus } from '../../../../main/services/update-status'
 
 // The version and "check for updates" used to live in the title bar, beside
@@ -92,7 +93,7 @@ function UpdateBlock({ t }: { t: T }): JSX.Element | null {
           </Button>
         )}
         {status.stage === 'ready' && status.method === 'in-app' && (
-          <Button level="secondary" onClick={() => void window.redlog.app.installUpdate()} data-testid="update-install">
+          <Button level="secondary" onClick={() => void runMutation(() => window.redlog.app.installUpdate(), { failed: t('update.state.failed'), isFailure: () => false })} data-testid="update-install">
             {t('update.installNow')}
           </Button>
         )}

@@ -22,6 +22,7 @@ import RecordingWorkspace from './components/RecordingWorkspace'
 import { ExportMenu } from './components/ExportMenu'
 import { ConfirmDialogContainer } from './components/ConfirmDialog'
 import { toast } from './components/Toast'
+import { installRejectionToast } from './lib/unhandledRejection'
 
 // Heavy views loaded lazily — keeps the initial bundle small.
 // These are lazy so the first paint does not carry xterm and the settings
@@ -121,6 +122,10 @@ export default function App(): JSX.Element {
   const [settingsRequest, setSettingsRequest] = useState<{ page: SettingsPage; scopeCandidate?: string; sourceId?: string } | null>(null)
   const { t } = useI18n()
   const narrow = useNarrowViewport()
+  // Installed here rather than in main.tsx: the toast needs `t` and this
+  // component's ToastContainer. The overlay has no toast surface, so there an
+  // unhandled rejection stays a devtools log.
+  useEffect(() => installRejectionToast(() => t('common.unexpectedError')), [t])
 
   // What the first launch after an update found, said once. It is taken (and so
   // cleared) in main; asked at mount for an outcome that was ready before this

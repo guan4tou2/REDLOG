@@ -14,6 +14,7 @@ import { createAckBatcher, createFitScheduler } from '../lib/terminalFlow'
 import { Modal } from './Modal'
 import { Button } from './Button'
 import { isMac } from '../lib/platform'
+import { isComposing } from '../lib/ime'
 
 interface Tab {
   id: string
@@ -289,7 +290,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
       const cmd = e.ctrlKey || e.metaKey
-      if (!cmd || e.defaultPrevented || e.isComposing) return
+      if (!cmd || e.defaultPrevented || isComposing(e)) return
       // xterm's textarea owns terminal shortcuts; ordinary fields retain their
       // editing/browser commands (including the terminal search input).
       const target = e.target instanceof Element ? e.target : null
@@ -503,6 +504,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); runSearch(e.target.value, 'type') }}
             onKeyDown={(e) => {
+              if (isComposing(e)) return
               if (e.key === 'Enter') { e.preventDefault(); runSearch(searchQuery, e.shiftKey ? 'prev' : 'next') }
               if (e.key === 'Escape') { e.preventDefault(); closeSearch() }
             }}

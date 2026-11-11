@@ -4,6 +4,7 @@ import { useI18n } from '../../i18n'
 import { IconButton } from '../IconButton'
 import { FieldGroup, Field, ListField, isMacOS, type ConfigState } from './SettingsShared'
 import { CheckRow } from './CheckRow'
+import { isComposing } from '../../lib/ime'
 
 const DEFAULT_VPN_ADAPTERS = [
   { name: 'WireGuard', pattern: 'wireguard|^wg\\d', enabled: true },
@@ -81,7 +82,7 @@ function VpnAdaptersField({ config, setConfig }: { config: ConfigState; setConfi
           <input
             value={newPattern}
             onChange={(e) => setNewPattern(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && addCustom()}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !isComposing(e)) addCustom() }}
             placeholder={t('settings.vpnPatternPlaceholder')}
             className="min-w-0 basis-40 flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500"
           />

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n'
 import { Button } from './Button'
 import { useFocusTrap } from '../lib/useFocusTrap'
+import { isComposing } from '../lib/ime'
 
 // Confirmation, graded by consequence (docs/UIUX-STANDARD.md §5.5).
 //
@@ -123,7 +124,7 @@ function ConfirmDialogInner({ state, close, t }: {
       // Nor from a focused button: Enter there is that button's own click.
       // This listener is on the window, so it used to confirm with focus on
       // Cancel, and its preventDefault suppressed the click that cancels.
-      if (e.key !== 'Enter' || !armed || e.isComposing || e.keyCode === 229) return
+      if (e.key !== 'Enter' || !armed || isComposing(e)) return
       if ((e.target as HTMLElement | null)?.closest?.('button')) return
       e.preventDefault(); close(true)
     }
