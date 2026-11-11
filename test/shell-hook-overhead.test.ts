@@ -50,8 +50,8 @@ const SESSION = [
   // Not ASCII: the python builder's event, not the shell's.
   'echo café',
   // A tab in the working directory puts a control character in both events'
-  // `cwd`, which is for the python builder too — and it drops them, as it did
-  // before (`json.loads` refuses a raw tab inside a string).
+  // `cwd`. It used to reach the payload raw, `json.loads` refused it and both
+  // events were dropped; it is written as `\t` now, and the events are sent.
   'cd "$TABDIR"',
   'echo in-tab-dir',
   'cd "$WORKDIR"',

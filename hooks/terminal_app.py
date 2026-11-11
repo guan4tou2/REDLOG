@@ -84,6 +84,16 @@ def terminal_origin():
     return None
 
 
+SELECTIONS = ('WarpTerminal', 'Apple_Terminal', 'iTerm.app', 'vscode', 'WindowsTerminal')
+
+
+def selections_for(origin):
+    """The restricted selections a terminal of this origin satisfies."""
+    if origin == 'builtin':
+        return list(SELECTIONS)
+    return [origin] if origin in SELECTIONS else []
+
+
 def terminal_app_allowed(directory=None):
     root = Path(directory or os.environ.get('_REDLOG_DIR') or Path.home() / '.redlog')
     try:
@@ -94,11 +104,21 @@ def terminal_app_allowed(directory=None):
         return False
     if wanted == 'all':
         return True
-    if wanted not in {'WarpTerminal', 'Apple_Terminal', 'iTerm.app', 'vscode', 'WindowsTerminal'}:
+    if wanted not in SELECTIONS:
         return False
-    origin = terminal_origin()
-    return origin == wanted or origin == 'builtin'
+    return wanted in selections_for(terminal_origin())
+
+
+def main(argv):
+    # `--allows`: the selections this terminal satisfies, space-separated. The
+    # shell adapters ask once and keep the answer for the life of the shell —
+    # the origin does not change while it runs, and observing it costs a `ps`
+    # — then compare each command's selection against it.
+    if argv[:1] == ['--allows']:
+        sys.stdout.write(' '.join(selections_for(terminal_origin())))
+        return 0
+    return 0 if terminal_app_allowed(argv[0] if argv else None) else 1
 
 
 if __name__ == '__main__':
-    sys.exit(0 if terminal_app_allowed(sys.argv[1] if len(sys.argv) > 1 else None) else 1)
+    sys.exit(main(sys.argv[1:]))

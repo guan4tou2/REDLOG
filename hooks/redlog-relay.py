@@ -565,7 +565,7 @@ def emit(opts, code, started_at, out, err):
     event = {
         "exit_code": code,
         "duration_sec": int(time.time() - started_at),
-        "cwd": opts["cwd"],
+        "cwd": wire_text(opts["cwd"]),
         "stdout": out.text() if out else "",
         "stderr": err.text() if err else "",
         "stdout_bytes": out.total if out else 0,
@@ -931,6 +931,14 @@ ESCAPES = re.compile(
 )
 
 
+def wire_text(value):
+    """An argument as text for an event. A working directory that is not UTF-8
+    arrives here as lone surrogates, which json.dumps writes as `\\udcff`: JSON,
+    but not text. U+FFFD per bad sequence instead, which is what the shell's
+    own builders send for the same bytes (shell-common.sh)."""
+    return os.fsencode(value).decode("utf-8", "replace")
+
+
 def clean(text):
     text = ESCAPES.sub("", text).replace("\r\n", "\n")
     if "\r" not in text:
@@ -991,7 +999,7 @@ def finish(argv):
     event = {
         "exit_code": int_or(opts["exit_code"], 0),
         "duration_sec": int_or(opts["duration_sec"], 0),
-        "cwd": opts["cwd"],
+        "cwd": wire_text(opts["cwd"]),
         "stdout": clean((parts["stdout"] or {}).get("text", "")),
         "stderr": clean((parts["stderr"] or {}).get("text", "")),
         "stdout_bytes": (parts["stdout"] or {}).get("bytes", 0),
@@ -1213,6 +1221,29 @@ def begin_terminal(opts):
     }
 
 
+def adopt_terminal(state, opts):
+    """`begin` for a terminal that loaded with no project open, now that one is.
+
+    `begin` keeps an existing state, so it cannot pin one written while no
+    project was open, and that terminal said "not recording" in `redlog status`
+    while its events were being sent, with no pin for a later switch to break.
+    This fills the pin the first time a project is seen and changes nothing
+    else: a `redlog stop` given before the project opened still stands. A
+    terminal already pinned is never re-pinned; that is FR-010's switch.
+    """
+    if state is None:
+        return begin_terminal(opts)
+    if state.get("engagementId") or state.get("stoppedReason") == "project-switched":
+        return state
+    engagement, operator = read_identity(opts)
+    if not engagement:
+        return state
+    out = dict(state)
+    out["engagementId"] = engagement
+    out["operatorId"] = operator
+    return out
+
+
 def human_state(state):
     if state is None:
         return "not enrolled · no state for this terminal"
@@ -1235,6 +1266,8 @@ def state_cmd(argv):
 
     if action == "begin":
         state = read_terminal_state(opts) or begin_terminal(opts)
+    elif action == "adopt":
+        state = adopt_terminal(read_terminal_state(opts), opts)
     elif action in (None, "show"):
         state = read_terminal_state(opts)
     else:
