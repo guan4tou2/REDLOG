@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { verifyFuses } from './verify-fuses.mjs'
 
 const roots = [
   'dist/mac-arm64/RedLog.app/Contents/Resources',
@@ -96,6 +97,15 @@ if (process.platform === 'darwin' && root.endsWith('/Contents/Resources')) {
     console.error(`Invalid macOS bundle signature: ${signed.error?.message ?? signed.stderr.trim()}`)
     process.exit(1)
   }
+}
+
+// The fuses electron-builder.yml asks for (RunAsNode, NODE_OPTIONS) are in the
+// binary that ships, not only in the config.
+try {
+  verifyFuses(root, path.resolve('electron-builder.yml'))
+} catch (e) {
+  console.error(e.message)
+  process.exit(1)
 }
 
 console.log(`Packaged resource contract verified: ${root}`)

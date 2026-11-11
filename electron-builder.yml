@@ -37,6 +37,26 @@ extraResources:
   # without this line every installed RedLog exported bundles with no verifier.
   - from: tools/redlog-verify.py
     to: tools/redlog-verify.py
+# Electron fuses, flipped in the packaged binary just before signing. Dev runs
+# use node_modules/electron and are not affected. scripts/verify-fuses.mjs reads
+# them back from the package (verify:package-resources).
+#
+# Not set here, so Electron's defaults (on) stay:
+# - enableNodeCliInspectArguments: Playwright's electron.launch starts the
+#   packaged app with --inspect=0 and waits for the inspector, so turning it off
+#   stops e2e/packaged-*.spec.ts (Linux/Windows install smoke, npm run e2e:smoke).
+# - enableEmbeddedAsarIntegrityValidation / onlyLoadAppFromAsar: the main
+#   process also runs code from outside app.asar — the installed optional AI
+#   adapter (agent-tailer.ts require()s ~/.redlog/plugins/<id>/adapter.cjs) and
+#   the native modules in app.asar.unpacked — which neither fuse would cover.
+electronFuses:
+  # Nothing ships that runs the RedLog binary as plain Node: workers are
+  # worker_threads, the CLI runs on the user's own node, and there is no
+  # child_process.fork or utilityProcess. test/package-fuses.test.ts guards it.
+  runAsNode: false
+  # NODE_OPTIONS / NODE_EXTRA_CA_CERTS are ignored by RedLog's own main process;
+  # the environment its terminals inherit is unchanged.
+  enableNodeOptionsEnvironmentVariable: false
 mac:
   # Seal the final app even when release CI has no Developer ID certificate.
   # Skipping signing leaves Electron's stale linker signature after repacking.

@@ -17,6 +17,7 @@ import { unsavedGapForProject } from '../core/unsaved-gap'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir, bindDBEngagement } from '../core/db/index'
 import { mkdirPrivate, restrictRedlogHome } from '../core/private-fs'
+import { restrictProjectDirs } from './project-dir-modes'
 import { insertEvent, queryEvents, queryEventById, getLootCount, lastRecordingSubtype, recordingStateRows, type RedLogEvent } from '../core/db/events'
 import { pivotsMayChange, type LastPivotAnswer } from './pivot-refresh'
 import { readActivePivots, type ActivePivot } from './active-pivots'
@@ -118,6 +119,15 @@ import { registerMarkersIpc, MARKER_TEXT_FIELDS, hudMarkerFields, hudDraftBelong
 import { registerTargetContextIpc } from './ipc/target-context'
 import { registerArtifactsIpc } from './ipc/artifacts'
 import type { IpcContext } from './ipc/types'
+import { launchPolicy } from './launch-policy'
+
+// First statement after the imports: before ready, before any switch is read.
+{
+  const policy = launchPolicy(process.argv, process.env, app.isPackaged)
+  for (const name of policy.removeSwitches) app.commandLine.removeSwitch(name)
+  for (const key of policy.clearEnv) delete process.env[key]
+  if (policy.dropped.length) debugLog('app', 'launch switches ignored', policy.dropped.join(','))
+}
 
 // macOS routes ⌘C/⌘V/⌘Q through the application menu, so the default menu has
 // to stay there. Windows and Linux don't — and RedLog draws its own title bar
@@ -474,7 +484,7 @@ function saveWindowState(win: BrowserWindow): void {
   try {
     const isMaximized = win.isMaximized()
     const bounds = isMaximized ? undefined : win.getBounds()
-    fs.mkdirSync(path.dirname(WINDOW_STATE_PATH), { recursive: true })
+    fs.mkdirSync(path.dirname(WINDOW_STATE_PATH), { recursive: true, mode: 0o700 })
     fs.writeFileSync(WINDOW_STATE_PATH, JSON.stringify({ bounds, isMaximized }))
   } catch {}
 }
@@ -715,6 +725,7 @@ function startProject(project: ProjectMeta): void {
   const opening = projectRuntime.begin(project, { engagementId: config.engagement.id, operatorId: config.operator.id })
   try {
     initDB(projectDir)
+    restrictProjectDirs(projectDir)
     bindDBEngagement(config.engagement.id)
     startProjectResources(project, projectDir, config, opening)
     // Publish the shell identity only after synchronous initialization succeeds.
