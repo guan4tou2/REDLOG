@@ -236,12 +236,14 @@ export class LootDetector {
     const identity = this.identity
     if (!identity?.operatorId) return false
     const fresh: LootMatch[] = []
-    const keys: string[] = []
+    // A Set, not an array searched per match: one text can hold tens of
+    // thousands of distinct values, and `includes` made that quadratic.
+    const keys = new Set<string>()
     for (const m of matches) {
       if (!this.isReported(m)) continue
       const key = lootKey(m, opts.targetId)
-      if (this.detectedHashes.has(key) || keys.includes(key)) continue
-      keys.push(key)
+      if (this.detectedHashes.has(key) || keys.has(key)) continue
+      keys.add(key)
       fresh.push(m)
     }
     if (fresh.length === 0) return true
