@@ -17,9 +17,9 @@ import { repoRelative } from './helpers/repo-path'
 
 const ROOT = path.join(__dirname, '..')
 
-// Counted 2026-11-10 on main 85fbb509 (the source jump links of #677 added one), excluding the two files that implement
+// Counted 2026-11-11 (the #677 jump links and the #561 session picker trigger added one each), excluding the two files that implement
 // the shared controls (they render the one raw <button> each).
-const RAW_BUTTON_BASELINE = 223
+const RAW_BUTTON_BASELINE = 224
 const IMPLEMENTATIONS = new Set([
   'src/renderer/src/components/Button.tsx',
   'src/renderer/src/components/IconButton.tsx'
