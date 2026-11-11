@@ -11,6 +11,7 @@ export type ExportTaskRunner = (task: ExportTask, isAllowed?: (completed?: boole
  * staging directory until the main thread rechecks current project/policy. */
 export const runExportTask: ExportTaskRunner = async (input, isAllowed = () => true) => {
   const outDir = input.kind === 'plan' || input.kind === 'validate' ? null : input.kind === 'bundle' ? input.options.outRoot : input.outDir
+  let stagedFd: number | undefined
   let stage: string | undefined
   let identity: fs.BigIntStats | undefined
   if (outDir) {
@@ -26,8 +27,13 @@ export const runExportTask: ExportTaskRunner = async (input, isAllowed = () => t
       return now.isDirectory() && now.dev === identity.dev && now.ino === identity.ino
     } catch { return false }
   }
-  const task: ExportTask = input.kind === 'bundle' ? { ...input, options: { ...input.options, outRoot: stage } }
-    : input.kind === 'har' ? { ...input, outDir: stage! } : input
+  // The staged file is opened here, not in the worker, so that terminating a
+  // worker mid-write cannot leave a descriptor behind: it is closed in `finally`.
+  const stagedEventFile = () => {
+    const file = path.join(stage!, 'events.part')
+    stagedFd = fs.openSync(file, 'wx', 0o600)
+    return { file, fd: stagedFd }
+  }
   const entry = path.join(__dirname, 'export-worker.js')
   // Source tests use the production worker built by pretest; packaged code is
   // emitted beside it. No TypeScript loader or test-only execution branch.
@@ -36,6 +42,9 @@ export const runExportTask: ExportTaskRunner = async (input, isAllowed = () => t
   let timer: ReturnType<typeof setInterval> | undefined
   try {
     if (!isAllowed()) throw new Error('project-changed')
+    const task: ExportTask = input.kind === 'bundle' ? { ...input, options: { ...input.options, outRoot: stage } }
+      : input.kind === 'har' ? { ...input, outDir: stage! }
+      : input.kind === 'events' ? { ...input, outDir: stage!, ...stagedEventFile() } : input
     worker = new Worker(workerFile, { workerData: task })
     const reply = await new Promise<ExportTaskResult>((resolve, reject) => {
       let settled = false
@@ -58,6 +67,20 @@ export const runExportTask: ExportTaskRunner = async (input, isAllowed = () => t
     const artifact = path.resolve(reply.artifactPath)
     const relative = path.relative(stage, artifact)
     if (!relative || relative.startsWith('..') || path.isAbsolute(relative) || fs.lstatSync(artifact).isSymbolicLink()) throw new Error('Invalid export artifact path')
+    if (input.kind === 'events') {
+      // Same names the in-process writer used: second-resolution timestamp, a
+      // numeric suffix on collision, and never a name an earlier export's
+      // manifest already claims.
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+      for (let suffix = 1; ; suffix++) {
+        const file = path.join(outDir, `redlog-${timestamp}${suffix === 1 ? '' : '-' + suffix}.${input.format}`)
+        if (fs.existsSync(file + '.manifest.json')) continue
+        try { fs.linkSync(artifact, file) }
+        catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') continue; throw error }
+        fs.unlinkSync(artifact)
+        return { artifactPath: file }
+      }
+    }
     const target = path.join(outDir, `${path.parse(artifact).name}-${randomUUID()}${path.extname(artifact)}`)
     if (fs.lstatSync(artifact).isDirectory()) fs.renameSync(artifact, target)
     else { fs.linkSync(artifact, target); fs.unlinkSync(artifact) }
@@ -65,6 +88,7 @@ export const runExportTask: ExportTaskRunner = async (input, isAllowed = () => t
   } finally {
     if (timer) clearInterval(timer)
     await worker?.terminate()
+    if (stagedFd !== undefined) try { fs.closeSync(stagedFd) } catch { /* already closed */ }
     if (ownedStage()) fs.rmSync(stage!, { recursive: true, force: true })
   }
 }

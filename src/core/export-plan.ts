@@ -465,6 +465,24 @@ export function createExportPlan(
   return Object.freeze(plan)
 }
 
+/** Whether any of `ids` is approved by the plan. `createExportPlan` stores the
+ * ids sorted, so membership is a binary search over the frozen array: the main
+ * thread never builds a Set of every approved id to answer it. */
+export function planSelectsAny(plan: Pick<ExportPlan, 'selectedEventIds'>, ids: Iterable<string>): boolean {
+  const selected = plan.selectedEventIds
+  for (const id of ids) {
+    let low = 0, high = selected.length - 1
+    while (low <= high) {
+      const mid = (low + high) >>> 1
+      const value = selected[mid]
+      if (value === id) return true
+      if (value < id) low = mid + 1
+      else high = mid - 1
+    }
+  }
+  return false
+}
+
 /** The JSON-array digest without materializing the array or its serialized text. */
 export function fingerprintSequence(values: Iterable<unknown>): { digest: string; count: number } {
   const hash = createHash('sha256').update('[')

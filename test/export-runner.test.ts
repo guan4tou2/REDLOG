@@ -7,7 +7,8 @@ import { initDB, closeDB, getDB } from '../src/core/db/index'
 import { runExportTask } from '../src/main/services/export-runner'
 import type { ExportTask } from '../src/core/export-task'
 import type { ProjectMeta } from '../src/core/project-manager'
-import { takeExportSnapshot } from '../src/core/export-plan'
+import { takeExportSnapshot, type ExportPlan } from '../src/core/export-plan'
+import { buildExportPlan } from '../src/core/export-planning'
 
 let dir: string, project: ProjectMeta
 beforeEach(() => {
@@ -63,4 +64,37 @@ it('does not remove a replacement directory it no longer owns', async () => {
     return true
   })).rejects.toThrow('staging directory changed')
   expect(fs.readFileSync(path.join(dir, 'exports', retained, 'unrelated'), 'utf8')).toBe('keep')
+})
+
+// JSON / NDJSON / Timeline delivery: selection, redaction and the digest check run in the worker.
+function events(overrides: Record<string, unknown> = {}): ExportTask {
+  const plan = buildExportPlan(project, { format: 'json' })
+  return { kind: 'events', project, plan: { ...plan, ...overrides } as ExportPlan, format: 'ndjson', metadata: null, outDir: path.join(dir, 'exports') }
+}
+it('delivers an event file from the worker under the timestamped name and leaves no staging behind', async () => {
+  const result = await runExportTask(events())
+  if (!('artifactPath' in result)) throw new Error('artifact missing')
+  expect(path.basename(result.artifactPath)).toMatch(/^redlog-\d{4}-\d\d-\d\dT\d\d-\d\d-\d\d(-\d+)?\.ndjson$/)
+  expect(JSON.parse(fs.readFileSync(result.artifactPath, 'utf8').trim()).id).toBe('request')
+  expect(fs.readdirSync(path.join(dir, 'exports'))).toEqual([path.basename(result.artifactPath)])
+  const again = await runExportTask(events())
+  if (!('artifactPath' in again)) throw new Error('artifact missing')
+  expect(again.artifactPath).not.toBe(result.artifactPath)
+  expect(fs.readFileSync(result.artifactPath, 'utf8')).toBe(fs.readFileSync(again.artifactPath, 'utf8'))
+})
+it('refuses an event file whose rows no longer match the approved digest, and publishes nothing', async () => {
+  await expect(runExportTask(events({ selectedEvidenceDigest: 'not-the-approved-digest' }))).rejects.toThrow('source-unavailable')
+  expect(fs.readdirSync(path.join(dir, 'exports'))).toEqual([])
+})
+it('refuses an event file when the approved row count no longer matches', async () => {
+  await expect(runExportTask(events({ selectedEventIds: ['request', 'gone'] }))).rejects.toThrow('source-unavailable')
+  expect(fs.readdirSync(path.join(dir, 'exports'))).toEqual([])
+})
+it('cancels a running event file after project switch and refuses it on a completion policy change', async () => {
+  let allowed = true
+  const running = runExportTask(events(), () => allowed)
+  const pulse = setInterval(() => { allowed = false }, 1)
+  try { await expect(running).rejects.toThrow('project-changed') } finally { clearInterval(pulse) }
+  await expect(runExportTask(events(), completed => { if (completed) throw new Error('policy-changed'); return true })).rejects.toThrow('policy-changed')
+  expect(fs.readdirSync(path.join(dir, 'exports'))).toEqual([])
 })

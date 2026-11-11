@@ -12,12 +12,30 @@ import { RecentExportStore } from '../src/main/services/recent-export'
 
 // Explicit workload, not a universal latency/RSS promise or a substitute for
 // #660's original Windows device/Defender workload. Run without parallel tests.
+//
+// Size and bound come from the environment (defaults are the original 3,500-event
+// workload with no bound):
+//   REDLOG_PERF_SHELL         shell events           (default 2500)
+//   REDLOG_PERF_FLOWS         HTTP exchanges, 2 events each (default 500)
+//   REDLOG_PERF_OUTPUT_LINES  stdout lines per shell event  (default 512)
+//   REDLOG_PERF_MAX_STALL_MS  fail if the longest main-thread stall in any
+//                             format exceeds this many ms  (default: no check)
+//   REDLOG_PERF_TIMEOUT_MS    test timeout                  (default 120000)
+const perfNumber = (name: string, fallback: number): number => {
+  const raw = process.env[name]
+  if (raw === undefined || raw === '') return fallback
+  const value = Number(raw)
+  if (!Number.isFinite(value) || value < 0) throw new Error(`${name} must be a non-negative number, got ${raw}`)
+  return value
+}
+const maxStallMs = process.env.REDLOG_PERF_MAX_STALL_MS ? perfNumber('REDLOG_PERF_MAX_STALL_MS', 0) : null
 it.skipIf(process.env.REDLOG_PERF !== '1')('measures complete approved export workflows and verifies every fixture payload', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-export-workload-'))
   const report: Record<string, unknown>[] = []
   try {
     initDB(dir)
-    const shellCount = 2500, flows = 500, output = 'full stdout line\n'.repeat(512)
+    const shellCount = perfNumber('REDLOG_PERF_SHELL', 2500), flows = perfNumber('REDLOG_PERF_FLOWS', 500)
+    const output = 'full stdout line\n'.repeat(perfNumber('REDLOG_PERF_OUTPUT_LINES', 512))
     getDB().transaction(() => {
       for (let n = 0; n < shellCount; n++) addExportEvent('events', `shell-${n}`, n, { data: { command: `fixture-${n}`, stdout: output } })
       for (let n = 0; n < flows; n++) {
@@ -66,5 +84,7 @@ it.skipIf(process.env.REDLOG_PERF !== '1')('measures complete approved export wo
     const result = { platform: process.platform, arch: process.arch, node: process.version, shellCount, flows, largestShellPayloadBytes: Buffer.byteLength(output), report }
     console.log('EXPORT_WORKFLOW_RESULT ' + JSON.stringify(result))
     if (process.env.REDLOG_PERF_REPORT) fs.writeFileSync(process.env.REDLOG_PERF_REPORT, JSON.stringify(result, null, 2))
+    // After the report is out, so a breach still leaves its numbers behind.
+    if (maxStallMs !== null) for (const row of report) expect(row.worstMainDelayMs, `${row.format}: longest main-thread stall`).toBeLessThanOrEqual(maxStallMs)
   } finally { closeDB(); fs.rmSync(dir, { recursive: true, force: true }) }
-}, 120_000)
+}, perfNumber('REDLOG_PERF_TIMEOUT_MS', 120_000))
