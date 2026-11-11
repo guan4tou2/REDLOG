@@ -54,6 +54,8 @@ import {
   getProjectDir as getProjectPath, ProjectMeta
 } from '../core/project-manager'
 import { startApiServer, stopApiServer, configureApi, setPrimaryOperator, getApiToken, setAppVersion, getApiPort, setCastProbe, onApiProjectOpen, onApiProjectClose } from '../core/api-server'
+import { createDirectBundleExporter } from '../core/export-direct-bundle'
+import { runExportTask } from './services/export-runner'
 import {
   killAllTerminals, detachTerminalRecordings, resumeTerminalRecordings, setTerminalWindow, configureTerminal, configureTerminalProxy, recoverOrphanSessions, discoverShells,
   getCastPosition, listTerminals, countProxiedTerminals
@@ -148,6 +150,8 @@ const dependencyInstalls = new Map<PreflightCommand, AbortController>()
 // nothing here writes. And it is which project is open: `project()`, where a
 // module variable of its own used to be set and cleared at moments of its own.
 const projectRuntime = new ProjectRuntime()
+// One for the process, so concurrent API bundle requests queue across opens.
+const apiBundleExporter = createDirectBundleExporter(runExportTask, () => projectRuntime.project())
 
 /** The open project's directory, or null when none is open. */
 function openProjectDir(): string | null {
@@ -996,6 +1000,7 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
     },
     lootDetector: lootDetector,
     screenshotAgent: screenshotAgent,
+    bundleExporter: apiBundleExporter,
     alertRuntime,
     sessionRegistry: {
       register: registerSessionId,

@@ -291,7 +291,12 @@ Download `.ots` proof file.
 
 Produce signed evidence bundle in `<projectDir>/exports/`.
 
-**Response:** `201 { outDir, manifest }`
+Appends a chained `system.logged_tier_digest` event (when the logged tier has
+rows and a primary operator exists) and bundles both tiers as they stood at
+that event: rows recorded while the bundle is being written are not in it.
+Requests are handled one at a time; a second waits for the first.
+
+**Response:** `201 { outDir, manifest }`; `500 { error: "export failed" }`.
 
 ---
 

@@ -4,7 +4,8 @@ import type { ProjectMeta } from './project-manager'
 import type { ExportPlan, ExportRequest } from './export-plan'
 import { exportAttachmentDigest } from './export-attachments'
 import { buildExportPlan, validateExportSources } from './export-planning'
-import { exportBundle, type ExportBundleOpts } from './bundle-export'
+import { exportBundle, type ExportBundleOpts, type LoggedTierDigest } from './bundle-export'
+import { loggedTierDigest } from './db/events'
 import type { exportHar } from './har-export'
 import { writeApprovedHar } from './har-export-stream'
 import { writeApprovedEvents, type EventFileFormat, type EventFileMetadata } from './export-events-file'
@@ -18,13 +19,23 @@ export type ExportTask =
    * all happen inside the worker. `outDir` is the final folder; the runner swaps
    * in the private staging file (`file`, already open as `fd`) before dispatch. */
   | { kind: 'events'; project: ProjectMeta; plan: ExportPlan; format: EventFileFormat; metadata: EventFileMetadata | null; outDir: string; file?: string; fd?: number }
-export type ExportTaskResult = { plan: ExportPlan } | { validation: ReturnType<typeof validateExportSources> } | { artifactPath: string }
+  /** POST /api/export/bundle, stage 1 and 3 (export-direct-bundle.ts). */
+  | { kind: 'logged-digest'; project: ProjectMeta; loggedMaxRowId: number }
+  | { kind: 'direct-bundle'; project: ProjectMeta; engagementId: string; options: ExportBundleOpts }
+export type ExportTaskResult = { plan: ExportPlan } | { validation: ReturnType<typeof validateExportSources> } | { loggedDigest: LoggedTierDigest } | { artifactPath: string }
 
 /** Core-only kernel: production runs this against a worker-owned read-only DB.
  * Tests may inject this same kernel at the IPC seam without changing policy. */
 export function executeExportTask(task: ExportTask): ExportTaskResult {
   if (task.kind === 'plan') return { plan: buildExportPlan(task.project, task.request) }
   if (task.kind === 'validate') return { validation: validateExportSources(task.project, task.plan) }
+  if (task.kind === 'logged-digest') return { loggedDigest: loggedTierDigest(task.loggedMaxRowId) }
+  if (task.kind === 'direct-bundle') {
+    // Bounded on both tiers, with the digest main already chained: this
+    // (read-only) side never inserts.
+    if (!task.options.snapshot || !task.options.loggedDigest) throw new Error('Direct bundle task requires a snapshot and its logged-tier digest')
+    return { artifactPath: exportBundle(task.engagementId, task.options).outDir }
+  }
   if (task.kind === 'events') {
     if (task.file === undefined || task.fd === undefined) throw new Error('Export task requires a staged file')
     writeApprovedEvents(task.plan, task.format, task.metadata, task.fd)

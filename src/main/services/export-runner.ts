@@ -10,7 +10,8 @@ export type ExportTaskRunner = (task: ExportTask, isAllowed?: (completed?: boole
  * work stay in a read-only worker; unpublished outputs belong to one private
  * staging directory until the main thread rechecks current project/policy. */
 export const runExportTask: ExportTaskRunner = async (input, isAllowed = () => true) => {
-  const outDir = input.kind === 'plan' || input.kind === 'validate' ? null : input.kind === 'bundle' ? input.options.outRoot : input.outDir
+  const outDir = input.kind === 'plan' || input.kind === 'validate' || input.kind === 'logged-digest' ? null
+    : input.kind === 'bundle' || input.kind === 'direct-bundle' ? input.options.outRoot : input.outDir
   let stagedFd: number | undefined
   let stage: string | undefined
   let identity: fs.BigIntStats | undefined
@@ -42,7 +43,7 @@ export const runExportTask: ExportTaskRunner = async (input, isAllowed = () => t
   let timer: ReturnType<typeof setInterval> | undefined
   try {
     if (!isAllowed()) throw new Error('project-changed')
-    const task: ExportTask = input.kind === 'bundle' ? { ...input, options: { ...input.options, outRoot: stage } }
+    const task: ExportTask = input.kind === 'bundle' || input.kind === 'direct-bundle' ? { ...input, options: { ...input.options, outRoot: stage } }
       : input.kind === 'har' ? { ...input, outDir: stage! }
       : input.kind === 'events' ? { ...input, outDir: stage!, ...stagedEventFile() } : input
     worker = new Worker(workerFile, { workerData: task })
@@ -62,7 +63,7 @@ export const runExportTask: ExportTaskRunner = async (input, isAllowed = () => t
       }, 25)
     })
     if (!isAllowed(true)) throw new Error('project-changed')
-    if ('plan' in reply || 'validation' in reply) return reply
+    if ('plan' in reply || 'validation' in reply || 'loggedDigest' in reply) return reply
     if (!stage || !outDir || !ownedStage()) throw new Error('Export staging directory changed')
     const artifact = path.resolve(reply.artifactPath)
     const relative = path.relative(stage, artifact)
@@ -80,6 +81,14 @@ export const runExportTask: ExportTaskRunner = async (input, isAllowed = () => t
         fs.unlinkSync(artifact)
         return { artifactPath: file }
       }
+    }
+    if (input.kind === 'direct-bundle') {
+      // The name the in-process API export gives: bundle-<ts>, then -2, -3 …
+      const base = path.join(outDir, path.basename(artifact))
+      let target = base
+      for (let suffix = 2; fs.existsSync(target); suffix++) target = `${base}-${suffix}`
+      fs.renameSync(artifact, target)
+      return { artifactPath: target }
     }
     const target = path.join(outDir, `${path.parse(artifact).name}-${randomUUID()}${path.extname(artifact)}`)
     if (fs.lstatSync(artifact).isDirectory()) fs.renameSync(artifact, target)
