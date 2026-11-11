@@ -17,6 +17,8 @@ fi
 _redlog_adapter_dir=${BASH_SOURCE[0]}
 case "$_redlog_adapter_dir" in
   */*) _redlog_adapter_dir=${_redlog_adapter_dir%/*}; : "${_redlog_adapter_dir:=/}" ;;
+  # Git Bash and MSYS hand over `D:\repo\hooks\shell-bash-hook.sh`.
+  *\\*) _redlog_adapter_dir=${_redlog_adapter_dir%\\*} ;;
   *) _redlog_adapter_dir=. ;;
 esac
 _redlog_adapter_dir="$(cd "$_redlog_adapter_dir" && pwd)"
@@ -361,6 +363,19 @@ _redlog_trace_command() {
     _redlog_prompt_command|_redlog_arm*|_redlog_trap_plan*|*_REDLOG_TRAP_NEXT*|_REDLOG_TRAP_ARMED=*) return ;;
   esac
   [[ -n "$_REDLOG_LAST_CMD" || -n "$_REDLOG_SKIP" ]] && return
+  # bash 5, stdin ending at an idle prompt: DEBUG fires before the EXIT trap
+  # with `$BASH_COMMAND` put back to the last command the operator ran, and
+  # `history 1` still showing its line — a second start for a line that already
+  # ended. What gives it away is the line number: every line read at the prompt
+  # has a higher one than the line before, and this one does not (measured on
+  # 5.1: it reads 1). The history number is asked only then, so a real line is
+  # never dropped on the line number alone.
+  local at=${BASH_LINENO[${#BASH_LINENO[@]}-1]}
+  if [[ -n "${_REDLOG_TRACED_AT:-}" ]] && (( at <= _REDLOG_TRACED_AT )) \
+     && [[ "$(_redlog_history_number)" == "${_REDLOG_HISTNUM:-}" ]]; then
+    return
+  fi
+  _REDLOG_TRACED_AT=$at
   # Where zsh's preexec does it: once per line, before anything is sent. A
   # switch leaves this terminal stopped, so the check below skips the line.
   _redlog_check_project
