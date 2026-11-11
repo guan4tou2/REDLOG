@@ -25,7 +25,7 @@ function AroundRow({ anchor, event, t }: { anchor: ActivitySummary['anchor']; ev
   return <li data-testid="activity-around-event" data-relation={relation ?? 'time'}
     className="grid grid-cols-[4.5rem_7.5rem_minmax(0,1fr)_auto] items-center gap-x-3 px-2 py-1 text-xs">
     <time className="font-mono text-redlog-text-dim" title={formatDateTime(event.timestamp, { seconds: true })}>{formatOffset(event.timestamp - anchor.timestamp)}</time>
-    <span className="truncate text-redlog-text-dim">{sourceOf(event, t)}</span>
+    <span className="truncate text-redlog-text-dim" title={sourceOf(event, t)}>{sourceOf(event, t)}</span>
     <span className="min-w-0 truncate font-mono text-redlog-text" title={eventTitle(event, t)}>{eventTitle(event, t)}</span>
     <span data-testid="activity-around-relation" className={relation ? 'rounded bg-redlog-elevated px-1.5 py-0.5 text-redlog-text' : 'text-redlog-text-faint'}>
       {t(relation ? `activity.around.${relation}` : 'activity.around.time')}
