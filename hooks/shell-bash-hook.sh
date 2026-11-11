@@ -30,7 +30,7 @@ export REDLOG_SHELL=bash
 # shellcheck source=shell-common.sh
 source "$_redlog_adapter_dir/shell-common.sh"
 unset _redlog_adapter_dir
-_redlog_terminal_allowed || return 0
+_redlog_terminal_allowed || { _redlog_announce_terminal_refused; return 0; }
 _REDLOG_HOOK_LOADED_IN=$$
 
 # Explicit PTY capture owns this child shell; avoid unpinned duplicate events.
@@ -171,15 +171,17 @@ redlog() {
       _redlog_state --action stop --reason operator >/dev/null
       # FR-012: "no events for twenty minutes" must read as a decision, not as
       # silence. This pair brackets the gap; it is not the global pause's pair.
+      _redlog_json_escape "$_REDLOG_SESSION_ID"
       _redlog_send_event "capture_stopped" "redlog stop" \
-        "{\"session_id\":\"$_REDLOG_SESSION_ID\",\"reason\":\"operator\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
+        "{\"session_id\":\"$_redlog_json\",\"reason\":\"operator\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
       echo "[redlog] recording stopped in this terminal — redlog start to resume"
       ;;
     start)
       _redlog_state --action start >/dev/null
       if _redlog_is_recording; then
+        _redlog_json_escape "$_REDLOG_SESSION_ID"
         _redlog_send_event "capture_resumed" "redlog start" \
-          "{\"session_id\":\"$_REDLOG_SESSION_ID\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
+          "{\"session_id\":\"$_redlog_json\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
       fi
       _redlog_state --action show --format human
       echo
@@ -437,8 +439,9 @@ _redlog_trace_command() {
     _REDLOG_CMD_CAPTURE=',"capture_mode":"native","capture_reason":"no-pty-wrapper"'
   fi
 
+  _redlog_json_escape "$PWD"
   _redlog_send_event "command_start" "$cmd" \
-    "{\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"class\":\"$_REDLOG_CMD_CLASS\",\"source\":\"$_REDLOG_EVENT_SOURCE\"$_REDLOG_CMD_CAPTURE}"
+    "{\"cwd\":\"$_redlog_json\",\"command_id\":\"$_REDLOG_CMD_ID\",\"class\":\"$_REDLOG_CMD_CLASS\",\"source\":\"$_REDLOG_EVENT_SOURCE\"$_REDLOG_CMD_CAPTURE}"
 }
 
 # What the DEBUG trap runs. Alone when nothing else holds the trap; behind
@@ -574,10 +577,12 @@ _redlog_record_untraced_line() {
   [[ "$line" =~ ^[[:space:]]*function[[:space:]] ]] && return 0
   _redlog_mint_command_id
   id=$_redlog_id
+  local cwd
+  _redlog_json_escape "$PWD"; cwd=$_redlog_json
   _redlog_send_event "command_start" "$line" \
-    "{\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$id\",\"class\":\"native\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
+    "{\"cwd\":\"$cwd\",\"command_id\":\"$id\",\"class\":\"native\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
   _redlog_send_event "command_end" "$line" \
-    "{\"exit_code\":$exit_code,\"duration_sec\":0,\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$id\",\"source\":\"$_REDLOG_EVENT_SOURCE\",\"completeness\":\"metadata-only\",\"output_disposition\":\"not-captured\"}"
+    "{\"exit_code\":$exit_code,\"duration_sec\":0,\"cwd\":\"$cwd\",\"command_id\":\"$id\",\"source\":\"$_REDLOG_EVENT_SOURCE\",\"completeness\":\"metadata-only\",\"output_disposition\":\"not-captured\"}"
 }
 
 _redlog_prompt_command() {
@@ -630,7 +635,8 @@ _redlog_prompt_command() {
         native|pty) [[ -n "$_REDLOG_DIVERT_FAILED" ]] || disposition="interactive" ;;
         redirected) disposition="redirected" ;;
       esac
-      extra="{\"exit_code\":$exit_code,\"duration_sec\":${duration:-0},\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"source\":\"$_REDLOG_EVENT_SOURCE\",\"completeness\":\"metadata-only\",\"output_disposition\":\"$disposition\"$_REDLOG_CMD_CAPTURE}"
+      _redlog_json_escape "$PWD"
+      extra="{\"exit_code\":$exit_code,\"duration_sec\":${duration:-0},\"cwd\":\"$_redlog_json\",\"command_id\":\"$_REDLOG_CMD_ID\",\"source\":\"$_REDLOG_EVENT_SOURCE\",\"completeness\":\"metadata-only\",\"output_disposition\":\"$disposition\"$_REDLOG_CMD_CAPTURE}"
     fi
     _redlog_send_event "command_end" "$_REDLOG_LAST_CMD" "$extra"
     _REDLOG_LAST_CMD=""

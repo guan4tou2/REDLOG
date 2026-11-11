@@ -21,7 +21,7 @@ export REDLOG_SHELL=zsh
 # shellcheck source=shell-common.sh
 source "$_redlog_adapter_dir/shell-common.sh"
 unset _redlog_adapter_dir
-_redlog_terminal_allowed || return 0
+_redlog_terminal_allowed || { _redlog_announce_terminal_refused; return 0; }
 _REDLOG_HOOK_LOADED_IN=$$
 
 # EPOCHREALTIME, for the event payload (shell-common.sh builds it without
@@ -192,15 +192,17 @@ redlog() {
       # rows bracket the gap the way RedLog's own pause rows already bracket a
       # global one — a pair of its own, because reusing `system.recording_*`
       # would draw a paused band across an engagement that never stopped.
+      _redlog_json_escape "$_REDLOG_SESSION_ID"
       _redlog_send_event "capture_stopped" "redlog stop" \
-        "{\"session_id\":\"$_REDLOG_SESSION_ID\",\"reason\":\"operator\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
+        "{\"session_id\":\"$_redlog_json\",\"reason\":\"operator\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
       print -- "[redlog] recording stopped in this terminal — redlog start to resume"
       ;;
     start)
       _redlog_state --action start >/dev/null
       if _redlog_is_recording; then
+        _redlog_json_escape "$_REDLOG_SESSION_ID"
         _redlog_send_event "capture_resumed" "redlog start" \
-          "{\"session_id\":\"$_REDLOG_SESSION_ID\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
+          "{\"session_id\":\"$_redlog_json\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
       fi
       _redlog_state --action show --format human
       print
@@ -467,8 +469,9 @@ _redlog_preexec() {
     fi
   fi
 
+  _redlog_json_escape "$PWD"
   _redlog_send_event "command_start" "$1" \
-    "{\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"class\":\"$_REDLOG_CMD_CLASS\",\"source\":\"$_REDLOG_EVENT_SOURCE\"$_REDLOG_CMD_CAPTURE}"
+    "{\"cwd\":\"$_redlog_json\",\"command_id\":\"$_REDLOG_CMD_ID\",\"class\":\"$_REDLOG_CMD_CLASS\",\"source\":\"$_REDLOG_EVENT_SOURCE\"$_REDLOG_CMD_CAPTURE}"
 }
 
 _redlog_precmd() {
@@ -526,7 +529,8 @@ _redlog_precmd() {
       # (FR-008), without two processes watching an empty descriptor.
       redirected) disposition="redirected" ;;
     esac
-    extra="{\"exit_code\":$exit_code,\"duration_sec\":$duration,\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"source\":\"$_REDLOG_EVENT_SOURCE\",\"completeness\":\"metadata-only\",\"output_disposition\":\"$disposition\"$_REDLOG_CMD_CAPTURE}"
+    _redlog_json_escape "$PWD"
+    extra="{\"exit_code\":$exit_code,\"duration_sec\":$duration,\"cwd\":\"$_redlog_json\",\"command_id\":\"$_REDLOG_CMD_ID\",\"source\":\"$_REDLOG_EVENT_SOURCE\",\"completeness\":\"metadata-only\",\"output_disposition\":\"$disposition\"$_REDLOG_CMD_CAPTURE}"
   fi
 
   _redlog_send_event "command_end" "$_REDLOG_LAST_CMD" "$extra"
