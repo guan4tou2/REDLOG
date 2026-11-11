@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // Reads the Electron fuse wire out of a packaged binary and checks it against
 // `electronFuses` in electron-builder.yml. electron-builder flips the fuses
 // right before signing; this confirms the flip reached the binary that ships.
