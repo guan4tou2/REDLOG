@@ -334,6 +334,59 @@ test.describe('activity-return-state', () => {
     expect(Math.abs(after - before), `scrollTop ${before} → ${after}`).toBeLessThan(4)
   })
 
+  async function seedOne(name: string, agentType: string, data: Record<string, unknown>): Promise<void> {
+    const base = `http://127.0.0.1:${readFileSync(join(tmpHome, '.redlog', 'api-port'), 'utf8').trim()}`
+    const token = readFileSync(join(tmpHome, '.redlog', 'api-token'), 'utf8').trim()
+    const r = await fetch(`${base}/api/events/seed`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ agent_type: agentType, data })
+    })
+    expect(r.ok, name).toBe(true)
+  }
+
+  // #692: the other pages that jump to the Timeline. App keeps the origin
+  // mounted behind the Timeline for the visit, so the search text and the open
+  // row are the page's own state, untouched.
+  test('returning from the timeline keeps the Targets search and open row', async () => {
+    test.setTimeout(120_000)
+    await page.waitForLoadState('domcontentloaded')
+    await page.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
+    await openTestProject(page, 'return-state-targets')
+    await seedOne('target', 'shell', { subtype: 'command_start', detectedTarget: 'kept.example', command: 'curl https://kept.example/' })
+
+    await openView(page, 'targets')
+    await page.getByTestId('targets-search').fill('kept')
+    await page.getByText('kept.example', { exact: true }).first().click()
+    await page.getByTestId('target-locate').click()
+    await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'timeline')
+    await page.getByTestId('timeline-return').getByRole('button').click()
+    await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'targets')
+
+    await expect(page.getByTestId('targets-search')).toHaveValue('kept')
+    await expect(page.getByTestId('target-locate')).toBeVisible()
+  })
+
+  test('returning from the timeline keeps the HTTP history filter text', async () => {
+    test.setTimeout(120_000)
+    await page.waitForLoadState('domcontentloaded')
+    await page.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
+    await openTestProject(page, 'return-state-http')
+    await seedOne('request', 'scanner', { subtype: 'http_request_start', flow_id: 'kept', method: 'GET', url: 'http://kept.example/admin', host: 'kept.example' })
+    await seedOne('response', 'scanner', { subtype: 'http_response', flow_id: 'kept', status: 200, url: 'http://kept.example/admin', host: 'kept.example', duration_ms: 5 })
+
+    await openView(page, 'http_history')
+    await page.getByPlaceholder('Filter URL / host / type…').fill('admin')
+    await page.locator('tr', { hasText: '/admin' }).first().click()
+    await page.getByTestId('http-detail-panel').getByRole('button', { name: 'Timeline' }).click()
+    await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'timeline')
+    await page.getByTestId('timeline-return').getByRole('button').click()
+    await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'http_history')
+
+    await expect(page.getByPlaceholder('Filter URL / host / type…')).toHaveValue('admin')
+    await expect(page.getByTestId('http-detail-panel')).toBeVisible()
+  })
+
   async function seedShell(base: string, token: string, prefix: string, n: number, withOutput = false): Promise<void> {
     for (let i = 0; i < n; i++) {
       const r = await fetch(`${base}/api/events/seed`, {
@@ -546,7 +599,10 @@ test.describe('uiux-convergence (HTTP scope, violation details)', () => {
     const response = await fetch(`${base}/api/events/seed`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ agent_type: 'scanner', data: { subtype: 'http_request_start', flow_id: 'scope-proof', url: 'https://outside.test/path', host: 'outside.test', method: 'GET' } }) })
     expect(response.ok).toBe(true)
     await openView(page, 'http_history')
-    await expect(page.getByTestId('http-scope-state')).toHaveAttribute('data-scope', 'no-scope')
+    // No scope at all is said once, by the status bar's scope chip — not on every row.
+    await expect(page.getByTitle('outside.test').first()).toBeVisible()
+    await expect(page.getByTestId('http-scope-state')).toHaveCount(0)
+    await expect(page.getByTestId('status-bar-scope')).toContainText('SCOPE —')
     await page.evaluate(async () => { const c = await window.redlog.config.get(); await window.redlog.config.save({ ...c!, scope: { ...c!.scope, targets: ['inside.test'] } }) })
     await expect(page.getByTestId('http-scope-state')).toHaveAttribute('data-scope', 'out-of-scope')
     await resizeMainWindow(app, 800, 500)

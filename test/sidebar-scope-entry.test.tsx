@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 //
-// With violations standing, the Targets & Scope row opens the scope tab where
-// they are listed; with none it opens the target list as before.
+// The Targets & Scope row opens the target list, with or without standing
+// observations. It used to land on the scope tab while any stood — and
+// observations persist, so Targets could never be opened from it in one click
+// (and e2e's openView(page, 'targets') timed out waiting for it).
 
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, cleanup, fireEvent, waitFor } from '@testing-library/react'
@@ -24,11 +26,11 @@ function mount(standing: number): ReturnType<typeof vi.fn> {
 const row = (): HTMLElement => document.querySelector('[data-view-btn="targets"]') as HTMLElement
 
 describe('sidebar Targets & Scope row', () => {
-  it('opens the scope tab while violations stand', async () => {
+  it('opens the target list while observations stand, and still shows their count', async () => {
     const onNavigate = mount(3)
     await waitFor(() => expect(row().textContent).toContain('3'))
     fireEvent.click(row())
-    expect(onNavigate).toHaveBeenCalledWith('scope')
+    expect(onNavigate).toHaveBeenCalledWith('targets')
   })
 
   it('opens the target list when none stand', async () => {

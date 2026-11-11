@@ -5,6 +5,7 @@ import { TimeRangeFields } from './TimeRangeFields'
 import { useSharedFilter, conditionLabels } from '../lib/FilterContext'
 import { useI18n } from '../i18n'
 import { agentTypeLabel } from '../lib/timelineDomain'
+import { escapeBelongsAbove } from '../lib/escapeLayer'
 
 export function FilterBar(): JSX.Element | null {
   const { filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, setHidePersonal, setTier, clearAll,
@@ -17,7 +18,7 @@ export function FilterBar(): JSX.Element | null {
 
   useEffect(() => {
     if (!expanded) return
-    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') setExpanded(false) }
+    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape' && !escapeBelongsAbove(e)) setExpanded(false) }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [expanded])

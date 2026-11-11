@@ -39,6 +39,22 @@ describe('opening a target in the Timeline', () => {
     expect(onOpen.mock.calls[0]).toHaveLength(1)
   })
 
+  // The button passed only the time while ⌘↩ on the same row passed the
+  // newest evidence id: mouse and keyboard landed in different places.
+  it('the locate button lands on the newest evidence event by id, like ⌘↩', async () => {
+    b.queryPage.mockResolvedValue(page([makeEvent('newest', T0, 'shell', {
+      targetId: '10.0.0.5', data: { subtype: 'command_end', command: 'nmap newest' }
+    })]))
+    const onOpen = vi.fn()
+    render(<I18nProvider><FilterProvider><Probe /><TargetView onOpenInTimeline={onOpen} /></FilterProvider></I18nProvider>)
+    await waitFor(() => expect(screen.getAllByRole('option').length).toBeGreaterThan(0))
+    fireEvent.click(screen.getAllByRole('option')[0])
+    await screen.findByText(/^\$ nmap newest/)
+    fireEvent.click(screen.getByTestId('target-locate'))
+    expect(onOpen).toHaveBeenCalledWith(T0, 'newest')
+    expect(filterApi.filter.targetId).toBe('10.0.0.5')
+  })
+
   // T058 (SC-002): a live row joins the Targets list through the page's own
   // predicates. It was `evt.targetId === selected`, which missed the other
   // casing and let in a plumbing row that carried the target.

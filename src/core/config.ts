@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import yaml from 'js-yaml'
 import { DEFAULT_BROWSER } from './browser-defaults'
-import { mkdirPrivate } from './private-fs'
+import { mkdirPrivate, restrictFile } from './private-fs'
 
 export interface VpnAdapter {
   name: string
@@ -379,7 +379,10 @@ export function mergeInitialConfig(config: RedLogConfig, projectId: string, init
   for (const d of initial?.scope?.personalDomains ?? []) if (!personal.includes(d)) personal.push(d)
   return {
     ...config,
-    engagement: { ...config.engagement, id: projectId, ...initial?.engagement },
+    // The id is always the project's own. A caller-supplied one gave two
+    // projects the same engagement id, which every event row and the spool's
+    // attribution boundary rely on being distinct.
+    engagement: { ...config.engagement, ...initial?.engagement, id: projectId },
     operator: { ...config.operator, ...initial?.operator },
     network: { ...config.network, ...initial?.network },
     scope: { ...config.scope, ...initial?.scope, personalDomains: personal },
@@ -408,7 +411,11 @@ export function loadConfig(projectDir: string): RedLogConfig {
 export function saveConfig(projectDir: string, config: RedLogConfig): void {
   mkdirPrivate(projectDir)
   const configPath = path.join(projectDir, 'config.yaml')
-  fs.writeFileSync(configPath, yaml.dump(config, { lineWidth: 120 }), 'utf-8')
+  // Owner-only like the database beside it: scope, operator and integration
+  // settings. `mode` applies only on create, so an older 0644 file is
+  // restricted as well.
+  fs.writeFileSync(configPath, yaml.dump(config, { lineWidth: 120 }), { encoding: 'utf-8', mode: 0o600 })
+  restrictFile(configPath)
 }
 
 /** The scope actually in force, as one value.

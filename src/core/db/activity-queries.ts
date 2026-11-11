@@ -3,7 +3,7 @@ import { bodySearchCoverage, type BodySearchCoverage } from '../http-body-index'
 import { createHash } from 'node:crypto'
 import { getReadonlyDB } from './index'
 import { rowToEvent, type RedLogEvent } from './event-types'
-import { compileEventSelection } from './event-queries'
+import { compileEventSelection, HOUSEKEEPING_SQL } from './event-queries'
 import { activityKey, activityId, activityClassification } from '../activity-projection'
 import { QUERY_FIELDS, type ParsedQuery } from '../query/contract'
 import type { ActivityRequest, ActivityPage, ActivityMembersRequest, ActivityMembersPage, ActivitySnapshot, ActivitySummary } from '../activity-contract'
@@ -44,11 +44,26 @@ function register(): ReturnType<typeof getReadonlyDB> {
     db.function('redlog_activity_digest_v1', { deterministic: true }, raw => fingerprint(String(raw)))
     // Connection-local derived index. Closing a project drops it; original rows
     // and hashes are never changed, and no cache enters an evidence bundle.
+    // `hk`: the row is RedLog plumbing (HOUSEKEEPING_SQL), so a browse that
+    // excludes housekeeping counts it as context, never as a match.
+    //
+    // activity_groups_v1 holds each Activity's aggregates over every projected
+    // row, kept current as rows are projected. Reading a page used to group
+    // the whole projection on every call — O(project) per call, 1.3–1.7 s at
+    // 80k rows on the main thread, and a burst of live capture queued behind
+    // it. A page now reads this table, and recomputes from the projection only
+    // the groups that gained rows after the request's snapshot, so a frozen
+    // cursor page still sees exactly the rows of its snapshot.
     db.exec(`CREATE TEMP TABLE activity_projection_v1 (
       tier TEXT NOT NULL, _row INTEGER NOT NULL, id TEXT NOT NULL, engagement_id TEXT NOT NULL,
       timestamp INTEGER NOT NULL, ak TEXT NOT NULL, role TEXT NOT NULL, digest TEXT NOT NULL,
-      classification TEXT NOT NULL, PRIMARY KEY(tier,_row)
-    ); CREATE INDEX activity_projection_key_v1 ON activity_projection_v1(ak,timestamp,id); CREATE INDEX activity_projection_id_v1 ON activity_projection_v1(id)`)
+      classification TEXT NOT NULL, hk INTEGER NOT NULL, PRIMARY KEY(tier,_row)
+    ); CREATE INDEX activity_projection_key_v1 ON activity_projection_v1(ak,timestamp,id); CREATE INDEX activity_projection_id_v1 ON activity_projection_v1(id);
+    CREATE TEMP TABLE activity_groups_v1 (
+      engagement_id TEXT NOT NULL, ak TEXT NOT NULL, source_count INTEGER NOT NULL, hk_count INTEGER NOT NULL,
+      first_at INTEGER, last_at INTEGER, start_at INTEGER, sort_at INTEGER, has_begin INTEGER, has_result INTEGER,
+      has_interrupted INTEGER, conflict INTEGER, anchor_id TEXT, PRIMARY KEY(engagement_id,ak)
+    ); CREATE INDEX activity_groups_sort_v1 ON activity_groups_v1(engagement_id,sort_at DESC,ak DESC)`)
     registered.add(db)
   }
   return db
@@ -99,6 +114,27 @@ function setup(req: ActivityRequest, kind: Cursor['kind'], ref?: string): {
   if (cursor && cursor.body !== body) throw new Error('Activity search index coverage changed; refresh the query')
   return { db, boundary, cursor, q, sql: selection.sql, params: selection.params, resolved: selection.resolved, body, coverage, toolSession: cursor?.toolSession ?? selection.toolSession }
 }
+const PROJECTION = 'temp.activity_projection_v1'
+/** A projected row inside the request's dataset snapshot. */
+const within = (alias: string): string =>
+  `((${alias}.tier='chained' AND ${alias}._row<=@bc) OR (${alias}.tier='logged' AND ${alias}._row<=@bl))`
+/** Every aggregate an Activity row shows, over the projected rows `where`
+ *  admits, grouped per project and key. The anchor is the earliest Call (or
+ *  the earliest row when there is no Call), lowest id on a tie. */
+function groupStatsSql(where: string): string {
+  return `SELECT s.*,COALESCE(s.start_at,s.first_at) AS sort_at,
+    (SELECT MIN(a.id) FROM ${PROJECTION} a WHERE a.ak=s.ak AND a.engagement_id=s.engagement_id
+      AND a.timestamp=COALESCE(s.start_at,s.first_at) AND (s.has_begin=0 OR a.role='begin') AND ${within('a')}) AS anchor_id
+    FROM (SELECT p.engagement_id,p.ak,COUNT(*) AS source_count,SUM(p.hk) AS hk_count,
+      MIN(p.timestamp) AS first_at,MAX(p.timestamp) AS last_at,
+      MIN(CASE WHEN p.role='begin' THEN p.timestamp END) AS start_at,
+      MAX(p.role='begin') AS has_begin,MAX(p.role='result') AS has_result,MAX(p.role='interrupted') AS has_interrupted,
+      CASE WHEN MIN(CASE WHEN p.role='begin' THEN p.digest END)<>MAX(CASE WHEN p.role='begin' THEN p.digest END)
+        OR MIN(CASE WHEN p.role IN ('result','interrupted') THEN p.digest END)<>MAX(CASE WHEN p.role IN ('result','interrupted') THEN p.digest END) THEN 1 ELSE 0 END AS conflict
+      FROM ${PROJECTION} p WHERE ${where} GROUP BY p.engagement_id,p.ak) s`
+}
+const GROUP_COLUMNS = 'engagement_id,ak,source_count,hk_count,first_at,last_at,start_at,has_begin,has_result,has_interrupted,conflict,sort_at,anchor_id'
+
 function syncProjection(db: ReturnType<typeof getReadonlyDB>): void {
   const before = indexed.get(db)
   let boundary: ActivitySnapshot
@@ -108,28 +144,40 @@ function syncProjection(db: ReturnType<typeof getReadonlyDB>): void {
   } catch {
     // Retention can remove/reuse rowids; discard this derived index rather
     // than attaching a replacement row to a stale Activity.
-    db.exec('DELETE FROM temp.activity_projection_v1')
-    indexed.delete(db)
+    clearProjection(db)
     boundary = readActivitySnapshot(db)
   }
   const prior = indexed.get(db)
+  const oldChained = prior?.chainedMaxRowId ?? 0, oldLogged = prior?.loggedMaxRowId ?? 0
+  let grew = false
   for (const [table, tier, max, oldMax] of [
-    ['events', 'chained', boundary.chainedMaxRowId, prior?.chainedMaxRowId ?? 0],
-    ['events_logged', 'logged', boundary.loggedMaxRowId, prior?.loggedMaxRowId ?? 0]
+    ['events', 'chained', boundary.chainedMaxRowId, oldChained],
+    ['events_logged', 'logged', boundary.loggedMaxRowId, oldLogged]
   ] as const) {
     if (max <= oldMax) continue
+    grew = true
     db.prepare(`WITH keyed AS MATERIALIZED (
-      SELECT e.*,redlog_activity_key_v1(id,engagement_id,session_id,agent_type,data) AS ak,e.rowid AS _row
+      SELECT e.*,redlog_activity_key_v1(id,engagement_id,session_id,agent_type,data) AS ak,e.rowid AS _row,
+        CASE WHEN ${HOUSEKEEPING_SQL} THEN 0 ELSE 1 END AS hk
       FROM ${table} e WHERE rowid>? AND rowid<=?
-    ) INSERT INTO temp.activity_projection_v1
+    ) INSERT INTO ${PROJECTION}
       SELECT ?,_row,id,engagement_id,timestamp,ak,
         CASE WHEN substr(ak,1,6)='event:' THEN 'member'
           WHEN subtype IN ('command_start','tool_call','http_request_start') THEN 'begin'
           WHEN subtype IN ('command_end','tool_result','http_response','http_error') THEN 'result'
           WHEN subtype='tool_interrupted' THEN 'interrupted' ELSE 'member' END,
-        redlog_activity_digest_v1(data),redlog_activity_class_v1(agent_type,data) FROM keyed`).run(oldMax, max, tier)
+        redlog_activity_digest_v1(data),redlog_activity_class_v1(agent_type,data),hk FROM keyed`).run(oldMax, max, tier)
   }
+  // Re-aggregate only the Activities that gained a row: the work is the new
+  // rows and their groups, not the project.
+  if (grew) db.prepare(`INSERT OR REPLACE INTO temp.activity_groups_v1 (${GROUP_COLUMNS})
+    SELECT ${GROUP_COLUMNS} FROM (${groupStatsSql(`p.ak IN (SELECT ak FROM ${PROJECTION} WHERE (tier='chained' AND _row>@oc) OR (tier='logged' AND _row>@ol))`)})`)
+    .run({ oc: oldChained, ol: oldLogged, bc: boundary.chainedMaxRowId, bl: boundary.loggedMaxRowId })
   indexed.set(db, boundary)
+}
+function clearProjection(db: ReturnType<typeof getReadonlyDB>): void {
+  indexed.delete(db)
+  db.exec(`DELETE FROM ${PROJECTION}; DELETE FROM temp.activity_groups_v1`)
 }
 function sourceEvent(db: ReturnType<typeof getReadonlyDB>, row: Record<string, unknown>): RedLogEvent {
   const table = row.tier === 'logged' ? 'events_logged' : 'events'
@@ -139,39 +187,61 @@ function sourceEvent(db: ReturnType<typeof getReadonlyDB>, row: Record<string, u
  * a tool_result or http_response has no exit code to show. */
 function commandResult(db: ReturnType<typeof getReadonlyDB>, row: Record<string, unknown>, key: string): { exitCode: number | null } | null {
   if (JSON.parse(key)[1] !== 'command' || typeof row.result_id !== 'string') return null
-  const hit = db.prepare(`SELECT tier,_row,id FROM temp.activity_projection_v1 WHERE id=? LIMIT 1`).get(row.result_id) as Record<string, unknown> | undefined
+  const hit = db.prepare(`SELECT tier,_row,id FROM ${PROJECTION} WHERE id=? LIMIT 1`).get(row.result_id) as Record<string, unknown> | undefined
   if (!hit) return null
   const end = sourceEvent(db, hit)
   const code = end.data?.exit_code
   const n = typeof code === 'number' ? code : typeof code === 'string' && /^-?\d+$/.test(code) ? Number(code) : NaN
   return { exitCode: Number.isFinite(n) ? n : null }
 }
-function ctes(req: ActivityRequest, s: ReturnType<typeof setup>): { sql: string; params: unknown[] } {
+
+/** Which rows of the snapshot match. With no query and no Event filter every
+ *  row matches (or every non-housekeeping row), and the per-group counts
+ *  already held are the answer; anything else runs the shared selection. */
+type MatchMode = 'all' | 'visible' | 'query'
+function matchMode(req: ActivityRequest, s: ReturnType<typeof setup>): MatchMode {
+  const f = req.filter ?? {}
+  const plain = s.resolved.text === '' && s.resolved.conditions.length === 0 && !s.toolSession
+    && !f.targetId && !f.agentType && f.since == null && f.before == null && !f.tier && !f.inScopeOnly && !f.hidePersonal
+  return !plain ? 'query' : req.excludeHousekeeping ? 'visible' : 'all'
+}
+function matchedRow(mode: MatchMode, alias: string): string {
+  return mode === 'all' ? '1' : mode === 'visible' ? `(${alias}.hk=0)` : `(${alias}.id IN (SELECT id FROM hit_ids))`
+}
+interface Built { sql: string; params: unknown[]; named: Record<string, unknown>; mode: MatchMode }
+function ctes(req: ActivityRequest, s: ReturnType<typeof setup>, only?: string): Built {
   syncProjection(s.db)
-  const sql = `WITH hit_ids AS MATERIALIZED (${s.sql}), projected AS MATERIALIZED (
-    SELECT p.*,h.id IS NOT NULL AS matched FROM temp.activity_projection_v1 p LEFT JOIN hit_ids h ON h.id=p.id
-    WHERE p.engagement_id=? AND ((p.tier='chained' AND p._row<=?) OR (p.tier='logged' AND p._row<=?))
-  ),
-  grouped AS (
-    SELECT p.ak,SUM(p.matched) AS matched_count,COUNT(*) AS source_count,
-      MIN(p.timestamp) AS first_at,MAX(p.timestamp) AS last_at,
-      MIN(CASE WHEN role='begin' THEN p.timestamp END) AS start_at,
-      MAX(role='begin') AS has_begin,MAX(role='result') AS has_result,MAX(role='interrupted') AS has_interrupted,
-      CASE WHEN MIN(CASE WHEN role='begin' THEN digest END)<>MAX(CASE WHEN role='begin' THEN digest END)
-        OR MIN(CASE WHEN role IN ('result','interrupted') THEN digest END)<>MAX(CASE WHEN role IN ('result','interrupted') THEN digest END) THEN 1 ELSE 0 END AS conflict
-    FROM projected p GROUP BY p.ak HAVING SUM(p.matched)>0
-  ), anchors AS (
-    SELECT g.*,MIN(p.id) AS anchor_id FROM grouped g JOIN projected p ON p.ak=g.ak
-      AND p.timestamp=COALESCE(g.start_at,g.first_at) AND (g.has_begin=0 OR p.role='begin') GROUP BY g.ak
-  ), states AS (SELECT *,CASE WHEN conflict=1 THEN 'conflicted' WHEN has_interrupted=1 THEN 'interrupted'
+  const mode = matchMode(req, s)
+  const onlyGroup = only === undefined ? '' : ' AND ak=@only'
+  const onlyRow = only === undefined ? '' : ' AND p.ak=@only'
+  const preds = activityPredicates(req)
+  const matched = mode === 'all' ? 'SELECT g.*,g.source_count AS matched_count FROM gstats g'
+    : mode === 'visible' ? 'SELECT g.*,g.source_count-g.hk_count AS matched_count FROM gstats g'
+      : 'SELECT g.*,h.n AS matched_count FROM gstats g JOIN hits h ON h.ak=g.ak'
+  const sql = `WITH ${mode === 'query' ? `hit_ids AS MATERIALIZED (${s.sql}),
+  hits AS MATERIALIZED (SELECT p.ak,COUNT(*) AS n FROM hit_ids h JOIN ${PROJECTION} p ON p.id=h.id
+    WHERE p.engagement_id=@eng AND ${within('p')}${onlyRow} GROUP BY p.ak),` : ''}
+  dirty AS MATERIALIZED (SELECT DISTINCT ak FROM ${PROJECTION} WHERE (tier='chained' AND _row>@bc) OR (tier='logged' AND _row>@bl)),
+  gstats AS (
+    SELECT ${GROUP_COLUMNS} FROM temp.activity_groups_v1 WHERE engagement_id=@eng${onlyGroup} AND ak NOT IN (SELECT ak FROM dirty)
+    UNION ALL
+    SELECT ${GROUP_COLUMNS} FROM (${groupStatsSql(`p.engagement_id=@eng AND p.ak IN (SELECT ak FROM dirty) AND ${within('p')}${onlyRow}`)})
+  ), matched AS (${matched}),
+  states AS (SELECT *,CASE WHEN conflict=1 THEN 'conflicted' WHEN has_interrupted=1 THEN 'interrupted'
     WHEN has_begin=1 AND has_result=1 THEN 'paired' WHEN has_begin=1 THEN 'call-only'
-    WHEN has_result=1 THEN 'result-only' ELSE 'unknown' END AS pairing_state FROM anchors),
-  filtered AS (SELECT g.* FROM states g JOIN projected p ON p.id=g.anchor_id WHERE ${activityPredicates(req).sql})`
-  return { sql, params: [...s.params, req.projectId, s.boundary.chainedMaxRowId, s.boundary.loggedMaxRowId, ...activityPredicates(req).params] }
+    WHEN has_result=1 THEN 'result-only' ELSE 'unknown' END AS pairing_state FROM matched WHERE matched_count>0),
+  filtered AS (${preds.params.length
+    ? `SELECT g.* FROM states g JOIN ${PROJECTION} p ON p.id=g.anchor_id AND p.engagement_id=@eng AND ${within('p')} WHERE ${preds.sql}`
+    : 'SELECT * FROM states'})`
+  return {
+    sql, mode,
+    params: [...(mode === 'query' ? s.params : []), ...preds.params],
+    named: { eng: req.projectId, bc: s.boundary.chainedMaxRowId, bl: s.boundary.loggedMaxRowId, ...(only === undefined ? {} : { only }) }
+  }
 }
 function activityPredicates(req: ActivityRequest): { sql: string; params: unknown[] } {
   const af = req.activityFilter ?? {}, where: string[] = [], params: unknown[] = []
-  const columns: Record<string, string> = { actions: "json_extract(classification,'$.action')", providers: "json_extract(classification,'$.provider')", sessions: "json_extract(classification,'$.sourceSession')", toolActions: "json_extract(classification,'$.toolAction')", states: 'pairing_state' }
+  const columns: Record<string, string> = { actions: "json_extract(p.classification,'$.action')", providers: "json_extract(p.classification,'$.provider')", sessions: "json_extract(p.classification,'$.sourceSession')", toolActions: "json_extract(p.classification,'$.toolAction')", states: 'g.pairing_state' }
   for (const [name, values] of Object.entries(af)) if (values?.length) { where.push(`${columns[name]} IN (SELECT value FROM json_each(?))`); params.push(JSON.stringify(values)) }
   return { sql: where.join(' AND ') || '1=1', params }
 }
@@ -182,12 +252,15 @@ function pageLimit(value: number | undefined, max: number): number {
 }
 
 function readActivity<T>(db: ReturnType<typeof getReadonlyDB>, read: () => T): T {
+  const mark = indexed.get(db)
   try { return db.transaction(read)() }
   catch (error) {
-    // A failed read rolls back TEMP inserts too. Never retain an in-memory
-    // high-water mark for rows that SQLite rolled back.
-    indexed.delete(db)
-    db.exec('DELETE FROM temp.activity_projection_v1')
+    // A failed read rolls back its TEMP writes, which returns the projection
+    // and the group table to what they held before it. Return the in-memory
+    // high-water mark to the same point. Discarding the whole index here made
+    // every stale cursor or moved body-index revision re-project the project.
+    if (mark) indexed.set(db, mark)
+    else indexed.delete(db)
     throw error
   }
 }
@@ -196,14 +269,15 @@ export function queryActivityPage(request: ActivityRequest): ActivityPage {
   const db = register()
   return readActivity(db, () => {
     const limit = pageLimit(request.limit, 100), s = setup(request, 'groups'), c = ctes(request, s)
-    const past = s.cursor ? 'WHERE (sort_at < ? OR (sort_at=? AND ak < ?))' : ''
-    const rows = db.prepare(`${c.sql}, counted AS (SELECT *,COALESCE(start_at,first_at) AS sort_at,COUNT(*) OVER() AS total_groups,SUM(matched_count) OVER() AS total_matches FROM filtered)
-      ,paged AS (SELECT * FROM counted ${past} ORDER BY sort_at DESC,ak DESC LIMIT ?)
+    const past = s.cursor ? 'WHERE (sort_at < @cts OR (sort_at=@cts AND ak < @ckey))' : ''
+    const rows = db.prepare(`${c.sql}, counted AS (SELECT *,COUNT(*) OVER() AS total_groups,SUM(matched_count) OVER() AS total_matches FROM filtered)
+      ,paged AS (SELECT * FROM counted ${past} ORDER BY sort_at DESC,ak DESC LIMIT @lim)
       SELECT paged.*,anchor.*,
-      (SELECT json_group_array(id) FROM (SELECT p.id FROM projected p WHERE p.ak=paged.ak ORDER BY p.timestamp,p.id LIMIT ${PREVIEW})) AS source_ids,
-      (SELECT json_group_array(id) FROM (SELECT m.id FROM projected m WHERE m.ak=paged.ak AND m.matched=1 ORDER BY m.timestamp,m.id LIMIT ${PREVIEW})) AS matched_ids,
-      (SELECT r.id FROM projected r WHERE r.ak=paged.ak AND r.role='result' ORDER BY r.timestamp DESC,r.id DESC LIMIT 1) AS result_id
-      FROM paged JOIN projected anchor ON anchor.id=paged.anchor_id ORDER BY paged.sort_at DESC,paged.ak DESC`).all(...c.params, ...(s.cursor ? [s.cursor.ts, s.cursor.ts, s.cursor.key] : []), limit + 1) as Array<Record<string, unknown>>
+      (SELECT json_group_array(id) FROM (SELECT p.id FROM ${PROJECTION} p WHERE p.ak=paged.ak AND p.engagement_id=@eng AND ${within('p')} ORDER BY p.timestamp,p.id LIMIT ${PREVIEW})) AS source_ids,
+      (SELECT json_group_array(id) FROM (SELECT m.id FROM ${PROJECTION} m WHERE m.ak=paged.ak AND m.engagement_id=@eng AND ${within('m')} AND ${matchedRow(c.mode, 'm')} ORDER BY m.timestamp,m.id LIMIT ${PREVIEW})) AS matched_ids,
+      (SELECT r.id FROM ${PROJECTION} r WHERE r.ak=paged.ak AND r.engagement_id=@eng AND ${within('r')} AND r.role='result' ORDER BY r.timestamp DESC,r.id DESC LIMIT 1) AS result_id
+      FROM paged JOIN ${PROJECTION} anchor ON anchor.id=paged.anchor_id AND anchor.engagement_id=@eng AND ${within('anchor')} ORDER BY paged.sort_at DESC,paged.ak DESC`)
+      .all(...c.params, { ...c.named, lim: limit + 1, ...(s.cursor ? { cts: s.cursor.ts, ckey: s.cursor.key } : {}) }) as Array<Record<string, unknown>>
     if (!rows.length && s.cursor) throw new Error('Activity cursor no longer references a page')
     const hasMore = rows.length > limit
     const picked = rows.slice(0, limit)
@@ -228,13 +302,16 @@ export function queryActivityMembers(request: ActivityMembersRequest): ActivityM
   return readActivity(db, () => {
     if (!request.snapshot) throw new Error('Activity source context requires the confirmed snapshot')
     if (!request.ref || request.ref.projectId !== request.projectId || typeof request.ref.key !== 'string' || request.ref.id !== activityId(request.ref.key)) throw new Error('Invalid Activity source reference')
-    const limit = pageLimit(request.limit, 200), s = setup(request, 'members', `${request.ref.id}:${request.matchesFirst === true}`), c = ctes(request, s)
+    const limit = pageLimit(request.limit, 200), s = setup(request, 'members', `${request.ref.id}:${request.matchesFirst === true}`)
+    const c = ctes(request, s, `${JSON.parse(request.ref.key)[1]}:${request.ref.id}`)
     const byMatch = request.matchesFirst === true
     if (byMatch && s.cursor && ![0, 1].includes(s.cursor.matched!)) throw new Error('Invalid Activity source cursor')
-    const past = s.cursor ? byMatch ? 'AND (p.matched<? OR (p.matched=? AND (p.timestamp>? OR (p.timestamp=? AND p.id>?))))' : 'AND (p.timestamp>? OR (p.timestamp=? AND p.id>?))' : ''
-    const rows = db.prepare(`${c.sql} SELECT p.*,
-      f.source_count,f.matched_count FROM projected p JOIN filtered f ON f.ak=p.ak
-      WHERE p.ak=? ${past} ORDER BY ${byMatch ? 'p.matched DESC,' : ''}p.timestamp,p.id LIMIT ?`).all(...c.params, `${JSON.parse(request.ref.key)[1]}:${request.ref.id}`, ...(s.cursor ? [...(byMatch ? [s.cursor.matched, s.cursor.matched] : []), s.cursor.ts, s.cursor.ts, s.cursor.key] : []), limit + 1) as Array<Record<string, unknown>>
+    const past = s.cursor ? byMatch ? 'AND (p.matched<@cm OR (p.matched=@cm AND (p.timestamp>@cts OR (p.timestamp=@cts AND p.id>@ckey))))' : 'AND (p.timestamp>@cts OR (p.timestamp=@cts AND p.id>@ckey))' : ''
+    const rows = db.prepare(`${c.sql} SELECT p.*,f.source_count,f.matched_count
+      FROM (SELECT q.*,${matchedRow(c.mode, 'q')} AS matched FROM ${PROJECTION} q WHERE q.ak=@only AND q.engagement_id=@eng AND ${within('q')}) p
+      JOIN filtered f ON f.ak=p.ak
+      WHERE 1=1 ${past} ORDER BY ${byMatch ? 'p.matched DESC,' : ''}p.timestamp,p.id LIMIT @lim`)
+      .all(...c.params, { ...c.named, lim: limit + 1, ...(s.cursor ? { cts: s.cursor.ts, ckey: s.cursor.key, ...(byMatch ? { cm: s.cursor.matched } : {}) } : {}) }) as Array<Record<string, unknown>>
     if (!rows.length) throw new Error('Activity source unavailable in this query snapshot')
     const hasMore = rows.length > limit, picked = rows.slice(0, limit), last = picked.at(-1)!
     return {

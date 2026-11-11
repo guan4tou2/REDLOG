@@ -81,7 +81,20 @@ export function summarizeProjectScopes(
   return out
 }
 
-export function createProject(name: string): ProjectMeta {
+/** Longest project name kept; create and rename apply the same rule. */
+export const PROJECT_NAME_MAX = 120
+
+/** A project name as stored: trimmed and cut to the limit, or null when
+ *  nothing is left. */
+export function cleanProjectName(name: unknown): string | null {
+  if (typeof name !== 'string') return null
+  const clean = name.trim().slice(0, PROJECT_NAME_MAX)
+  return clean || null
+}
+
+export function createProject(rawName: string): ProjectMeta {
+  const name = cleanProjectName(rawName)
+  if (!name) throw new Error('A project needs a name')
   const id = `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30)}-${Date.now().toString(36)}`
   const projectPath = path.join(PROJECTS_DIR, id)
 
@@ -120,7 +133,7 @@ export function openProject(id: string): ProjectMeta | null {
 // existing hashes, evidence bundles, and cli references keep working — the
 // name change is UI-visible metadata, not a schema change.
 export function renameProject(id: string, name: string): ProjectMeta | null {
-  const clean = name.trim().slice(0, 120)
+  const clean = cleanProjectName(name)
   if (!clean) return null
   const index = loadIndex()
   const project = index.recent.find((p) => p.id === id)
@@ -130,7 +143,10 @@ export function renameProject(id: string, name: string): ProjectMeta | null {
   return project
 }
 
-export function deleteProject(id: string): boolean {
+/** False, with nothing removed, for an unknown id or for `activeId` — the
+ *  project that is open, whose database and recordings are in use. */
+export function deleteProject(id: string, activeId?: string | null): boolean {
+  if (activeId != null && id === activeId) return false
   const index = loadIndex()
   const project = index.recent.find((p) => p.id === id)
   if (!project) return false

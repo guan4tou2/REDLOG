@@ -49,6 +49,20 @@ export interface HttpCaptureSource {
 export interface HttpProxyStatus {
   state: 'stopped' | 'starting' | 'running' | 'unavailable' | 'failed'
   error?: string
+  errorReason?: { code: 'port-in-use'; address: string; holder: string | null }
+}
+
+/** The proxy's failure in the operator's language when main sent it as a
+ *  code; otherwise main's own text, which has no translation to offer. */
+export function proxyErrorText(
+  proxy: HttpProxyStatus | undefined,
+  t: (key: string, vars?: Record<string, string | number>) => string
+): string | undefined {
+  const r = proxy?.errorReason
+  if (r?.code === 'port-in-use') {
+    return r.holder ? t('capture.proxyPortInUse', { address: r.address, holder: r.holder }) : t('capture.proxyPortInUseUnnamed', { address: r.address })
+  }
+  return proxy?.error
 }
 
 /** Derive the single HTTP capture state from the capture source row and the

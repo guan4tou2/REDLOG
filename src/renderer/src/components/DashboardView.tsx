@@ -20,6 +20,8 @@ import { settingsTarget } from '../lib/navigation'
 import { useRevalidateOnFocus } from '../hooks/useRevalidateOnFocus'
 import { useCaptureHealthState } from '../lib/useCaptureHealth'
 import { captureUnknownLine } from '../lib/captureUnknown'
+import { liveThrottle } from '../lib/liveThrottle'
+import { scopeConfigured } from '../lib/scope'
 
 type HudTone = 'red' | 'amber' | 'cyan'
 
@@ -149,6 +151,7 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
 export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v: string) => void; firstRun?: boolean; projectName: string }): JSX.Element {
   const { eventCount, loggedCount, chainLen, loading: countsLoading } = useAppCounts()
   const [config, setConfig] = useState<Record<string, Record<string, unknown>> | null>(null)
+  const [configFailed, setConfigFailed] = useState(false)
   // The store's snapshot, shared with the status bar. After a failed read
   // `capture` is the last good one, kept to date it and never drawn as current.
   const { health: capture, status: captureStatus, lastOkAt, refresh: refreshCapture } = useCaptureHealthState()
@@ -161,34 +164,41 @@ export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v
   const shortcutOrder = currentShortcutOrder()
 
   const loading = countsLoading || localLoading
+  const scopeSet = scopeConfigured(config?.scope as { targets?: string[] } | undefined)
   const scopeCount = ((config?.scope?.targets as string[] | undefined) ?? []).length
   const excludeCount = ((config?.scope?.excludeTargets as string[] | undefined) ?? []).length
 
   const { t } = useI18n()
   const unknown = captureStatus === 'unknown' ? captureUnknownLine(t, capture, lastOkAt) : undefined
 
+  // A failed read is said in the summary's place, not left as a missing block.
+  const loadConfig = useCallback((): void => {
+    window.redlog.config.get()
+      .then((c) => { setConfig(c as Record<string, Record<string, unknown>>); setConfigFailed(false) })
+      .catch(() => setConfigFailed(true))
+      .finally(() => setLocalLoading(false))
+  }, [])
+
   useEffect(() => {
     // Dashboard-specific fetches — the shared counts (eventCount,
     // scopeObservations, scopeConfigured) come from useAppCounts.
-    window.redlog.config.get()
-      .then((c) => setConfig(c as Record<string, Record<string, unknown>>))
-      .catch(() => {})
-      .finally(() => setLocalLoading(false))
+    loadConfig()
 
     // Anchor age poll — same non-blocking pattern as capture health.
-    const loadAnchor = (): void => {
-      void window.redlog.chain.anchors().then((list) => {
-        const first = list[0]
-        if (first) setLastAnchor({ createdAt: first.createdAt, status: first.status })
-      }).catch(() => {})
-    }
-    loadAnchor()
+    const loadAnchor = (): Promise<void> => window.redlog.chain.anchors().then((list) => {
+      const first = list[0]
+      if (first) setLastAnchor({ createdAt: first.createdAt, status: first.status })
+    }).catch(() => {})
+    void loadAnchor()
     // The shared counts (eventCount, chainLen, scopeObservations) are refreshed
-    // by useAppCounts's own onNew subscription.
-    const unsub = window.redlog.events.onNewBatch(() => { refreshCapture(); loadAnchor() })
+    // by useAppCounts's own onNew subscription. Capture health and the anchor
+    // follow live batches at most once a second: per batch, a burst re-read
+    // them a few times a second for a card nobody reads that fast.
+    const live = liveThrottle(() => { refreshCapture(); return loadAnchor() })
+    const unsub = window.redlog.events.onNewBatch(live.trigger)
     const anchorTimer = setInterval(loadAnchor, 60_000)
-    return () => { unsub(); clearInterval(anchorTimer) }
-  }, [refreshCapture])
+    return () => { unsub(); live.dispose(); clearInterval(anchorTimer) }
+  }, [refreshCapture, loadConfig])
 
   if (loading) {
     return (
@@ -295,25 +305,32 @@ export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v
         />
       </section>
 
-      {config && (
+      {(config || configFailed) && (
         <section>
           <SectionLabel className="tracking-[0.15em] mb-3">
             {t('dashboard.engagement')}
           </SectionLabel>
           <div className="rounded-lg bg-redlog-surface border border-redlog-border px-pad py-1 shadow-card">
+            {!config ? (
+              <div data-testid="dashboard-summary-failed" role="alert" className="flex flex-wrap items-center gap-3 py-2 text-xs text-red-400">
+                <span>{t('settings.loadFailedTitle')}</span>
+                <Button size="compact" onClick={loadConfig}>{t('common.retry')}</Button>
+              </div>
+            ) : (
             <dl className="divide-y divide-redlog-border-subtle text-sm [overflow-wrap:anywhere]">
               <SummaryRow label={t('dashboard.id')}><span className="font-mono text-redlog-text">{config.engagement?.id as string}</span></SummaryRow>
               <SummaryRow label={t('dashboard.operator')}><span className="text-redlog-text">{config.operator?.name as string}</span>
                 {(config.operator?.id as string | undefined) ? <span className="ml-1.5 font-mono text-xs text-redlog-text-dim">({config.operator?.id as string})</span> : null}</SummaryRow>
               <SummaryRow label={t('dashboard.scopeLabel')}>
-                <span data-testid="dashboard-scope-state" className={scopeCount === 0 ? 'text-amber-400' : 'text-emerald-400'}>
-                  {scopeCount === 0
+                <span data-testid="dashboard-scope-state" className={scopeSet ? 'text-emerald-400' : 'text-amber-400'}>
+                  {!scopeSet
                     ? t('dashboard.scopeNotSet')
                     : t(excludeCount > 0 ? 'dashboard.targetsExcluding' : 'dashboard.targets', { count: scopeCount, excluded: excludeCount })}
                 </span>
                 <Button size="compact" className="ml-3" data-testid="dashboard-view-scope" onClick={() => onNavigate('scope')}>{t('dashboard.viewScope')}</Button>
               </SummaryRow>
             </dl>
+            )}
           </div>
         </section>
       )}

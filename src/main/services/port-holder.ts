@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import fs from 'node:fs'
 import path from 'node:path'
+import type { ProxyFailureReason } from '../../core/capture-health'
 
 const run = promisify(execFile)
 
@@ -59,18 +60,23 @@ async function findHolder(port: number): Promise<string | null> {
 export const DEFAULT_PORT_PROBE: PortProbe = { free: canBind, holder: findHolder }
 
 /**
- * A ready-to-show reason the capture proxy cannot start here, or null when the
- * endpoint is free.
+ * Why the capture proxy cannot start here, or null when the endpoint is free:
+ * an English message for logs and events, and the same fact as a code the
+ * renderer words in the operator's language.
  */
 export async function whoHoldsPort(
   endpoint: { host: string; port: number },
   probe: PortProbe = DEFAULT_PORT_PROBE
-): Promise<string | null> {
+): Promise<{ message: string; reason: ProxyFailureReason } | null> {
   if (await probe.free(endpoint.host, endpoint.port)) return null
   const holder = await probe.holder(endpoint.port)
   const who = holder ? ` by ${holder}` : ''
-  return `${endpoint.host}:${endpoint.port} is already in use${who}. ` +
-    'Change the HTTP capture port in Settings → Browser, or stop what is using it.'
+  const address = `${endpoint.host}:${endpoint.port}`
+  return {
+    message: `${address} is already in use${who}. ` +
+      'Change the HTTP capture port in Settings → Browser, or stop what is using it.',
+    reason: { code: 'port-in-use', address, holder }
+  }
 }
 
 // ── RedLog's own leftover ───────────────────────────────────────────────────

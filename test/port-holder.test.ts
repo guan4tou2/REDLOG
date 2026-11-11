@@ -20,14 +20,19 @@ describe('whoHoldsPort', () => {
   })
 
   it('names the holder and the setting that moves the port', async () => {
-    const msg = await whoHoldsPort({ host: '127.0.0.1', port: 8080 }, probe(false, 'BurpSuite.exe (PID 35632)'))
+    const held = await whoHoldsPort({ host: '127.0.0.1', port: 8080 }, probe(false, 'BurpSuite.exe (PID 35632)'))
+    const msg = held?.message
+    // The same fact as a code, for the renderer to word in the operator's language.
+    expect(held?.reason).toEqual({ code: 'port-in-use', address: '127.0.0.1:8080', holder: 'BurpSuite.exe (PID 35632)' })
     expect(msg).toContain('127.0.0.1:8080')
     expect(msg).toContain('BurpSuite.exe (PID 35632)')
     expect(msg).toMatch(/Settings/)
   })
 
   it('still reports the clash when the holder cannot be named', async () => {
-    const msg = await whoHoldsPort({ host: '0.0.0.0', port: 9090 }, probe(false, null))
+    const held = await whoHoldsPort({ host: '0.0.0.0', port: 9090 }, probe(false, null))
+    const msg = held?.message
+    expect(held?.reason).toEqual({ code: 'port-in-use', address: '0.0.0.0:9090', holder: null })
     expect(msg).toContain('0.0.0.0:9090')
     expect(msg).toContain('already in use')
     // No dangling "by" with nothing after it.

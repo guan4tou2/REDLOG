@@ -435,9 +435,10 @@ describe('renderer views render without throwing', () => {
   })
 
   // #323: below the narrow threshold the bar stays on one line by giving up its
-  // least important parts — the event count, the IP number, the overlay's label
-  // — and keeps the recording state, uptime, IP safety and scope.
-  it('StatusBar keeps one line when narrow by dropping the count, the IP number and the overlay label', async () => {
+  // least important parts — the uptime, the event count, the IP number, the
+  // overlay's label — and keeps the recording state and the IP-safety and scope
+  // words, which are the OPSEC state and must stay readable at every width.
+  it('StatusBar keeps one line when narrow by dropping the uptime, the count, the IP number and the overlay label', async () => {
     const before = window.innerWidth
     try {
       Object.defineProperty(window, 'innerWidth', { value: 400, configurable: true })
@@ -446,8 +447,19 @@ describe('renderer views render without throwing', () => {
       await waitFor(() => expect(bar.getAttribute('data-narrow')).toBe('true'))
       expect(bar.className).toContain('whitespace-nowrap')
       expect(screen.queryByTestId('statusbar-event-count')).toBeNull()
+      expect(screen.queryByTestId('statusbar-uptime')).toBeNull()
       expect(screen.getByTestId('status-bar-recording')).toBeTruthy()
-      expect(screen.getByTestId('statusbar-uptime')).toBeTruthy()
+      // The two state words are painted, not moved to the accessible name.
+      for (const id of ['status-bar-ip-state', 'status-bar-scope-state']) {
+        const word = await screen.findByTestId(id)
+        expect(word.closest('.sr-only'), id).toBeNull()
+        expect((word.textContent ?? '').trim(), id).not.toBe('')
+      }
+      // The address is still in the accessible name, but takes no width.
+      await waitFor(() => expect(bar.textContent).toContain('203.0.113.7'))
+      for (const el of [...bar.querySelectorAll('span')].filter((s) => s.textContent === '203.0.113.7')) {
+        expect(el.className).toContain('sr-only')
+      }
       // The overlay toggle stays reachable by its dot, and still says what it is.
       const overlay = screen.getByTestId('status-bar-overlay')
       expect(overlay.getAttribute('aria-label')).toBeTruthy()

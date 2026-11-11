@@ -1,4 +1,5 @@
 import crypto from 'crypto'
+import type Database from 'better-sqlite3'
 import { eventBus } from '../event-bus'
 import os from 'os'
 import { getDB, dbEngagement } from './index'
@@ -427,6 +428,18 @@ function resolveOccurredAt(
   return { occurredAt: candidate, sourceCandidate: candidate, rejected: null }
 }
 
+// The insert path's statements, prepared once per connection. Preparing them
+// on every insert was pure overhead on the capture path; a new connection
+// (project switch) gets its own set, so nothing outlives its database.
+const statements = new WeakMap<object, Map<string, Database.Statement<unknown[]>>>()
+function prepared(db: ReturnType<typeof getDB>, sql: string): Database.Statement<unknown[]> {
+  let byText = statements.get(db)
+  if (!byText) { byText = new Map(); statements.set(db, byText) }
+  let stmt = byText.get(sql)
+  if (!stmt) { stmt = db.prepare<unknown[]>(sql); byText.set(sql, stmt) }
+  return stmt
+}
+
 export function insertEvent(
   agentType: string,
   data: Record<string, unknown>,
@@ -457,6 +470,14 @@ export function insertEvent(
   const tier = classifyTier(agentType, data)
   if (tier === 'logged') return insertLoggedEvent(agentType, data, opts)
   return insertChainedEvent(agentType, data, opts)
+}
+
+/** The terminal id the dedup window keys on. Every shell hook sends
+ *  `terminalId` (#685); `terminal_id` is read only as a fallback for rows and
+ *  producers that predate that. */
+function dedupTerminalId(d: Record<string, unknown>): string {
+  const v = d.terminalId ?? d.terminal_id
+  return v != null ? String(v) : ''
 }
 
 /** The historical chained path — hash-linked + Ed25519-signed, lands in
@@ -510,10 +531,10 @@ function insertChainedEvent(
     // still land after a `command_start`.
     const cmd = String(data.command)
     const subtype = data.subtype != null ? String(data.subtype) : ''
-    const terminalId = data.terminal_id != null ? String(data.terminal_id) : ''
+    const terminalId = dedupTerminalId(data)
     const pid = data.pid != null ? String(data.pid) : ''
     const twoSecondsAgo = now - 2000
-    const candidates = db.prepare(
+    const candidates = prepared(db,
       `SELECT id, agent_type, data FROM events WHERE agent_type IN ('shell','agent') AND timestamp >= ? ORDER BY timestamp DESC LIMIT 20`
     ).all(twoSecondsAgo) as Array<{ id: string; agent_type: string; data: string }>
     for (const row of candidates) {
@@ -521,12 +542,12 @@ function insertChainedEvent(
       try { d = JSON.parse(row.data) } catch { continue }
       const rowSubtype = d.subtype != null ? String(d.subtype) : ''
       const rowCmd = d.command != null ? String(d.command) : ''
-      const rowTerminalId = d.terminal_id != null ? String(d.terminal_id) : ''
+      const rowTerminalId = dedupTerminalId(d)
       const rowPid = d.pid != null ? String(d.pid) : ''
       if (rowSubtype !== subtype) continue
       if (rowCmd !== cmd) continue
       if (row.agent_type === agentType) {
-        // Same-type dedup: terminal_id must match exactly.
+        // Same-type dedup: the terminal id must match exactly.
         if (rowTerminalId !== terminalId) continue
       } else {
         // Cross-type dedup (shell↔agent): terminal_id or pid must match, so we
@@ -616,7 +637,7 @@ function insertChainedEvent(
   const transcriptUuid = typeof dataForChain.transcript_uuid === 'string' ? dataForChain.transcript_uuid : null
 
   try {
-    db.prepare(`
+    prepared(db, `
       INSERT INTO events (id, timestamp, engagement_id, session_id, operator_id, agent_type, subtype, hostname, source_ip, target_id, data, hash, prev_hash, created_at, monotonic_ns, ntp_offset_ms, signature, raw_ref, mapper, schema_version, ts_source, source, transcript_uuid)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
@@ -712,7 +733,7 @@ function insertLoggedEvent(
   const subtypeCol = typeof data.subtype === 'string' ? data.subtype : null
 
   try {
-    db.prepare(`
+    prepared(db, `
       INSERT INTO events_logged
         (id, timestamp, engagement_id, session_id, operator_id, agent_type, subtype,
          hostname, source_ip, target_id, data, created_at, raw_ref, mapper, schema_version, ts_source, source)

@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useReplaySession, replayStore } from '../lib/replayStore'
 import { SessionReplayPlayer } from './SessionReplayPlayer'
 import { useI18n } from '../i18n'
+import { escapeBelongsAbove } from '../lib/escapeLayer'
 
 // §14: the session replayer as a drawer above the status bar, present only
 // while a replay is open. It lives at the app level (outside the view-root),
@@ -17,7 +18,7 @@ export function ReplayDrawer(): JSX.Element | null {
 
   useEffect(() => {
     if (!session) return
-    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') replayStore.close() }
+    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape' && !escapeBelongsAbove(e)) replayStore.close() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [session])

@@ -116,7 +116,7 @@ function ConfirmDialogInner({ state, close, t }: {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') { e.preventDefault(); close(false) }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(false); return }
       // Enter only confirms once armed, and never from inside the typed field
       // while it is still wrong — otherwise the gate is one keystroke of
       // muscle memory away from not existing.
@@ -127,8 +127,10 @@ function ConfirmDialogInner({ state, close, t }: {
       if ((e.target as HTMLElement | null)?.closest?.('button')) return
       e.preventDefault(); close(true)
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    // Capture phase, like Modal.tsx: this dialog is the top layer, and the
+    // Escape that closes it must not also close what is behind it.
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
   }, [armed, close])
 
   return (

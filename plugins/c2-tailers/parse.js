@@ -5,9 +5,11 @@
 //
 // C2 beacons are an out-of-band channel the substrate capture never sees — the
 // check-ins, task results and pivots live in the framework's own log. This maps
-// a followed log line into a RedLog event (scanner.c2_checkin / c2_task, or a
-// `pivot` event), so the operator's C2 activity lands on the same timeline as
-// everything else. Nothing here is a RedLog verdict — the fields are the
+// a followed log line into a RedLog event (scanner.c2_checkin / c2_task /
+// c2_pivot), so the operator's C2 activity lands on the same timeline as
+// everything else. A pivot is `scanner.c2_pivot`, not a `pivot` event: the
+// `pivot` type is RedLog's own conclusion and the local API refuses it from
+// outside tools (src/core/external-event-policy.ts). Nothing here is a RedLog verdict — the fields are the
 // framework's own record, recorded verbatim (DESIGN-PRINCIPLES §3).
 //
 // Two input shapes:
@@ -44,16 +46,20 @@ function fromGeneric(o) {
           command: o.command || '', output_len: typeof o.output_len === 'number' ? o.output_len : undefined
         }
       }
-    case 'pivot':
+    case 'pivot': {
+      const via = o.via || host
       return {
-        agent_type: 'pivot',
-        target_id: (o.via || host) || undefined,
+        agent_type: 'scanner',
+        target_id: via || undefined,
         data: {
-          subtype: o.closed ? 'closed' : 'open', tool: o.framework || 'c2',
-          via: o.via || host || undefined, route: o.route || undefined,
+          subtype: 'c2_pivot', framework: o.framework || 'generic',
+          state: o.closed ? 'closed' : 'open',
+          session: o.session || undefined, host: host || undefined,
+          via: via || undefined, detectedTarget: via || undefined, route: o.route || undefined,
           description: `C2 pivot via ${o.framework || 'c2'}${o.via ? ` → ${o.via}` : ''}`
         }
       }
+    }
     default:
       return null
   }

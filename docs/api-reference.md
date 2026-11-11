@@ -17,6 +17,9 @@ The token is resolved to an `Operator` via `resolveOperatorByToken()`. Primary-o
 - **Host allowlist** — only `localhost`, `127.0.0.1`, `[::1]`, `::1`, or empty Host header accepted; everything else gets `400 bad host` (DNS rebinding protection).
 - **CORS** — reflects `Origin` only when it matches `^(app|file|http):\/\/(localhost|127\.0\.0\.1|\[::1\])`. No `*`.
 - **Sidecar self-heal** — rewrites `~/.redlog/api-token` and `api-port` on every request if either file is missing.
+- **Request bodies** — every route that reads a body takes a JSON object. Anything else (`null`, an array, a string, a number, invalid JSON) or a body nested more than 64 levels deep is `400` with a fixed message, and nothing is written.
+- **Errors** — a `500` body is `{ "error": "internal error" }`; the detail goes to the app's log, not to the caller.
+- **`limit`** — a positive integer; a larger value is clamped to the route's maximum (below). `0`, negative or non-integer values are `400`. `since` / `before` are non-negative integers (ms) or `400`.
 
 ## Endpoint Reference
 
@@ -70,7 +73,7 @@ Primary event ingestion. The server strips any `operator_id` from the body (attr
 
 #### `GET /api/events`
 
-**Query params:** `agent_type`, `limit` (default 100), `since`, `before`, `target_id`
+**Query params:** `agent_type`, `limit` (default 100, max 1000), `since`, `before`, `target_id`
 
 **Response:** `{ count: number, events: Event[] }`
 
@@ -78,7 +81,7 @@ Primary event ingestion. The server strips any `operator_id` from the body (attr
 
 **Query params:** `q` (min 2 chars, the app's query language — see
 [SPEC-search-query-semantics.md](domain/SPEC-search-query-semantics.md)),
-`limit` (default 100), `cursor` (the `nextCursor` of the previous page)
+`limit` (default 100, max 1000), `cursor` (the `nextCursor` of the previous page)
 
 **Response:** `{ count: number, events: Event[], hasMore: boolean, nextCursor: string | null, toolSession? }`
 
@@ -98,7 +101,7 @@ read; `500` when the search itself fails — never an empty `events` list.
 
 **Body:** `{ title, notes?, severity?, category?, target_id? }`
 
-Defaults: `title` → `"Untitled"`, `severity` → `"info"`, `category` → `"external"`.
+Defaults: `title` → `"Untitled"`, `severity` → `"info"`, `category` → `"external"`. `title` is cut at 200 characters and `notes` at 10 000, as in the app.
 
 **Response:** `201` with the created event.
 
@@ -204,7 +207,7 @@ let any token holder put chosen provenance on screen.
 
 #### `POST /api/recording`
 
-**Body:** `{ action: "pause" | "resume" | "toggle" }` (defaults to `"toggle"`)
+**Body:** `{ action: "pause" | "resume" | "toggle" }` — required. A missing or unknown action is `400` and recording does not change.
 
 **Response:** `{ recording: boolean }`
 
@@ -236,7 +239,7 @@ let any token holder put chosen provenance on screen.
 
 #### `GET /api/anchors`
 
-**Query params:** `limit` (default 50)
+**Query params:** `limit` (default 50, max 1000)
 
 **Response:** `{ anchors: Anchor[] }`
 

@@ -84,7 +84,10 @@ export function linkHttpBodyEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {age
           }
           bytes = source.bytes
           if (prior?.status === 'indexed') return
-          db.prepare('DELETE FROM body_fts WHERE event_id=? AND sha256=?').run(event.id, ref.sha256)
+          // event_id is UNINDEXED in FTS5, so this delete reads every indexed
+          // chunk. A pair with no ref row has no FTS rows (both are written in
+          // this transaction and removed together), so a new body skips it.
+          if (prior) db.prepare('DELETE FROM body_fts WHERE event_id=? AND sha256=?').run(event.id, ref.sha256)
           const insert = db.prepare('INSERT INTO body_fts(content,event_id,sha256) VALUES(?,?,?)')
           const decoder = new TextDecoder('utf-8', { fatal: true })
           let text = '', skippingToken = false
@@ -124,7 +127,7 @@ export function linkHttpBodyEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {age
         status = error instanceof ContentAccessError && error.status === 'missing' ? 'missing' : error instanceof ContentAccessError && error.status==='unsupported'?'limited':'failed'
         reason = error instanceof ContentAccessError ? error.status : 'failed'
       }
-      if (status !== 'indexed')
+      if (status !== 'indexed' && prior)
         db.prepare('DELETE FROM body_fts WHERE event_id=? AND sha256=?').run(event.id, ref.sha256)
       db.prepare(`INSERT INTO body_event_refs VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(event_id,sha256) DO UPDATE SET
     file=excluded.file,size=excluded.size,encoding=excluded.encoding,status=excluded.status,indexed_bytes=excluded.indexed_bytes,reason=excluded.reason,kind=excluded.kind,available_bytes=excluded.available_bytes`).run(event.id, ref.sha256, ref.file, Number.isSafeInteger(ref.size) ? ref.size : 0, String(ref.encoding ?? 'unknown'), status, bytes, reason, ref.kind,availableBytes)

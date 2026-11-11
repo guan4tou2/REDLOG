@@ -3,7 +3,7 @@ import os from 'os'
 import path from 'path'
 import crypto from 'crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { TerminalRecording } from '../src/main/terminal-recording'
+import { TerminalRecording, CAST_FLUSH_MS } from '../src/main/terminal-recording'
 
 const dirs: string[] = []
 afterEach(() => { vi.restoreAllMocks(); for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true }) })
@@ -71,15 +71,39 @@ describe('closed terminal recording bytes', () => {
     expect(closed.segments.every(part => part.bytes <= 50 * 1024 * 1024)).toBe(true)
   })
 
+  // Frames are held and written together (CAST_FLUSH_MS), so a disk failure
+  // surfaces when they are written — at the timer, a part change or close —
+  // not on the append that queued them.
   it('does not claim a successful recording hash after a partial disk write failure', () => {
-    const writer = new TerminalRecording(file(), { version: 2 }, 5000)
+    const target = file()
+    const writer = new TerminalRecording(target, { version: 2 }, 5000)
     const original = fs.writeSync
     let calls = 0
     vi.spyOn(fs, 'writeSync').mockImplementation(((...args: Parameters<typeof fs.writeSync>) => {
       if (++calls === 1) return original(args[0], args[1] as Buffer, args[2] as number, 3)
       throw new Error('disk full')
     }) as typeof fs.writeSync)
-    expect(writer.append([0, 'o', 'cannot finish'])).toBe(false)
-    expect(writer.close()).toMatchObject({ sha256: null, error: 'disk full' })
+    expect(writer.append([0, 'o', 'cannot finish'])).toBe(true)
+    const closed = writer.close()
+    expect(closed).toMatchObject({ sha256: null, error: 'disk full' })
+    // Only what reached the disk is counted, as a write per frame counted it.
+    expect(closed.bytes).toBe(fs.statSync(target).size)
+    expect(closed.segments[0].bytes).toBe(fs.statSync(target).size)
+  })
+
+  it('reports a failure of held frames written by the timer', async () => {
+    vi.useFakeTimers()
+    try {
+      const errors: string[] = []
+      const writer = new TerminalRecording(file(), { version: 2 }, 5000, (e) => errors.push(e))
+      vi.spyOn(fs, 'writeSync').mockImplementation((() => { throw new Error('disk full') }) as typeof fs.writeSync)
+      expect(writer.append([0, 'o', 'held'])).toBe(true)
+      expect(errors).toEqual([])
+      vi.advanceTimersByTime(CAST_FLUSH_MS)
+      expect(errors).toEqual(['disk full'])
+      expect(writer.open).toBe(false)
+      expect(writer.append([1, 'o', 'after'])).toBe(false)
+      expect(writer.close()).toMatchObject({ sha256: null, error: 'disk full' })
+    } finally { vi.useRealTimers() }
   })
 })

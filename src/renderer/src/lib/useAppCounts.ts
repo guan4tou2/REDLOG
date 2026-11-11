@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 
 // Shared counts that Sidebar, DashboardView, and StatusBar all need.
 // Centralises the fetch + batch subscription so each consumer doesn't
@@ -13,6 +13,14 @@ import { useCallback, useEffect, useState } from 'react'
 // fall back to "0 violations, configured", which the dashboard painted green
 // — a safety signal shown exactly when RedLog could not check. `scopeUnknown`
 // says the scope state could not be read; consumers must not show it as OK.
+//
+// One store for every consumer. Each mounted consumer used to hold its own
+// copy and re-read five counts on every live batch, so a capture burst cost
+// (consumers × batches × 5) IPC reads on the main process — measured at ~21
+// reads/s for 50 events/s. Now live batches are coalesced: at most one round
+// of reads is in flight, and batches start a new round at most once per
+// LIVE_INTERVAL_MS, however many components subscribe. The last batch of a
+// burst is never dropped: it schedules a trailing round.
 
 /** One instance's `retry` re-reads one instance.
  *
@@ -22,6 +30,9 @@ import { useCallback, useEffect, useState } from 'react'
  *  was the one that stayed wrong. A retry is about the data, not about the
  *  surface it was pressed on, so it says so to all of them. */
 export const RECOUNT_EVENT = 'redlog:recount'
+
+/** Live batches start a round of reads at most this often. */
+const LIVE_INTERVAL_MS = 1000
 
 /** Re-read the shared counts everywhere they are mounted. */
 export function recountAll(): void {
@@ -47,59 +58,138 @@ export interface AppCounts {
   retry: () => void
 }
 
-export function useAppCounts(): AppCounts {
-  const [eventCount, setEventCount] = useState(0)
-  const [loggedCount, setLoggedCount] = useState(0)
-  const [chainLen, setChainLen] = useState(0)
-  const [lootCount, setLootCount] = useState(0)
-  const [scopeObservations, setScopeObservations] = useState(0)
-  const [scopeConfigured, setScopeConfigured] = useState(false)
-  const [observationsFailed, setObservationsFailed] = useState(false)
-  const [configuredFailed, setConfiguredFailed] = useState(false)
-  const [loading, setLoading] = useState(true)
+interface State {
+  eventCount: number; loggedCount: number; chainLen: number; lootCount: number
+  scopeObservations: number; scopeConfigured: boolean
+  observationsFailed: boolean; configuredFailed: boolean; loading: boolean
+}
+const INITIAL: State = {
+  eventCount: 0, loggedCount: 0, chainLen: 0, lootCount: 0, scopeObservations: 0, scopeConfigured: false,
+  observationsFailed: false, configuredFailed: false, loading: true
+}
+/** What a round reads. `live`: what a batch can change. `configured`: whether
+ *  a scope is set, which only a config save or a recount can change. */
+interface Want { live: boolean; configured: boolean; done: boolean }
 
-  const readObservations = useCallback(() => window.redlog.scope.getObservationCount()
-    .then((n) => { setScopeObservations(n); setObservationsFailed(false) })
-    .catch(() => setObservationsFailed(true)), [])
-  const readConfigured = useCallback(() => window.redlog.scope.isConfigured()
-    .then((v) => { setScopeConfigured(v); setConfiguredFailed(false) })
-    .catch(() => setConfiguredFailed(true)), [])
+let state: State = INITIAL
+const listeners = new Set<() => void>()
+let consumers = 0
+let detach: (() => void) | null = null
+let want: Want = { live: false, configured: false, done: false }
+let inFlight = false
+let timer: ReturnType<typeof setTimeout> | null = null
+let lastLiveRound = -Infinity
+/** Bumped when the last consumer leaves, so a round that outlives every
+ *  consumer cannot write into the next mount's counts. */
+let generation = 0
 
-  const load = useCallback(() => Promise.all([
-    window.redlog.events.getCount('chained').then(setEventCount).catch(() => {}),
-    window.redlog.events.getCount('logged').then(setLoggedCount).catch(() => {}),
-    window.redlog.chain.length().then(setChainLen).catch(() => {}),
-    window.redlog.loot.getCount().then(setLootCount).catch(() => {}),
-    readObservations(),
-    readConfigured()
-  ]).then(() => setLoading(false)), [readObservations, readConfigured])
+function set(patch: Partial<State>): void {
+  state = { ...state, ...patch }
+  for (const listener of listeners) listener()
+}
 
-  useEffect(() => {
-    void load()
-    const unsub = window.redlog.events.onNewBatch(() => {
-      window.redlog.events.getCount('chained').then(setEventCount).catch(() => {})
-      window.redlog.events.getCount('logged').then(setLoggedCount).catch(() => {})
-      window.redlog.chain.length().then(setChainLen).catch(() => {})
-      window.redlog.loot.getCount().then(setLootCount).catch(() => {})
-      void readObservations()
-    })
-    const onRecount = (): void => { void load() }
-    // A saved config can change what "configured" means (a scope target added
-    // from Settings or from the Targets view). Without this the status bar
-    // kept saying "scope not set" until something else forced a recount.
-    const onConfigSaved = (): void => { void readConfigured(); void readObservations() }
-    window.addEventListener(RECOUNT_EVENT, onRecount)
-    window.addEventListener('redlog:config-saved', onConfigSaved)
-    return () => {
-      unsub()
-      window.removeEventListener(RECOUNT_EVENT, onRecount)
-      window.removeEventListener('redlog:config-saved', onConfigSaved)
+async function round(): Promise<void> {
+  const take = want, gen = generation
+  want = { live: false, configured: false, done: false }
+  inFlight = true
+  const r = window.redlog
+  const apply = (patch: Partial<State>): void => { if (gen === generation) set(patch) }
+  const reads: Array<Promise<unknown>> = []
+  if (take.live) {
+    reads.push(
+      r.events.getCount('chained').then((n) => apply({ eventCount: n })).catch(() => {}),
+      r.events.getCount('logged').then((n) => apply({ loggedCount: n })).catch(() => {}),
+      r.chain.length().then((n) => apply({ chainLen: n })).catch(() => {}),
+      r.loot.getCount().then((n) => apply({ lootCount: n })).catch(() => {}),
+      r.scope.getObservationCount()
+        .then((n) => apply({ scopeObservations: n, observationsFailed: false }))
+        .catch(() => apply({ observationsFailed: true }))
+    )
+  }
+  if (take.configured) {
+    reads.push(r.scope.isConfigured()
+      .then((v) => apply({ scopeConfigured: v, configuredFailed: false }))
+      .catch(() => apply({ configuredFailed: true })))
+  }
+  try { await Promise.all(reads) } finally {
+    if (gen === generation) {
+      inFlight = false
+      if (take.done) apply({ loading: false })
+      pump()
     }
-  }, [load, readObservations, readConfigured])
+  }
+}
 
+/** Start the next round if one is wanted and none is in flight. A round that
+ *  carries only live counts waits out LIVE_INTERVAL_MS from the previous live
+ *  round; anything the operator or a mount asked for goes at once. */
+function pump(): void {
+  if (inFlight || (!want.live && !want.configured)) return
+  const liveOnly = !want.configured && !want.done
+  const wait = liveOnly ? lastLiveRound + LIVE_INTERVAL_MS - Date.now() : 0
+  if (wait > 0) {
+    timer ??= setTimeout(() => { timer = null; pump() }, wait)
+    return
+  }
+  if (timer) { clearTimeout(timer); timer = null }
+  if (want.live) lastLiveRound = Date.now()
+  void round()
+}
+
+let queued = false
+/** Asks made in one tick — three consumers mounting in one commit, a batch
+ *  and a config save — are served by one round. */
+function ask(next: Partial<Want>): void {
+  want = { live: want.live || !!next.live, configured: want.configured || !!next.configured, done: want.done || !!next.done }
+  if (queued) return
+  queued = true
+  queueMicrotask(() => { queued = false; pump() })
+}
+const everything = (): void => ask({ live: true, configured: true, done: true })
+
+function attach(): () => void {
+  const unsub = window.redlog.events.onNewBatch(() => ask({ live: true }))
+  // A saved config can change what "configured" means (a scope target added
+  // from Settings or from the Targets view). Without this the status bar
+  // kept saying "scope not set" until something else forced a recount.
+  const onConfigSaved = (): void => ask({ live: true, configured: true })
+  window.addEventListener(RECOUNT_EVENT, everything)
+  window.addEventListener('redlog:config-saved', onConfigSaved)
+  return () => {
+    unsub()
+    window.removeEventListener(RECOUNT_EVENT, everything)
+    window.removeEventListener('redlog:config-saved', onConfigSaved)
+  }
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => { listeners.delete(listener) }
+}
+const snapshot = (): State => state
+
+export function useAppCounts(): AppCounts {
+  const s = useSyncExternalStore(subscribe, snapshot, snapshot)
+  useEffect(() => {
+    if (consumers++ === 0) detach = attach()
+    // A newly mounted surface reads fresh rather than trusting what another
+    // surface last saw; it joins a round already in flight.
+    everything()
+    return () => {
+      if (--consumers > 0) return
+      detach?.(); detach = null
+      if (timer) { clearTimeout(timer); timer = null }
+      generation++
+      state = INITIAL
+      want = { live: false, configured: false, done: false }
+      inFlight = false
+      lastLiveRound = -Infinity
+    }
+  }, [])
   return {
-    eventCount, loggedCount, chainLen, lootCount, scopeObservations, scopeConfigured,
-    scopeUnknown: observationsFailed || configuredFailed,
-    loading, retry: recountAll
+    eventCount: s.eventCount, loggedCount: s.loggedCount, chainLen: s.chainLen, lootCount: s.lootCount,
+    scopeObservations: s.scopeObservations, scopeConfigured: s.scopeConfigured,
+    scopeUnknown: s.observationsFailed || s.configuredFailed,
+    loading: s.loading, retry: recountAll
   }
 }

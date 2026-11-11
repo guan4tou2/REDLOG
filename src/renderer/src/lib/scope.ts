@@ -5,6 +5,13 @@ import { matchPattern, evaluateScope, classifyScope } from '../../../core/scope-
 
 export { matchPattern as matchesScope }
 
+/** Whether a scope is configured, by core's rule (`ScopePolicy.isConfigured`):
+ *  at least one allowed target. Exclusions alone draw no boundary; they still
+ *  mark the hosts they name as excluded. */
+export function scopeConfigured(rules: { targets?: readonly string[] | null } | null | undefined): boolean {
+  return (rules?.targets?.length ?? 0) > 0
+}
+
 export function hostInScope(
   host: string,
   targets: string[],

@@ -2,18 +2,22 @@ import { useTimelineLive } from '../hooks/useTimelineLive'
 import { useTimelineInspector } from '../hooks/useTimelineInspector'
 import { useTimelineViewport, useTimelineZoom } from '../hooks/useTimelineViewport'
 import { useTimelinePages } from '../hooks/useTimelinePages'
+import { useTimelineDerived } from '../hooks/useTimelineDerived'
 import { Button } from './Button'
-import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { memo, useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { flushSync } from 'react-dom'
 import { readSelectedEventId, writeSelectedEventId } from '../lib/selectedEvent'
 import { useI18n } from '../i18n'
 import { useTimelinePan } from '../hooks/useTimelinePan'
 import { useTimelineSummary } from '../hooks/useTimelineSummary'
 import { usePanelHeight } from '../hooks/usePanelHeight'
+import { useContainerWidth } from '../hooks/useContainerWidth'
 import { EVENT_NOTE_SAVED } from './timeline/EventNoteField'
 import { useRevalidateOnFocus } from '../hooks/useRevalidateOnFocus'
 import { DETAIL_LAYOUT_EVENT, setDetailLayout, storedDetailLayout, type DetailLayout } from '../lib/detailLayout'
 import { toast } from './Toast'
 import { writeClipboard } from '../lib/clipboard'
+import { escapeBelongsAbove } from '../lib/escapeLayer'
 import { useSharedFilter, toEventFilter, describeActiveConditions } from '../lib/FilterContext'
 import { windowAround } from '../lib/timeRangeInput'
 import { LoadingSpinner } from './Feedback'
@@ -21,8 +25,9 @@ import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from
 import { BrokenChainBanner, FocusChainBadge } from './timeline/TimelineStatusStrips'
 import { TimelineToolbar } from './timeline/TimelineToolbar'
 import { TimelineEventLog } from './timeline/TimelineEventLog'
-import { TimelineLanesHeader, countByLane, laneCountText } from './timeline/TimelineLanesHeader'
+import { TimelineLanesHeader, laneCountText } from './timeline/TimelineLanesHeader'
 import { TypeLegend } from './timeline/TypeLegend'
+import { FollowBadge, NowLine } from './timeline/TimelineClock'
 import { TimelineEventInspector } from './timeline/TimelineEventInspector'
 import { TimelineDetailBar } from './timeline/TimelineDetailBar'
 import { KEY_OWNING_CONTROLS, resolveTimelineKey } from '../lib/timelineKeys'
@@ -30,18 +35,23 @@ import { Rows3 } from 'lucide-react'
 import { formatTime } from '../lib/time'
 import { usePersistentState } from '../lib/usePersistentState'
 import { parseTimelineMode, type TimelineMode } from '../lib/timelineMode'
-import { buildToolPairIndex, pairedToolHalf } from '../lib/toolPairing'
+import { pairedToolHalf } from '../lib/toolPairing'
 import { nextSelection } from '../lib/timelineSelection'
 import { computeMaxZoom, buildClusters, filterVisibleClusters, type TimelineCluster } from '../lib/timelineGeometry'
 import { buildTimeMap, computeDomainBounds, computeBins, densestRun, placeRulerMarkers, tickLabelAlign, type TimeMap } from '../lib/timelineTimeMap'
 import { binRange, densityAreaPath, dragMinimapWindow, peakBin, type MinimapWindow, type WindowGrip } from '../lib/minimapWindow'
 import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
-import { buildEffectsIndex, computeObservationStanding, buildFoldIndex, buildBadgeIndex } from '../lib/timelineAnnotations'
-import { mapMatchesToDrawn, distributeLaneEvents, distributeRowEvents, singleTrackEvents, STANDARD_ROW, computeWindowSlice, type ViewportWindow } from '../lib/timelineFilters'
+import { mapMatchesToDrawn, STANDARD_ROW, computeWindowSlice, type ViewportWindow } from '../lib/timelineFilters'
+import {
+  appendedFrom, drawnEvents, unfinishedCommands, toolPairs, laneIndex, singleTrack, swimRows, trackGap, laneGap,
+  timestampExtent, latestDisplay, displayStamps, collapsibleTurnCount, effectsIndex, foldIndex,
+  observationStanding as observationStandingOf, badgeIndex, sessionBoundaries, drawnMatchIndex, rowsById
+} from '../lib/timelineIncremental'
+import { mergeSortedRows } from '../lib/timelineMerge'
 import { TimelineHelpModal } from './TimelineHelpModal'
 import { QueryReadout } from './QueryReadout'
 import { parseQuery } from '../../../core/query/contract'
-import { isCollapsibleAgentTurn, filterAgentTurns, collapseCommandPairs, formatGap, unfinishedCommandIds } from '../lib/timelineEvents'
+import { formatGap } from '../lib/timelineEvents'
 import {
   isMarkerAmendment,
   AMENDABLE_FIELDS, type MarkerValues
@@ -52,8 +62,8 @@ import { useContributeExport } from '../lib/exportScope'
 import {
   LANES, LANE_LABEL_KEYS, type LaneId, BANDS, type BandId, BAND_OF, LANE_COLORS,
   type PluginEventType, type DotShape, IO_MARK_COLOR,
-  displayTs, toLane, eventCompare, binarySearchInsert,
-  axisLabel, formatBehind, ioMark, dotShape, shapeTitle, ioTitle,
+  displayTs, toLane, binarySearchInsert,
+  axisLabel, ioMark, dotShape, shapeTitle, ioTitle,
   subagentIndentPx, SESSION_BAND_LABEL_COLOR
 } from '../lib/timelineDomain'
 import { eventTitle } from '../lib/eventTitle'
@@ -92,6 +102,7 @@ const GAP_PX = 48
 // Browsers cap element width well above this; the ceiling exists so a
 // pathological zoom can't allocate a track nothing can scroll.
 const MAX_TRACK_W = 400_000
+const NO_ROWS: readonly RedLogEvent[] = []
 
 // Read defensively — this runs at module load, before the preload bridge
 // is guaranteed present (e.g. in tests). Default to mac styling, as App does.
@@ -111,11 +122,44 @@ function amendErrorWhy(code: string, t: (k: string) => string): string | undefin
   }
 }
 
-export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onOpenInActivity, onOpenActivity, tierChip = true }: { focusEventId?: string; focusTs?: number; onDropMarker?: (ts: number) => void; onOpenInActivity?: (eventId: string, ts: number) => void; onOpenActivity?: (selected: { id: string; ts: number } | null) => void; tierChip?: boolean } = {}): JSX.Element {
+interface TimelinePanelProps {
+  focusEventId?: string
+  focusTs?: number
+  onDropMarker?: (ts: number) => void
+  onOpenInActivity?: (eventId: string, ts: number) => void
+  onOpenActivity?: (selected: { id: string; ts: number } | null) => void
+  tierChip?: boolean
+}
+
+type SharedFilterSlice = Pick<ReturnType<typeof useSharedFilter>, 'filter' | 'personalDomains' | 'setTimeRange'>
+
+/** The shared filter's provider changes its value on every live batch (it
+ *  counts targets as they arrive), and the App re-creates its callbacks on
+ *  every render of its own. Neither is a reason to re-render this panel: it
+ *  takes the three filter values it reads, and the callbacks through a ref,
+ *  and renders when one of those, or a prop, actually changes. */
+export default function TimelinePanel(props: TimelinePanelProps = {}): JSX.Element {
+  const { filter, personalDomains, setTimeRange } = useSharedFilter()
+  const latest = useRef(props)
+  latest.current = props
+  const has = { drop: !!props.onDropMarker, inActivity: !!props.onOpenInActivity, activity: !!props.onOpenActivity }
+  const onDropMarker = useMemo(() => (has.drop ? (ts: number) => latest.current.onDropMarker?.(ts) : undefined), [has.drop])
+  const onOpenInActivity = useMemo(() => (has.inActivity ? (id: string, ts: number) => latest.current.onOpenInActivity?.(id, ts) : undefined), [has.inActivity])
+  const onOpenActivity = useMemo(() => (has.activity ? (sel: { id: string; ts: number } | null) => latest.current.onOpenActivity?.(sel) : undefined), [has.activity])
+  const shared = useMemo<SharedFilterSlice>(() => ({ filter, personalDomains, setTimeRange }), [filter, personalDomains, setTimeRange])
+  return (
+    <TimelinePanelView
+      focusEventId={props.focusEventId} focusTs={props.focusTs} tierChip={props.tierChip}
+      onDropMarker={onDropMarker} onOpenInActivity={onOpenInActivity} onOpenActivity={onOpenActivity}
+      shared={shared}
+    />
+  )
+}
+
+const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusTs, onDropMarker, onOpenInActivity, onOpenActivity, tierChip = true, shared }: TimelinePanelProps & { shared: SharedFilterSlice }): JSX.Element {
   // Spec 038: the shared filter is applied where the events are stored, for
   // every page, count and live row. Nothing below filters on it again.
-  const { filter: sharedFilter, activeCount: filterActiveCount, personalDomains,
-    setTimeRange: setSharedTimeRange } = useSharedFilter()
+  const { filter: sharedFilter, personalDomains, setTimeRange: setSharedTimeRange } = shared
   const eventFilter = useMemo(() => toEventFilter(sharedFilter), [sharedFilter])
   const eventFilterRef = useRef(eventFilter)
   eventFilterRef.current = eventFilter
@@ -136,19 +180,19 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // v0.9.3: also drops per-turn agent events when the collapse toggle is on.
   // The tier is not decided here (spec 038): "Chained only" is a shared-filter
   // condition, so a logged row never reaches rawEvents under it.
-  const events = useMemo(
-    () => filterAgentTurns(collapseCommandPairs(rawEvents), collapseAgentTurns),
-    [rawEvents, collapseAgentTurns]
-  )
+  //
+  // This and every structure derived from the rows below goes through
+  // `useTimelineDerived`: a live flush appends rows, and each structure folds in
+  // only those (lib/timelineIncremental) instead of walking every loaded row
+  // again. A flush that lands in the middle rebuilds, with the same result.
+  const events = useTimelineDerived(drawnEvents, rawEvents, collapseAgentTurns).out
   // Starts with no end in what is loaded: "running or unknown", not failed.
-  const unfinishedIds = useMemo(() => unfinishedCommandIds(rawEvents), [rawEvents])
+  const unfinishedIds = useTimelineDerived(unfinishedCommands, rawEvents).out
   // Count of hidden agent turns to surface on the chip so the operator
   // knows the toggle is doing something (else the empty agent lane looks
-  // like a bug). Recomputed only when raw events or toggle change.
-  const hiddenAgentTurnCount = useMemo(() => {
-    if (!collapseAgentTurns) return 0
-    return rawEvents.filter(isCollapsibleAgentTurn).length
-  }, [rawEvents, collapseAgentTurns])
+  // like a bug).
+  const collapsibleTurns = useTimelineDerived(collapsibleTurnCount, rawEvents)
+  const hiddenAgentTurnCount = collapseAgentTurns ? collapsibleTurns : 0
   // A tool_call and its tool_result are two separate chained events (each
   // independently hashed + timestamped, so the chain records real call→return
   // latency and order). That makes the exchange easy to audit but splits it
@@ -156,7 +200,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // so the detail panel can show the other half inline (see pairedToolHalf).
   // Keyed on rawEvents so it still finds a result the agent-turn collapse hides;
   // a partner not yet paged in is simply absent — a graceful no-op.
-  const toolPairByUseId = useMemo(() => buildToolPairIndex(rawEvents), [rawEvents])
+  const toolPairByUseId = useTimelineDerived(toolPairs, rawEvents)
   const { selectedEvent, selectedRef, setSelectedEvent, detailOpen, setDetailOpen, readerMode, setReader } = useTimelineInspector()
   // A selection made in another view that is older than the drawn range: it is
   // loaded back to and opened exactly like an explicit "open in Timeline".
@@ -177,13 +221,11 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // is dropped, so rows for the old filter never land under the new one.
   // First to last loaded row, for the toolbar's "whole session" span. A loop,
   // not Math.max(...rows): a spread of a large page overflows the call stack.
-  const loadedBounds = useMemo(() => {
-    if (rawEvents.length < 2) return null
-    let lo = Infinity
-    let hi = -Infinity
-    for (const e of rawEvents) { if (e.timestamp < lo) lo = e.timestamp; if (e.timestamp > hi) hi = e.timestamp }
-    return { lo, hi }
-  }, [rawEvents])
+  const loadedExtent = useTimelineDerived(timestampExtent, rawEvents)
+  const loadedBounds = useMemo(
+    () => (loadedExtent.n < 2 ? null : { lo: loadedExtent.lo, hi: loadedExtent.hi }),
+    [loadedExtent]
+  )
   const loadedSpanMs = loadedBounds ? loadedBounds.hi - loadedBounds.lo : null
   // First and last row the filter admits across the whole project (069 B,
   // `events:span`), asked with the total. Rows that arrive live after the
@@ -250,9 +292,15 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // Bottom or beside. The stored size is keyed per layout: 320px of height and
   // 320px of width are not the same request, and one number serving both meant
   // switching gave you a pane sized for the other axis.
-  const [layout, setLayout] = useState<DetailLayout>(storedDetailLayout)
+  // A narrow pane has no room beside the list: below 960px the pane docks at
+  // the bottom, as HTTP History's does, and the stored choice comes back when
+  // the pane is wide again.
+  const [preferredLayout, setPreferredLayout] = useState<DetailLayout>(storedDetailLayout)
+  const [splitRef, splitWidth] = useContainerWidth<HTMLDivElement>()
+  const compactSplit = splitWidth !== null && splitWidth < 960
+  const layout: DetailLayout = compactSplit ? 'bottom' : preferredLayout
   useEffect(() => {
-    const onChange = (): void => setLayout(storedDetailLayout())
+    const onChange = (): void => setPreferredLayout(storedDetailLayout())
     window.addEventListener(DETAIL_LAYOUT_EVENT, onChange)
     return () => window.removeEventListener(DETAIL_LAYOUT_EVENT, onChange)
   }, [])
@@ -305,6 +353,18 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // v0.6.91 W1: the `/` box. Persisted per project; empty string means "no
   // filter". Declared here because the load effect below restores it.
   const [filterQuery, setFilterQuery] = useState('')
+  // What the operator typed this visit is never overwritten by what is
+  // restored: the project's stored settings arrive asynchronously (one IPC
+  // round trip, seconds late under a capture burst), and applying them after
+  // the operator had started typing replaced the box with the stored query, or
+  // restored a focus anchor whose chain then cleared the box.
+  const queryTouchedRef = useRef(false)
+  const filterQueryRef = useRef(filterQuery)
+  filterQueryRef.current = filterQuery
+  const typeFilterQuery = useCallback((value: string): void => {
+    queryTouchedRef.current = true
+    setFilterQuery(value)
+  }, [])
   // How this mount was opened, decided once: later prop changes in the same
   // mount are navigation inside the panel, not a new arrival.
   const arrivalRef = useRef<{ kind: 'plain' | 'focus-id' | 'focus-ts'; id?: string }>(
@@ -340,8 +400,9 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
       } catch { /* ignore */ }
     }
     load('redlog-timeline-mode', parseTimelineMode, setTimelineMode)
-    load('redlog-timeline-focus-anchor', (s) => s, setFocusAnchorId)
+    load('redlog-timeline-focus-anchor', (s) => s, (anchor) => { if (!filterQueryRef.current) setFocusAnchorId(anchor) })
     load('redlog-timeline-filter-query', (s) => s, (stored) => {
+      if (queryTouchedRef.current) return
       const { kind, id: focusId } = arrivalRef.current
       if (!stored || kind === 'plain') { setFilterQuery(stored); return }
       heldQueryRef.current = stored
@@ -354,7 +415,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
       window.redlog.events.matchIds({
         ids: [focusId], parsed: outcome.parsed, filter: eventFilterRef.current, excludeHousekeeping: true
       }).then((hit) => {
-        if (!aliveRef.current || heldQueryRef.current !== stored) return
+        if (!aliveRef.current || heldQueryRef.current !== stored || queryTouchedRef.current) return
         if (!hit.includes(focusId)) return
         heldQueryRef.current = null
         setFilterQuery(stored)
@@ -409,17 +470,13 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
 
   // v0.6.91 W2: follow mode — auto-scrolls the track's right edge to keep the
   // newest event visible while enabled. On by default; the header badge
-  // reflects "🔴 LIVE" vs "⏸ Xm behind" state. `now` state ticks every second
-  // just so the "behind" label refreshes without waiting for a new event.
+  // reflects "🔴 LIVE" vs "⏸ Xm behind" state. The badge keeps its own
+  // one-second clock (FollowBadge): it used to tick here and re-render the
+  // whole panel every second for one label.
   const [followMode, setFollowMode] = usePersistentState<boolean>(
     'redlog-timeline-follow-mode', true,
     { parse: (raw) => raw !== '0', serialize: (v) => (v ? '1' : '0') }
   )
-  const [now, setNow] = useState(Date.now())
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 1000)
-    return () => window.clearInterval(id)
-  }, [])
 
   // v0.6.91 S3: dashed vertical dividers + faint bands for shell.session_end
   // and system.recording_paused/resumed pairs. Toggle persisted; default on
@@ -453,14 +510,14 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   useEffect(() => {
     const onFilterOperator = (e: Event): void => {
       const id = (e as CustomEvent<string>).detail
-      if (id) setFilterQuery(`operator:${id}`)
+      if (id) typeFilterQuery(`operator:${id}`)
     }
     window.addEventListener('redlog:filter-operator', onFilterOperator)
     // §10: ⌘K host search lands the operator on the Timeline with that host
     // as quoted text: a phrase, so `10.0.0.5:8080` is never read as a field.
     const onFilterHost = (e: Event): void => {
       const host = (e as CustomEvent<string>).detail
-      if (host) setFilterQuery(`"${host.replace(/"/g, '')}"`)
+      if (host) typeFilterQuery(`"${host.replace(/"/g, '')}"`)
     }
     window.addEventListener('redlog:filter-host', onFilterHost)
     return () => {
@@ -524,22 +581,37 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // 200 evt/s capture.
   const knownOperatorsRef = useRef<Set<string>>(new Set())
   useEffect(() => {
+    // An id the list did not have when it was last read is asked about again
+    // at most every few seconds, not on every batch: a row stamped with an
+    // operator the list does not carry re-read it, and re-rendered the panel,
+    // once per batch of a burst.
+    const asked = new Map<string, number>()
     const load = (): void => {
       window.redlog.operators.list().then((ops) => {
         const map: Record<string, string> = {}
         ops.forEach((op) => { map[op.id] = op.name })
         knownOperatorsRef.current = new Set(Object.keys(map))
-        setOperatorNames(map)
+        setOperatorNames((prev) => {
+          const keys = Object.keys(map)
+          return keys.length === Object.keys(prev).length && keys.every((k) => prev[k] === map[k]) ? prev : map
+        })
       }).catch(() => {})
     }
     load()
     const unsub = window.redlog.events.onNewBatch((events) => {
-      if (events.some((e) => e.operatorId && !knownOperatorsRef.current.has(e.operatorId))) load()
+      let unknown = false
+      const now = Date.now()
+      for (const e of events) {
+        if (!e.operatorId || knownOperatorsRef.current.has(e.operatorId) || now - (asked.get(e.operatorId) ?? -Infinity) < 5000) continue
+        asked.set(e.operatorId, now)
+        unknown = true
+      }
+      if (unknown) load()
     })
     return unsub
   }, [])
 
-  const operatorLabel = (id: string): string => operatorNames[id] || id
+  const operatorLabel = useCallback((id: string): string => operatorNames[id] || id, [operatorNames])
   // With a single operator the column is the same string on every row — only
   // worth the horizontal space once a second identity shows up.
   const showOperator = Object.keys(operatorNames).length > 1
@@ -588,19 +660,14 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // A lane with no events is dead vertical space — most engagements only ever
   // touch three or four of them. Keep the filter chip so the operator can see
   // the lane exists, but don't give it a row until something lands in it.
-  const populatedLanes = useMemo(() => {
-    const seen = new Set<LaneId>()
-    for (const e of events) seen.add(toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes))
-    return seen
-    // v0.6.95 P1-12: pluginTypes was missing from deps — a plugin-registered
-    // event lane wouldn't appear on the filter chip until an unrelated state
-    // change re-ran the memo. Same fix applied to `laneEvents` and
-    // `recentEvents` below.
-  }, [events, pluginTypes])
+  // v0.6.95 P1-12: keyed on pluginTypes too — a plugin-registered event lane
+  // has to appear without waiting for an unrelated change.
+  const lanesOf = useTimelineDerived(laneIndex, events, pluginTypes)
+  const populatedLanes = lanesOf.populated
 
   // Rows per lane among what is loaded, for the lane headers and the panel
   // title. Not a project total: `hasMore` says older pages are unfetched.
-  const laneCounts = useMemo(() => countByLane(events, pluginTypes), [events, pluginTypes])
+  const laneCounts = lanesOf.counts
 
   // The lane an event's row is keyed on: its band's id when that band is
   // collapsed, otherwise the lane itself.
@@ -674,11 +741,11 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   const MATCH_CHUNK = 1000
 
   const mergeRows = (rows: RedLogEvent[]): void => {
-    for (const e of rows) {
-      if (!eventsMapRef.current.has(e.id)) binarySearchInsert(sortedRef.current, e)
-      eventsMapRef.current.set(e.id, e)
-    }
+    sortedRef.current = mergeSortedRows(sortedRef.current, eventsMapRef.current, rows)
   }
+  // The first page after a reset is published at once: the panel would
+  // otherwise show "no events" for the frame between the spinner and the rows.
+  const publishNowRef = useRef(true)
 
   // A selection the new filter excludes is cleared and said to be excluded,
   // never left showing as if it matched.
@@ -699,19 +766,31 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
     reset: gen => {
       eventsMapRef.current = new Map()
       sortedRef.current = []
+      publishNowRef.current = true
       setEvents([])
       setLiveError(null)
       setOutsideFilter(false)
       requestTotal(gen)
     },
-    rows: rows => { mergeRows(rows); setEvents([...sortedRef.current]) },
+    // Later pages share the live pacer: paging a large project in (zoom 1
+    // reaches the left edge on every layout) renders as often as the pacer
+    // allows, not once per page.
+    rows: rows => {
+      mergeRows(rows)
+      if (!publishNowRef.current) { publishLive.schedule(); return }
+      publishNowRef.current = false
+      setEvents([...sortedRef.current])
+    },
     ready: checkSelection
   })
 
-  const admitLiveRef = useTimelineLive(eventFilterRef, generationRef, eventsMapRef, sortedRef, {
-    publish: setEvents, count: admitCount,
+  // A publish renders synchronously, rows and total together, so the pacer
+  // can time it and it costs one render.
+  const publishLive = useTimelineLive(eventFilterRef, generationRef, eventsMapRef, sortedRef, {
+    publish: setEvents, count: admitCount, commit: (updates) => flushSync(updates),
     failed: batch => setLiveError(batch ? { ids: batch } : null)
   })
+  const admitLiveRef = publishLive.admit
 
   const { timeStart, timeEnd, ticks } = useMemo(() => computeDomainBounds(events), [events])
 
@@ -738,27 +817,25 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // Off by default. A compressed axis is no longer proportional, and for an
   // audit tool "the gap you are looking at is not to scale" has to be the
   // operator's explicit choice, announced on screen.
+  // Every drawn row in display order (the standard track), and its display
+  // times, already sorted: the time map and the minimap read these.
+  const standardTrack = useTimelineDerived(singleTrack, events)
+  const trackStamps = useTimelineDerived(displayStamps, standardTrack)
   const timeMap = useMemo<TimeMap>(() => buildTimeMap({
-    displayTimestamps: events.map(displayTs),
+    displayTimestamps: trackStamps,
     timeStart, timeEnd, timeSpan, trackW: TRACK_W,
     compressGaps, gapMinMs: GAP_MIN_MS, gapPx: GAP_PX
-  }), [compressGaps, events, timeStart, timeEnd, timeSpan, TRACK_W])
+  }), [compressGaps, trackStamps, timeStart, timeEnd, timeSpan, TRACK_W])
 
   const toX = useCallback((ts: number) => timeMap.toX(ts), [timeMap])
   const fromX = useCallback((px: number) => timeMap.fromX(px), [timeMap])
 
   const totalH = visibleRows.length * laneH
 
-  const laneEvents = useMemo(
-    () => distributeLaneEvents(events, pluginTypes),
-    [events, pluginTypes]
-  )
-
+  const swimLaneRows = useTimelineDerived(swimRows, events, visibleRows, collapsedBands, pluginTypes, hiddenLanes)
   const rowEvents = useMemo(
-    () => timelineMode === 'standard'
-      ? { [STANDARD_ROW]: singleTrackEvents(events, displayTs) }
-      : distributeRowEvents(events, visibleRows, collapsedBands, pluginTypes, hiddenLanes),
-    [events, visibleRows, collapsedBands, pluginTypes, hiddenLanes, timelineMode]
+    () => timelineMode === 'standard' ? { [STANDARD_ROW]: standardTrack } : swimLaneRows,
+    [timelineMode, standardTrack, swimLaneRows]
   )
 
   // Spec 038 US3: the box is read by the query contract — the same parse,
@@ -781,29 +858,44 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
 
   // Which loaded rows the query matches, checked by id and cached per query
   // and filter, so each new page or live row is asked about once.
-  const matchCacheRef = useRef<{ key: string | null; checked: Map<string, boolean> }>({ key: null, checked: new Map() })
+  // `asked` is the row array whose every id has been asked about (or is being
+  // asked about), so a flush that appended to it asks about the new rows only;
+  // `inflight` holds the answer back until every check under way has replied.
+  type MatchCache = { key: string | null; checked: Map<string, boolean>; hits: Set<string>; asked: readonly RedLogEvent[] | null; inflight: number }
+  const freshMatchCache = (key: string | null): MatchCache => ({ key, checked: new Map(), hits: new Set(), asked: null, inflight: 0 })
+  const matchCacheRef = useRef<MatchCache>(freshMatchCache(null))
   const [matchedIds, setMatchedIds] = useState<Set<string> | null>(null)
   const [boxState, setBoxState] = useState<'idle' | 'matching' | 'matched' | 'failed'>('idle')
   const [boxRetry, setBoxRetry] = useState(0)
   useEffect(() => {
     if (!parsedQuery || !queryKey) {
-      matchCacheRef.current = { key: null, checked: new Map() }
+      matchCacheRef.current = freshMatchCache(null)
       setMatchedIds(null)
       setBoxState('idle')
       return
     }
     if (matchCacheRef.current.key !== queryKey) {
-      matchCacheRef.current = { key: queryKey, checked: new Map() }
+      matchCacheRef.current = freshMatchCache(queryKey)
       setMatchedIds(null)
     }
     const cache = matchCacheRef.current
+    // A publish with no new match keeps the set it has: under a live burst
+    // every flush asks about its rows, and most of them do not match.
     const publish = (): void => {
-      setMatchedIds(new Set([...cache.checked].filter(([, hit]) => hit).map(([id]) => id)))
+      if (cache.inflight > 0) return
+      setMatchedIds((prev) => (prev && prev.size === cache.hits.size ? prev : new Set(cache.hits)))
       setBoxState('matched')
     }
-    const unchecked = rawEvents.filter((e) => !cache.checked.has(e.id)).map((e) => e.id)
+    const from = cache.asked ? appendedFrom(cache.asked, rawEvents) : -1
+    const unchecked = (from >= 0
+      ? rawEvents.slice(from).filter((e) => !cache.checked.has(e.id))
+      : rawEvents.filter((e) => !cache.checked.has(e.id))).map((e) => e.id)
+    cache.asked = rawEvents
     if (unchecked.length === 0) { publish(); return }
-    setBoxState('matching')
+    // Rows appended to an answered set are checked without taking the answer
+    // back to "matching": the rows already drawn are still answered.
+    if (from < 0 || cache.checked.size === 0) setBoxState('matching')
+    cache.inflight++
     void (async () => {
       for (let i = 0; i < unchecked.length; i += MATCH_CHUNK) {
         const ids = unchecked.slice(i, i + MATCH_CHUNK)
@@ -811,8 +903,12 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
           ids, parsed: parsedQuery, filter: eventFilterRef.current, excludeHousekeeping: true
         }))
         if (matchCacheRef.current !== cache) return
-        for (const id of ids) cache.checked.set(id, hit.has(id))
+        for (const id of ids) {
+          cache.checked.set(id, hit.has(id))
+          if (hit.has(id)) cache.hits.add(id)
+        }
       }
+      cache.inflight--
       if (matchCacheRef.current === cache) publish()
     })().catch(() => { if (matchCacheRef.current === cache) setBoxState('failed') })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -838,9 +934,15 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryKey, hasMore, pageCursor, earlierRetry])
 
+  // Kept across flushes only while there is an answer to map; otherwise they
+  // follow an empty array and cost nothing.
+  const drawnForMatches = useTimelineDerived(drawnMatchIndex, matchedIds ? events : NO_ROWS)
+  const loadedForMatches = useTimelineDerived(rowsById, matchedIds ? rawEvents : NO_ROWS)
   const boxLit = useMemo(
-    () => (matchedIds ? mapMatchesToDrawn(matchedIds, rawEvents, events) : null),
-    [matchedIds, rawEvents, events]
+    () => (matchedIds
+      ? mapMatchesToDrawn(matchedIds, rawEvents, events, { drawn: drawnForMatches.index, loadedById: loadedForMatches.byId })
+      : null),
+    [matchedIds, rawEvents, events, drawnForMatches, loadedForMatches]
   )
   // Dimming follows only a live answer: an unparsable input, a failed check,
   // or a query whose first answer has not arrived dims nothing.
@@ -854,7 +956,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // broken-at id from the last full verify (feature 5) participates in the
   // badge set so the `⛓️‍💥` badge lights up on the offending row.
   const brokenAtId = verifyDismissed ? null : (verifyResult?.brokenAtEventId ?? null)
-  const effectsById = useMemo(() => buildEffectsIndex(events), [events])
+  const effectsById = useTimelineDerived(effectsIndex, events)
   // ── What each marker says now (design turn 8b) ─────────────────────────
   //
   // TDZ contract, and it is not theoretical — the e2e has caught this exact
@@ -864,7 +966,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   //
   // One walk of `events`, whose body is a type test — the marker lane is a
   // rounding error next to a scan's traffic, and this memo runs on every flush.
-  const foldById = useMemo(() => buildFoldIndex(events), [events])
+  const foldById = useTimelineDerived(foldIndex, events)
 
   // The one place a marker's displayed text is decided. Every consumer calls
   // this rather than `eventTitle` so a corrected finding never shows the words
@@ -888,11 +990,8 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // the newest loaded one; both are track x positions from the same `toX` the
   // dots use, so zoom and pan move them with the dots. A selection outside the
   // loaded domain gets no marker rather than one pinned to an edge.
-  const rulerLatestTs = useMemo(() => {
-    let max = -Infinity
-    for (const e of events) { const d = displayTs(e); if (d > max) max = d }
-    return Number.isFinite(max) ? max : null
-  }, [events])
+  const latestShown = useTimelineDerived(latestDisplay, events)
+  const rulerLatestTs = Number.isFinite(latestShown) ? latestShown : null
   const rulerFocusTs = selectedEvent ? displayTs(selectedEvent) : null
   const rulerMarkers = useMemo(() => placeRulerMarkers({
     focusX: rulerFocusTs !== null && rulerFocusTs >= timeStart && rulerFocusTs <= timeEnd ? toX(rulerFocusTs) : null,
@@ -914,18 +1013,16 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
     const fold = foldById.get(e.id)
     return fold ? ` · ${t('marker.amendedTimes', { count: fold.amendCount })}` : ''
   }, [foldById, t])
+  const amendCountOf = useCallback((id: string) => foldById.get(id)?.amendCount, [foldById])
 
   // Which violations no longer stand. Both are read from the rows themselves —
   // a `scope_cleared` naming one, or a newer violation covering the same source
   // event — so a withdrawn violation looks withdrawn on the track without the
   // original row being touched. Same slot and same TDZ contract as the fold
   // memos above: nothing higher may name these.
-  const observationStanding = useMemo(() => computeObservationStanding(events), [events])
+  const observationStanding = useTimelineDerived(observationStandingOf, events)
 
-  const badgesById = useMemo(
-    () => buildBadgeIndex(events, brokenAtId, observationStanding.cleared, observationStanding.superseded),
-    [events, brokenAtId, observationStanding]
-  )
+  const badgesById = useTimelineDerived(badgeIndex, events, brokenAtId, observationStanding.cleared, observationStanding.superseded)
 
   // Project-wide causal focus. The old implementation walked only the 200 rows
   // currently loaded in Timeline, so an ordinary unpaged cause looked like a
@@ -1047,17 +1144,18 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // ceiling near 6 (nothing to gain); a dense burst raises it as far as that
   // burst needs. Virtualisation (v0.11.1) means a wider track costs no extra
   // DOM, which is what makes this affordable.
+  // The gap is kept per flush (lib/timelineIncremental): between consecutive
+  // display times on the one standard track, or within each lane, in order.
+  const standardGap = useTimelineDerived(trackGap, standardTrack).min
+  const swimGap = useTimelineDerived(laneGap, events, pluginTypes).min
   const maxZoom = useMemo(() => computeMaxZoom({
-    // Per-lane ascending display timestamps — markers sort by their `atTimestamp`.
     // One track in standard mode, so the tightest gap is between ANY two events.
-    laneTimestamps: timelineMode === 'standard'
-      ? [singleTrackEvents(events, displayTs).map(displayTs)]
-      : LANES.map((lane) => laneEvents[lane].map(displayTs)),
+    tightestGap: timelineMode === 'standard' ? standardGap : swimGap,
     timeSpan,
     clusterPx: CLUSTER_PX,
     maxTrackW: MAX_TRACK_W,
     baseTrackW
-  }), [laneEvents, events, timeSpan, timelineMode, baseTrackW])
+  }), [standardGap, swimGap, timeSpan, timelineMode, baseTrackW])
   // The wheel handler is bound once and reads this through a ref rather than
   // re-binding on every density change.
   const maxZoomRef = useRef(maxZoom)
@@ -1067,16 +1165,19 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
     [visibleRows, rowEvents, toX, laneH, pluginTypes]
   )
 
+  // Only terminal ends and recording pauses make a band; the domain moves on
+  // every flush, so the bands are re-placed from those few rows.
+  const boundaryRows = useTimelineDerived(sessionBoundaries, events)
   const sessionBands = useMemo<SessionBand[]>(() => {
     if (!sessionDividers) return []
-    return buildSessionBands(events, toX, {
+    return buildSessionBands(boundaryRows, toX, {
       termLabel: (id) => t('timeline.boundaries.termLabelFmt', { id }),
       pausedLabel: t('timeline.boundaries.pausedLabel')
     }, timeEnd)
-  }, [events, sessionDividers, toX, t, timeEnd])
+  }, [boundaryRows, sessionDividers, toX, t, timeEnd])
 
   // Density minimap: event counts over the full range, binned into fixed cells.
-  const bins = useMemo(() => computeBins(events.map(displayTs), timeStart, timeEnd), [events, timeStart, timeEnd])
+  const bins = useMemo(() => computeBins(trackStamps, timeStart, timeEnd), [trackStamps, timeStart, timeEnd])
   const dense = useMemo(() => densestRun(bins, timeStart, timeEnd), [bins, timeStart, timeEnd])
   const denseBins = useMemo(
     () => (dense ? binRange(dense.start, dense.end, timeStart, timeEnd, bins.N) : null),
@@ -1238,6 +1339,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   const attributionBlind = attribution.attempted > 0 && attribution.resolved === 0
 
   const [showAllDespiteQuery, setShowAllDespiteQuery] = useState(false)
+  const toggleShowAll = useCallback(() => setShowAllDespiteQuery((v) => !v), [])
   useEffect(() => { setShowAllDespiteQuery(false) }, [queryKey])
   const queryActive = filterMatches !== null && !showAllDespiteQuery
   // The rail shows the newest 50 and says "of N" with the same window rule, and
@@ -1380,6 +1482,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   const hoveredEventRef = useRef<RedLogEvent | null>(null)
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape' && escapeBelongsAbove(e)) return
       const el = e.target as HTMLElement | null
       const tag = el?.tagName?.toLowerCase()
       const inField = tag === 'input' || tag === 'textarea' || !!el?.isContentEditable
@@ -1637,13 +1740,17 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
     loadBackCancelRef.current = false
     setLoadBack({ state: 'loading', loaded: 0 })
     let loaded = 0
+    // The pages go to the pacer. However this ends — found, stopped, failed —
+    // what loaded is drawn now: the selection is placed on the drawn range,
+    // and a stop or a failure says it kept what it loaded.
+    const drawLoaded = (): void => { if (loaded > 0 && gen === generationRef.current) publishLive.flush() }
     try {
       const admitted = await window.redlog.events.matchIds({ ids: [eventId], filter, excludeHousekeeping: true })
       if (!admitted.includes(eventId)) { setLoadBack(null); if (!quiet) setOutsideFilter(true); return }
       while (!eventsMapRef.current.has(eventId) && pageCursorRef.current) {
         const from = pageCursorRef.current
         const page = await window.redlog.events.queryPage({ ...filter, excludeHousekeeping: true, limit: 1000, cursor: from })
-        if (loadBackCancelRef.current) return
+        if (loadBackCancelRef.current) { drawLoaded(); return }
         if (gen !== generationRef.current) { setLoadBack(null); return }
         // Another page landed first; ask again from where the range now ends.
         if (!acceptPage(page, gen, from)) continue
@@ -1652,9 +1759,11 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
         if (!page.hasMore) break
       }
       setLoadBack(null)
+      drawLoaded()
       const evt = eventsMapRef.current.get(eventId)
       if (evt) select(evt)
     } catch {
+      drawLoaded()
       if (!loadBackCancelRef.current && gen === generationRef.current) setLoadBack(quiet ? null : { state: 'failed', eventId })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1785,36 +1894,17 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
         onModeChange={setTimelineMode}
         onOpenActivity={onOpenActivity ? () => onOpenActivity(selectedEvent ? { id: selectedEvent.id, ts: selectedEvent.timestamp } : null) : undefined}
         filterQuery={filterQuery}
-        onFilterQueryChange={setFilterQuery}
+        onFilterQueryChange={typeFilterQuery}
         searchInputRef={searchInputRef}
         onHelp={() => setShowHelp(true)}
         followBadge={
-        (() => {
-          const latestTs = events.length > 0 ? events[events.length - 1].timestamp : 0
-          const behindMs = Math.max(0, now - latestTs)
-          const isLive = atRightEdge && followMode
-          const label = isLive
-            ? t('timeline.follow.live')
-            : t('timeline.follow.behindFmt', { time: formatBehind(behindMs) })
-          return (
-            <button
-              data-testid="timeline-follow-badge"
-              onClick={() => {
-                if (isLive) {
-                  setFollowMode(false)
-                } else {
-                  resumeFollow()
-                }
-              }}
-              title={isLive ? t('timeline.follow.pauseHint') : t('timeline.follow.resumeHint', { time: formatBehind(behindMs) })}
-              className={`whitespace-nowrap text-xs font-mono px-1.5 py-0.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 ${
-                isLive
-                  ? 'text-emerald-100 bg-emerald-600/40 ring-1 ring-emerald-500/40'
-                  : 'text-amber-300 bg-amber-500/10 hover:bg-amber-500/20'
-              }`}
-            >{label}</button>
-          )
-        })()
+          <FollowBadge
+            latestTs={events.length > 0 ? events[events.length - 1].timestamp : 0}
+            isLive={atRightEdge && followMode}
+            onPause={() => setFollowMode(false)}
+            onResume={() => resumeFollow()}
+            t={t}
+          />
         }
         moreMenu={
           <div className="relative shrink-0">
@@ -1891,7 +1981,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
             <div role="alert" data-testid="timeline-query-failed" className="text-red-300">
               {t('timeline.queryFailed')}{' '}
               <button
-                onClick={() => { matchCacheRef.current = { key: null, checked: new Map() }; setBoxRetry((n) => n + 1) }}
+                onClick={() => { matchCacheRef.current = freshMatchCache(null); setBoxRetry((n) => n + 1) }}
                 className="underline hover:text-red-200"
               >{t('common.retry')}</button>
             </div>
@@ -2091,7 +2181,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
           list keeps its height. One pane in one place in the DOM either way —
           rendering it twice would be two panes to keep in step and only one
           of them ever tested. */}
-      <div className={`flex-1 min-h-0 flex ${layout === 'right' ? 'flex-row' : 'flex-col'}`}>
+      <div ref={splitRef} data-testid="timeline-split" data-layout={layout} className={`flex-1 min-h-0 flex ${layout === 'right' ? 'flex-row' : 'flex-col'}`}>
       <div className="flex-1 min-w-0 min-h-0 flex flex-col">
         {/* Swim lanes — one row of everything in standard mode (FR-008). */}
         {/* v0.9.4 P0-2: scrolls vertically. The lane labels are a sibling of
@@ -2374,9 +2464,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
                     </div>
                   ))}
                 {/* Current time line */}
-                {Date.now() >= timeStart && Date.now() <= timeEnd && (
-                  <div className="absolute top-0 w-px bg-red-500/70" style={{ left: toX(Date.now()), height: totalH }} />
-                )}
+                <NowLine timeStart={timeStart} timeEnd={timeEnd} toX={toX} height={totalH} />
                 {/* v0.6.89.5 feature 5: red-tinted band behind every event
                     that landed AFTER the broken-chain event. Rendered before
                     the dots so it sits underneath but above the lane
@@ -2672,7 +2760,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
           annotatedIds={annotatedIds}
           attributionBlind={attributionBlind}
           showingAll={showAllDespiteQuery && filterMatches !== null}
-          onToggleHidden={() => setShowAllDespiteQuery((v) => !v)}
+          onToggleHidden={toggleShowAll}
           stripsOnly={timelineMode === 'lanes'}
           events={recentEvents}
           total={windowTotal}
@@ -2683,7 +2771,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
           operatorLabel={operatorLabel}
           titleOf={titleOf}
           amendSuffix={amendSuffix}
-          amendCountOf={(id) => foldById.get(id)?.amendCount}
+          amendCountOf={amendCountOf}
           onSelect={pickEvent}
           onOpen={openEventBody}
           t={t}
@@ -2772,7 +2860,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
             onJump={(e) => { setSelectedEvent(e); setDetailOpen(true); scrollToEvent(e) }}
             reader={{ mode: readerMode, setMode: setReader }}
             layout={layout}
-            onToggleLayout={() => setDetailLayout(layout === 'bottom' ? 'right' : 'bottom')}
+            onToggleLayout={compactSplit ? undefined : () => setDetailLayout(preferredLayout === 'bottom' ? 'right' : 'bottom')}
             onClose={() => setDetailOpen(false)}
             onSelect={(e) => { setSelectedEvent(e); setDetailOpen(true) }}
             onResolve={(id) => void resolveReferencedEvent(id)}
@@ -2786,4 +2874,4 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
       </div>
     </div>
   )
-}
+})

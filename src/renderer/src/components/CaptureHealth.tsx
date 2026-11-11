@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Button } from './Button'
 import { SectionLabel } from './SectionLabel'
 import { computeCaptureReadiness, primaryCaptureAction, type CaptureAction } from '../lib/captureReadiness'
-import { httpCaptureState, type HttpCaptureState } from '../lib/httpCaptureState'
+import { httpCaptureState, proxyErrorText, type HttpCaptureState } from '../lib/httpCaptureState'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
 import { runMutation } from '../lib/mutation'
@@ -11,6 +11,7 @@ import { clientLabel } from '../../../core/http-verify'
 import { settingsTarget } from '../lib/navigation'
 import { removeHookWithUndo } from '../lib/hookRemoval'
 import { formatTime, formatDateTime } from '../lib/time'
+import { writeClipboard } from '../lib/clipboard'
 
 
 /** What the `terminal` row says about the operator's OWN shell — three states,
@@ -52,6 +53,27 @@ function ownShellVars(s: { ownShellName?: string | null; ownShellLastEventAt?: n
 function proxyListenAddress(proxy: { state: string; url?: string | null } | undefined): string | null {
   if (proxy?.state !== 'running' || !proxy.url) return null
   try { return new URL(proxy.url).host } catch { return proxy.url }
+}
+
+type Prerequisite = NonNullable<CaptureSourceInfo['prerequisites']>[number]
+
+/** The prerequisite that stops this source recording, if one does (#688). */
+function missingPrerequisite(s: CaptureSourceInfo): Prerequisite | undefined {
+  return s.state === 'error' ? s.prerequisites?.find((p) => p.state === 'missing') : undefined
+}
+
+function prerequisiteText(p: Prerequisite, t: (key: string, vars?: Record<string, string | number>) => string): string {
+  return p.id === 'screen-recording' ? t('capture.prereq.screenRecording') : t('capture.prereq.command', { command: p.id })
+}
+
+async function runPrerequisiteFix(fix: NonNullable<Prerequisite['fix']>, t: (key: string) => string): Promise<void> {
+  if (fix.kind === 'open') {
+    const r = await window.redlog.capture.openPrerequisiteFix(fix.url).catch((e: unknown) => ({ ok: false, error: String(e) }))
+    if (!r.ok) toast(t('capture.actionFailed'), { type: 'error', detail: r.error })
+    return
+  }
+  if (await writeClipboard(fix.command)) toast(t('common.copied'), 'success')
+  else toast(t('common.copyFailed'), 'error')
 }
 
 type Tone = 'ok' | 'warn' | 'err' | 'neutral' | 'off'
@@ -371,7 +393,9 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
   // reassurance directly above the row that contradicts it.
   const rogue = sources.filter(isRogue)
   const dark = unknown === undefined && (capture.verdict === 'dark' || rogue.length > 0)
-  const partial = unknown === undefined && capture.verdict === 'partial'
+  // A proxy that could not start is not a healthy card, whatever the verdict
+  // was computed from.
+  const partial = unknown === undefined && !dark && (capture.verdict === 'partial' || http === 'failed')
   // Pure + unit-tested in capture-readiness.ts; this card just renders it.
   // All that is left of it is the one next action — the checklist it used to
   // drive said the same two things as the core line above, in a third set of
@@ -444,6 +468,7 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
         // The core line already says this about mitmproxy; the inventory
         // row keeps its state word and controls, not a second copy.
         const detail = s.id !== 'mitmproxy'
+        const missing = missingPrerequisite(s)
         return (
         <div key={s.id} data-testid={`capture-row-${s.id}`} className="flex items-center gap-2 text-xs">
           <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.id === 'mitmproxy' ? httpDot(http) : dot(s.state)}`} />
@@ -467,7 +492,7 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
               </span>
             )}
             {detail && s.id === 'mitmproxy' && capture.managedHttpProxy?.error && (
-              <span className="block text-red-400">{capture.managedHttpProxy.error}</span>
+              <span className="block text-red-400">{proxyErrorText(capture.managedHttpProxy, t)}</span>
             )}
             {s.informational && <span className="ml-1.5 text-redlog-text-faint text-xs uppercase tracking-wide">{t('capture.pluginTag')}</span>}
             {/* The operator believes they stopped this. They stopped
@@ -481,7 +506,9 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
             )}
             {/* Why it failed, not just that it did — the operator cannot
                 act on a red dot alone. */}
-            {detail && s.lastError && <span className="block text-red-400" title={s.lastError.message}>{s.lastError.message}</span>}
+            {detail && missing
+              ? <span data-testid={`capture-prereq-${s.id}`} className="block text-red-400">{prerequisiteText(missing, t)}</span>
+              : detail && s.lastError && <span className="block text-red-400" title={s.lastError.message}>{s.lastError.message}</span>}
 
           </span>
           <span data-testid={`capture-state-${s.id}`} className="text-redlog-text-faint text-xs">
@@ -495,6 +522,11 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
             <span className="text-xs font-mono tabular-nums shrink-0 text-redlog-text-faint">
               {fmtAge(s.lastEventAt, nowTick)}
             </span>
+          )}
+          {missing?.fix && (
+            <Button size="compact" level="quiet" data-testid={`capture-prereq-fix-${s.id}`} onClick={() => { void runPrerequisiteFix(missing.fix!, t) }}>
+              {missing.fix.kind === 'open' ? t('capture.prereq.openSettings') : t('settings.hookCopy')}
+            </Button>
           )}
           {/* A warning names its source and opens it: the row in Settings,
               not the page that holds it (#590). */}
@@ -590,7 +622,7 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
           listenAddress={proxyListenAddress(capture.managedHttpProxy)}
           source={mitmSource}
           sources={sources}
-          proxyError={capture.managedHttpProxy?.error}
+          proxyError={proxyErrorText(capture.managedHttpProxy, t)}
           unsavedGapEvents={capture.managedHttpProxy?.unsavedGapEvents}
           age={(ts) => (ts === null ? '' : fmtAge(ts, nowTick))}
           t={t}

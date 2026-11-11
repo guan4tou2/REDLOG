@@ -110,6 +110,18 @@ export interface CaptureSource {
   /** Which shell (`zsh`, `bash`, `powershell`) sent that last command, so the
    *  card can name what it actually heard from. */
   ownShellName?: string | null
+  /** What the OS must allow or have installed before this source can record
+   *  (#688). An enabled source with a `missing` one is `error`; `unknown`
+   *  means it could not be asked and changes nothing. */
+  prerequisites?: CapturePrerequisite[]
+}
+
+export interface CapturePrerequisite {
+  id: string
+  state: 'granted' | 'missing' | 'unknown' | 'not-applicable'
+  /** `copy` is PreflightCheck's `remediation`; `open` is a settings pane the
+   *  main process allow-lists. */
+  fix?: { kind: 'open'; url: string } | { kind: 'copy'; command: string }
 }
 
 export interface CaptureHealth {
@@ -155,12 +167,23 @@ export interface CaptureHealth {
     state: 'stopped' | 'starting' | 'running' | 'unavailable' | 'failed'
     url: string | null
     error?: string
+    errorReason?: ProxyFailureReason
     caPath?: string
     certReady?: boolean
     httpsVerification?: import('./http-verify').HttpVerifyReport
     /** Refused events the addon could not record even as a gap (#460). */
     unsavedGapEvents?: number
   }
+}
+
+/** A proxy start failure as a code: main writes `error` in English for logs
+ *  and events, and the renderer words this one in the operator's language. */
+export interface ProxyFailureReason {
+  code: 'port-in-use'
+  /** host:port */
+  address: string
+  /** "name (PID n)", or null when the holder could not be named. */
+  holder: string | null
 }
 
 let managedProxyStatusProvider: (() => CaptureHealth['managedHttpProxy']) | null = null
@@ -172,6 +195,12 @@ export function configureBuiltinTerminalHealth(provider: () => { at: number; mes
 }
 export function configureManagedProxyHealth(provider: () => CaptureHealth['managedHttpProxy']): void {
   managedProxyStatusProvider = provider
+  healthCache = null
+}
+// Probed in the main process (OS permission APIs live there), keyed by source id.
+let prerequisiteProvider: (() => Record<string, CapturePrerequisite[]>) | null = null
+export function configureCapturePrerequisites(provider: (() => Record<string, CapturePrerequisite[]>) | null): void {
+  prerequisiteProvider = provider
   healthCache = null
 }
 
@@ -673,6 +702,17 @@ function computeCaptureHealth(now: number): CaptureHealth {
     if (terminal) { terminal.state = 'error'; terminal.lastError = terminalFailure }
   }
 
+  // A missing permission or command means the source cannot record however it
+  // is set up. It does not override the operator's own `off`.
+  let prerequisites: Record<string, CapturePrerequisite[]> = {}
+  try { prerequisites = prerequisiteProvider?.() ?? {} } catch { /* probe failed: say nothing */ }
+  for (const source of sources) {
+    const list = prerequisites[source.id]
+    if (!list?.length) continue
+    source.prerequisites = list
+    if (source.state !== 'off' && list.some((p) => p.state === 'missing')) source.state = 'error'
+  }
+
   // E3: PLUGIN-contributed capture producers, enumerated from the registry
   // rather than a second hardcoded list. detectHooks() already merges them with
   // the built-ins (their namespaced `<pluginId>.<captureId>` ids are the only
@@ -744,6 +784,10 @@ function computeCaptureHealth(now: number): CaptureHealth {
   // go dark: the other sources are recording, and `dark` means "you have no
   // log".
   const anySourceErrored = sources.some((s) => s.state === 'error')
+  // A managed proxy that failed to start is HTTP capture the operator asked for
+  // and is not getting — amber like any failing source, never dark.
+  const managedHttpProxy = managedProxyStatusProvider?.()
+  const managedProxyFailed = managedHttpProxy?.state === 'failed'
 
   const lastDbError = getLiveDbError(now)
   const lastSampleBroken = getLiveSampleBroken(now)
@@ -761,7 +805,7 @@ function computeCaptureHealth(now: number): CaptureHealth {
   // Burp's listener is simply running. Whether the operator has done anything
   // yet is answered by `recording` and by each source's `lastEventAt`, which
   // the UI shows as an age — not by grading the capture amber.
-  else if (anySourceErrored || producerStalled) verdict = 'partial'
+  else if (anySourceErrored || managedProxyFailed || producerStalled) verdict = 'partial'
   else verdict = 'healthy'
 
   const lastEventAt = [...sources, ...pluginSources].reduce<number | null>(
@@ -776,6 +820,6 @@ function computeCaptureHealth(now: number): CaptureHealth {
     dbErrorFirstAt: _dbErrorFirstAt,
     unattributedSpool: summarizeUnattributedSpool(pendingSpoolDirectory()),
     lastSampleBroken,
-    managedHttpProxy: managedProxyStatusProvider?.()
+    managedHttpProxy
   }
 }

@@ -196,18 +196,18 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
 
   return (
     <div className="p-pad space-y-4 overflow-auto h-full">
-      <div>
+      {/* Stitch 03: a section heading with the page's count (the Evidence tabs
+          carry none for loot), and what a hit is and is not, beneath it. */}
+      <section data-testid="loot-disclaimer" className="text-xs">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-redlog-text">{t('loot.title', { count: visibleMatchCount })}</h2>
+          <h2 className="text-sm font-semibold text-redlog-text">
+            {t('loot.sectionTitle')}
+            <span data-testid="loot-count" className="ml-1.5 font-mono text-xs tabular-nums text-redlog-text-faint">{visibleMatchCount}</span>
+          </h2>
           <span data-testid="loot-completeness" className="text-xs text-redlog-text-faint">
             {t(hasMore ? 'loot.recentSubset' : 'loot.complete')}
           </span>
         </div>
-      </div>
-
-      {/* Stitch 03: a section heading, and what a hit is and is not, beneath it. */}
-      <section data-testid="loot-disclaimer" className="text-xs">
-        <h2 className="text-sm font-semibold text-redlog-text">{t('loot.sectionTitle')}</h2>
         <p className="mt-0.5 font-medium text-amber-300">{t('loot.disclaimerTitle')}</p>
         <p className="mt-0.5 text-redlog-text-dim">{t('loot.disclaimerBody')}</p>
       </section>

@@ -7,6 +7,7 @@ import crypto from 'crypto'
 import { configureIngest, ingestEvent } from '../core/ingest'
 import type { RedLogEvent } from '../core/db/events'
 import { TerminalRecording, type TerminalRecordingSegment } from './terminal-recording'
+import { TerminalOutputPump } from './terminal-output'
 import { getDB } from '../core/db/index'
 import { eventBus } from '../core/event-bus'
 import { noteDbError, configureBuiltinTerminalHealth } from '../core/capture-health'
@@ -136,6 +137,8 @@ interface TerminalSession {
    *  running shell's environment cannot be changed from outside, so the pane
    *  keeps this URL after the proxy is stopped. */
   proxiedVia: string | null
+  /** Output to the renderer, batched and flow-controlled (terminal-output.ts). */
+  output: TerminalOutputPump
 }
 
 /** Open panes whose environment names a proxy URL. Asked right after the
@@ -250,11 +253,20 @@ function beginRecording(session: TerminalSession, binding: Readonly<ProjectIdent
     const dir = path.join(session.projectDir, 'casts')
     fs.mkdirSync(dir, { recursive: true })
     session.castPath = path.join(dir, `${session.recordingId}.cast`)
-    session.castStream = new TerminalRecording(session.castPath, {
+    const stream: TerminalRecording = new TerminalRecording(session.castPath, {
       version: 2, width: session.cols, height: session.rows,
       timestamp: Math.floor(session.castStart / 1000),
       env: { SHELL: session.shell, TERM: 'xterm-256color' }, title: `redlog terminal ${session.id}`
-    }, maxCastBytes)
+    }, maxCastBytes, (error) => {
+      // Held frames failed to reach the disk: the same state a failed frame
+      // write gave in appendCastFrame.
+      if (session.castStream !== stream) return
+      session.castBytes = stream.bytes
+      session.recordingReason = 'recording-failed'
+      session.recordingError = error
+      sendToWindow(`terminal:castState:${session.id}`, castState(session))
+    })
+    session.castStream = stream
     session.castBytes = session.castStream.bytes
     const event = ingestEvent('shell', {
       subtype: 'session_start', source: 'builtin-terminal', terminalId: session.id,
@@ -403,6 +415,8 @@ function refreshTerminalConsent(session: TerminalSession): void {
 export function getCastPosition(terminalId: string): { castPath: string; offset: number; truncated: boolean } | null {
   const session = sessions.get(terminalId)
   if (!session?.castPath || session.finalised || session.recordingReason) return null
+  // A byte range is read from disk by offset: put the held frames there first.
+  try { session.castStream?.flush() } catch { /* the write timer reports it */ }
   return { castPath: session.castPath, offset: session.castBytes, truncated: session.castTruncated }
 }
 
@@ -570,12 +584,35 @@ export interface SpawnResult {
   recordingError?: string
 }
 
+/** Largest pane RedLog sizes a pty to. A real window is a few hundred cells
+ *  across at most; the bound keeps a bad value off node-pty and out of the cast
+ *  header. */
+export const MAX_TERMINAL_CELLS = 1000
+
+/** A size node-pty may be given: a whole number of cells from 1 to the bound. */
+export function validTerminalSize(cols: unknown, rows: unknown): boolean {
+  return Number.isInteger(cols) && Number.isInteger(rows)
+    && (cols as number) > 0 && (rows as number) > 0
+    && (cols as number) <= MAX_TERMINAL_CELLS && (rows as number) <= MAX_TERMINAL_CELLS
+}
+
+/** The size a pane starts at. A pane has to open at some size, so an invalid
+ *  one (0, negative, NaN, 100 000) starts at 80x24 and the renderer's first fit
+ *  resizes it, rather than refusing the terminal. */
+export function spawnTerminalSize(cols: unknown, rows: unknown): { cols: number; rows: number } {
+  return validTerminalSize(cols, rows) ? { cols: cols as number, rows: rows as number } : { cols: 80, rows: 24 }
+}
+
 export function spawnTerminal(id: string, cols: number, rows: number, shellId?: string): SpawnResult {
+  ;({ cols, rows } = spawnTerminalSize(cols, rows))
   const existing = sessions.get(id)
   if (existing) {
     // A re-attaching renderer (StrictMode remount, tab re-render) gets a brand
     // new xterm that missed everything printed so far — replay the buffer so it
-    // shows the current prompt/scrollback instead of a blank screen.
+    // shows the current prompt/scrollback instead of a blank screen. The
+    // buffer already holds any output waiting to be sent, and the old xterm's
+    // unacknowledged output is no longer owed.
+    existing.output.reattach()
     if (existing.buffer) {
       const buf = existing.buffer
       setTimeout(() => sendToWindow(`terminal:data:${id}`, buf), 0)
@@ -664,7 +701,12 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
     shellLabel,
     hookSourced: false,
     recordingId: '', projectDir: '', pendingCommands: new Map(), operatorPaused: false,
-    proxiedVia
+    proxiedVia,
+    output: new TerminalOutputPump({
+      send: (data) => sendToWindow(`terminal:data:${id}`, data),
+      pause: () => { try { term.pause() } catch { /* exited */ } },
+      resume: () => { try { term.resume() } catch { /* exited */ } }
+    })
   }
 
   term.onData((data: string) => {
@@ -675,15 +717,17 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
     }
     // Audit 2026-09-18 P1: skip cast writing while recording is paused.
     // Terminal display keeps working; only the .cast file stops growing.
-    if (eventBus.paused) {
-      sendToWindow(`terminal:data:${id}`, data)
-      return
-    }
-    appendCastFrame(session, 'o', data)
-    sendToWindow(`terminal:data:${id}`, data)
+    // The frame is stamped and written here, per chunk, as it arrives; only
+    // what goes to the renderer is batched.
+    if (!eventBus.paused) appendCastFrame(session, 'o', data)
+    session.output.push(data)
   })
 
   term.onExit(({ exitCode }) => {
+    // Everything the shell printed reaches the pane before it is told the
+    // process exited.
+    session.output.flush()
+    session.output.dispose()
     finaliseSession(session, exitCode, 'shell-exited')
     removeTerminalEnrollment(os.homedir(), id)
     sessions.delete(id)
@@ -750,8 +794,14 @@ export function writeTerminal(id: string, data: string): void {
   sessions.get(id)?.pty.write(data)
 }
 
+/** The renderer's xterm has parsed `chars` more characters of this pane's
+ *  output (flow control, terminal-output.ts). */
+export function ackTerminal(id: string, chars: number): void {
+  sessions.get(id)?.output.ack(chars)
+}
+
 export function resizeTerminal(id: string, cols: number, rows: number): void {
-  if (!Number.isInteger(cols) || !Number.isInteger(rows) || cols <= 0 || rows <= 0) return
+  if (!validTerminalSize(cols, rows)) return
   const session = sessions.get(id)
   if (!session || (session.cols === cols && session.rows === rows)) return
   try {
@@ -767,6 +817,7 @@ export function killTerminal(id: string): void {
   if (!session) return
   finaliseSession(session, null, 'pane-closed')
   removeTerminalEnrollment(os.homedir(), id)
+  session.output.dispose()
   try {
     session.pty.kill()
   } catch {}
@@ -795,6 +846,7 @@ export function killAllTerminals(): void {
   for (const session of sessions.values()) {
     finaliseSession(session, null, 'app-quit')
     removeTerminalEnrollment(os.homedir(), session.id)
+    session.output.dispose()
     try { session.pty.kill() } catch {}
   }
   sessions.clear()

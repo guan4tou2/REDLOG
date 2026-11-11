@@ -39,6 +39,9 @@ import { ingest, type LootDetectorLike } from './ingest'
 import { isInsideDir } from './paths'
 import { getProjectDir } from './db/index'
 import { extractBodyToSidecar, readBody as readHttpBody, type BodyRef } from './http-body-store'
+import { parseJsonObjectBody, parseRecordingAction, parseLimitParam, parseTimeParam, API_LIMITS } from './api-request'
+import { resolveContainedFile } from './contained-file'
+import { MARKER_TITLE_MAX, MARKER_NOTES_MAX, capMarkerText } from './marker-text'
 
 let appVersion = 'dev'
 export function setAppVersion(v: string): void { appVersion = v }
@@ -199,6 +202,22 @@ function readBody(req: http.IncomingMessage): Promise<string> {
   })
 }
 
+/** The body of a JSON route as a plain object, or null after answering 400.
+ *  One gate for every route that reads a body (api-request.ts). */
+async function readJsonObject(req: http.IncomingMessage, res: http.ServerResponse): Promise<Record<string, unknown> | null> {
+  const parsed = parseJsonObjectBody(await readBody(req))
+  if (!parsed.ok) { json(res, 400, { error: parsed.error }); return null }
+  return parsed.body
+}
+
+/** A 500 says that something failed, never what: the message can carry paths,
+ *  SQL and module layout. The detail goes to the main-process log. */
+function internalError(res: http.ServerResponse, where: string, err: unknown): void {
+  console.error(`[api] ${where} failed:`, (err as Error)?.stack || err)
+  if (res.headersSent) { res.end(); return }
+  json(res, 500, { error: 'internal error' })
+}
+
 function publicOperator(op: Operator): Record<string, unknown> {
   return {
     id: op.id,
@@ -289,8 +308,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         return
       }
       const requestEngagement = engagementId
-      let body: Record<string, unknown>
-      try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
+      const body = await readJsonObject(req, res)
+      if (!body) return
       // Reading a streamed body yields to project switching. Recheck at the
       // write boundary, not only when the authenticated headers arrived.
       if (!projectOpen || requestEngagement !== engagementId || (pinnedEngagement != null && pinnedEngagement !== engagementId)) {
@@ -383,18 +402,21 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     }
     if (route === '/api/events' && req.method === 'GET') {
       const agentType = url.searchParams.get('agent_type') || undefined
-      const limit = parseInt(url.searchParams.get('limit') || '100')
-      const since = url.searchParams.get('since') ? parseInt(url.searchParams.get('since')!) : undefined
-      const before = url.searchParams.get('before') ? parseInt(url.searchParams.get('before')!) : undefined
+      const limit = parseLimitParam(url.searchParams.get('limit'), 'limit', API_LIMITS.events.fallback, API_LIMITS.events.max)
+      const since = parseTimeParam(url.searchParams.get('since'), 'since')
+      const before = parseTimeParam(url.searchParams.get('before'), 'before')
+      for (const p of [limit, since, before]) if (!p.ok) { json(res, 400, { error: p.error }); return }
       const targetId = url.searchParams.get('target_id') || undefined
-      const events = queryEvents({ agentType, limit, since, before, targetId })
+      const events = queryEvents({ agentType, limit: limit.ok ? limit.value : undefined, since: since.ok ? since.value : undefined, before: before.ok ? before.value : undefined, targetId })
       json(res, 200, { count: events.length, events })
       return
     }
 
     if (route === '/api/events/search' && req.method === 'GET') {
       const q = url.searchParams.get('q') || ''
-      const limit = parseInt(url.searchParams.get('limit') || '100')
+      const limitParam = parseLimitParam(url.searchParams.get('limit'), 'limit', API_LIMITS.search.fallback, API_LIMITS.search.max)
+      if (!limitParam.ok) { json(res, 400, { error: limitParam.error }); return }
+      const limit = limitParam.value
       if (q.length < 2) {
         json(res, 400, { error: 'Query must be at least 2 characters' })
         return
@@ -437,10 +459,15 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     }
 
     if (route === '/api/export/har' && req.method === 'GET') {
-      const since = url.searchParams.get('since') ? parseInt(url.searchParams.get('since')!) : undefined
-      const before = url.searchParams.get('before') ? parseInt(url.searchParams.get('before')!) : undefined
+      const sinceP = parseTimeParam(url.searchParams.get('since'), 'since')
+      const beforeP = parseTimeParam(url.searchParams.get('before'), 'before')
+      const limitP = parseLimitParam(url.searchParams.get('limit'), 'limit', API_LIMITS.har.fallback, API_LIMITS.har.max)
+      if (!sinceP.ok || !beforeP.ok || !limitP.ok) {
+        json(res, 400, { error: [sinceP, beforeP, limitP].map((p) => (p.ok ? '' : p.error)).filter(Boolean)[0] })
+        return
+      }
+      const since = sinceP.value, before = beforeP.value, limit = limitP.value
       const targetId = url.searchParams.get('target_id') || undefined
-      const limit = url.searchParams.get('limit') ? parseInt(url.searchParams.get('limit')!) : undefined
       // Redaction: the layer-4 sanitize swap always applies inside exportHar;
       // pass scope so an API token holder can't pull out-of-scope bodies either.
       const scope = { targets: configLoaderRef?.getTargets?.() ?? [] }
@@ -453,7 +480,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     const bodyMatch = route.match(/^\/api\/http-body\/([a-f0-9]{64})$/)
     if (bodyMatch && req.method === 'GET') {
       const file = `${bodyMatch[1]}.body`
-      const encoding = (url.searchParams.get('encoding') || 'text') as 'text' | 'base64'
+      const encodingParam = url.searchParams.get('encoding') || 'text'
+      if (encodingParam !== 'text' && encodingParam !== 'base64') { json(res, 400, { error: 'encoding must be text or base64' }); return }
+      const encoding: 'text' | 'base64' = encodingParam
       // The scope the HAR export applies, so a hash read from an event cannot
       // fetch what the export masks. Same answer as a missing body.
       const scope = { targets: configLoaderRef?.getTargets?.() ?? [] }
@@ -465,15 +494,15 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     }
 
     if (route === '/api/marker' && req.method === 'POST') {
-      let body: Record<string, unknown>
       const requestEngagement = engagementId
-      try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
+      const body = await readJsonObject(req, res)
+      if (!body) return
       // Same recheck as /api/events: the body read yields to a project switch,
       // and the token that authorised this belonged to the project open then.
       if (!projectOpen || requestEngagement !== engagementId) { json(res, 409, { error: 'engagement changed; marker refused' }); return }
       const event = ingest({ agentType: 'marker', data: {
-        title: body.title || 'Untitled',
-        notes: body.notes || '',
+        title: capMarkerText(body.title, MARKER_TITLE_MAX) || 'Untitled',
+        notes: capMarkerText(body.notes, MARKER_NOTES_MAX) || '',
         severity: body.severity || 'info',
         category: body.category || 'external'
       }, engagementId, operatorId: operator.id,
@@ -484,8 +513,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     }
 
     if (route === '/api/loot/scan' && req.method === 'POST') {
-      let body: Record<string, unknown>
-      try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
+      const body = await readJsonObject(req, res)
+      if (!body) return
       if (!lootDetectorRef) {
         json(res, 503, { error: 'Loot detector not available' })
         return
@@ -499,8 +528,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     // proxy path, not engagement traffic, so it is validated and handed on
     // and never ingested.
     if (route === '/api/http-verify' && req.method === 'POST') {
-      let body: unknown
-      try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
+      const body = await readJsonObject(req, res)
+      if (!body) return
       const report = parseVerifyReport(body)
       if (!report) { json(res, 400, { error: 'Not a verification report' }); return }
       // Same answer as an ingest while paused. A check is evidence that the
@@ -566,9 +595,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     }
 
     if (route === '/api/bookmarks' && req.method === 'POST') {
-      let body: Record<string, unknown>
       const requestEngagement = engagementId
-      try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
+      const body = await readJsonObject(req, res)
+      if (!body) return
       // Same recheck as /api/events: the body read yields to a project switch,
       // and the token that authorised this belonged to the project open then.
       if (!projectOpen || requestEngagement !== engagementId) { json(res, 409, { error: 'engagement changed; bookmark refused' }); return }
@@ -593,9 +622,12 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     }
 
     if (route === '/api/recording' && req.method === 'POST') {
-      let body: Record<string, unknown> = {}
-      try { body = JSON.parse(await readBody(req)) } catch { /* empty body → default to toggle */ }
-      const action = body.action ?? 'toggle'
+      // An explicit action or nothing changes: any body used to flip recording,
+      // so a malformed post from a broken integration paused capture.
+      const body = await readJsonObject(req, res)
+      if (!body) return
+      const action = parseRecordingAction(body)
+      if (!action) { json(res, 400, { error: 'action must be "pause", "resume" or "toggle"' }); return }
       if (action === 'pause') eventBus.pause('api')
       else if (action === 'resume') eventBus.resume('api')
       else {
@@ -616,10 +648,10 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     // terminalId) to get its castPath, then slice the .cast from the
     // preceding command_start to command_end.
     if (route === '/api/terminal/replay' && req.method === 'POST') {
-      let body: Record<string, unknown>
-      try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
-      const eventId = body.eventId as string | undefined
-      if (!eventId) { json(res, 400, { error: 'eventId required' }); return }
+      const body = await readJsonObject(req, res)
+      if (!body) return
+      const eventId = body.eventId
+      if (typeof eventId !== 'string' || !eventId) { json(res, 400, { error: 'eventId required' }); return }
       const target = queryEventById(eventId)
       if (!target) { json(res, 404, { error: 'event not found' }); return }
       const td = target.data as Record<string, unknown>
@@ -636,8 +668,10 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       // arbitrary-file-read via forged session_start `{castPath:"/…/.ssh/id_ed25519"}`.
       let castsDir: string
       try { castsDir = path.join(getProjectDir(), 'casts') } catch { json(res, 500, { error: 'no active project' }); return }
-      const resolvedCast = path.resolve(castPath)
-      if (!isInsideDir(castsDir, resolvedCast)) {
+      // A name inside casts/ is not enough: a link planted there reads the
+      // file it points at. Real path, regular file, inside the real casts/.
+      const resolvedCast = isInsideDir(castsDir, path.resolve(castPath)) ? resolveContainedFile(castsDir, castPath) : null
+      if (!resolvedCast) {
         json(res, 403, { error: 'castPath outside project casts directory' })
         return
       }
@@ -686,8 +720,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     }
 
     if (route === '/api/anchors' && req.method === 'GET') {
-      const limit = parseInt(url.searchParams.get('limit') || '50')
-      json(res, 200, { anchors: listAnchors(limit) })
+      const limit = parseLimitParam(url.searchParams.get('limit'), 'limit', API_LIMITS.anchors.fallback, API_LIMITS.anchors.max)
+      if (!limit.ok) { json(res, 400, { error: limit.error }); return }
+      json(res, 200, { anchors: listAnchors(limit.value) })
       return
     }
 
@@ -715,7 +750,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         // absolute paths + module layout to any token holder. Stack stays in
         // console.error for local debugging.
         console.error('[export/bundle] failed:', err.stack || err.message)
-        json(res, 500, { error: err.message })
+        json(res, 500, { error: 'export failed' })
       }
       return
     }
@@ -723,9 +758,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     // Four-layer redaction, layer 4 — sanitize event bytes for pre-delivery.
     // POST /api/sanitize { event_ids, fields, reason?, dry_run? }
     if (route === '/api/sanitize' && req.method === 'POST') {
-      let body: Record<string, unknown>
       const requestEngagement = engagementId
-      try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
+      const body = await readJsonObject(req, res)
+      if (!body) return
       // Same recheck as /api/events: the body read yields to a project switch,
       // and the token that authorised this belonged to the project open then.
       if (!projectOpen || requestEngagement !== engagementId) { json(res, 409, { error: 'engagement changed; sanitize refused' }); return }
@@ -739,12 +774,10 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         })
         json(res, result.dryRun ? 200 : 201, result)
       } catch (e) {
-        json(res, 500, { error: (e as Error).message })
+        internalError(res, 'sanitize', e)
       }
       return
     }
-
-
 
     if (route === '/api/clock' && req.method === 'GET') {
       json(res, 200, {
@@ -804,9 +837,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
     // ── Hybrid D Phase 1: session registration ──────────────────────────
     if (route === '/api/session/register' && req.method === 'POST') {
-      let body: Record<string, unknown>
-      try { body = JSON.parse(await readBody(req)) } catch { json(res, 400, { error: 'invalid or empty JSON body' }); return }
-      const sid = (body.session_id || '').toString().trim()
+      const body = await readJsonObject(req, res)
+      if (!body) return
+      const sid = typeof body.session_id === 'string' || typeof body.session_id === 'number' ? String(body.session_id).trim() : ''
       if (!sid) { json(res, 400, { error: 'session_id is required' }); return }
       if (sessionRegistryRef) sessionRegistryRef.register(sid)
       const cwd = typeof body.cwd === 'string' ? body.cwd.trim() : ''
@@ -821,7 +854,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
     json(res, 404, { error: `Unknown route: ${req.method} ${route}` })
   } catch (err) {
-    json(res, 500, { error: (err as Error).message })
+    // Includes a body nested past the stack (RangeError) that slipped the depth
+    // check: the client learns that the request failed, not the internals.
+    internalError(res, route, err)
   }
 }
 
@@ -830,9 +865,7 @@ export function startApiServer(port = 6660): Promise<number> {
     writePrimaryToken()
 
     server = http.createServer((req, res) => {
-      handleRequest(req, res).catch((err) => {
-        json(res, 500, { error: (err as Error).message })
-      })
+      handleRequest(req, res).catch((err) => internalError(res, 'request', err))
     })
 
     server.listen(port, '127.0.0.1', () => {

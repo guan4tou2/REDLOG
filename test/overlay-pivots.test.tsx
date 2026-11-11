@@ -61,14 +61,32 @@ it('shows nothing about relays when there are none', async () => {
   expect(screen.queryByTestId('hud-pivot-error')).toBeNull()
 })
 
-it('shows the last known count but removes current node badges after an invalid update', async () => {
+// #691: this used to assert the opposite — the warning said "the 2 below are
+// the last list read" while the list itself was removed. Text and screen now
+// agree: the expanded list keeps the last nodes, marked stale under the
+// warning; the collapsed capsule (current nodes only) goes.
+it('keeps the last list, marked stale, after an invalid update — and the capsule goes', async () => {
   install(async () => two)
   let notify!: (nodes: Pivot[]) => void
   window.redlog.pivots.onChange = callback => { notify = callback; return unsub }
   await expanded()
   await screen.findByTestId('hud-pivot-nodes')
   act(() => notify(null as unknown as Pivot[]))
-  expect(await screen.findByTestId('hud-pivot-error')).toBeTruthy()
-  expect(screen.queryByTestId('hud-pivot-nodes')).toBeNull()
-  expect(screen.queryByText(two[0].via, { exact: true })).toBeNull()
+  expect((await screen.findByTestId('hud-pivot-error')).textContent).toContain('the 2 below are the last list read')
+  const nodes = screen.getByTestId('hud-pivot-nodes')
+  expect(nodes.getAttribute('data-stale')).toBe('true')
+  expect(nodes.textContent).toContain(two[0].via)
+  expect(screen.queryByTestId('hud-pivot-latest')).toBeNull()
+})
+
+it('retries a failed read from the HUD', async () => {
+  let fail = true
+  install(async () => { if (fail) throw new Error('x'); return two })
+  await expanded()
+  await screen.findByTestId('hud-pivot-error')
+  fail = false
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+  const nodes = await screen.findByTestId('hud-pivot-nodes')
+  expect(nodes.getAttribute('data-stale')).toBeNull()
+  expect(screen.queryByTestId('hud-pivot-error')).toBeNull()
 })

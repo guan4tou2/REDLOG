@@ -25,6 +25,11 @@ Four modes, two callers:
         it is handed in place of the terminal is a pseudo-terminal, not a pipe
         — see `pty_pipe`.
 
+    redlog-relay.py boot --home DIR --session ID       -> the pty list
+
+        The zsh adapter, as it loads: `state --action begin` and
+        `policy --field pty` in one start-up.
+
     redlog-relay.py detect --home DIR [--session ID] [--shell NAME]
 
         Once per shell, at its first prompt, in the background: which of the
@@ -1253,6 +1258,33 @@ def state_cmd(argv):
     return 0
 
 
+def boot_cmd(argv):
+    """`state --action begin`, then `policy --field pty`: what the zsh adapter
+    asks as it loads, in one python3 instead of two — every new tab waited for
+    both. Each half is what its own mode does, and the first failing does not
+    stop the second, as two separate calls would not have. Only the second
+    half prints. An adapter that meets a relay without this mode (2, from
+    `main`) asks the two questions separately.
+    """
+    opts = parse(argv)[0]
+    common = []
+    for flag, key in (("--home", "home"), ("--session", "session")):
+        if opts[key] is not None:
+            common += [flag, opts[key]]
+    out = sys.stdout
+    try:
+        sys.stdout = open(os.devnull, "w")
+        state_cmd(common + ["--action", "begin"])
+    except (Exception, SystemExit):
+        pass
+    finally:
+        if sys.stdout is not out:
+            sys.stdout.close()
+        sys.stdout = out
+    home = ["--home", opts["home"]] if opts["home"] is not None else []
+    return policy_field(home + ["--field", "pty"])
+
+
 def write_text(path, text):
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -2037,7 +2069,7 @@ def write_json(path, payload):
 def main():
     modes = {"run": run, "pty": pty_pipe, "finish": finish,
              "classify": classify, "policy": policy_field,
-             "state": state_cmd, "detect": detect_cmd}
+             "state": state_cmd, "detect": detect_cmd, "boot": boot_cmd}
     mode = modes.get(sys.argv[1]) if len(sys.argv) > 1 else None
     if mode is None:
         sys.stderr.write(__doc__)

@@ -10,6 +10,7 @@ import { toast, UNDO_MS } from './Toast'
 import { castHistory, endedRecording, type CastHistory } from '../lib/terminalRecordingSummary'
 import { usePersistentState } from '../lib/usePersistentState'
 import { DEFAULT_FONT_SIZE, FONT_MIN, FONT_MAX, clampFontSize } from '../lib/terminalFont'
+import { createAckBatcher, createFitScheduler } from '../lib/terminalFlow'
 import { Modal } from './Modal'
 import { Button } from './Button'
 import { isMac } from '../lib/platform'
@@ -808,7 +809,10 @@ function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, onUnhoo
       paneRuntimes.set(id, runtime)
       // Keep receiving output while detached. Only pane close/process exit
       // ends these subscriptions; remounting must not replay the IPC tail twice.
-      const unsubData = window.redlog.terminal.onData(id, data => term.write(data))
+      // Flow control: main pauses the pty while too much output is unparsed
+      // here, so each write reports back once xterm has parsed it.
+      const ack = createAckBatcher((chars) => window.redlog.terminal.ack?.(id, chars))
+      const unsubData = window.redlog.terminal.onData(id, data => term.write(data, () => ack(data.length)))
       const unsubExit = window.redlog.terminal.onExit(id, () => {
         runtime.alive = false
         term.write('\r\n\x1b[90m[process exited]\x1b[0m\r\n')
@@ -857,9 +861,9 @@ function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, onUnhoo
       : null
     if (visibility && screen) visibility.observe(screen)
 
-    const resizeObserver = new ResizeObserver(() => {
-      requestAnimationFrame(fitIfVisible)
-    })
+    // Refit once the pane has settled, not on every frame of a drag.
+    const fits = createFitScheduler(fitIfVisible)
+    const resizeObserver = new ResizeObserver(() => fits.schedule())
     resizeObserver.observe(el)
 
     requestAnimationFrame(() => {
@@ -890,6 +894,7 @@ function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, onUnhoo
       rendered?.dispose()
       visibility?.disconnect()
       resizeObserver.disconnect()
+      fits.cancel()
       runtime.handlers = null
       if (!runtime.alive) disposePaneRuntime(id)
     }

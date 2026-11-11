@@ -1,5 +1,5 @@
 import type { ContentAnchor } from '../../core/content-contract'
-import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import { flushSync } from 'react-dom'
 import { Button, TITLEBAR_CONTROL, TITLEBAR_ICON } from './components/Button'
 import { useNarrowViewport } from './hooks/useNarrowViewport'
@@ -50,6 +50,7 @@ import { captureScreenshotWithFeedback } from './lib/captureScreenshot'
 import { QUICK_SHOT_ACCELERATOR, formatAccelerator } from './lib/shortcuts'
 import { Camera, FilePlus } from 'lucide-react'
 import { FilterBar } from './components/FilterBar'
+import { keepOnJump, keptView, restoreScroll, type KeptOrigin } from './lib/keptOrigin'
 
 // Extracted components
 import { DashboardView, LaunchBrowserButton } from './components/DashboardView'
@@ -89,6 +90,11 @@ export default function App(): JSX.Element {
   // target, finding or search they were reading (UI/UX audit F19, §7). One
   // level: the Timeline is where these routes lead, not a place to chain from.
   const [returnTo, setReturnTo] = useState<View | null>(null)
+  // The page that jump left, kept mounted behind the Timeline until the
+  // operator goes back or anywhere else (#692; lib/keptOrigin.ts).
+  const [kept, setKept] = useState<KeptOrigin | null>(null)
+  const originRoots = useRef<Partial<Record<View, HTMLDivElement | null>>>({})
+  const returning = useRef<KeptOrigin | null>(null)
   // A target picked on the Targets page is the shared filter's (spec 038),
   // set there and shown as the FilterBar chip on every view that honours it.
   const [showMarker, setShowMarker] = useState(false)
@@ -138,15 +144,18 @@ export default function App(): JSX.Element {
     const { view: next, settingsPage, scopeCandidate, sourceId } = parseTarget(target)
     setSettingsRequest(settingsPage ? { page: settingsPage, scopeCandidate, sourceId } : null)
     setReturnTo(null)
+    setKept(null)
     setReadingRequest(next === 'transcript' ? { mode: 'io', at: Date.now() } : null)
     setView((next === 'transcript' ? 'search' : next) as View)
   }, [])
 
+  const projectId = project?.id
   const openInTimeline = useCallback((id: string, ts: number): void => {
     setReturnTo(view === 'timeline' ? null : view)
+    setKept(keepOnJump(view, projectId, originRoots.current[view]))
     setFocusEvent({ id, ts })
     setView('timeline')
-  }, [view])
+  }, [view, projectId])
 
   // Stitch 05: from an event on the Timeline to the activity that holds it.
   // The Activity workspace already answers `event:<id>` (the condition
@@ -160,6 +169,7 @@ export default function App(): JSX.Element {
     setActivityQuery({ text: `event:${id}`, at: Date.now() })
     setTimelineReturn({ id, ts })
     setReturnTo('timeline')
+    setKept(null)
     setView('search')
   }, [])
 
@@ -168,6 +178,7 @@ export default function App(): JSX.Element {
   const openActivity = useCallback((selected: { id: string; ts: number } | null): void => {
     setTimelineReturn(selected)
     setReturnTo('timeline')
+    setKept(null)
     setView('search')
   }, [])
 
@@ -176,17 +187,29 @@ export default function App(): JSX.Element {
   // the "open it" half of `openInTimeline`: no event to focus, back arrow on.
   const openTimeline = useCallback((): void => {
     setReturnTo(view === 'timeline' ? null : view)
+    setKept(keepOnJump(view, projectId, originRoots.current[view]))
     setFocusEvent(null)
     setView('timeline')
-  }, [view])
+  }, [view, projectId])
 
   const goBack = useCallback((): void => {
     if (!returnTo) return
+    returning.current = kept?.view === returnTo ? kept : null
+    setKept(null)
     setFocusEvent(returnTo === 'timeline' ? timelineReturn : null)
     setTimelineReturn(null)
     setView(returnTo)
     setReturnTo(null)
-  }, [returnTo, timelineReturn])
+  }, [returnTo, timelineReturn, kept])
+
+  // Back on the kept page: it is on screen again, so its scrollers have a box
+  // to take their offsets back into.
+  useLayoutEffect(() => {
+    const back = returning.current
+    if (!back || back.view !== view) return
+    returning.current = null
+    return restoreScroll(back.scroll)
+  }, [view])
 
   // Cmd+[ / Alt+Left goes back, as in a browser: only while there is somewhere
   // to go back to, and never while the operator is typing.
@@ -287,6 +310,16 @@ export default function App(): JSX.Element {
   }
 
   const showFilterBar = ['search', 'http_history', 'timeline', 'loot'].includes(view)
+  const keep = keptView({ view, returnTo, projectId: project.id, kept })
+  // Each page that can be kept sits in the same place whether it is shown or
+  // hidden behind the Timeline, so the switch is not a remount. It has its own
+  // boundary: a throw while it is hidden must not take the Timeline with it.
+  // A hidden page still takes live batches — for one visit, that is the price.
+  const origin = (id: View, page: JSX.Element): JSX.Element | null => (view === id || keep === id)
+    ? <div key={project.id} ref={(el) => { originRoots.current[id] = el }} data-origin={id} hidden={view !== id} inert={view !== id} className="h-full min-h-0">
+        <ErrorBoundary label={id} projectName={project.name} onGoHome={() => setView('dashboard')}>{page}</ErrorBoundary>
+      </div>
+    : null
 
   return (
     <FilterProvider>
@@ -451,15 +484,15 @@ export default function App(): JSX.Element {
               </div>
             )}
             {view === 'timeline' && <TimelinePanel key={project?.id ?? 'no-project'} onOpenInActivity={openInActivity} onOpenActivity={openActivity} focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} tierChip={visibility.tierChip} onDropMarker={(ts) => { setMarkerAtTs(ts); setShowMarker(true) }} />}
-            {view === 'screenshots' && <ScreenshotsView onNavigate={navigate} />}
             {(view === 'search' || workspaceProject === project.id) && <div hidden={view !== 'search'} className={view === 'search' ? 'h-full min-h-0' : undefined}><RecordingWorkspace key={project.id} externalQuery={activityQuery} requestedReading={readingRequest} active={view === 'search'} onOpenInTimeline={openInTimeline} onOpenTimeline={openTimeline} /></div>}
-            {view === 'targets' && <TargetView onOpenInTimeline={(ts, id?: string) => openInTimeline(id ?? '', ts)} />}
-            {view === 'scope' && <ScopeStatus onOpenInTimeline={openInTimeline} onOpenSettings={(candidate) => navigate(settingsTarget('scope', { candidate }))} />}
-            {view === 'loot' && <LootPanel onOpenInTimeline={openInTimeline} />}
-            {view === 'bookmarks' && <BookmarksView onOpenInTimeline={(ts) => openInTimeline('', ts)} />}
-            {view === 'http_history' && <Suspense fallback={<PaneLoading />}><HttpHistoryPanel onOpenInTimeline={openInTimeline} onOpenSettings={() => navigate(settingsTarget('browser'))} /></Suspense>}
             {view === 'settings' && <Suspense fallback={<PaneLoading />}><Settings key={project.id} request={settingsRequest} /></Suspense>}
           </ErrorBoundary>
+          {origin('http_history', <Suspense fallback={<PaneLoading />}><HttpHistoryPanel active={view === 'http_history'} onOpenInTimeline={openInTimeline} onOpenSettings={() => navigate(settingsTarget('browser'))} /></Suspense>)}
+          {origin('screenshots', <ScreenshotsView onNavigate={navigate} />)}
+          {origin('targets', <TargetView onOpenInTimeline={(ts, id?: string) => openInTimeline(id ?? '', ts)} />)}
+          {origin('scope', <ScopeStatus onOpenInTimeline={openInTimeline} onOpenSettings={(candidate) => navigate(settingsTarget('scope', { candidate }))} />)}
+          {origin('loot', <LootPanel onOpenInTimeline={openInTimeline} />)}
+          {origin('bookmarks', <BookmarksView onOpenInTimeline={(ts) => openInTimeline('', ts)} />)}
           </div>
         </div>
       </div>
