@@ -1,6 +1,6 @@
 import { BODY_SOURCE_PREDICATE } from './content-contract'
 import Database from 'better-sqlite3'
-import { existsSync } from 'node:fs'
+import fs, { existsSync } from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { getDB, getProjectDir } from './db/index'
@@ -39,7 +39,72 @@ export function closeHttpBodyIndex(): void { if (index) {
     index.close()
   }
   catch { }
-} index = null; indexDir = null; }
+} index = null; indexDir = null; resetSyncState() }
+
+// ── Incremental backfill state (#695) ─────────────────────────────────────
+// Everything below lives in memory, per open index, and is dropped with it:
+// the first search after launch (or a project switch) does one full walk.
+//
+// Verify once, then trust until the file changes. A ref linked with a final,
+// content-derived status is remembered with the lstat signature its file had
+// when it was verified (the same dev:ino:size:mtime:ctime signature
+// body-source uses for its own cache). A later link of that ref whose event
+// data and index row are unchanged, and whose file still has that signature,
+// skips the open and the hash. Missing and failed refs are never trusted: they
+// are retried on every search, as before.
+//
+// The one relaxation: a search no longer notices a saved file whose bytes were
+// changed in place without changing its dev, inode, size, mtime or ctime. That
+// needs a clock or filesystem forged under it; it is caught at the next launch.
+// Reading a body for display still verifies it every time.
+type Tier = 'events' | 'events_logged'
+const TIERS = ['events', 'events_logged'] as const
+interface KnownRef { tier: Tier | null; eventId: string; desc: string; status: string; file: string | null; sig: string | null }
+let known = new Map<string, KnownRef>()
+let retry = new Map<string, { tier: Tier | null; eventId: string }>()
+/** Events linked outside a walk (ingest) since the last walk. */
+let linkedOutsideWalk = new Set<string>()
+/** What the last walk covered; null means "walk everything next time". */
+let walked: { source: Database.Database; boundary: string; latest: string; tiers: Array<{ n: number; max: number; idAtMax: string | null }> } | null = null
+let dirty = true
+let directories = ''
+let statements = new Map<string, Database.Statement>()
+function resetSyncState(): void {
+  known = new Map(); retry = new Map(); linkedOutsideWalk = new Set(); walked = null; dirty = true; directories = ''; statements = new Map()
+}
+/** A rolled-back transaction leaves memory describing rows that were never
+ *  committed; distrust all of it. */
+function forgetOnError(run: () => void): void {
+  try { run() } catch (error) { known.clear(); retry.clear(); walked = null; dirty = true; throw error }
+}
+// Prepared once per index handle, lazily, so a statement is compiled the first
+// time a path needs it.
+function stmt(db: Database.Database, sql: string): Database.Statement {
+  let s = statements.get(sql)
+  if (!s) { s = db.prepare(sql); statements.set(sql, s) }
+  return s
+}
+const FINAL_STATUSES = new Set(['indexed', 'binary', 'limited', 'pending'])
+function fileSignature(file: string): string {
+  try {
+    const s = fs.lstatSync(file, { bigint: true })
+    return [s.isFile() ? 'f' : 'x', s.dev, s.ino, s.size, s.mtimeNs, s.ctimeNs].join(':')
+  } catch (error) { return `error:${(error as NodeJS.ErrnoException).code ?? 'unknown'}` }
+}
+/** The containing directories: replacing one (or swapping it for a link)
+ *  invalidates every remembered verification. */
+function directorySignature(projectDir: string): string {
+  return ['http-bodies', 'artifacts', 'agent-transcripts'].map(name => {
+    try {
+      const s = fs.lstatSync(path.join(projectDir, name), { bigint: true })
+      return [s.isDirectory() && !s.isSymbolicLink() ? 'd' : 'x', s.dev, s.ino].join(':')
+    } catch { return 'none' }
+  }).join('|')
+}
+function refFile(ref: IndexedRef, projectDir: string): string | null {
+  if (ref.kind === 'body') return ref.inline !== undefined ? null : path.join(projectDir, 'http-bodies', ref.file)
+  return ref.pending ? null : path.resolve(projectDir, ref.file)
+}
 type IndexedRef = (BodyRef & {kind:'body';inline?:string}) | (SavedFileRef & {kind:'artifact'|'ai-raw';encoding:'text'})
 // Resolve after module initialization: artifact -> events -> body-store is a cycle.
 function inlineBodyFields():string[]{return BODY_REF_FIELDS.filter(field=>field.endsWith('_body_ref')).map(field=>field.slice(0,-4))}
@@ -61,13 +126,33 @@ function refsOf(event: {agentType?:string;data:Record<string,unknown>}): Indexed
   ]
 }
 export function linkHttpBodyEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}, projectDir = getProjectDir()): void {
+  getIndex(projectDir)
+  linkedOutsideWalk.add(event.id)
+  linkEvent(event, projectDir, null)
+}
+function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}, projectDir: string, tier: Tier | null): void {
   const db = getIndex(projectDir)
-  db.transaction(() => {
+  // Inside a walk's transaction a savepoint per event buys nothing: any error
+  // aborts the whole walk anyway.
+  const atomic = (run: () => void): void => { if (db.inTransaction) run(); else forgetOnError(() => db.transaction(run)()) }
+  atomic(() => {
     for (const ref of refsOf(event)) {
       let status = 'indexed', bytes = 0, reason = '',availableBytes=0
-      const prior = db.prepare('SELECT status FROM body_event_refs WHERE event_id=? AND sha256=?').get(event.id, ref.sha256) as {
+      const prior = stmt(db, 'SELECT status FROM body_event_refs WHERE event_id=? AND sha256=?').get(event.id, ref.sha256) as {
         status: string
       } | undefined
+      const key = `${event.id}\0${ref.sha256}`, file = refFile(ref, projectDir)
+      const desc = JSON.stringify([ref.file, ref.size, ref.encoding ?? null, ref.kind, ref.kind !== 'body' && ref.pending === true, ref.kind === 'body' && ref.inline !== undefined])
+      const remembered = known.get(key)
+      // Nothing that decides this row has changed since it was verified.
+      if (remembered && prior && remembered.desc === desc && remembered.status === prior.status
+        && (remembered.file === null || fileSignature(remembered.file) === remembered.sig)) {
+        remembered.tier = tier ?? remembered.tier
+        continue
+      }
+      // Taken before reading: a change while reading leaves a stale signature,
+      // which only causes one more verification next time.
+      const sig = file === null ? null : fileSignature(file)
       try {
         const read = (use: (source:ByteSource)=>void):void => {
           if(ref.kind==='body'&&ref.inline!==undefined)withInlineBase64(ref.inline,use)
@@ -87,8 +172,8 @@ export function linkHttpBodyEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {age
           // event_id is UNINDEXED in FTS5, so this delete reads every indexed
           // chunk. A pair with no ref row has no FTS rows (both are written in
           // this transaction and removed together), so a new body skips it.
-          if (prior) db.prepare('DELETE FROM body_fts WHERE event_id=? AND sha256=?').run(event.id, ref.sha256)
-          const insert = db.prepare('INSERT INTO body_fts(content,event_id,sha256) VALUES(?,?,?)')
+          if (prior) stmt(db, 'DELETE FROM body_fts WHERE event_id=? AND sha256=?').run(event.id, ref.sha256)
+          const insert = stmt(db, 'INSERT INTO body_fts(content,event_id,sha256) VALUES(?,?,?)')
           const decoder = new TextDecoder('utf-8', { fatal: true })
           let text = '', skippingToken = false
           const separator = /[^\p{L}\p{N}\p{Co}\p{M}]/u
@@ -128,48 +213,131 @@ export function linkHttpBodyEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {age
         reason = error instanceof ContentAccessError ? error.status : 'failed'
       }
       if (status !== 'indexed' && prior)
-        db.prepare('DELETE FROM body_fts WHERE event_id=? AND sha256=?').run(event.id, ref.sha256)
-      db.prepare(`INSERT INTO body_event_refs VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(event_id,sha256) DO UPDATE SET
+        stmt(db, 'DELETE FROM body_fts WHERE event_id=? AND sha256=?').run(event.id, ref.sha256)
+      stmt(db, `INSERT INTO body_event_refs VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(event_id,sha256) DO UPDATE SET
     file=excluded.file,size=excluded.size,encoding=excluded.encoding,status=excluded.status,indexed_bytes=excluded.indexed_bytes,reason=excluded.reason,kind=excluded.kind,available_bytes=excluded.available_bytes`).run(event.id, ref.sha256, ref.file, Number.isSafeInteger(ref.size) ? ref.size : 0, String(ref.encoding ?? 'unknown'), status, bytes, reason, ref.kind,availableBytes)
+      // pending/limited come from the event alone; indexed/binary from bytes
+      // whose signature is recorded. missing/failed can change with no new
+      // row (a file restored or repaired), so they are retried every search.
+      if (FINAL_STATUSES.has(status)) {
+        known.set(key, { tier: tier ?? remembered?.tier ?? null, eventId: event.id, desc, status, file: status === 'pending' ? null : file, sig: status === 'pending' ? null : sig })
+        retry.delete(key)
+      } else {
+        known.delete(key)
+        retry.set(key, { tier: tier ?? retry.get(key)?.tier ?? null, eventId: event.id })
+      }
     }
-  })()
+  })
 }
-function rows(snapshot?: ExportSnapshot, projectId?: string) {
-  const source = getDB()
+function latestSnapshotIds(snapshot?: ExportSnapshot): string[] {
   // A snapshot is a cumulative prefix of one saved file. Index the latest
   // confirmed version inside this dataset, rather than copying every prefix.
-  const latest=(source.prepare(`WITH versions AS (
+  return (getDB().prepare(`WITH versions AS (
     SELECT id,engagement_id,created_at,rowid AS r,1 AS tier,json_extract(data,'$.snapshot_path') AS file FROM events
       WHERE rowid<=? AND agent_type='agent' AND subtype='transcript_snapshot'
     UNION ALL SELECT id,engagement_id,created_at,rowid,0,json_extract(data,'$.snapshot_path') FROM events_logged
       WHERE rowid<=? AND agent_type='agent' AND subtype='transcript_snapshot'
     ), ranked AS (SELECT id,row_number() OVER(PARTITION BY engagement_id,file ORDER BY created_at DESC,r DESC,tier DESC,id) AS n FROM versions)
     SELECT id FROM ranked WHERE n=1`).all(snapshot?.chainedMaxRowId??Number.MAX_SAFE_INTEGER,snapshot?.loggedMaxRowId??Number.MAX_SAFE_INTEGER) as {id:string}[]).map(row=>row.id)
-  return (['events', 'events_logged'] as const).map((table, i) => {
-    const max = snapshot ? (i === 0 ? snapshot.chainedMaxRowId : snapshot.loggedMaxRowId) : Number.MAX_SAFE_INTEGER
-    return source.prepare(`SELECT id,data,agent_type FROM ${table} INDEXED BY idx_${table}_content_refs WHERE rowid<=? ${projectId ? 'AND engagement_id=?' : ''} AND (${BODY_SOURCE_PREDICATE})
-      AND (agent_type<>'agent' OR coalesce(subtype,'')<>'transcript_snapshot' OR id IN (SELECT value FROM json_each(?))) ORDER BY rowid`).iterate(max, ...(projectId ? [projectId] : []),JSON.stringify(latest)) as IterableIterator<{
+}
+/** Content-ref rows of both tiers. `range` narrows each tier to
+ *  `after < rowid <= upTo`; without it, every row inside the boundary. */
+function rows(snapshot?: ExportSnapshot, projectId?: string, latest = latestSnapshotIds(snapshot), range?: Array<{ after: number; upTo: number }>) {
+  const source = getDB()
+  return TIERS.map((table, i) => {
+    const max = range ? range[i].upTo : snapshot ? (i === 0 ? snapshot.chainedMaxRowId : snapshot.loggedMaxRowId) : Number.MAX_SAFE_INTEGER
+    return source.prepare(`SELECT id,data,agent_type FROM ${table} INDEXED BY idx_${table}_content_refs WHERE rowid<=? ${range ? 'AND rowid>?' : ''} ${projectId ? 'AND engagement_id=?' : ''} AND (${BODY_SOURCE_PREDICATE})
+      AND (agent_type<>'agent' OR coalesce(subtype,'')<>'transcript_snapshot' OR id IN (SELECT value FROM json_each(?))) ORDER BY rowid`).iterate(max, ...(range ? [range[i].after] : []), ...(projectId ? [projectId] : []),JSON.stringify(latest)) as IterableIterator<{
       id: string
       data: string
       agent_type:string
     }>
   })
 }
-function backfill(projectDir: string,snapshot?:ExportSnapshot): void {
-  const db = getIndex(projectDir)
-  db.transaction(() => {
-    db.prepare('DELETE FROM body_seen').run()
-    const seen = db.prepare('INSERT OR IGNORE INTO body_seen VALUES(?,?)')
-    for (const tier of rows(snapshot))
-      for (const row of tier) {
-        const data = JSON.parse(row.data) as Record<string, unknown>
-        linkHttpBodyEvent({ id: row.id, data, agentType:row.agent_type }, projectDir)
-        for (const ref of refsOf({data,agentType:row.agent_type}))
-          seen.run(row.id, ref.sha256)
+/** Bring the index up to what a full walk of the source rows would produce,
+ *  doing work for what changed since the last walk rather than for every ref.
+ *
+ *  - Nothing structural changed: no walk. Re-check the files behind remembered
+ *    refs by lstat alone and re-link the events whose file changed, plus
+ *    every missing/failed ref.
+ *  - Rows only appended inside the same boundary: link the rows above the
+ *    watermark, then the same file check. Nothing can need pruning.
+ *  - Anything else (rows deleted, a newer transcript snapshot, another export
+ *    boundary, a prune, a replaced directory): the full walk and prune, which
+ *    is still cheap per ref for every file that has not changed.
+ *
+ *  Every content-ref row is inserted with a higher rowid than every row
+ *  already there while the highest one survives, and source rows are never
+ *  updated, so "the row at the old watermark still has its id, and the count
+ *  at or below it is unchanged" means the walked prefix is untouched. */
+function sync(projectDir: string, snapshot?: ExportSnapshot): void {
+  const db = getIndex(projectDir), source = getDB()
+  const dirs = directorySignature(projectDir)
+  if (dirs !== directories) { known.clear(); retry.clear(); dirty = true; directories = dirs }
+  const boundary = snapshot ? `${snapshot.chainedMaxRowId}:${snapshot.loggedMaxRowId}` : 'live'
+  const latestIds = latestSnapshotIds(snapshot), latest = JSON.stringify(latestIds)
+  const previous = walked && !dirty && walked.source === source && walked.boundary === boundary && walked.latest === latest ? walked : null
+  const tiers = TIERS.map((table, i) => {
+    const bound = snapshot ? (i === 0 ? snapshot.chainedMaxRowId : snapshot.loggedMaxRowId) : Number.MAX_SAFE_INTEGER
+    const before = previous?.tiers[i]
+    const row = source.prepare(`SELECT count(*) AS n,coalesce(max(rowid),0) AS max,count(*) FILTER (WHERE rowid<=?) AS below
+      FROM ${table} INDEXED BY idx_${table}_content_refs WHERE rowid<=? AND (${BODY_SOURCE_PREDICATE})`).get(before?.max ?? 0, bound) as { n: number; max: number; below: number }
+    const idAt = (rowid: number): string | null => rowid > 0 ? (source.prepare(`SELECT id FROM ${table} WHERE rowid=?`).get(rowid) as { id: string } | undefined)?.id ?? null : null
+    const intact = !before || (row.below === before.n && idAt(before.max) === before.idAtMax)
+    return { n: row.n, max: row.max, idAtMax: idAt(row.max), intact, after: before?.max ?? 0 }
+  })
+  forgetOnError(() => db.transaction(() => {
+    let full = !previous || tiers.some(t => !t.intact)
+    if (!full) {
+      const seen = new Set<string>()
+      for (const [i, tier] of rows(snapshot, undefined, latestIds, tiers.map(t => ({ after: t.after, upTo: t.max }))).entries())
+        for (const row of tier) { seen.add(row.id); linkEvent({ id: row.id, data: JSON.parse(row.data) as Record<string, unknown>, agentType: row.agent_type }, projectDir, TIERS[i]) }
+      // Ingest linked a row this walk did not reach (outside the boundary):
+      // only the full walk's prune removes it.
+      full = [...linkedOutsideWalk].some(id => !seen.has(id)) || !recheck(projectDir)
+    }
+    if (full) walkAll(db, projectDir, snapshot, latestIds, tiers.map(t => ({ after: 0, upTo: t.max })))
+  })())
+  walked = { source, boundary, latest, tiers: tiers.map(({ n, max, idAtMax }) => ({ n, max, idAtMax })) }
+  linkedOutsideWalk.clear()
+  dirty = false
+}
+function walkAll(db: Database.Database, projectDir: string, snapshot: ExportSnapshot | undefined, latest: string[], range: Array<{ after: number; upTo: number }>): void {
+  stmt(db, 'DELETE FROM body_seen').run()
+  const seen = stmt(db, 'INSERT OR IGNORE INTO body_seen VALUES(?,?)'), keys = new Set<string>()
+  for (const [i, tier] of rows(snapshot, undefined, latest, range).entries())
+    for (const row of tier) {
+      const data = JSON.parse(row.data) as Record<string, unknown>
+      linkEvent({ id: row.id, data, agentType: row.agent_type }, projectDir, TIERS[i])
+      for (const ref of refsOf({ data, agentType: row.agent_type })) {
+        seen.run(row.id, ref.sha256)
+        keys.add(`${row.id}\0${ref.sha256}`)
       }
-    db.prepare('DELETE FROM body_event_refs WHERE NOT EXISTS(SELECT 1 FROM body_seen s WHERE s.event_id=body_event_refs.event_id AND s.sha256=body_event_refs.sha256)').run()
-    db.prepare("DELETE FROM body_fts WHERE NOT EXISTS(SELECT 1 FROM body_event_refs r WHERE r.event_id=body_fts.event_id AND r.sha256=body_fts.sha256 AND r.status='indexed')").run()
-  })()
+    }
+  stmt(db, 'DELETE FROM body_event_refs WHERE NOT EXISTS(SELECT 1 FROM body_seen s WHERE s.event_id=body_event_refs.event_id AND s.sha256=body_event_refs.sha256)').run()
+  stmt(db, "DELETE FROM body_fts WHERE NOT EXISTS(SELECT 1 FROM body_event_refs r WHERE r.event_id=body_fts.event_id AND r.sha256=body_fts.sha256 AND r.status='indexed')").run()
+  // A remembered ref the walk no longer reaches was just pruned; re-checking
+  // it later would bring it back.
+  for (const map of [known, retry]) for (const key of map.keys()) if (!keys.has(key)) map.delete(key)
+}
+/** Without a walk: re-link the events whose saved file no longer has the
+ *  signature it was verified with, and every ref still missing or failed.
+ *  False when a ref cannot be traced to its row, which only a full walk fixes. */
+function recheck(projectDir: string): boolean {
+  const events = new Map<string, Tier | null>(), signatures = new Map<string, string>()
+  for (const ref of known.values()) {
+    if (ref.file === null) continue
+    let sig = signatures.get(ref.file)
+    if (sig === undefined) { sig = fileSignature(ref.file); signatures.set(ref.file, sig) }
+    if (sig !== ref.sig) events.set(ref.eventId, ref.tier)
+  }
+  for (const ref of retry.values()) events.set(ref.eventId, ref.tier)
+  for (const [eventId, tier] of events) {
+    const row = tier && getDB().prepare(`SELECT id,data,agent_type FROM ${tier} WHERE id=?`).get(eventId) as { id: string; data: string; agent_type: string } | undefined
+    if (!tier || !row) return false
+    linkEvent({ id: row.id, data: JSON.parse(row.data) as Record<string, unknown>, agentType: row.agent_type }, projectDir, tier)
+  }
+  return true
 }
 /** The events that reference one body-store file, from the (event, sha256)
  *  link table rather than a scan of `events`. Only events the index has been
@@ -182,6 +350,9 @@ export function eventIdsReferencingBody(sha256: string, projectDir = getProjectD
 export function pruneHttpBodyIndex(sha256: string, projectDir = getProjectDir()): void {
   const db = getIndex(projectDir)
   db.transaction(() => { db.prepare('DELETE FROM body_fts WHERE sha256=?').run(sha256); db.prepare('DELETE FROM body_event_refs WHERE sha256=?').run(sha256); })()
+  // A full walk after a prune puts the ref back as it now is (usually
+  // 'missing'); an incremental one would not look at it.
+  dirty = true
 }
 /** Retention must remove derived raw text together with its saved file. */
 export function pruneSavedFileIndex(file:string, projectDir=getProjectDir()):void {
@@ -192,6 +363,7 @@ export function pruneSavedFileIndex(file:string, projectDir=getProjectDir()):voi
     db.prepare('DELETE FROM body_fts WHERE event_id=? AND sha256=?').run(ref.event_id,ref.sha256)
     db.prepare('DELETE FROM body_event_refs WHERE event_id=? AND sha256=?').run(ref.event_id,ref.sha256)
   }})()
+  dirty = true
 }
 /** A raw snapshot spans its Session prefix, not individual target/time/tool rows. */
 export function rawTranscriptFiltersUnsupported(conditions: readonly {field:string}[], filter?: {
@@ -204,7 +376,7 @@ export function searchHttpBodyEventIds(query: string, projectDir = getProjectDir
   const match = toFtsMatch(query)
   if (!match)
     return []
-  backfill(projectDir,snapshot)
+  sync(projectDir,snapshot)
   const db = getIndex(projectDir)
   // Failed references have already lost their FTS rows. Report them through
   // coverage without withholding unrelated, verified matches.
