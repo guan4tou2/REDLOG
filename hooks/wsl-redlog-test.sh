@@ -17,6 +17,18 @@ ok()   { printf "  $OK %s\n" "$1"; ((pass++)); }
 fail() { printf "  $FAIL %s\n" "$1"; ((fail++)); }
 warn() { printf "  $WARN %s\n" "$1"; }
 
+# curl with the bearer token as a config on a file descriptor, never as an
+# argument: argv is visible to every user of this distro via ps (#489). WSL is
+# Linux, so /dev/fd exists; see _redlog_curl_authed in shell-common.sh.
+curl_authed() {
+  local token="$1" conf
+  shift
+  token=${token//\\/\\\\}
+  token=${token//\"/\\\"}
+  conf="header = \"Authorization: Bearer $token\""
+  curl -K /dev/fd/4 "$@" 4<<<"$conf"
+}
+
 # 1. WSL environment
 step "WSL Environment"
 if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
@@ -89,12 +101,10 @@ fi
 
 # 4. Event round-trip
 step "Event Round-Trip"
-BEFORE=$(curl -sf "http://${HOST}:${PORT}/api/events/count" \
-  -H "Authorization: Bearer $TOKEN" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('count',0))" 2>/dev/null)
+BEFORE=$(curl_authed "$TOKEN" -sf "http://${HOST}:${PORT}/api/events/count" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('count',0))" 2>/dev/null)
 
 PAYLOAD='{"agent_type":"shell","data":{"subtype":"wsl_test","command":"wsl-redlog-test.sh","shell":"bash","pid":'$$'}}'
-RESP=$(curl -sf -X POST "http://${HOST}:${PORT}/api/events" \
-  -H "Authorization: Bearer $TOKEN" \
+RESP=$(curl_authed "$TOKEN" -sf -X POST "http://${HOST}:${PORT}/api/events" \
   -H "Content-Type: application/json" \
   -d "$PAYLOAD" --connect-timeout 2 --max-time 3 2>&1)
 
@@ -104,8 +114,7 @@ else
   fail "Failed to send test event: $RESP"
 fi
 
-AFTER=$(curl -sf "http://${HOST}:${PORT}/api/events/count" \
-  -H "Authorization: Bearer $TOKEN" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('count',0))" 2>/dev/null)
+AFTER=$(curl_authed "$TOKEN" -sf "http://${HOST}:${PORT}/api/events/count" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('count',0))" 2>/dev/null)
 
 if [[ "$AFTER" -gt "$BEFORE" ]]; then
   ok "Event persisted (count: $BEFORE → $AFTER)"

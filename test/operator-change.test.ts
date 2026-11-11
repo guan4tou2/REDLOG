@@ -73,3 +73,21 @@ describe('applyOperatorChange', () => {
     expect(sinks.setPrimaryOperator).not.toHaveBeenCalled()
   })
 })
+
+describe('applyOperatorChange with an id that is not a file name', () => {
+  it.each(['../evil', 'a/b', 'a\\b', '..', '.', 'x/../../y'])('refuses %j and moves nothing', (bad) => {
+    const { runtime, open, sinks } = setup()
+    const out = applyOperatorChange(runtime, open, OP_A, { id: bad, name: 'Eve' }, sinks)
+    expect(out).toEqual(OP_A)
+    expect(open.operatorId).toBe('op-a')
+    expect(sinks.setPrimaryOperator).not.toHaveBeenCalled()
+    expect(sinks.writeSpoolIdentity).not.toHaveBeenCalled()
+  })
+})
+
+describe('applyOperatorChange with a non-ASCII or spaced id', () => {
+  it.each(['王小明', 'red team 1'])('accepts %s', (id) => {
+    const { runtime, open, sinks } = setup()
+    expect(applyOperatorChange(runtime, open, OP_A, { id, name: 'N' }, sinks).id).toBe(id)
+  })
+})

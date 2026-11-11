@@ -742,8 +742,8 @@ test.describe.serial('scope-recompute: recomputing scope after the boundary move
       (window as unknown as { redlog: ScopeBridge }).redlog.scope.getObservations())
     expect(rows.length).toBe(3)
     expect(rows.every((r) => r.cleared)).toBe(true)
-    // And the page leads with what still stands, which is now nothing.
-    await expect(page.locator('[data-testid="scope-show-cleared"]')).toHaveCount(0)
+    // Nothing stands, yet the withdrawn rows stay reachable behind the toggle.
+    await expect(page.locator('[data-testid="scope-show-cleared"]')).toBeVisible()
   })
 
   test('the banner is derived, so it survives a reload', async () => {

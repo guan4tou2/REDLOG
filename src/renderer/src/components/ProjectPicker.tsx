@@ -7,6 +7,7 @@ import { formatFreshness, formatDate, formatSize } from '../lib/time'
 import { confirmChainImpact } from './ConfirmDialog'
 import { Wordmark } from './Wordmark'
 import { toast } from './Toast'
+import { runMutation } from '../lib/mutation'
 import { Button } from './Button'
 import { useReadState } from '../lib/readState'
 import { CreateProjectModal } from './CreateProjectModal'
@@ -143,8 +144,13 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
       requireTyped: project.name
     })
     if (!ok) return
-    await window.redlog.project.delete(id)
-    setProjects((prev) => prev.filter((p) => p.id !== id))
+    // The row goes only when main says the project is gone; on a refusal or a
+    // throw (a locked file) it is still on disk and still listed.
+    const res = await runMutation(() => window.redlog.project.delete(id), {
+      failed: t('project.deleteFailed'),
+      isFailure: (deleted) => deleted !== true
+    })
+    if (res.ok) setProjects((prev) => prev.filter((p) => p.id !== id))
   }
 
   const hasRecent = projects.length > 0
@@ -220,6 +226,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
               className={`group flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-3 transition-colors ${isSel ? 'bg-redlog-elevated border-redlog-border' : 'border-transparent hover:bg-redlog-elevated/60 hover:border-redlog-border-subtle'}`}>
             <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${isSel ? 'bg-redlog-accent' : 'bg-redlog-accent/60 group-hover:bg-redlog-accent'}`} />
             {renamingId === p.id ? <input autoFocus aria-label={t('project.rename')} value={renameValue} onChange={e => setRenameValue(e.target.value)} onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()} onKeyDown={e => {
+              if (e.nativeEvent.isComposing || e.keyCode === 229) return
               if (e.key === 'Enter') { e.preventDefault(); void handleRenameCommit(p.id) }
               if (e.key === 'Escape') { e.preventDefault(); setRenamingId(null) }
             }} onBlur={() => void handleRenameCommit(p.id)} className="flex-1 min-w-0 bg-redlog-surface border border-redlog-border rounded px-2 py-1" /> :

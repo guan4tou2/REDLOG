@@ -77,6 +77,9 @@ function SettingsHomeRow({ row, title, desc, status, onOpen, t }: {
   )
 }
 
+type ScopeLists = { targets: string[]; excludeTargets: string[] }
+const scopeLists = (c: ConfigState): ScopeLists => ({ targets: c.scope?.targets ?? [], excludeTargets: c.scope?.excludeTargets ?? [] })
+
 /** `request` is the page a link asked for (lib/navigation.ts). A new object
  *  per request, so asking again for the same page switches back to it. */
 export default function Settings({ request = null }: { request?: { page: SettingsPage; scopeCandidate?: string; sourceId?: string } | null } = {}): JSX.Element {
@@ -146,6 +149,12 @@ export default function Settings({ request = null }: { request?: { page: Setting
   const pending = useRef<ConfigState | null>(null)
   const live = useRef(true)
   const inFlight = useRef<Promise<boolean> | null>(null)
+  // The scope lists as main last had them, as far as this form knows: what a
+  // pending edit is compared with to tell whether it touched them.
+  const scopeBaseline = useRef<ScopeLists | null>(null)
+  // Set when the form state is replaced by a read from main, which is not an
+  // edit and must not be written back.
+  const adopted = useRef(false)
 
   // A failed first read used to leave "Loading…" on screen for good: the
   // rejection was not handled, so nothing ever said the settings could not be
@@ -154,7 +163,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
   const loadConfig = (): void => {
     setLoadFailed(false)
     window.redlog.config.get()
-      .then((c) => { if (live.current) setConfig(c as ConfigState) })
+      .then((c) => { if (live.current) { scopeBaseline.current = scopeLists(c as ConfigState); setConfig(c as ConfigState) } })
       .catch(() => { if (live.current) setLoadFailed(true) })
   }
 
@@ -173,9 +182,9 @@ export default function Settings({ request = null }: { request?: { page: Setting
     const failureKey = `settings-save:${next.engagement?.id}`
     const write = window.redlog.config.save(next, { expectProjectId: next.engagement?.id })
       .then((ok) => {
-        window.dispatchEvent(new CustomEvent('redlog:config-saved'))
+        window.dispatchEvent(new CustomEvent('redlog:config-saved', { detail: { source: 'settings' } }))
         if (ok === false) keep()
-        else dismissToast(failureKey)
+        else { dismissToast(failureKey); scopeBaseline.current = scopeLists(next) }
         if (live.current) {
           setSaveState(ok === false ? 'failed' : 'saved')
           if (ok !== false) setTimeout(() => { if (live.current) setSaveState('idle') }, 1500)
@@ -197,12 +206,50 @@ export default function Settings({ request = null }: { request?: { page: Setting
   useEffect(() => {
     if (!config) return
     if (!dirty.current) { dirty.current = true; return }  // ignore the setConfig from the initial fetch
+    if (adopted.current) { adopted.current = false; return }
     if (saveTimer.current) clearTimeout(saveTimer.current)
     pending.current = config
     saveTimer.current = setTimeout(() => { saveTimer.current = null; void writeConfig(config) }, 350)
     return () => { if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null } }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config])
+
+  // This form holds the whole document, and a save replaces the whole document
+  // in main. A scope change made elsewhere while it is open (Targets ▸ Add to
+  // scope) would otherwise be removed by the next unrelated autosave. So an
+  // outside write is read back: into the form when no edit is waiting, and
+  // otherwise into the scope lists the pending edit did not change.
+  useEffect(() => {
+    const onOutsideSave = (e: Event): void => {
+      if ((e as CustomEvent<{ source?: string } | undefined>).detail?.source === 'settings') return
+      window.redlog.config.get().then((raw) => {
+        if (!live.current) return
+        const fresh = raw as ConfigState
+        const freshLists = scopeLists(fresh)
+        const base = scopeBaseline.current
+        scopeBaseline.current = freshLists
+        if (pending.current === null && saveTimer.current === null) {
+          adopted.current = true
+          setConfig(fresh)
+          return
+        }
+        setConfig((prev) => {
+          if (!prev) return prev
+          const same = (a: string[], b: string[] | undefined): boolean => JSON.stringify(a) === JSON.stringify(b ?? [])
+          const takeTargets = !base || same(prev.scope.targets, base.targets)
+          const takeExcludes = !base || same(prev.scope.excludeTargets, base.excludeTargets)
+          if (!takeTargets && !takeExcludes) return prev
+          return { ...prev, scope: {
+            ...prev.scope,
+            ...(takeTargets ? { targets: freshLists.targets } : {}),
+            ...(takeExcludes ? { excludeTargets: freshLists.excludeTargets } : {})
+          } }
+        })
+      }).catch(() => {})
+    }
+    window.addEventListener('redlog:config-saved', onOutsideSave)
+    return () => window.removeEventListener('redlog:config-saved', onOutsideSave)
+  }, [])
 
   // Settings is unmounted by navigating away — App renders it as
   // `view === 'settings' && <Settings/>`. The debounce's cleanup cancelled the
@@ -331,7 +378,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
           </div>
         )}
         {tab === 'general' && <GeneralPage />}
-        {tab === 'hud' && <HudPage config={config} setConfig={setConfig} t={t} />}
+        {tab === 'hud' && <HudPage t={t} />}
         {tab === 'browser' && <BrowserPage config={config} setConfig={setConfig} t={t} />}
         {tab === 'network' && <NetworkPage config={config} setConfig={setConfig} t={t} />}
         {tab === 'scope' && <><ScopePage candidate={request?.scopeCandidate} config={config} setConfig={setConfig} t={t} /><ProjectSettings config={config} setConfig={setConfig} /></>}

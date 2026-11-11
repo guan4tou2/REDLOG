@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Button } from '../Button'
 import { toast } from '../Toast'
 import { formatDateTime } from '../../lib/time'
-import { anchorNowWithFeedback, verifyChainWithFeedback, type FullVerifyResult } from '../../lib/chainActions'
+import { anchorNowWithFeedback, upgradeAnchorsWithFeedback, verifyChainWithFeedback, type FullVerifyResult } from '../../lib/chainActions'
 import { FieldGroup } from './SettingsShared'
 
 // Chain state: anchors, the two-tier counter, and verification. Read-only —
@@ -70,8 +70,7 @@ export default function IntegrityPanel({ t }: { t: (key: string, vars?: Record<s
         </Button>
         <button
           onClick={async () => {
-            const r = await window.redlog.chain.upgrade() as { upgraded: number; scanned: number } | null
-            if (r) toast(t('settings.integrityUpgraded', { n: r.upgraded, m: r.scanned }), r.upgraded > 0 ? 'success' : 'info')
+            await upgradeAnchorsWithFeedback(t)
             await reload()
           }}
           className="px-3 py-1.5 bg-redlog-elevated text-redlog-text text-xs rounded hover:bg-redlog-elevated-hover"

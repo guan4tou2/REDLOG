@@ -10,8 +10,19 @@ import { EmptyState } from './EmptyState'
 import { LoadingSpinner } from './Feedback'
 import { Flag, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from './Button'
-import { toast } from './Toast'
+import { runMutation } from '../lib/mutation'
 import { BOOKMARKS_CHANGED } from './EvidenceHeader'
+
+// app:openExternal answers `{ ok: false }` for a scheme it refuses and for a
+// URL it cannot parse; it does not reject. Say so rather than do nothing.
+async function openExternalChecked(url: string, failed: string): Promise<void> {
+  const open = (window.redlog.app as { openExternal?: (u: string) => Promise<unknown> }).openExternal
+  if (!open) return
+  await runMutation(() => open(url), {
+    failed,
+    isFailure: (r) => !!r && typeof r === 'object' && (r as { ok?: unknown }).ok === false
+  })
+}
 
 // A hash of the mark's title used to pick one of eight hues. It grouped
 // nothing an operator could rely on -- two unrelated marks share a colour as
@@ -297,18 +308,16 @@ function BookmarkForm({ browserTab, onSave, onCancel, initial }: {
   const submit = async (): Promise<void> => {
     if (!title.trim() || saving) return
     setSaving(true)
-    try {
-      if (initial) {
-        await window.redlog.bookmarks.update(initial.id, { title, url, note })
-      } else {
-        await window.redlog.bookmarks.create({ title, url: url || undefined, note })
-      }
-      onSave()
-    } catch (e) {
-      // The draft stays on screen: nothing was saved, and saying so is the point.
-      toast(t('bookmarks.saveFailed'), { type: 'error', why: t('bookmarks.saveFailedWhy'), detail: e instanceof Error ? e.message : String(e) })
-      setSaving(false)
-    }
+    // A refusal (null, false) is as much a failure as a throw. The draft stays
+    // on screen: nothing was saved, and saying so is the point.
+    const res = await runMutation(
+      () => initial
+        ? window.redlog.bookmarks.update(initial.id, { title, url, note })
+        : window.redlog.bookmarks.create({ title, url: url || undefined, note }),
+      { failed: t('bookmarks.saveFailed'), why: t('bookmarks.saveFailedWhy') }
+    )
+    if (res.ok) onSave()
+    else setSaving(false)
   }
 
   return (
@@ -371,6 +380,7 @@ function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, 
   canStepNext?: boolean
 }): JSX.Element {
   const [editing, setEditing] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const { t } = useI18n()
 
   if (editing) {
@@ -379,9 +389,15 @@ function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, 
 
   const handleDelete = async (): Promise<void> => {
     const ok = await confirm(t('confirm.deleteBookmark'), t('confirm.deleteBookmarkDesc'), true)
-    if (!ok) return
-    await window.redlog.bookmarks.delete(mark.id)
-    onDelete()
+    if (!ok || deleting) return
+    setDeleting(true)
+    try {
+      const res = await runMutation(() => window.redlog.bookmarks.delete(mark.id), { failed: t('bookmarks.deleteFailed') })
+      // The pane stays on the bookmark when it is still there.
+      if (res.ok) onDelete()
+    } finally {
+      setDeleting(false)
+    }
   }
 
   return (
@@ -414,7 +430,7 @@ function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, 
           <h3 className="text-base font-semibold text-redlog-text [overflow-wrap:anywhere]">{mark.title}</h3>
           {mark.url && (
             <button
-              onClick={(e) => { e.stopPropagation(); (window.redlog.app as { openExternal?: (u: string) => Promise<unknown> }).openExternal?.(mark.url as string) }}
+              onClick={(e) => { e.stopPropagation(); void openExternalChecked(mark.url as string, t('bookmarks.openFailed')) }}
               className="text-xs text-redlog-cyan font-mono mt-1 break-all text-left hover:text-redlog-text hover:underline transition-colors cursor-pointer"
               title={t('bookmarks.openUrl')}
             >
@@ -431,7 +447,7 @@ function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, 
             <Button size="compact" level="quiet" onClick={() => onOpenInTimeline(mark.createdAt)} >{t('bookmarks.goToTime')}</Button>
           )}
           <Button size="compact" level="quiet" onClick={() => setEditing(true)} >{t('bookmarks.edit')}</Button>
-          <Button size="compact" level="quiet" onClick={handleDelete} >{t('bookmarks.delete')}</Button>
+          <Button size="compact" level="quiet" onClick={handleDelete} disabled={deleting} >{t('bookmarks.delete')}</Button>
         </div>
       </div>
 
@@ -461,7 +477,7 @@ function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, 
               <div className="text-xs">
                 <span className="text-redlog-text-dim">{t('bookmarks.browserUrl')}</span>{' '}
                 <button
-                  onClick={(e) => { e.stopPropagation(); (window.redlog.app as { openExternal?: (u: string) => Promise<unknown> }).openExternal?.(mark.context!.browserUrl as string) }}
+                  onClick={(e) => { e.stopPropagation(); void openExternalChecked(mark.context!.browserUrl as string, t('bookmarks.openFailed')) }}
                   className="text-redlog-cyan font-mono break-all hover:text-redlog-text hover:underline transition-colors cursor-pointer"
                   title={t('bookmarks.openUrl')}
                 >

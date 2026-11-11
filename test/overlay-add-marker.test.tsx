@@ -21,7 +21,7 @@ function install(addMarker: ReturnType<typeof vi.fn>): void {
   }
   ;(window as unknown as { redlog: unknown }).redlog = {
     overlay,
-    config: { get: async () => ({ overlay: { showMarkButton: true } }) },
+    config: { getPrefs: async () => ({ showMarkButton: true }) },
     ip: { getStatus: async () => null, onStatus: () => unsub },
     recording: { get: async () => null, onChange: () => unsub }
   }

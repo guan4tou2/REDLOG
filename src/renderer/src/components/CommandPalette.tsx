@@ -146,6 +146,8 @@ export function CommandPalette({
   // so when the store has more.
   const [eventsHasMore, setEventsHasMore] = useState(false)
   const [projects, setProjects] = useState<ProjectMeta[]>([])
+  // The open project is not a switch target: choosing it would close and reopen it.
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
   const [operators, setOperators] = useState<OperatorInfo[]>([])
   const [hosts, setHosts] = useState<HostAggregate[]>([])
   const panel = useRef<HTMLDivElement | null>(null)
@@ -162,6 +164,7 @@ export function CommandPalette({
     setCursor(0)
     setEvents([])
     window.redlog.project.list().then(setProjects).catch(() => {})
+    window.redlog.project.active().then((p) => setActiveProjectId(p?.id ?? null)).catch(() => setActiveProjectId(null))
     // §10 lists operator among what ⌘K covers. It needs no aggregation and no
     // loaded timeline — `operators:list` is a plain registry read, which is
     // why this half could land ahead of host search.
@@ -241,7 +244,7 @@ export function CommandPalette({
       }
     })
 
-    for (const p of projects.slice(0, 8)) {
+    for (const p of projects.filter((q) => q.id !== activeProjectId).slice(0, 8)) {
       out.push({
         id: `project:${p.id}`, section: 'project', icon: FolderOpen,
         label: p.name, hint: formatTime(p.lastOpened),
@@ -294,7 +297,7 @@ export function CommandPalette({
       .filter((x) => x.s > 0)
       .sort((a, b) => b.s - a.s)
       .map((x) => x.i)
-  }, [query, events, projects, operators, hosts, recording, t, onNavigate, onOpenEvent, onProjectClosed])
+  }, [query, events, projects, activeProjectId, operators, hosts, recording, t, onNavigate, onOpenEvent, onProjectClosed])
 
   useEffect(() => { setCursor(0) }, [query])
   // Keep the keyboard selection on screen: ↓ past the fold used to move an
@@ -313,6 +316,8 @@ export function CommandPalette({
   if (!open) return null
 
   const onKeyDown = (e: React.KeyboardEvent): void => {
+    // An input method owns Enter, Escape and the arrows while it composes.
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return
     if (e.key === 'Escape') { e.preventDefault(); onClose(); return }
     if (e.key === 'ArrowDown') { e.preventDefault(); setCursor((c) => Math.min(items.length - 1, c + 1)); return }
     if (e.key === 'ArrowUp') { e.preventDefault(); setCursor((c) => Math.max(0, c - 1)); return }

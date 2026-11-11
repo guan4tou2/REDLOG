@@ -205,7 +205,7 @@ export function registerDataExportIpc(
           actualCounts: plan.counts,
           artifactPath: path.basename(artifactPath),
           completedAt: new Date().toISOString()
-        }, null, 2), { flag: 'wx' })
+        }, null, 2), { flag: 'wx', mode: 0o600 })
       }
       if (!artifactPath) return { ok: false as const, error: 'export-artifact-missing' }
       const delivery: ExportDelivery = { artifactPath, format: plan.request.format, completedAt: Date.now(), availability: 'available' }

@@ -190,3 +190,33 @@ describe('every list view uses the shared contract', () => {
     expect(src, 'spreads itemProps onto each row').toMatch(/itemProps\(/)
   })
 })
+
+describe('list keyboard with controls inside a row', () => {
+  function Nested({ onActivate, onInner }: { onActivate: (i: number) => void; onInner: () => void }): JSX.Element {
+    const list = useListKeyboard({ count: 2, onActivate })
+    return (
+      <div {...list.containerProps} data-testid="list">
+        {[0, 1].map((i) => {
+          const p = list.itemProps(i)
+          return (
+            <div key={i} {...p} ref={(el) => p.ref(el)} data-testid={`row-${i}`}>
+              row {i}
+              <button type="button" data-testid={`inner-${i}`} onClick={onInner}>Add to scope</button>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  it('leaves Enter to a button inside the row, and still activates from the row itself', () => {
+    const onActivate = vi.fn()
+    render(<Nested onActivate={onActivate} onInner={vi.fn()} />)
+    fireEvent.keyDown(screen.getByTestId('list'), { key: 'ArrowDown' })
+    const notPrevented = fireEvent.keyDown(screen.getByTestId('inner-0'), { key: 'Enter' })
+    expect(onActivate).not.toHaveBeenCalled()
+    expect(notPrevented).toBe(true)
+    fireEvent.keyDown(screen.getByTestId('row-0'), { key: 'Enter' })
+    expect(onActivate).toHaveBeenCalledWith(0)
+  })
+})

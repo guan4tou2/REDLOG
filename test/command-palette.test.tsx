@@ -79,7 +79,8 @@ const type = (value: string): void => {
 describe('command palette', () => {
   it.each([true, false])('updates the workspace only if a failed switch closed the old project (closed=%s)', async (closed) => {
     const current = { id: 'a', name: 'project-a' }
-    bridge.project.active.mockResolvedValueOnce(current).mockResolvedValueOnce(closed ? null : current)
+    // The first read is the palette's own, taken when it opens; the next two are the switch's.
+    bridge.project.active.mockResolvedValueOnce(current).mockResolvedValueOnce(current).mockResolvedValueOnce(closed ? null : current)
     bridge.project.list.mockResolvedValue([{ id: 'b', name: 'project-b', lastOpened: 1 }])
     bridge.project.open.mockRejectedValueOnce(new Error('database unavailable'))
     const onProjectClosed = vi.fn()
@@ -267,5 +268,30 @@ describe('operator search', () => {
     open()
     type('carol')
     await waitFor(() => expect(screen.queryAllByRole('option')).toHaveLength(0))
+  })
+
+  it('does not offer the open project as a switch target', async () => {
+    bridge.project.active.mockResolvedValue({ id: 'a', name: 'project-a' })
+    bridge.project.list.mockResolvedValue([
+      { id: 'a', name: 'project-a', lastOpened: 2 },
+      { id: 'b', name: 'project-b', lastOpened: 1 }
+    ])
+    open()
+    expect(await screen.findByText('project-b')).toBeTruthy()
+    expect(screen.queryByText('project-a')).toBeNull()
+  })
+
+  it('ignores Enter, Escape and the arrows while an input method composes', async () => {
+    const { onNavigate, onClose } = open()
+    const box = screen.getByRole('combobox')
+    await screen.findAllByRole('option')
+    for (const key of ['Enter', 'Escape', 'ArrowDown']) {
+      fireEvent.keyDown(box, { key, isComposing: true })
+      fireEvent.keyDown(box, { key, keyCode: 229 })
+    }
+    expect(onNavigate).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+    fireEvent.keyDown(box, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 })

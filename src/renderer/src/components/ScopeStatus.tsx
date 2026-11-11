@@ -79,7 +79,7 @@ interface ObservationRow {
   cleared: boolean
 }
 
-export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTimeline?: (ts: number) => void; onOpenSettings?: (candidate?: string) => void } = {}): JSX.Element {
+export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTimeline?: (eventId: string, ts: number) => void; onOpenSettings?: (candidate?: string) => void } = {}): JSX.Element {
   const loadScope = async () => {
     const [configured, result, standing, chainLen, lastRecompute] = await Promise.all([
       window.redlog.scope.isConfigured(), window.redlog.scope.getObservations(),
@@ -114,6 +114,24 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
 
   const { t } = useI18n()
 
+  // The row is a verdict written after the fact; the thing the operator wants
+  // on the Timeline is the event that caused it, at the time it happened.
+  // `_causes` names it (the recompute summary and a re-flagged violation are
+  // system rows, so the first non-system cause is the source). When it cannot
+  // be read the jump still lands at the source time.
+  const openCause = async (v: ObservationRow): Promise<void> => {
+    if (!onOpenInTimeline) return
+    let id = ''
+    let ts = v.sourceTs ?? v.timestamp
+    try {
+      const [event] = await window.redlog.events.getById([v.id])
+      const ids = Array.isArray(event?.data._causes) ? event.data._causes.filter((c): c is string => typeof c === 'string') : []
+      const source = (ids.length ? await window.redlog.events.getById(ids) : []).find(row => row.agentType !== 'system')
+      if (source) { id = source.id; if (v.sourceTs === undefined) ts = source.timestamp }
+    } catch { /* fall back to the time alone */ }
+    onOpenInTimeline(id, ts)
+  }
+
   const active = observations.filter((v) => !v.cleared)
   const cleared = observations.filter((v) => v.cleared)
 
@@ -129,8 +147,8 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
   const shownObservations = paged.visible
   const listNav = useListKeyboard({
     count: shownObservations.length,
-    onActivate: (i) => { const v = shownObservations[i]; if (v) onOpenInTimeline?.(v.timestamp) },
-    onJumpToTimeline: (i) => { const v = shownObservations[i]; if (v) onOpenInTimeline?.(v.timestamp) }
+    onActivate: (i) => { const v = shownObservations[i]; if (v) void openCause(v) },
+    onJumpToTimeline: (i) => { const v = shownObservations[i]; if (v) void openCause(v) }
   })
 
   useEffect(() => {
@@ -162,7 +180,7 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
 
   return (
     <div className="p-pad overflow-auto h-full"><div className={`${PAGE_COLUMN} space-y-4`}>
-      {lastRecompute && <RecomputeBanner summary={lastRecompute} onOpenInTimeline={onOpenInTimeline} />}
+      {lastRecompute && <RecomputeBanner summary={lastRecompute} onOpenInTimeline={onOpenInTimeline && ((ts) => onOpenInTimeline('', ts))} />}
 
       <div className="bg-redlog-surface border border-redlog-border rounded-lg overflow-hidden">
         <div className="flex flex-wrap items-start justify-between gap-3 px-4 py-3 border-b border-redlog-border">
@@ -170,7 +188,7 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
             <h2 className="text-sm font-semibold text-redlog-text">{t('scope.observationsTitle')}</h2>
             <p className="text-xs text-redlog-text-faint mt-0.5">{t('scope.observationsCaption')}</p>
           </div>
-          {standing > 0 && cleared.length > 0 && (
+          {cleared.length > 0 && (
             <label className="flex items-center gap-2 text-xs text-redlog-text-dim">
               <input type="checkbox" data-testid="scope-show-cleared" checked={showCleared} onChange={() => setShowCleared((v) => !v)} className="accent-redlog-accent" />
               {t('scope.showCleared', { count: cleared.length })}
@@ -263,7 +281,7 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
               {detail.state.phase === 'loaded' && v.distance === 'excluded' && detail.state.value?.id === v.id && !detail.state.value.rule && <p className="text-redlog-text-faint">{t('scope.ruleUnavailable')}</p>}
               {detail.state.phase === 'loaded' && detail.state.value?.id === v.id && <pre className="font-mono whitespace-pre-wrap break-all max-h-64 overflow-y-auto">{detail.state.value.command ?? v.command}</pre>}
               <div className="flex flex-wrap gap-2">
-                {onOpenInTimeline && <Button size="compact" onClick={() => onOpenInTimeline(v.timestamp)}>{t('scope.openInTimeline')}</Button>}
+                {onOpenInTimeline && <Button size="compact" onClick={() => void openCause(v)}>{t('scope.openInTimeline')}</Button>}
                 {onOpenSettings && <Button size="compact" onClick={() => onOpenSettings(v.target)}>{t('scope.editRule')}</Button>}
               </div>
             </div>}

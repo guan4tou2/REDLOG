@@ -37,7 +37,8 @@ contextBridge.exposeInMainWorld('redlog', {
     }
   },
   config: {
-    get: (): Promise<unknown> => ipcRenderer.invoke('config:get'),
+    /** The HUD's settings as the window should show them now. */
+    getPrefs: (): Promise<unknown> => ipcRenderer.invoke('overlay:getPrefs'),
     onShowMark: (cb: (show: boolean) => void) => {
       const handler = (_e: Electron.IpcRendererEvent, show: boolean): void => cb(show)
       ipcRenderer.on('overlay:showMark', handler)
@@ -58,10 +59,9 @@ contextBridge.exposeInMainWorld('redlog', {
       ipcRenderer.on('overlay:emphasizeIp', handler)
       return () => ipcRenderer.removeListener('overlay:emphasizeIp', handler)
     },
-    // Pass-through style. Emitted alongside main setting overlay.passThrough
-    // so the overlay renderer can dim non-critical UI while keeping the
-    // external IP fully readable. Payload is the resolved opacity from
-    // config.overlay.passThroughOpacity (falsy → off, restore full opacity).
+    // Pass-through style: whether the window is click-through now (an exposed
+    // IP suspends the setting), and the opacity setting for it, so the
+    // renderer can dim non-critical UI while keeping the external IP readable.
     onPassThrough: (cb: (on: boolean, opacity: number) => void) => {
       const handler = (_e: Electron.IpcRendererEvent, on: boolean, opacity: number): void => cb(on, opacity)
       ipcRenderer.on('overlay:passThrough', handler)

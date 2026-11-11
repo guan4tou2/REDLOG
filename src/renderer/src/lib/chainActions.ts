@@ -35,6 +35,11 @@ export interface FullVerifyResult {
  *  anchor. `onRetry` is offered on the failure toast. */
 export async function anchorNowWithFeedback(t: T, onRetry?: () => void): Promise<ChainAnchorInfo | null> {
   const result = await window.redlog.chain.anchorNow()
+  // Neither a failure nor an anchor: an offline project does not submit.
+  if (result && 'skipped' in result) {
+    toast(t('settings.integritySkippedOffline'), 'info')
+    return null
+  }
   if (!result) {
     toast(t('settings.integrityNoAnchors'), {
       type: 'error',
@@ -61,6 +66,14 @@ export async function anchorNowWithFeedback(t: T, onRetry?: () => void): Promise
     })
   }
   return result
+}
+
+/** Upgrade pending anchors (one by id, or all). An offline project skips it. */
+export async function upgradeAnchorsWithFeedback(t: T, id?: string): Promise<void> {
+  const r = await window.redlog.chain.upgrade(id)
+  if (!r) return
+  if ('skipped' in r) { toast(t('settings.integritySkippedOffline'), 'info'); return }
+  if ('upgraded' in r) toast(t('settings.integrityUpgraded', { n: r.upgraded, m: r.scanned }), r.upgraded > 0 ? 'success' : 'info')
 }
 
 /** Walk every event, recompute each hash and check the latest anchor. Returns

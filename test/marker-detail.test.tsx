@@ -207,4 +207,17 @@ describe('house rules', () => {
   it('has exactly one filled primary', () => {
     expect(src.match(/level="primary"/g) ?? []).toHaveLength(1)
   })
+
+  it('does not amend on the Enter or Escape that belong to an input method', () => {
+    const { onAmend } = mount(marker())
+    edit()
+    fireEvent.change(title(), { target: { value: 'にほんご' } })
+    fireEvent.keyDown(title(), { key: 'Enter', isComposing: true })
+    fireEvent.keyDown(title(), { key: 'Enter', keyCode: 229 })
+    fireEvent.keyDown(title(), { key: 'Escape', isComposing: true })
+    expect(onAmend).not.toHaveBeenCalled()
+    expect(title()).toBeTruthy()
+    fireEvent.keyDown(title(), { key: 'Enter' })
+    expect(onAmend).toHaveBeenCalledTimes(1)
+  })
 })

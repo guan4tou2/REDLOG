@@ -186,13 +186,31 @@ redlog_event agent' bash ${repoFile('shell', 'redlog-agent.sh')}
     expect(bodies.map((b) => b.data)).toEqual([{ subtype: 'x', n: 1 }, {}])
   }, 90_000)
 
-  it('hooks/vps-deploy.sh install: the token goes to the VPS on stdin, not in ssh/scp argv', async () => {
+  it('hooks/wsl-redlog-test.sh: its three authenticated calls carry the token in a config, not argv', async () => {
     const rec = await run(`
-export REDLOG_REMOTE_TOKEN="$TOKEN"
-bash ${repoFile('hooks', 'vps-deploy.sh')} install op@vps.example >/dev/null
+export WSL_DISTRO_NAME=fake-distro
+printf '#!/bin/sh\\necho "C:\\\\Users\\\\x"\\n' > "$work/bin/cmd.exe"
+printf '#!/bin/sh\\necho "$HOME"\\n' > "$work/bin/wslpath"
+chmod +x "$work/bin/cmd.exe" "$work/bin/wslpath"
+bash ${repoFile('hooks', 'wsl-redlog-test.sh')} >/dev/null 2>&1
 `)
     expectTokenOutOfArgv(rec)
-    // And it was sent: this is the stdin of the `cat > ~/.redlog/api-token`.
-    expect(rec.body).toContain(TOKEN)
+    expect(eventCalls(rec).filter((l) => l.includes('/api/events')).length).toBe(3)
+    expect(rec.config.split(`Authorization: Bearer ${TOKEN}`).length - 1).toBe(3)
+  }, 90_000)
+
+  // The deploy copies fewer files than the hook install plan (no redlog-relay.py,
+  // no command-class.json), so a VPS it set up would not record. It stops
+  // before touching ssh/scp or the token until it is rebuilt on that plan.
+  it('hooks/vps-deploy.sh is disabled: it says so and reaches neither ssh, scp nor the token', async () => {
+    const rec = await run(`
+export REDLOG_REMOTE_TOKEN="$TOKEN"
+bash ${repoFile('hooks', 'vps-deploy.sh')} install op@vps.example 2>&1
+echo "exit=$?"
+`)
+    expect(rec.stdout).toContain('not currently supported')
+    expect(rec.stdout).not.toContain('exit=0')
+    expect(rec.argv.trim(), 'ssh or scp was called').toBe('')
+    expect(rec.body.trim(), 'something was sent to the VPS').toBe('')
   }, 90_000)
 })

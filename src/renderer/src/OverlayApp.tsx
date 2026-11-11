@@ -72,15 +72,17 @@ export default function OverlayApp(): JSX.Element {
 
   useEffect(() => {
     const cfg = window.redlog.config as {
-      get?: () => Promise<unknown>
+      getPrefs?: () => Promise<unknown>
       onShowMark?: (cb: (show: boolean) => void) => () => void
       onFlashExposed?: (cb: (on: boolean) => void) => () => void
       onScale?: (cb: (s: number) => void) => () => void
       onEmphasizeIp?: (cb: (on: boolean) => void) => () => void
       onPassThrough?: (cb: (on: boolean, opacity: number) => void) => () => void
     } | undefined
-    cfg?.get?.().then((c) => {
-      const ov = (c as { overlay?: { showMarkButton?: boolean; flashOnExposed?: boolean; scale?: number; emphasizeExternalIp?: boolean; passThrough?: boolean; passThroughOpacity?: number } } | null)?.overlay
+    // The HUD's settings are machine-wide (main/ipc/overlay.ts), not the
+    // project's: read once here, then kept current by the channels below.
+    cfg?.getPrefs?.().then((p) => {
+      const ov = p as { showMarkButton?: boolean; flashOnExposed?: boolean; scale?: number; emphasizeExternalIp?: boolean; passThrough?: boolean; passThroughOpacity?: number } | null
       setShowMark(ov?.showMarkButton !== false)
       setFlashExposed(ov?.flashOnExposed !== false)
       if (typeof ov?.scale === 'number' && ov.scale > 0) setScale(ov.scale)
@@ -88,7 +90,7 @@ export default function OverlayApp(): JSX.Element {
       setPassThrough(ov?.passThrough === true)
       if (typeof ov?.passThroughOpacity === 'number' && ov.passThroughOpacity > 0) setPassThroughOpacity(ov.passThroughOpacity)
     }).catch(() => {})
-    // live-update when the settings are toggled in Settings
+    // live-update on every change, from Settings or the HUD's own controls
     const off1 = cfg?.onShowMark?.(setShowMark)
     const off2 = cfg?.onFlashExposed?.(setFlashExposed)
     const off3 = cfg?.onScale?.(setScale)

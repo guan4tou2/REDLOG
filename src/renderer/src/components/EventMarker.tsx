@@ -50,18 +50,22 @@ export default function EventMarker({ onClose, atTimestamp, heldFrame, contentAn
   // rather than from a keydown on the backdrop — the backdrop only sees the
   // key if focus happens to be inside it, which is exactly the case that was
   // broken. Backdrop click still covers mouse dismiss.
+  // A draft is worth keeping: a stray click on the backdrop used to throw away
+  // a typed title and notes. With nothing typed it still dismisses.
+  const hasDraft = title.trim() !== '' || notes.trim() !== ''
   const dialogRef = useRef<HTMLDivElement | null>(null)
   const titleRef = useRef<HTMLInputElement | null>(null)
   useFocusTrap(dialogRef, true, titleRef)
   useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') { e.preventDefault(); onClose() } }
+    const onKey = (e: KeyboardEvent): void => {
+      // Escape that cancels an input-method candidate is not a dismiss, and a
+      // typed draft is kept just as the backdrop click keeps it.
+      if (e.key !== 'Escape' || e.isComposing || e.keyCode === 229 || hasDraft) return
+      e.preventDefault(); onClose()
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-
-  // A draft is worth keeping: a stray click on the backdrop used to throw away
-  // a typed title and notes. With nothing typed it still dismisses.
-  const hasDraft = title.trim() !== '' || notes.trim() !== ''
+  }, [onClose, hasDraft])
 
   const handleSave = async () => {
     if (saving) return
@@ -149,7 +153,7 @@ export default function EventMarker({ onClose, atTimestamp, heldFrame, contentAn
           placeholder={t('marker.placeholder')}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); if (!saving) handleSave() } }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) { e.stopPropagation(); if (!saving) handleSave() } }}
           className="w-full bg-redlog-surface border border-redlog-border rounded px-3 py-2 text-sm text-redlog-text placeholder-redlog-text-faint focus:outline-none focus:border-redlog-accent"
         />
 

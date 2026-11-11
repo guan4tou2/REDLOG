@@ -167,8 +167,19 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
   }, [filterText])
 
   const loadSeqRef = useRef(0)
+  const [loadedOnce, setLoadedOnce] = useState(false)
+  const flowsRef = useRef(flows)
+  flowsRef.current = flows
+  const loadFlowsRef = useRef<(mode?: 'reset' | 'append' | 'refresh') => Promise<void>>(async () => {})
   const nextCursorRef = useRef<string | null>(null)
-  const loadFlows = useCallback(async (append = false) => {
+  // `reset` is a new question (first load, a changed filter); `append` is the
+  // next page of the same one; `refresh` is the same question asked again
+  // because traffic arrived. Only the first load shows the full-pane spinner:
+  // it replaces the toolbar, so on every later load it unmounted the filter box
+  // under the cursor and, with a proxy running, blinked the table and the open
+  // request several times a second.
+  const loadFlows = useCallback(async (mode: 'reset' | 'append' | 'refresh' = 'reset') => {
+    const append = mode === 'append'
     // A type chip this view cannot serve empties it rather than answering
     // with the wrong source type. UnappliedFilterNotice says so on screen;
     // without it the empty list read as "no HTTP traffic was recorded".
@@ -180,15 +191,15 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
       setLoading(false)
       return
     }
-    const seq = append ? loadSeqRef.current : ++loadSeqRef.current
+    const seq = mode === 'reset' ? ++loadSeqRef.current : loadSeqRef.current
     if (append) setLoadingMore(true)
-    else {
+    else if (mode === 'reset') {
+      // The rows on screen stay until the answer replaces them.
       setLoading(true)
-      setFlows([])
       setHasMore(false)
       nextCursorRef.current = null
     }
-    setLoadError(null)
+    if (mode !== 'refresh') setLoadError(null)
     try {
       const page = await window.redlog.events.queryHttpFlowPage({
         ...toEventFilter(sharedFilter),
@@ -201,22 +212,39 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
       })
       if (seq !== loadSeqRef.current) return
       const result = eventsToFlows(page.items)
+      if (mode === 'refresh') {
+        // The newest page laid over what is loaded: new flows join, a flow
+        // whose response just landed is replaced, the pages already followed
+        // stay. A page that shares nothing with what is loaded means more
+        // arrived than one page holds and the gap is unknown: ask again.
+        const known = new Set(flowsRef.current.map((flow) => flow.flowId))
+        if (known.size === 0 || (page.hasMore && !result.some((flow) => known.has(flow.flowId)))) {
+          void loadFlowsRef.current('reset')
+          return
+        }
+        setFlows((current) => [...new Map([...current, ...result].map((flow) => [flow.flowId, flow])).values()])
+        return
+      }
       setFlows((current) => append
         ? [...new Map([...current, ...result].map((flow) => [flow.flowId, flow])).values()]
         : result)
       setHasMore(page.hasMore)
       nextCursorRef.current = page.nextCursor
     } catch (error: unknown) {
-      if (seq === loadSeqRef.current) setLoadError(error instanceof Error ? error.message : String(error))
+      if (seq !== loadSeqRef.current) return
+      // A failed new question does not leave the old answer looking like its answer.
+      if (mode === 'reset') setFlows([])
+      setLoadError(error instanceof Error ? error.message : String(error))
     } finally {
-      if (seq === loadSeqRef.current) { setLoading(false); setLoadingMore(false) }
+      if (seq === loadSeqRef.current && mode !== 'refresh') { setLoading(false); setLoadingMore(false); setLoadedOnce(true) }
     }
   }, [sharedFilter.agentType, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier, methodFilter, statusFilter, hostFilter, filterTextDebounced])
+  loadFlowsRef.current = loadFlows
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const debouncedLoadFlows = useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => { debounceRef.current = null; loadFlows() }, 300)
+    debounceRef.current = setTimeout(() => { debounceRef.current = null; void loadFlows('refresh') }, 300)
   }, [loadFlows])
 
   // Auto-follow the cursor to completion. Each append grows `flows` and
@@ -228,12 +256,12 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
   // One page in flight, or the gap between pages before the next dispatch. The
   // completeness strip reads this as "loading", so the resting subset marker
   // and Load More button only appear once the cap is actually reached.
-  const busy = loadingMore || autoFollowPending
+  const busy = loading || loadingMore || autoFollowPending
 
   useEffect(() => {
     if (loading || loadingMore || loadError) return
     if (!hasMore || flows.length >= AUTO_LOAD_MAX_FLOWS) return
-    void loadFlows(true)
+    void loadFlows('append')
   }, [hasMore, loading, loadingMore, loadError, flows.length, loadFlows])
 
   useEffect(() => {
@@ -265,6 +293,10 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
       .sort((a, b) => b[1] - a[1])
       .map(([h]) => h)
   }, [flows])
+  // The host menu is built from the flows already narrowed by it, so with a
+  // host chosen it held one entry and was not drawn: the filter could only be
+  // cleared with "All". It stays while a host is chosen, holding that host.
+  const hostOptions = hostFilter && !hosts.includes(hostFilter) ? [hostFilter, ...hosts] : hosts
 
   const filtered = useMemo(() => {
     let list = flows
@@ -348,7 +380,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
   }), [sharedFilter, methodFilter, statusFilter, hostFilter, filterText])
   useContributeExport({ label: t('httpHistory.exportHar'), request: harExportRequest })
 
-  if (loading) {
+  if (loading && !loadedOnce) {
     return (
       <LoadingSpinner label={t('common.loading')} />
     )
@@ -400,7 +432,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
             className={`text-xs font-mono px-1.5 py-0.5 rounded ${statusFilter === s ? 'bg-redlog-elevated border border-redlog-border text-redlog-text' : 'border border-transparent text-redlog-text-dim hover:text-redlog-text'}`}
           >{s}xx</button>
         ))}
-        {hosts.length > 1 && (
+        {(hosts.length > 1 || hostFilter) && (
           <>
             <span className="w-px h-3 bg-redlog-elevated-hover/60 mx-1" />
             <select
@@ -409,7 +441,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
               className="text-xs font-mono bg-redlog-surface border border-redlog-border/60 rounded px-1.5 py-0.5 text-redlog-text-dim focus:outline-none focus:border-redlog-accent/50 max-w-[200px]"
             >
               <option value="">{t('httpHistory.allHosts')}</option>
-              {hosts.map(h => (
+              {hostOptions.map(h => (
                 <option key={h} value={h}>{h}</option>
               ))}
             </select>
@@ -445,14 +477,14 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
           </span>
         ) : null}
         {hasMore && !busy && (
-          <button type="button" onClick={() => void loadFlows(true)} className="text-redlog-cyan underline">
+          <button type="button" onClick={() => void loadFlows('append')} className="text-redlog-cyan underline">
             {t('httpHistory.loadMore')}
           </button>
         )}
         {loadError && (
           <span data-testid="http-load-error" role="alert" className="min-w-0 break-words text-red-300">
             {t('httpHistory.loadFailed')}{' '}
-            <button type="button" onClick={() => void loadFlows(flows.length > 0)} className="underline">{t('common.retry')}</button>
+            <button type="button" onClick={() => void loadFlows(hasMore && flows.length > 0 ? 'append' : 'reset')} className="underline">{t('common.retry')}</button>
           </span>
         )}
       </div>

@@ -50,16 +50,6 @@ const DEFAULTS: Record<string, Check> = {
   'screenshot.diffThreshold': 5,
   'screenshot.captureOnCommand': false,
 
-  // 2.5 overlay
-  'overlay.autoShow': true,
-  'overlay.showMarkButton': true,
-  'overlay.showInDock': true,
-  'overlay.flashOnExposed': true,
-  'overlay.scale': 1.0,
-  'overlay.emphasizeExternalIp': false,
-  'overlay.passThrough': false,
-  'overlay.passThroughOpacity': 0.4,
-
   // 2.6 terminal / retention
   'terminal.maxCastBytes': 52_428_800,
   'retention.casts.keepDays': 0,

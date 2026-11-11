@@ -6,7 +6,7 @@ import { findShellTarget, runZsh } from '../test/helpers/zsh-pty'
 
 /** Actual source connection before delivering evidence, in the same app. */
 export async function checkSourceRecovery(app: ElectronApplication, page: Page, tmpHome: string): Promise<void> {
-  expect(await page.evaluate(async () => (await window.redlog.config.get()).overlay.autoShow)).toBe(true)
+  expect(await page.evaluate(async () => (await window.redlog.hudPrefs.get()).autoShow)).toBe(true)
   expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()
     .filter(w => w.webContents.getURL().includes('overlay')).some(w => w.isVisible()))).toBe(false)
   await openView(page, 'settings'); await openSettingsPage(page, 'hooks')

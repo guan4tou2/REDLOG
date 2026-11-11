@@ -13,8 +13,12 @@ export function registerChainIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   ipcMain.handle('chain:anchors', () =>
     ctx.getActiveProject() ? listAnchors() : [])
 
-  ipcMain.handle('chain:anchorNow', async () =>
-    ctx.getActiveProject() ? await anchorNow() : null)
+  // An anchor, null (nothing to anchor), or air-gap's `{ skipped: 'offline' }`,
+  // which the renderer shows as neither an error nor a success.
+  ipcMain.handle('chain:anchorNow', async () => {
+    if (!ctx.getActiveProject()) return null
+    return await anchorNow()
+  })
 
   // The walk also checks the latest anchor, so the app has one verify. The
   // anchor-only check stays on the local API and the CLI, where it is cheap.

@@ -57,6 +57,36 @@ describe('graded confirmation', () => {
     await expect(answer).resolves.toBe(true)
   })
 
+  // The listener is on the window. With focus on Cancel it used to confirm,
+  // and its preventDefault swallowed the click that would have cancelled.
+  it('plain: Enter on the focused Cancel button does not confirm', async () => {
+    mount()
+    let answered: boolean | undefined
+    void confirm('Leave project', 'Recording stops.').then((v) => { answered = v })
+    const dialog = await openedDialog()
+    const cancel = dialog.querySelectorAll('button')[0]
+    cancel.focus()
+    const notPrevented = fireEvent.keyDown(cancel, { key: 'Enter' })
+    expect(notPrevented).toBe(true)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(answered).toBeUndefined()
+    fireEvent.click(cancel)
+    await waitFor(() => expect(answered).toBe(false))
+  })
+
+  it('plain: the Enter that confirms an input-method composition does not confirm', async () => {
+    mount()
+    let answered: boolean | undefined
+    void confirm('Leave project', 'Recording stops.').then((v) => { answered = v })
+    await openedDialog()
+    fireEvent.keyDown(window, { key: 'Enter', isComposing: true })
+    fireEvent.keyDown(window, { key: 'Enter', keyCode: 229 })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(answered).toBeUndefined()
+    fireEvent.keyDown(window, { key: 'Enter' })
+    await waitFor(() => expect(answered).toBe(true))
+  })
+
   it('irreversible: the confirm button is disabled until the box is ticked', async () => {
     mount()
     const answer = confirm('Remove hook', 'This cannot be undone.', true)

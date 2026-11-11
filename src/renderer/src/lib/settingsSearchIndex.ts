@@ -400,7 +400,6 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.integrityAnchorNow',
     'settings.integrityVerifying',
     'settings.integrityVerifyFull',
-    'settings.integrityUpgraded',
     'settings.integrityUpgradeAll',
     'settings.integrityFullWalked',
     'settings.integrityFullBrokenAt',

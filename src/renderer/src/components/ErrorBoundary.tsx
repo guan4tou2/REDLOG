@@ -1,6 +1,6 @@
 import { Component, useState, type ReactNode } from 'react'
 import { useI18n } from '../i18n'
-import { buildDiagnostics, issueUrl } from '../lib/diagnostics'
+import { buildDiagnostics, crashTitle, issueUrl } from '../lib/diagnostics'
 import { toast } from './Toast'
 import { writeClipboard } from '../lib/clipboard'
 import { Button } from './Button'
@@ -37,6 +37,13 @@ export class ErrorBoundary extends Component<Props, State> {
 
   static getDerivedStateFromError(error: Error): State {
     return { error }
+  }
+
+  // "Go home" and the sidebar change `label`, not this component, so without
+  // this the crash screen stayed up under the new view's name and only Retry
+  // could clear it.
+  componentDidUpdate(prev: Props): void {
+    if (prev.label !== this.props.label && this.state.error) this.setState({ error: null })
   }
 
   render(): ReactNode {
@@ -127,7 +134,7 @@ function FatalScreen({ error, label, projectName, onRetry, onGoHome }: {
               level="primary"
               onClick={() => {
                 void window.redlog?.app?.openExternal?.(
-                  issueUrl(REPO, `${label ?? 'View'} crashed: ${error.message.slice(0, 80)}`, diagnostics)
+                  issueUrl(REPO, crashTitle(label, error, projectName), diagnostics)
                 )
               }}
             >

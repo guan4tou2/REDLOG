@@ -20,7 +20,7 @@ function install(o: { recording?: () => Promise<boolean | null>; safety?: 'safe'
       autosize: vi.fn(), hide: vi.fn(), mouseEnter: vi.fn(), mouseLeave: vi.fn(), setPassThrough: vi.fn(),
       releaseFocus: vi.fn(), addMarker: vi.fn(), quickMark: vi.fn(), onInteractive: vi.fn(() => unsub)
     },
-    config: { get: async () => ({ overlay: { showMarkButton: true } }) },
+    config: { getPrefs: async () => ({ showMarkButton: true }) },
     ip: { getStatus: async () => ({ externalIP: '203.0.113.18', internalIP: '10.0.2.15', ipSafety: o.safety ?? 'unknown', lastCheck: NOW }), onStatus: () => unsub },
     recording: { get: o.recording ?? (async () => true), onChange: () => unsub },
     pivots: { getActive: async () => o.pivots ?? [], onChange: () => unsub }
