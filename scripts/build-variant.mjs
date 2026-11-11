@@ -42,7 +42,7 @@ export function readPackagedVariant(resourcesRoot) {
   if (fs.existsSync(archive)) {
     // A dependency of electron-builder (app-builder-lib), present wherever a package is built.
     const asar = createRequire(import.meta.url)('@electron/asar')
-    try { text = asar.extractFile(archive, VARIANT_FILE).toString('utf8') } catch {
+    try { text = asar.extractFile(archive, VARIANT_FILE.split('/').join(path.sep)).toString('utf8') } catch {
       throw new Error(`${VARIANT_FILE} is not in ${archive}; the package was not built by this electron.vite.config.ts`)
     }
   } else {

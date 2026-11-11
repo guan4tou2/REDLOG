@@ -37,7 +37,20 @@ describe('loot emit dedup', () => {
 
   // Wall-clock, so the bound is a ratio: four times the distinct values may
   // take at most eleven times as long (linear 4x, quadratic 16x), best of three.
-  it('takes at most 11x as long for 4x the distinct values', () => {
+  // Always on, and not a measurement: 64 000 distinct values took over a
+  // minute through the quadratic dedup and take well under a second now.
+  it('records 64 000 distinct values within seconds', () => {
+    const ms = Array.from({ length: 64_000 }, (_, i) => match(`$6$s$${i.toString(16).padStart(8, '0')}`))
+    const d = new LootDetector()
+    d.configure({ identity })
+    const t0 = performance.now()
+    d.emit(ms, {})
+    expect(performance.now() - t0).toBeLessThan(15_000)
+  }, 120_000)
+
+  // The ratio is a measurement; a shared CI runner is not an instrument. On
+  // request: REDLOG_PERF=1.
+  it.runIf(process.env.REDLOG_PERF === '1')('takes at most 11x as long for 4x the distinct values', () => {
     const time = (n: number): number => {
       const ms = Array.from({ length: n }, (_, i) => match(`$6$s$${i.toString(16).padStart(8, '0')}`))
       let best = Infinity
