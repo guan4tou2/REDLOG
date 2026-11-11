@@ -12,20 +12,20 @@ import type { IpcContext } from '../src/main/ipc/types'
 
 // Golden hashes of the bytes the pre-worker path (selection, redaction and
 // digest on the main thread, rows posted to a writer worker in batches of 16)
-// produced for this exact fixture. The plan id, plan fingerprint and exportedAt
+// produced for this exact fixture, regenerated from origin/main dbd2c372 once the fixture stopped depending on the machine (home and temp directory). The plan id, plan fingerprint and exportedAt
 // are the only run-specific values and are normalised before hashing. A change
 // to where selection runs must leave every one of these unchanged.
 const GOLDEN: Record<string, string> = {
-  'json-full': '369e2c3931e9becdd0db5260b1502dd3752ee8cd8cd82c1f019948b70bc170bd',
-  'ndjson-full': '67587c665d86214cbec97b9d9e52b9b2aa13c14d280d295a0979651632269c41',
-  'json-sparse': '59223ec2f000a213a4f48d0e09db43913b28098e076a0f86e87cd35f9594ed04',
-  'ndjson-sparse': '56af18c6c8b6eabcd4bd2944b465cb79ef33bad9997801cb8d0c603ba6dd5dcb',
-  'timeline-sparse': '23715a454f419a7b25dd09d734a8937bae9c0d466c091ff17bb48c8182acb073',
+  'json-full': '0b99807ffd7439a4dc35cd2b121a4eab0020e59bac91ecc2a47edf029ce87953',
+  'ndjson-full': '184acd97cbdbb32bb0d2a9c3e344274789c45963a4ff8157d76133058c1e576b',
+  'json-sparse': 'bdad5b144c7a64dd3a248f1be2d5c4094ad0f9d4c462b8d1813f993a24d49812',
+  'ndjson-sparse': '9dd6c46ed8c2bcab8a5585863d692b34411d6dca9f479c29edbe6606b423ad5e',
+  'timeline-sparse': '270d5fc936d39e8a02538ba66deee984b0855255b33be6a7cf680cf68f466b09',
   'json-empty': 'e48c9532d59b279e268a305bde24bde9a11160bf9982185d824e26a766251924',
   'ndjson-empty': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
   'timeline-empty': 'd3ce842f5cf41a15bd08cdad20095bb96f7dd24358114f0ed0df7d28abe31562',
-  'json-masked': '20ebfcf90c8946e284f773438bdeec0a6281da71aa4ff6781cf1cd70c9dd8f10',
-  'ndjson-masked': '408395f2c85a914e3d107530c1b60c38a4b89743d71675e246d715e53f323932'
+  'json-masked': '2cada3c106a03340b83f67199c845105f295a5bd1ff2fe9c10ae493f98b274ab',
+  'ndjson-masked': '8ddcec6dd4adf951b233ee53da71de7b462f953d027c675e8b01f82dd38aa4e4'
 }
 
 let dir: string
@@ -63,7 +63,11 @@ async function exportBytes(request: Record<string, unknown>): Promise<{ text: st
     .replace(/"exportedAt": "[^"]*"/, '"exportedAt": "T"')
   return { text, included: resolved.plan.counts.included }
 }
-const sha = (text: string) => createHash('sha256').update(text).digest('hex')
+// The fixture embeds this machine's home directory and temp directory, so the
+// golden hashes are taken over text with both replaced (raw and JSON-escaped).
+const machineFree = (text: string): string => [[os.homedir(), 'HOME'], [dir, 'DIR']].reduce((out, [value, label]) =>
+  out.split(value).join(label).split(value.replace(/\\/g, '\\\\')).join(label), text)
+const sha = (text: string) => createHash('sha256').update(machineFree(text)).digest('hex')
 const sparse = { kind: 'time-range', since: 1130, before: 1140 }
 const empty = { kind: 'time-range', since: 5, before: 6 }
 const cases: Array<[string, Record<string, unknown>, number]> = [
