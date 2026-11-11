@@ -44,6 +44,14 @@ if (!pythonBin) {
   console.warn('[redlog-verify.test] python3 not found on PATH — skipping verifier E2E test')
 }
 
+// Ed25519 checks need the optional `cryptography` package. The verifier fails
+// closed without it when signing is in use, so signed fixtures behave
+// differently on machines with and without it. Detect once, with the same
+// interpreter the tests spawn.
+const hasCryptography = pythonBin
+  ? spawnSync(pythonBin, ['-c', 'import cryptography.hazmat.primitives.asymmetric.ed25519'], { encoding: 'utf-8' }).status === 0
+  : false
+
 const describeVerify = (dbAvailable && pythonBin) ? describe : describe.skip
 
 describeVerify('tools/redlog-verify.py against real bundle', () => {
@@ -101,8 +109,10 @@ describeVerify('tools/redlog-verify.py against real bundle', () => {
     expect(verifyOp).toBeTruthy()
     expect(verifyOp!.signerPubKey).toMatch(/^[A-Za-z0-9+/=]+$/)
 
-    // Run the verifier — it must exit 0.
-    const r = spawnSync(pythonBin!, [verifierPath, bundle.outDir], { encoding: 'utf-8' })
+    // With `cryptography` the signatures are checked and the chain is INTACT.
+    // Without it that test is about the hash chain only: --hash-only must still
+    // exit 0 and say plainly that nothing was authenticated.
+    const r = spawnSync(pythonBin!, [verifierPath, ...(hasCryptography ? [] : ['--hash-only']), bundle.outDir], { encoding: 'utf-8' })
     if (r.status !== 0) {
       // eslint-disable-next-line no-console
       console.error('verifier stdout:', r.stdout)
@@ -110,7 +120,11 @@ describeVerify('tools/redlog-verify.py against real bundle', () => {
       console.error('verifier stderr:', r.stderr)
     }
     expect(r.status).toBe(0)
-    expect(r.stdout).toContain('Chain            : INTACT')
+    if (hasCryptography) expect(r.stdout).toContain('Chain            : INTACT')
+    else {
+      expect(r.stdout).toContain('Chain            : hash chain consistent, NOT AUTHENTICATED')
+      expect(r.stdout).not.toContain('Chain            : INTACT')
+    }
 
     fs.rmSync(outRoot, { recursive: true, force: true })
   })
@@ -157,7 +171,8 @@ describeVerify('tools/redlog-verify.py against real bundle', () => {
       const bundle = bundleExport.exportBundle('default', { scope: { targets: [], personalDomains: ['127.0.0.0/8'] } })
       expect(bundle.manifest.personalDropped).toBe(placement === 'all' ? 3 : 1)
       expect(fs.readFileSync(path.join(bundle.outDir, 'events.jsonl'), 'utf8')).not.toContain('private-secret')
-      const r = spawnSync(pythonBin!, [verifierPath, bundle.outDir], { encoding: 'utf8' })
+      // About the projection boundary, not signatures: --hash-only keeps it independent of `cryptography`.
+      const r = spawnSync(pythonBin!, [verifierPath, '--hash-only', bundle.outDir], { encoding: 'utf8' })
       expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0)
       expect(r.stdout).toContain('Projection')
       expect(r.stdout).not.toContain('Chain            : INTACT')
@@ -174,7 +189,8 @@ describeVerify('tools/redlog-verify.py against real bundle', () => {
     const manifestPath = path.join(bundle.outDir, 'manifest.json')
     const original = fs.readFileSync(eventPath, 'utf8').trim().split('\n')
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
-    expect(spawnSync(pythonBin!, [verifierPath, bundle.outDir], { encoding: 'utf8' }).status).toBe(0)
+    // Chain/projection test: --hash-only so a missing `cryptography` cannot be the reason for either verdict.
+    expect(spawnSync(pythonBin!, [verifierPath, '--hash-only', bundle.outDir], { encoding: 'utf8' }).status).toBe(0)
     for (const mutation of ['delete', 'duplicate', 'payload'] as const) {
       const rows = [...original]
       if (mutation === 'delete') rows.pop()
@@ -187,7 +203,7 @@ describeVerify('tools/redlog-verify.py against real bundle', () => {
       manifest.files.find((f: { path: string }) => f.path === 'events.jsonl').sha256 = crypto.createHash('sha256').update(text).digest('hex')
       fs.writeFileSync(manifestPath, JSON.stringify(manifest))
       fs.writeFileSync(path.join(bundle.outDir, 'manifest.sha256'), crypto.createHash('sha256').update(fs.readFileSync(manifestPath)).digest('hex'))
-      const r = spawnSync(pythonBin!, [verifierPath, bundle.outDir], { encoding: 'utf8' })
+      const r = spawnSync(pythonBin!, [verifierPath, '--hash-only', bundle.outDir], { encoding: 'utf8' })
       expect(r.status, mutation).not.toBe(0)
     }
   })
@@ -198,7 +214,7 @@ describeVerify('tools/redlog-verify.py against real bundle', () => {
       { operatorId: 'masked-op', targetId: '198.51.100.1' })
     const bundle = bundleExport.exportBundle('default', { scope: { targets: ['192.0.2.0/24'] } })
     expect(bundle.manifest.evidence.transformedEventIds).toHaveLength(1)
-    const r = spawnSync(pythonBin!, [verifierPath, bundle.outDir], { encoding: 'utf8' })
+    const r = spawnSync(pythonBin!, [verifierPath, '--hash-only', bundle.outDir], { encoding: 'utf8' })
     expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0)
     expect(r.stdout).toContain('Transformed rows : 1 (source payload/signature not verified)')
     expect(r.stdout).not.toContain('Chain            : INTACT')
@@ -287,6 +303,13 @@ describeVerify('tools/redlog-verify.py against real bundle', () => {
     it('passes an untouched signed bundle and prints each signer key fingerprint', { timeout: 30_000 }, () => {
       const dir = signedBundle('auth-ok')
       const r = run(dir)
+      if (!hasCryptography) {
+        // Fail closed: signatures cannot be checked, so the bundle must not pass.
+        expect(r.status, r.stdout + r.stderr).toBe(1)
+        expect(r.stdout).toMatch(/AUTHENTICATION FAILED: 3 signed event\(s\) cannot be checked: the `cryptography` module is not installed/)
+        expect(r.stdout).not.toContain('Chain            : INTACT')
+        return
+      }
       expect(r.status, r.stdout + r.stderr).toBe(0)
       expect(r.stdout).toContain('Chain            : INTACT')
       const pub = (JSON.parse(fs.readFileSync(path.join(dir, 'operators.json'), 'utf8')) as Array<{ id: string; signerPubKey: string }>)
@@ -342,7 +365,10 @@ describeVerify('tools/redlog-verify.py against real bundle', () => {
       refresh(dir)
       const r = run(dir)
       expect(r.status, r.stdout).toBe(1)
-      expect(r.stdout).toMatch(/AUTHENTICATION FAILED: 3 signed event\(s\) cannot be checked: their operator has no signerPubKey/)
+      // Without `cryptography` the verifier reports the missing module, not the missing key.
+      expect(r.stdout).toMatch(hasCryptography
+        ? /AUTHENTICATION FAILED: 3 signed event\(s\) cannot be checked: their operator has no signerPubKey/
+        : /AUTHENTICATION FAILED: 3 signed event\(s\) cannot be checked: the `cryptography` module is not installed/)
     })
 
     it('fails, rather than skips, when `cryptography` is missing from a signed bundle', { timeout: 30_000 }, () => {
