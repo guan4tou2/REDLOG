@@ -112,6 +112,9 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: npx electron-builder --linux deb --x64 --publish never
 
+      # Release mode, the default: fails on a smoke build (inspect fuse on, or a
+      # main bundle built with REDLOG_SMOKE_BUILD=1). Nothing in this workflow
+      # may set that variable or override electronFuses; test/build-variant.test.ts.
       - name: Verify packaged capture resources
         run: npm run verify:package-resources
 

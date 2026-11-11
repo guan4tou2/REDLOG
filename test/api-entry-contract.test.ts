@@ -90,7 +90,7 @@ interface RouteRow {
   authed: number
   /** No project and no token needed (answered before the gate). */
   open?: true
-  /** Only exists with REDLOG_E2E=1. */
+  /** Only exists with test hooks on (configureApi `testHooks`). */
   e2eOnly?: true
 }
 
@@ -344,25 +344,24 @@ describeDB('api entry gate', () => {
       expect(r.status).toBe(row.authed)
     })
 
-    it('does not route the e2e seed door unless REDLOG_E2E=1', async () => {
+    it('does not route the e2e seed door unless main configured test hooks on', async () => {
       const row = ROUTES.find((r) => r.e2eOnly)!
       const before = getEventCount()
       // A body that would insert a row if the door were open.
       const valid = JSON.stringify({ agent_type: 'dns', data: { subtype: 'seed-must-not-land' } })
-      expect(process.env.REDLOG_E2E).not.toBe('1')
       const shut = await rawCall(port, { method: 'POST', path: row.probe, headers: bearer(token), body: valid })
       expect(shut.status).toBe(404)
-      expect(errorOf(shut)).toBe('not found')
+      expect(errorOf(shut)).toBe(`Unknown route: POST ${row.probe}`)
       expect(getEventCount()).toBe(before)
 
       // Open: the same request is now a real route (invalid JSON, so it still
-      // writes nothing). The flag is read per request.
-      process.env.REDLOG_E2E = '1'
+      // writes nothing). Read per request.
+      api.configureApi({ ...ENGAGEMENT, testHooks: true })
       try {
         const open = await rawCall(port, { method: 'POST', path: row.probe, headers: bearer(token), body: NOT_JSON })
         expect(open.status).toBe(400)
         expect(errorOf(open)).toBe('invalid or empty JSON body')
-      } finally { delete process.env.REDLOG_E2E }
+      } finally { api.configureApi({ ...ENGAGEMENT, testHooks: false }) }
       expect(getEventCount()).toBe(before)
     })
   })

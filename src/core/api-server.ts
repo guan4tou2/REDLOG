@@ -115,10 +115,16 @@ export function setCastProbe(fn: CastProbe | null): void { castProbe = fn }
 // needs no eviction beyond dropping the key when the pair completes.
 const castOffsetAtStart = new Map<string, number>()
 
+// Main's test-hooks decision, handed in rather than read here: core runs
+// outside Electron too (CLI, tests) and has no build variant of its own.
+let testHooksEnabled = false
+
 export function configureApi(opts: {
   engagementId: string
   operatorId: string
   operatorName?: string
+  /** e2e fixture routes (`/api/events/seed`). Kept as it was when omitted; off until set. */
+  testHooks?: boolean
   configLoader?: typeof configLoaderRef
   lootDetector?: typeof lootDetectorRef
   screenshotAgent?: typeof screenshotAgentRef
@@ -130,6 +136,7 @@ export function configureApi(opts: {
   engagementId = opts.engagementId
   primaryOperatorId = opts.operatorId
   if (opts.operatorName) primaryOperatorName = opts.operatorName
+  if (opts.testHooks !== undefined) testHooksEnabled = opts.testHooks
   if (opts.configLoader) configLoaderRef = opts.configLoader
   if (opts.lootDetector) lootDetectorRef = opts.lootDetector
   if (opts.screenshotAgent) screenshotAgentRef = opts.screenshotAgent
@@ -296,7 +303,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     }
 
     // `/api/events/seed` is the E2E fixture door: same handler, allowlist
-    // skipped, and it does not exist unless REDLOG_E2E=1. Specs need to plant
+    // skipped, and it does not exist unless main configured test hooks on
+    // (src/main/test-hooks.ts; never in a packaged release build). Off, it
+    // answers exactly like any other unknown route. Specs need to plant
     // derived rows (pivot, cleanup, a scope violation, eighteen lanes' worth
     // of types) that in production only RedLog's own analysis writes.
     //
@@ -305,8 +314,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     // (e2e/recording-pause.spec.ts, "a forged system event is refused"), and a
     // bypass reachable on the same route would have made that test pass while
     // the door stood open.
-    const e2eSeed = route === '/api/events/seed' && req.method === 'POST'
-    if (e2eSeed && process.env.REDLOG_E2E !== '1') { json(res, 404, { error: 'not found' }); return }
+    const e2eSeed = testHooksEnabled && route === '/api/events/seed' && req.method === 'POST'
     if ((route === '/api/events' || e2eSeed) && req.method === 'POST') {
       const pinnedEngagement = req.headers['x-redlog-engagement']
       if (pinnedEngagement != null && pinnedEngagement !== engagementId) {

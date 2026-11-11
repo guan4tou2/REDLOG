@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import yaml from 'js-yaml'
-import { readFuseWires, fuseMismatches, configuredFuses, FUSE_INDEX } from '../scripts/verify-fuses.mjs'
+import { readFuseWires, fuseMismatches, configuredFuses, expectedFuses, FUSE_INDEX } from '../scripts/verify-fuses.mjs'
 
 const root = path.resolve(__dirname, '..')
 const builderConfig = path.join(root, 'electron-builder.yml')
@@ -13,6 +13,22 @@ describe('electronFuses in electron-builder.yml', () => {
   it('turns off ELECTRON_RUN_AS_NODE and NODE_OPTIONS in the packaged binary', () => {
     expect(fuses.runAsNode).toBe(false)
     expect(fuses.enableNodeOptionsEnvironmentVariable).toBe(false)
+  })
+
+  it('turns off the Node inspector switches by default (the release variant)', () => {
+    expect(fuses.enableNodeCliInspectArguments).toBe(false)
+    expect(expectedFuses(builderConfig)).toEqual(fuses)
+    expect(expectedFuses(builderConfig, 'release')).toEqual(fuses)
+  })
+
+  it('the smoke variant turns that one fuse back on and leaves the rest', () => {
+    const smoke = expectedFuses(builderConfig, 'smoke') as Record<string, boolean>
+    expect(smoke).toEqual({ ...fuses, enableNodeCliInspectArguments: true })
+    expect(() => expectedFuses(builderConfig, 'debug')).toThrow(/Unknown build variant/)
+  })
+
+  it('verify-fuses.mjs has no #! line (it is imported here; one broke the import on CRLF checkouts)', () => {
+    expect(fs.readFileSync(path.join(root, 'scripts/verify-fuses.mjs'), 'utf8').startsWith('#!')).toBe(false)
   })
 
   it('names only options the installed electron-builder accepts', () => {

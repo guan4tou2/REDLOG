@@ -3,7 +3,17 @@ import fs from 'node:fs'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { verifyFuses } from './verify-fuses.mjs'
+import { verifyPackageVariant } from './verify-fuses.mjs'
+
+//   npm run verify:package-resources [-- [--smoke] [<Resources dir>]]
+//
+// Checks a RELEASE package unless --smoke is passed. Only the install-smoke
+// workflows pass it; release.yml must not (docs/releasing.md).
+const args = process.argv.slice(2)
+const unknownFlags = args.filter((a) => a.startsWith('--') && a !== '--smoke')
+if (unknownFlags.length) throw new Error(`Unknown option ${unknownFlags.join(' ')}; usage: verify-packaged-resources.mjs [--smoke] [<Resources dir>]`)
+const variant = args.includes('--smoke') ? 'smoke' : 'release'
+const rootArg = args.find((a) => !a.startsWith('--'))
 
 const roots = [
   'dist/mac-arm64/RedLog.app/Contents/Resources',
@@ -12,7 +22,7 @@ const roots = [
   'dist/linux-unpacked/resources',
   'dist/linux-arm64-unpacked/resources'
 ]
-const root = process.argv[2] ? path.resolve(process.argv[2]) : roots.map((p) => path.resolve(p)).find((p) => fs.existsSync(p))
+const root = rootArg ? path.resolve(rootArg) : roots.map((p) => path.resolve(p)).find((p) => fs.existsSync(p))
 if (!root) throw new Error(`No unpacked package resources found under dist/ (${roots.join(', ')})`)
 
 const required = [
@@ -99,13 +109,15 @@ if (process.platform === 'darwin' && root.endsWith('/Contents/Resources')) {
   }
 }
 
-// The fuses electron-builder.yml asks for (RunAsNode, NODE_OPTIONS) are in the
-// binary that ships, not only in the config.
+// The fuses electron-builder.yml asks for are in the binary that ships, not
+// only in the config, and the binary and its main bundle are both the variant
+// being checked: a release check fails on the inspect fuse being on and on a
+// main bundle built with REDLOG_SMOKE_BUILD=1.
 try {
-  verifyFuses(root, path.resolve('electron-builder.yml'))
+  verifyPackageVariant(root, path.resolve('electron-builder.yml'), variant)
 } catch (e) {
   console.error(e.message)
   process.exit(1)
 }
 
-console.log(`Packaged resource contract verified: ${root}`)
+console.log(`Packaged resource contract verified (${variant} build): ${root}`)

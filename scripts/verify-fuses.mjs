@@ -2,14 +2,19 @@
 // `electronFuses` in electron-builder.yml. electron-builder flips the fuses
 // right before signing; this confirms the flip reached the binary that ships.
 //
-//   node scripts/verify-fuses.mjs <RedLog.app | Resources dir | executable>
+//   node scripts/verify-fuses.mjs [--smoke] <RedLog.app | Resources dir | executable>
 //
-// Called by verify-packaged-resources.mjs (release and install-smoke builds).
+// Release is the default; --smoke checks the yml with SMOKE_FUSE_OVERRIDES
+// applied (scripts/build-variant.mjs). Called by verify-packaged-resources.mjs.
+//
+// No `#!` line: test/package-fuses.test.ts imports this module, and a shebang
+// broke that import on Windows CRLF checkouts.
 import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import yaml from 'js-yaml'
+import { SMOKE_FUSE_OVERRIDES, VARIANTS, VARIANT_FILE, readPackagedVariant } from './build-variant.mjs'
 
 // electron-builder's option names, in fuse-wire order (@electron/fuses
 // FuseV1Options). Checked against the installed package when it is present.
@@ -61,6 +66,13 @@ export function configuredFuses(configFile) {
   return Object.fromEntries(Object.entries(fuses).filter(([k]) => k !== 'resetAdHocDarwinSignature'))
 }
 
+/** The fuses a package of `variant` must carry: the yml's, plus the smoke overrides for a smoke build. */
+export function expectedFuses(configFile, variant = 'release') {
+  if (!VARIANTS.includes(variant)) throw new Error(`Unknown build variant: ${variant}`)
+  const fuses = configuredFuses(configFile)
+  return variant === 'smoke' ? { ...fuses, ...SMOKE_FUSE_OVERRIDES } : fuses
+}
+
 /** The file that carries the fuse wire, from an .app, a Resources dir or an executable. */
 export function fuseBinary(target) {
   const app = target.endsWith('.app') ? target
@@ -88,24 +100,44 @@ function electronFusesPackage() {
 }
 
 /** Throws with every mismatch; returns the states it read. */
-export function verifyFuses(target, configFile) {
+export function verifyFuses(target, configFile, variant = 'release') {
   const binary = fuseBinary(path.resolve(target))
   const wires = readFuseWires(fs.readFileSync(binary), electronFusesPackage())
   if (!wires.length) throw new Error(`No fuse wire in ${binary}`)
-  const expected = configuredFuses(configFile)
+  const expected = expectedFuses(configFile, variant)
   const problems = wires.flatMap((w) => fuseMismatches(w, expected))
-  if (problems.length) throw new Error(`Electron fuses in ${binary}:\n  ${problems.join('\n  ')}`)
+  if (problems.length) throw new Error(`Electron fuses in ${binary} (checked as a ${variant} build):\n  ${problems.join('\n  ')}`)
   return wires[0].states
 }
 
+/**
+ * The package is the variant it is being verified as, by both of the things
+ * that make it one: the fuses in the binary and the variant the main bundle was
+ * built as. A smoke main bundle in a release-fused binary fails as surely as
+ * the reverse. Throws naming each disagreement.
+ */
+export function verifyPackageVariant(resourcesRoot, configFile, variant = 'release') {
+  const problems = []
+  try { verifyFuses(resourcesRoot, configFile, variant) } catch (e) { problems.push(e.message) }
+  let built = null
+  try { built = readPackagedVariant(resourcesRoot) } catch (e) { problems.push(e.message) }
+  if (built && built !== variant) {
+    problems.push(`main bundle was built as a ${built} build (${VARIANT_FILE}), checked as ${variant}` +
+      (built === 'smoke' ? ': this package has test hooks enabled and must not ship' : ''))
+  }
+  if (problems.length) throw new Error(problems.join('\n'))
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const target = process.argv[2]
-  if (!target) { console.error('Usage: node scripts/verify-fuses.mjs <RedLog.app | Resources dir | executable>'); process.exit(2) }
+  const args = process.argv.slice(2)
+  const variant = args.includes('--smoke') ? 'smoke' : 'release'
+  const target = args.find((a) => !a.startsWith('--'))
+  if (!target || args.some((a) => a.startsWith('--') && a !== '--smoke')) { console.error('Usage: node scripts/verify-fuses.mjs [--smoke] <RedLog.app | Resources dir | executable>'); process.exit(2) }
   const configFile = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'electron-builder.yml')
   try {
-    const states = verifyFuses(target, configFile)
+    const states = verifyFuses(target, configFile, variant)
     for (const [name, index] of Object.entries(FUSE_INDEX)) console.log(`${name.padEnd(40)} ${states[index] ?? '-'}`)
-    console.log('Electron fuses match electron-builder.yml')
+    console.log(`Electron fuses match electron-builder.yml for a ${variant} build`)
   } catch (e) {
     console.error(e.message)
     process.exit(1)

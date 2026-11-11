@@ -3,6 +3,18 @@ import { readFileSync } from 'fs'
 import { execFileSync } from 'node:child_process'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
+import { buildVariantFromEnv, VARIANT_FILE } from './scripts/build-variant.mjs'
+
+// release unless REDLOG_SMOKE_BUILD=1 is set for this build (scripts/build-variant.mjs).
+// One value feeds both the main bundle's define and the file the release
+// verifier reads back out of the package, so the two cannot disagree.
+const buildVariant = buildVariantFromEnv(process.env)
+const writeBuildVariant = {
+  name: 'redlog:build-variant',
+  generateBundle(this: { emitFile: (file: { type: 'asset'; fileName: string; source: string }) => string }) {
+    this.emitFile({ type: 'asset', fileName: VARIANT_FILE.replace(/^out\/main\//, ''), source: `${JSON.stringify({ variant: buildVariant })}\n` })
+  }
+}
 
 const pkgVersion = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8')).version
 const buildId = (() => {
@@ -33,8 +45,8 @@ const dropLegacyWoff = {
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
-    define: { __APP_VERSION__: JSON.stringify(pkgVersion) }
+    plugins: [externalizeDepsPlugin(), writeBuildVariant],
+    define: { __APP_VERSION__: JSON.stringify(pkgVersion), __REDLOG_SMOKE_BUILD__: JSON.stringify(buildVariant === 'smoke') }
   },
   preload: {
     plugins: [externalizeDepsPlugin()],

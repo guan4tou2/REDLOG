@@ -73,14 +73,20 @@ jobs:
           python -m pip install --quiet mitmproxy
           mitmdump --version
 
-      - name: Build
+      # The SMOKE variant (docs/releasing.md): Playwright drives the installed
+      # app through the Node inspector, remote debugging and REDLOG_E2E, which a
+      # release build refuses. Never shipped; release.yml builds the release one.
+      - name: Build (smoke variant)
+        env:
+          REDLOG_SMOKE_BUILD: '1'
         run: npm run build
 
-      - name: Package the NSIS installer
-        run: npx electron-builder --win nsis --x64 --publish never
+      # Quoted so pwsh hands the override to electron-builder as one argument.
+      - name: Package the NSIS installer (smoke variant)
+        run: npx electron-builder --win nsis --x64 --publish never '--config.electronFuses.enableNodeCliInspectArguments=true'
 
       - name: Verify packaged capture resources
-        run: npm run verify:package-resources
+        run: npm run verify:package-resources:smoke
 
       - name: Clean-machine precondition
         # The point of running here is that nothing is installed yet. If the

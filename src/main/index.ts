@@ -122,14 +122,27 @@ import { registerTargetContextIpc } from './ipc/target-context'
 import { registerArtifactsIpc } from './ipc/artifacts'
 import type { IpcContext } from './ipc/types'
 import { launchPolicy } from './launch-policy'
+import { SMOKE_BUILD, resolveTestHooks } from './test-hooks'
 
 // First statement after the imports: before ready, before any switch is read.
 {
-  const policy = launchPolicy(process.argv, process.env, app.isPackaged)
+  if (SMOKE_BUILD) process.stderr.write('RedLog SMOKE BUILD: test hooks enabled (e2e switches, Node inspector, remote debugging). Not for release.\n')
+  const policy = launchPolicy(process.argv, process.env, app.isPackaged, SMOKE_BUILD)
   for (const name of policy.removeSwitches) app.commandLine.removeSwitch(name)
+  // Fail closed: a debugging switch that survived would open a port once the
+  // browser starts. Removal is effective today (launch-policy.ts); this is
+  // what stops a future Electron from quietly changing that.
+  const kept = policy.removeSwitches.filter((name) => app.commandLine.hasSwitch(name))
+  if (kept.length) {
+    process.stderr.write(`RedLog: refusing to start: could not remove --${kept.join(', --')} from this launch.\n`)
+    process.exit(1)
+  }
   for (const key of policy.clearEnv) delete process.env[key]
   if (policy.dropped.length) debugLog('app', 'launch switches ignored', policy.dropped.join(','))
 }
+
+// Resolved once, here; nothing else reads REDLOG_E2E* (test/test-hooks-scan.test.ts).
+const testHooks = resolveTestHooks(process.env, app.isPackaged, SMOKE_BUILD)
 
 // macOS routes ⌘C/⌘V/⌘Q through the application menu, so the default menu has
 // to stay there. Windows and Linux don't — and RedLog draws its own title bar
@@ -1004,6 +1017,7 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
     engagementId: opening.engagementId,
     operatorId: opening.operatorId,
     operatorName: config.operator.name,
+    testHooks: testHooks.e2e,
     configLoader: {
       getConfig: () => loadConfig(projectDir),
       getTargets: () => loadConfig(projectDir).scope.targets,
@@ -1144,7 +1158,7 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
 
   // Every open honours autoShow, not only the first: closing a project hides
   // the HUD (stopProject), so this is what brings it back.
-  const showHud = hud.autoShow && !(process.env.REDLOG_E2E === '1' && process.env.REDLOG_E2E_HIDE_HUD === '1')
+  const showHud = hud.autoShow && !testHooks.hideHud
   if (!overlayWindow) {
     overlayWindow = createOverlayWindow(loadOverlayPosition(), { show: showHud })
     bindOverlayReleaseShortcut(overlayWindow.webContents)
@@ -1286,7 +1300,7 @@ function stopProject(): void {
 // layout's narrow breakpoint, where the Settings sidebar is a <select> and
 // `[data-settings-page]` does not exist. Linux CI honours HOME and never saw it.
 // Must run before the single-instance lock, which also lives in userData.
-if (process.env.REDLOG_E2E === '1') {
+if (testHooks.e2e) {
   app.setPath('userData', path.join(homedir(), '.electron-user-data'))
 }
 
@@ -2154,7 +2168,7 @@ setUpdateImpactProvider(currentQuitImpact)
 function holdQuitForConfirmation(): boolean {
   if (forceQuit || isQuitAllowed()) return false
   // The e2e harness closes the app with live terminals; nothing is there to ask.
-  if (process.env.REDLOG_E2E === '1') return false
+  if (testHooks.e2e) return false
   const impact = currentQuitImpact()
   if (!impact) return false
   if (!quitPrompt) {
