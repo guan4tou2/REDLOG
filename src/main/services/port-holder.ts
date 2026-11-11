@@ -158,7 +158,7 @@ export async function recordProxyOwner(
   try {
     const startedAt = await startedAtOf(owner.pid)
     if (!startedAt) return
-    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
     fs.writeFileSync(file, JSON.stringify({ ...owner, startedAt } satisfies ProxyOwner), { mode: 0o600 })
   } catch { /* best-effort */ }
 }

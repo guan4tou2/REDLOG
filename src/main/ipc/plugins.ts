@@ -99,7 +99,7 @@ export function registerPluginsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   // plugin folders in and reload without hunting for the path.
   ipcMain.handle('plugins:openFolder', async () => {
     const dir = path.join(homedir(), '.redlog', 'plugins')
-    try { await fs.promises.mkdir(dir, { recursive: true }) } catch { /* ignore */ }
+    try { await fs.promises.mkdir(dir, { recursive: true, mode: 0o700 }) } catch { /* ignore */ }
     shell.openPath(dir)
     return dir
   })

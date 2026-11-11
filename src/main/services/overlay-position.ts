@@ -71,7 +71,7 @@ export function saveOverlayPosition(win: BrowserWindow): void {
     const display = screen.getDisplayNearestPoint({ x: b.x, y: b.y })
     const all = read()
     all[String(display.id)] = { x: b.x, y: b.y, at: Date.now() }
-    fs.mkdirSync(path.dirname(FILE), { recursive: true })
+    fs.mkdirSync(path.dirname(FILE), { recursive: true, mode: 0o700 })
     fs.writeFileSync(FILE, JSON.stringify(all, null, 2))
   } catch {
     /* a HUD that cannot remember where it was is not worth an error dialog */
