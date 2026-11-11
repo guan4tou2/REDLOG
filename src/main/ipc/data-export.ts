@@ -10,12 +10,9 @@ import { loadConfig } from '../../core/config'
 import { getProjectDir as getProjectPath } from '../../core/project-manager'
 import { getProjectDir, getReadonlyDB } from '../../core/db/index'
 import { createHash } from 'node:crypto'
-import { type RedLogEvent } from '../../core/db/events'
-import { redactEventForExport, type RedactExportOpts } from '../../core/redact-export'
-import { iterateSnapshotEvents } from '../../core/export-selection'
-import { ExportPlanRegistry, fingerprintValue, type ExportPlan, type ExportRequest } from '../../core/export-plan'
+import type { EventFileMetadata } from '../../core/export-events-file'
+import { ExportPlanRegistry, fingerprintValue, planSelectsAny, type ExportPlan, type ExportRequest } from '../../core/export-plan'
 import { getDoNotExportIds } from '../../core/db/do-not-export'
-import { writeApprovedEventExport } from '../../core/export-stream'
 import { exportableConfig } from '../../core/export-config'
 import { defaultExportDir, resolveExportDestination } from '../../core/export-destination'
 
@@ -35,8 +32,7 @@ async function resolveExportPlan(ctx: IpcContext, rawRequest: ExportRequest, pla
   if (ctx.getActiveProject()?.id !== project.id) throw new Error('project-changed')
   if (sanitizationRevision() !== revision) throw new Error('source-unavailable')
   if (fingerprintValue(loadConfig(getProjectPath(project))) !== plan.policyFingerprint) throw new Error('policy-changed')
-  const ids = new Set(plan.selectedEventIds)
-  if ([...getDoNotExportIds()].some(id => ids.has(id))) throw new Error('policy-changed')
+  if (planSelectsAny(plan, getDoNotExportIds())) throw new Error('policy-changed')
   plans.put(plan)
   return plan
 }
@@ -134,28 +130,7 @@ export function registerDataExportIpc(
     // test that fails once in fourteen needs to know which of the three
     // source-unavailable checks it was (#344).
     try {
-      const selectedIds = new Set(plan.selectedEventIds)
-      if ([...getDoNotExportIds()].some(id=>selectedIds.has(id))) return { ok: false as const, error: 'policy-changed', check: 'do-not-export' }
-      const available: Iterable<RedLogEvent> = { *[Symbol.iterator]() {
-        for (const event of iterateSnapshotEvents(plan.snapshot)) if (selectedIds.has(event.id)) yield event
-      } }
-      const planRedaction: RedactExportOpts = {
-        scope: plan.request.maskOutOfScope ? plan.scopeSnapshot : undefined
-      }
-      const approvedNow: Iterable<RedLogEvent> = { *[Symbol.iterator]() {
-        const digest = createHash('sha256').update('[')
-        let count = 0
-        for (const event of available) {
-          const redacted = redactEventForExport(event, planRedaction)
-          if (!redacted) continue
-          if (count++) digest.update(',')
-          digest.update(JSON.stringify(redacted))
-          yield redacted
-        }
-        digest.update(']')
-        // Verify exactly the bytes read for this delivery, not a second read.
-        if (count !== selectedIds.size || digest.digest('hex') !== plan.selectedEvidenceDigest) throw new Error('source-unavailable')
-      } }
+      if (planSelectsAny(plan, getDoNotExportIds())) return { ok: false as const, error: 'policy-changed', check: 'do-not-export' }
       const checked = await runTask({ kind: 'validate', project, plan }, () => ctx.getActiveProject()?.id === project.id)
       if (!('validation' in checked)) throw new Error('Invalid export validation result')
       if (!checked.validation.ok) return checked.validation
@@ -165,23 +140,24 @@ export function registerDataExportIpc(
       const deliveryAllowed = (completed = false) => {
         if (ctx.getActiveProject()?.id !== project.id) return false
         if (!completed) return true
-        if ([...getDoNotExportIds()].some(id => selectedIds.has(id))) throw new Error('policy-changed')
+        if (planSelectsAny(plan, getDoNotExportIds())) throw new Error('policy-changed')
         if (fingerprintValue(loadConfig(getProjectPath(project))) !== plan.policyFingerprint) throw new Error('policy-changed')
         if (sanitizationRevision() !== redactionRevision) throw new Error('source-unavailable')
         return true
       }
+      // JSON, NDJSON and Timeline slices are selected, redacted, digested and
+      // written inside the read-only worker; only the artifact path comes back.
+      const deliverEvents = async (format: 'json' | 'ndjson' | 'timeline', metadata: EventFileMetadata | null): Promise<string> => {
+        const result = await runTask({ kind: 'events', project, plan, format, metadata, outDir: destination.dir }, deliveryAllowed)
+        if (!('artifactPath' in result)) throw new Error('Invalid export result')
+        return result.artifactPath
+      }
       if (plan.request.format === 'json') {
-        const projectDir = getProjectPath(project)
-        const config = loadConfig(projectDir)
-        // The rows just verified against the plan's digest, not a second read.
-        const events = approvedNow
-        const outDir = destination.dir
-        artifactPath = await writeApprovedEventExport(outDir, 'json', events, {
-          config: exportableConfig(config), exportedAt: new Date().toISOString(), exportPlan: { id: plan.id, fingerprint: plan.fingerprint }
-        }, plan.request.scrubPii, deliveryAllowed)
+        artifactPath = await deliverEvents('json', {
+          config: exportableConfig(loadConfig(getProjectPath(project))), exportedAt: new Date().toISOString(), exportPlan: { id: plan.id, fingerprint: plan.fingerprint }
+        })
       } else if (plan.request.format === 'ndjson') {
-        artifactPath = await writeApprovedEventExport(destination.dir, 'ndjson', approvedNow, null,
-          plan.request.scrubPii, deliveryAllowed)
+        artifactPath = await deliverEvents('ndjson', null)
       } else if (plan.request.format === 'bundle') {
         const cfg = loadConfig(getProjectPath(project))
         const result = await runTask({ kind: 'bundle', project, approvedPlan: plan, engagementId: cfg.engagement.id, options: {
@@ -202,18 +178,18 @@ export function registerDataExportIpc(
           ...(subset.kind === 'time-range' ? { since: subset.since, before: subset.before, targetId: subset.targetId } : {}),
           snapshot: plan.snapshot,
           scope: plan.scopeSnapshot,
-          includeEventIds: selectedIds,
+          includeEventIds: new Set(plan.selectedEventIds),
           doNotExportIds: new Set()
         } }, deliveryAllowed)
         if (!('artifactPath' in result)) throw new Error('Invalid HAR result')
         artifactPath = result.artifactPath
       } else if (plan.request.format === 'timeline') {
         const subset = plan.request.subset
-        artifactPath = await writeApprovedEventExport(destination.dir, 'timeline', approvedNow, {
+        artifactPath = await deliverEvents('timeline', {
           ...(subset.kind === 'time-range' ? { window: { fromMs: subset.since, toMs: subset.before } } : {}),
           selection: subset,
           exportPlan: { id: plan.id, fingerprint: plan.fingerprint }
-        }, plan.request.scrubPii, deliveryAllowed)
+        })
       } else {
         return { ok: false as const, error: 'unsupported-format' }
       }
