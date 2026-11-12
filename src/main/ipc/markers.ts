@@ -5,13 +5,14 @@ import path from 'path'
 import { createHash } from 'crypto'
 import type { IpcMain } from 'electron'
 import type { IpcContext } from './types'
-import { insertEvent, queryMarkerAmendments, type RedLogEvent } from '../../core/db/events'
+import { insertEvent, queryEventById, queryMarkerAmendments, type RedLogEvent } from '../../core/db/events'
 import { ingestEvent } from '../../core/ingest'
 import { getProjectDir } from '../../core/project-manager'
 import { loadConfig } from '../../core/config'
 import { redactFields } from '../../core/redaction'
 import { amendMarker } from '../../core/marker-amend'
-import { isInsideDir } from '../../core/paths'
+import { resolveContainedFile } from '../../core/contained-file'
+import { MARKER_TITLE_MAX, MARKER_NOTES_MAX, capMarkerText } from '../../core/marker-text'
 import { getProjectDir as getOpenProjectDir } from '../../core/db/index'
 import { eventBus } from '../../core/event-bus'
 import type { ScreenshotAgent } from '../services/screenshot-agent'
@@ -37,8 +38,8 @@ export function hudMarkerFields(
 ): { title: string; notes: string; source_timestamp: number; source: 'hud' | 'hud-instant' } {
   const at = typeof input.at === 'number' && Number.isFinite(input.at) && input.at <= now && input.at > now - DAY_MS
     ? input.at : now
-  const title = (typeof input.title === 'string' ? input.title : '').trim().slice(0, 200)
-  const notes = (typeof input.notes === 'string' ? input.notes : '').slice(0, 10_000)
+  const title = (typeof input.title === 'string' ? input.title : '').trim().slice(0, MARKER_TITLE_MAX)
+  const notes = capMarkerText(input.notes, MARKER_NOTES_MAX) ?? ''
   return {
     title: title || `HUD mark ${new Date(at).toLocaleTimeString()}`,
     notes,
@@ -53,6 +54,37 @@ export function hudMarkerFields(
 export function markerCauses(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   return [...new Set(value.filter((v): v is string => typeof v === 'string' && v.length > 0 && v.length <= 128))].slice(0, 20)
+}
+
+/** Delete a screenshot's file and chain the deletion. Only the file of a
+ *  screenshot event in the open project, and only a regular file: for a link,
+ *  the hash recorded was of the file it pointed at while only the link was
+ *  removed, so the chain described a deletion that had not happened. */
+export function deleteScreenshotFile(
+  eventId: unknown,
+  filePath: unknown,
+  ids: { engagementId: string | null; operatorId: string | null }
+): { ok: true } | { ok: false; error: string } {
+  if (typeof eventId !== 'string' || !eventId || typeof filePath !== 'string' || !filePath) return { ok: false, error: 'invalid request' }
+  const screenshotDir = path.join(getOpenProjectDir(), 'screenshots')
+  const event = queryEventById(eventId)
+  const recorded = event?.agentType === 'screenshot' && typeof event.data?.filePath === 'string' ? event.data.filePath : null
+  if (!recorded || path.resolve(recorded) !== path.resolve(filePath)) return { ok: false, error: 'not a screenshot of this project' }
+  const file = resolveContainedFile(screenshotDir, filePath)
+  if (!file) return { ok: false, error: 'not a screenshot file in this project' }
+  const sha256 = createHash('sha256').update(fs.readFileSync(file)).digest('hex')
+  fs.unlinkSync(file)
+  if (ids.engagementId && ids.operatorId) {
+    const ev = insertEvent('system', {
+      subtype: 'screenshot_deleted',
+      source_event: eventId,
+      _causes: [eventId],
+      path: path.basename(file),
+      sha256_pre_delete: sha256
+    }, { engagementId: ids.engagementId, operatorId: ids.operatorId })
+    if (ev) eventBus.publish(ev)
+  }
+  return { ok: true }
 }
 
 export function registerMarkersIpc(
@@ -74,8 +106,8 @@ export function registerMarkersIpc(
     const at = data.atTimestamp
     const event = ingestEvent('marker', redactFields({
       ...(anchor ? { contentAnchor: {v:anchor.v,coordinate:anchor.coordinate,ref:{projectId:anchor.ref.projectId,eventId:anchor.ref.eventId,field:anchor.ref.field,version:anchor.ref.version},start:anchor.start,end:anchor.end,sha256:anchor.sha256} } : {}),
-      title: data.title,
-      notes: data.notes,
+      title: capMarkerText(data.title, MARKER_TITLE_MAX),
+      notes: capMarkerText(data.notes, MARKER_NOTES_MAX),
       severity: data.severity ?? 'info',
       category: data.category ?? 'custom',
       ...(typeof at === 'number' && Number.isFinite(at) && at > 0 ? { atTimestamp: at } : {}),
@@ -115,25 +147,10 @@ export function registerMarkersIpc(
 
   ipcMain.handle('screenshot:deleteFile', (_e, eventId: string, filePath: string) => {
     try {
-      const screenshotDir = path.join(getOpenProjectDir(), 'screenshots')
-      const resolved = path.resolve(filePath)
-      if (!isInsideDir(screenshotDir, resolved)) return { ok: false, error: 'path outside project' }
-      let sha256: string | null = null
-      try { sha256 = createHash('sha256').update(fs.readFileSync(resolved)).digest('hex') } catch { /* file may already be gone */ }
-      fs.unlinkSync(resolved)
-      const engId = ctx.getCurrentEngagementId()
-      const opId = ctx.getCurrentOperatorId()
-      if (engId && opId) {
-        const ev = insertEvent('system', {
-          subtype: 'screenshot_deleted',
-          source_event: eventId,
-          _causes: [eventId],
-          path: path.basename(resolved),
-          sha256_pre_delete: sha256
-        }, { engagementId: engId, operatorId: opId })
-        if (ev) eventBus.publish(ev)
-      }
-      return { ok: true }
+      return deleteScreenshotFile(eventId, filePath, {
+        engagementId: ctx.getCurrentEngagementId(),
+        operatorId: ctx.getCurrentOperatorId()
+      })
     } catch (e) {
       return { ok: false, error: (e as Error).message }
     }

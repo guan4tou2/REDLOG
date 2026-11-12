@@ -189,6 +189,22 @@ describeDB('capture-health', () => {
     expect(h.sources.find((s) => s.id === 'terminal')?.state).toBe('ready')
   })
 
+  // Seen on the dashboard: 「HTTP 代理啟動失敗」 on the HTTP row, and the badge
+  // green 「擷取狀態正常」 above it.
+  it('a managed proxy that failed to start makes the verdict partial, not healthy and not dark', async () => {
+    const { configureManagedProxyHealth } = await import('../src/core/capture-health')
+    mockHooks({ 'shell-zsh': true, 'claude-code': false })
+    ins('shell', { subtype: 'command_start', command: 'nmap', source: 'zsh' })
+    try {
+      configureManagedProxyHealth(() => ({ state: 'failed', url: null, error: 'port in use' }))
+      expect(getCaptureHealth().verdict).toBe('partial')
+      configureManagedProxyHealth(() => ({ state: 'stopped', url: null }))
+      expect(getCaptureHealth().verdict).toBe('healthy')
+    } finally {
+      configureManagedProxyHealth(() => undefined)
+    }
+  })
+
   // One row for both terminals: RedLog's own panes and the operator's own
   // shell are the same capture in two places, and which one a command came
   // from is on the command (`data.source`), not on a capture source.

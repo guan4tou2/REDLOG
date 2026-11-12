@@ -8,6 +8,7 @@ import { followCaptureEndpoint, isLoopbackHost } from '../../../../core/managed-
 import { DEFAULT_BROWSER } from '../../../../core/browser-defaults'
 import { CaCommand, caTrustCommand, caUntrustCommand, thisOs } from '../HttpCaptureStep'
 import { CopyButton } from '../CopyButton'
+import { proxyErrorText } from '../../lib/httpCaptureState'
 import { useReadState } from '../../lib/readState'
 import { useRevalidateOnFocus } from '../../hooks/useRevalidateOnFocus'
 
@@ -177,7 +178,7 @@ export default function BrowserPanel({
       )}
       {proxyRead.state.phase === 'failed' && <p role="alert" className="text-xs text-red-400 break-all">{proxyRead.state.error}</p>}
       {proxyActionError && <p role="alert" className="text-xs text-red-400 break-all">{proxyActionError}</p>}
-      {proxyStatus.error && <p className="text-xs text-red-400 break-all">{proxyStatus.error}</p>}
+      {proxyStatus.error && <p className="text-xs text-red-400 break-all">{proxyErrorText(proxyStatus, t)}</p>}
       {/* The listener, as Burp shows it: the address to put in your own
           browser's proxy settings. */}
       {proxyKnown && proxyStatus.state === 'running' && proxyStatus.url && (

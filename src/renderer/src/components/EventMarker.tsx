@@ -60,11 +60,13 @@ export default function EventMarker({ onClose, atTimestamp, heldFrame, contentAn
     const onKey = (e: KeyboardEvent): void => {
       // Escape that cancels an input-method candidate is not a dismiss, and a
       // typed draft is kept just as the backdrop click keeps it.
-      if (e.key !== 'Escape' || e.isComposing || e.keyCode === 229 || hasDraft) return
-      e.preventDefault(); onClose()
+      if (e.key !== 'Escape' || e.isComposing || e.keyCode === 229) return
+      // Kept draft or not, this Escape is the dialog's and closes nothing behind it.
+      e.preventDefault(); e.stopPropagation()
+      if (!hasDraft) onClose()
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
   }, [onClose, hasDraft])
 
   const handleSave = async () => {

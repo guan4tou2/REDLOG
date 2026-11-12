@@ -198,7 +198,7 @@ Markers, bookmarks and findings are still yours to write. RedLog keeps the recor
 - **EXPOSED alarm** — when the external IP hits the blacklist, the whole frame flashes red (toggle in Settings ▸ Overlay display); default on
 - **Live pivot chain** — active internal-network pivot nodes (tool · node · route); listed as detected, without claiming which node forwards to which or that a channel is up
 - **macOS Dock icon** — configurable (Settings ▸ Overlay display); opening the HUD otherwise flips the app to accessory activation and drops the Dock icon
-- **Click-through Mode** — passes mouse events through to windows below; hover to reactivate
+- **Click-through Mode** — passes mouse events through to windows below; release it with Cmd/Ctrl+Shift+P or the menu bar. HUD settings are machine-wide preferences (`~/.redlog/hud-prefs.json`), not per project
 - **Draggable** — grab the overlay to reposition
 - **Menubar / tray** — red pulsing dot while recording (no text label — keeps the menu-bar compact)
 
@@ -439,9 +439,13 @@ Export your project config as a `.yaml` or `.json` profile:
 
 | Key | Action |
 |-----|--------|
-| Cmd+1..8 | Switch views |
+| Cmd+1..7 | Switch views (Dashboard, Activity, Timeline, HTTP, Targets & scope, Evidence, Terminal) |
+| Cmd+9 | Settings |
+| Cmd+K (alias Cmd+/) | Command palette: go to a view, run a command, search events |
+| Cmd+. | Pause / resume recording |
 | Cmd+Shift+M | Add marker (opens the marker dialog) |
-| Cmd+/ | Search |
+| Cmd+Shift+2 | Take a screenshot of the display under the cursor |
+| Cmd+Shift+P | Release the HUD's click-through (registered only while click-through is on and the HUD is visible) |
 
 ## Security Model
 

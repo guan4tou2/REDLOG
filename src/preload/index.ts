@@ -309,7 +309,8 @@ const api: RedLogAPI = {
   },
   capture: {
     health: () => ipcRenderer.invoke('capture:health'),
-    clearUnattributedSpool: (upTo: number) => ipcRenderer.invoke('capture:clearUnattributedSpool', upTo)
+    clearUnattributedSpool: (upTo: number) => ipcRenderer.invoke('capture:clearUnattributedSpool', upTo),
+    openPrerequisiteFix: (url: string) => ipcRenderer.invoke('capture:openPrerequisiteFix', url)
   },
   operators: {
     list: () => ipcRenderer.invoke('operators:list')
@@ -341,6 +342,7 @@ const api: RedLogAPI = {
     shells: () => ipcRenderer.invoke('terminal:shells'),
     write: (id: string, data: string) => ipcRenderer.send('terminal:write', id, data),
     resize: (id: string, cols: number, rows: number) => ipcRenderer.send('terminal:resize', id, cols, rows),
+    ack: (id: string, chars: number) => ipcRenderer.send('terminal:ack', id, chars),
     kill: (id: string) => ipcRenderer.send('terminal:kill', id),
     list: () => ipcRenderer.invoke('terminal:list'),
     onData: (id: string, cb: (data: string) => void) => {

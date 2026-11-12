@@ -71,6 +71,21 @@ it('says a failed pivot read is a failed read, not "none", and retries', async (
   expect(screen.queryByTestId('pivot-error')).toBeNull()
 })
 
+// #691: the stale message says "the N below are the last list read"; the list
+// has to be there, marked as such, with the retry.
+it('keeps the last list read, marked stale, when a later read fails', async () => {
+  install({ list: two }); mount()
+  expect(await screen.findAllByTestId('pivot-node')).toHaveLength(2)
+  act(() => change(null as unknown as Pivot[]))
+  const err = await screen.findByTestId('pivot-error')
+  expect(err.textContent).toContain('the 2 below are the last list read')
+  expect(screen.getByTestId('pivot-nodes').getAttribute('data-stale')).toBe('true')
+  expect(screen.getAllByTestId('pivot-node')).toHaveLength(2)
+  fireEvent.click(within(err).getByRole('button', { name: 'Retry' }))
+  await waitFor(() => expect(screen.queryByTestId('pivot-error')).toBeNull())
+  expect(screen.getByTestId('pivot-nodes').getAttribute('data-stale')).toBeNull()
+})
+
 it('follows pushed changes', async () => {
   install({ list: [] }); mount()
   await screen.findByText('203.0.113.18')

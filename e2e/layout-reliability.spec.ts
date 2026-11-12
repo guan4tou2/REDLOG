@@ -10,7 +10,9 @@ import zh from '../src/renderer/src/i18n/zh-TW.json'
 const sizes = [[800, 600], [1280, 800], [1600, 1000], [1920, 1080]] as const
 const zooms = [1, 1.5, 2]
 const host = `${'long-target-'.repeat(12)}example.test`
-const projectName = `Layout ${'long-project-name-'.repeat(8)}`
+// As long as a name can be: stored names are cut at PROJECT_NAME_MAX (120),
+// and the delete dialog asks for the stored one.
+const projectName = `Layout ${'long-project-name-'.repeat(6)}`
 
 async function noOverflow(page: Page, selector: string): Promise<void> {
   await expect.poll(() => page.locator(selector).evaluate(el => ({

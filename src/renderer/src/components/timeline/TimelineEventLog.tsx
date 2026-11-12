@@ -3,6 +3,7 @@
 // Timeline.tsx (UI/UX audit F13) with every value it shows passed in; the
 // panel still owns selection and the events themselves.
 
+import { memo } from 'react'
 import type { RedLogEvent } from '../../../../core/db/event-types'
 import type { PluginEventType } from '../../lib/timelineDomain'
 import { isMac, isWindows } from '../../lib/platform'
@@ -20,7 +21,10 @@ const blindCauseKey = isWindows
 
 type Translate = (key: string, vars?: Record<string, string | number>) => string
 
-export function TimelineEventLog({
+/** Memoised: the panel re-renders for things the rail does not show (the
+ *  toolbar's total, the clock, the filter box's state), and fifty cards are
+ *  built again each time it did. */
+export const TimelineEventLog = memo(function TimelineEventLog({
   events, selectedId, detailOpen, pluginTypes, showOperator, operatorLabel,
   titleOf, amendSuffix, amendCountOf, onSelect, onOpen, t, heightPx, rootRef, total,
   hiddenByQuery = 0, showingAll = false, onToggleHidden, annotatedIds, attributionBlind = false,
@@ -145,4 +149,4 @@ export function TimelineEventLog({
       </div>
     </div>
   )
-}
+})

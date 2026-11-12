@@ -302,26 +302,28 @@ export default function StatusBar(): JSX.Element {
               : !captureUnknown && (captureVerdict === 'dark' || (recording && !lastEventAt)) ? t('statusBar.captureWaiting')
               : t('statusBar.rec')
             }</span>
-            <span
+            {!narrow && <span
               className="text-redlog-text-dim tabular-nums shrink-0"
               title={since ? t('statusBar.uptimeSince', { date: formatDateTime(since) }) : undefined}
               aria-label={since ? `${uptimeStr} — ${t('statusBar.uptimeSince', { date: formatDateTime(since) })}` : undefined}
               data-testid="statusbar-uptime"
-            >{uptimeStr}</span>
+            >{uptimeStr}</span>}
           </button>
         )
       })()}
 
       <Sep />
 
-      {/* Narrow: the dot and an accessible name, not the word. At 800×600 with
-          the shell at 200% the bar is 400px wide and the three word labels
-          pushed the HUD toggle past the right edge, where `overflow-hidden`
-          made it unreachable — a control that exists and cannot be clicked.
-          The words are still there for a screen reader, and in the title. */}
+      {/* The IP and scope words stay at every width: they are the OPSEC state,
+          and a bare dot is unreadable exactly when space is tight. Narrow, the
+          bar sheds the lower-value items instead — the event count, the HUD
+          label, the uptime and the IP address — and the recording label
+          truncates. (At 800×600 with the shell at 200% the bar is 400px wide;
+          three word labels there once pushed the HUD toggle past the right
+          edge, where `overflow-hidden` made it unreachable.) */}
       <div className="flex items-center gap-1.5 shrink-0" title={ipStatus?.externalIP ? `${safetyLabel} ${ipStatus.externalIP}` : safetyLabel}>
         <span className={`w-1.5 h-1.5 rounded-full ${safetyDot}`} />
-        <span aria-hidden={narrow || undefined} className={narrow ? 'sr-only' : (safety === 'safe' ? 'text-emerald-400/80' : safety === 'exposed' ? 'text-red-400/80' : 'text-amber-400/80')}>
+        <span data-testid="status-bar-ip-state" className={safety === 'safe' ? 'text-emerald-400/80' : safety === 'exposed' ? 'text-red-400/80' : 'text-amber-400/80'}>
           {safetyLabel}
         </span>
         {!narrow && ipStatus?.externalIP && (
@@ -351,22 +353,22 @@ export default function StatusBar(): JSX.Element {
         {scopeObservations > 0 ? (
           <>
             <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-            <span aria-hidden={narrow || undefined} className={narrow ? 'sr-only' : 'text-red-400/80'}>{t('statusBar.scopeObservations', { count: scopeObservations })}</span>
+            <span data-testid="status-bar-scope-state" className="text-red-400/80">{t('statusBar.scopeObservations', { count: scopeObservations })}</span>
           </>
         ) : scopeUnknown ? (
           <>
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-            <span aria-hidden={narrow || undefined} className={narrow ? 'sr-only' : 'text-amber-400/80'}>{t('statusBar.scopeUnknown')}</span>
+            <span data-testid="status-bar-scope-state" className="text-amber-400/80">{t('statusBar.scopeUnknown')}</span>
           </>
         ) : scopeConfigured ? (
           <>
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            <span aria-hidden={narrow || undefined} className={narrow ? 'sr-only' : 'text-emerald-400/80'}>{t('statusBar.scopeOk')}</span>
+            <span data-testid="status-bar-scope-state" className="text-emerald-400/80">{t('statusBar.scopeOk')}</span>
           </>
         ) : (
           <>
             <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
-            <span aria-hidden={narrow || undefined} className={narrow ? 'sr-only' : 'text-redlog-text-dim'}>{t('statusBar.scopeNotConfigured')}</span>
+            <span data-testid="status-bar-scope-state" className="text-redlog-text-dim">{t('statusBar.scopeNotConfigured')}</span>
           </>
         )}
       </button>

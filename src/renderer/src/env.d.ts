@@ -413,6 +413,8 @@ interface RedLogAPI {
     shells: () => Promise<Array<{ id: string; label: string; flavour: 'powershell' | 'posix' | 'none' }>>
     write: (id: string, data: string) => void
     resize: (id: string, cols: number, rows: number) => void
+    /** Characters of this pane's output xterm has parsed (flow control). */
+    ack: (id: string, chars: number) => void
     kill: (id: string) => void
     list: () => Promise<Array<{
       id: string; pid: number; lastActivity: number
@@ -525,6 +527,7 @@ interface RedLogAPI {
     /** Delete the commands set aside with no project (#255) — only those
      *  written no later than `upTo`, the newest the card was showing. */
     clearUnattributedSpool: (upTo: number) => Promise<{ removed: number; failed: number }>
+    openPrerequisiteFix: (url: string) => Promise<{ ok: boolean; error?: string }>
   }
   wsl: {
     listDistros: () => Promise<WslDistro[]>
@@ -595,6 +598,8 @@ interface CaptureSourceInfo {
   disabled?: boolean
   /** E3: this plugin producer is heartbeating — the operator has it running. */
   running?: boolean
+  /** #688: core/capture-health.ts CapturePrerequisite. */
+  prerequisites?: Array<import('../../core/capture-health').CapturePrerequisite>
 }
 
 interface EventNote {
@@ -639,6 +644,7 @@ interface ManagedProxyStatus {
   url: string | null
   pid?: number
   error?: string
+  errorReason?: import('../../core/capture-health').ProxyFailureReason
   caPath?: string
   /** The CA file exists. Not a claim that anything trusts it. */
   certReady?: boolean

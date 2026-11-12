@@ -310,7 +310,7 @@ test('remaining views distinguish pending, empty, failed and partial reads', asy
       await expect(transcriptError).toHaveCount(0)
       await expect(transcriptEmpty).toBeVisible()
 
-      // Scope: a five-channel Promise.all → pending when ANY member hangs,
+      // Scope: a three-channel Promise.all → pending when ANY member hangs,
       // failed when any rejects (scope.loadFailed), loaded = the observations heading.
       const scopeRoot = page.getByTestId('view-root')
       const scopeEmpty = scopeRoot.getByRole('heading', { name: strings['scope.observationsTitle'] })
@@ -319,18 +319,19 @@ test('remaining views distinguish pending, empty, failed and partial reads', asy
       await expect(scopeRoot.locator('[role="status"]').first()).toBeVisible()
       await expect(scopeEmpty).toHaveCount(0)
       await releaseOne()
-      // Restore the pending channel to a plain value — the later fail leg
-      // replaces only getLastRecompute, and a retry must not meet a still
-      // pending Promise.all member.
+      // Restore the pending channel to a plain value before the fail leg.
       await answer('scope:getObservationCount', 0)
       await expect(scopeEmpty).toBeVisible()
-      await answer('scope:getLastRecompute', null, true)
+      // The page is isConfigured + getObservations + getObservationCount. The
+      // chain length and the last recompute are read on their own since #691:
+      // one of those failing leaves its part out, not the page.
+      await answer('scope:getObservationCount', 0, true)
       await openView(page, 'dashboard')
       await openView(page, 'scope')
       const scopeError = scopeRoot.locator('[role="alert"]')
       await expect(scopeError).toBeVisible()
       await expect(scopeError.getByText(strings['scope.loadFailed'], { exact: false })).toBeVisible()
-      await answer('scope:getLastRecompute', null)
+      await answer('scope:getObservationCount', 0)
       await scopeError.getByRole('button', { name: strings['common.retry'], exact: true }).click()
       await expect(scopeError).toHaveCount(0)
       await expect(scopeEmpty).toBeVisible()

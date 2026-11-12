@@ -16,9 +16,23 @@ export interface ClosedTerminalRecording {
   error?: string
 }
 
+/** How long frames may wait in memory before they are written, and how much
+ *  may wait. A frame used to be one `writeSync` on the main thread per PTY data
+ *  event; a flood is thousands a second. */
+export const CAST_FLUSH_MS = 50
+export const CAST_FLUSH_BYTES = 64 * 1024
+
 /** Owns the descriptor and hashes only committed bytes. Project close can
  * finish a recording before SQLite closes, without racing queued stream writes
- * or re-reading an accumulated cast on the main thread. */
+ * or re-reading an accumulated cast on the main thread.
+ *
+ * Frames are held and written together (CAST_FLUSH_MS / CAST_FLUSH_BYTES), on
+ * a part change, on `flush()` and on `close()`. The file is byte-for-byte what
+ * one write per frame produced: the same lines, in the same order, split into
+ * parts at the same places, hashed as written (test/terminal-output.test.ts).
+ * `bytes` is the logical position, held frames included, because command byte
+ * ranges are taken from it; `flush()` before reading a range from disk. A write
+ * that fails while frames are held is reported through `onError`. */
 export class TerminalRecording {
   private fd: number | null
   private hash = crypto.createHash('sha256')
@@ -29,16 +43,45 @@ export class TerminalRecording {
   private readonly segments: TerminalRecordingSegment[] = []
   private result: ClosedTerminalRecording | null = null
   private failure: string | undefined
+  private held: Buffer[] = []
+  private heldBytes = 0
+  private flushTimer: ReturnType<typeof setTimeout> | null = null
   bytes = 0
   truncated = false
 
-  constructor(readonly path: string, header: Record<string, unknown>, private readonly maxBytes: number) {
+  constructor(readonly path: string, header: Record<string, unknown>, private readonly maxBytes: number,
+    private readonly onError?: (error: string) => void) {
     this.headerLine = JSON.stringify(header) + '\n'
     if (maxBytes < Buffer.byteLength(this.headerLine) + 32) throw new Error('Cast segment budget is smaller than its header and a frame')
     this.partPath = path
     this.fd = fs.openSync(path, 'wx', 0o600)
-    try { this.write(this.headerLine) }
+    // The header goes to disk at once: a recording that cannot write fails here.
+    try { this.write(this.headerLine); this.flush() }
     catch (error) { this.fail(error); this.close(); throw error }
+  }
+
+  /** Write held frames now. Throws what the write threw. */
+  flush(): void {
+    if (this.flushTimer) { clearTimeout(this.flushTimer); this.flushTimer = null }
+    if (this.heldBytes === 0 || this.fd === null) return
+    const buffer = this.held.length === 1 ? this.held[0] : Buffer.concat(this.held, this.heldBytes)
+    this.held = []
+    this.heldBytes = 0
+    let offset = 0
+    try {
+      while (offset < buffer.length) {
+        const written = fs.writeSync(this.fd, buffer, offset, buffer.length - offset)
+        if (written <= 0) throw new Error('Recording write made no progress')
+        this.hash.update(buffer.subarray(offset, offset + written))
+        this.partHash.update(buffer.subarray(offset, offset + written))
+        offset += written
+      }
+    } catch (error) {
+      // Count only what reached the disk, as a write per frame did.
+      this.partBytes -= buffer.length - offset
+      this.bytes -= buffer.length - offset
+      throw error
+    }
   }
 
   get open(): boolean { return this.fd !== null }
@@ -79,7 +122,9 @@ export class TerminalRecording {
 
   close(): ClosedTerminalRecording {
     if (this.result) return this.result
+    if (this.flushTimer) { clearTimeout(this.flushTimer); this.flushTimer = null }
     if (this.fd !== null) {
+      try { this.flush() } catch (error) { this.fail(error) }
       try { this.closePart() } catch (error) { this.fail(error) }
     }
     this.result = {
@@ -94,19 +139,27 @@ export class TerminalRecording {
 
   private write(text: string): void {
     const buffer = Buffer.from(text)
-    let offset = 0
-    while (offset < buffer.length) {
-      const written = fs.writeSync(this.fd!, buffer, offset, buffer.length - offset)
-      if (written <= 0) throw new Error('Recording write made no progress')
-      this.hash.update(buffer.subarray(offset, offset + written))
-      this.partHash.update(buffer.subarray(offset, offset + written))
-      this.partBytes += written
-      this.bytes += written
-      offset += written
+    this.held.push(buffer)
+    this.heldBytes += buffer.length
+    this.partBytes += buffer.length
+    this.bytes += buffer.length
+    if (this.heldBytes >= CAST_FLUSH_BYTES) { this.flush(); return }
+    if (!this.flushTimer) {
+      this.flushTimer = setTimeout(() => {
+        this.flushTimer = null
+        try { this.flush() } catch (error) {
+          this.fail(error)
+          this.close()
+          this.onError?.(this.failure ?? 'Recording write failed')
+        }
+      }, CAST_FLUSH_MS)
+      this.flushTimer.unref?.()
     }
   }
 
   private closePart(): void {
+    // Held frames belong to this part.
+    this.flush()
     const fd = this.fd
     this.fd = null
     if (fd === null) return

@@ -33,6 +33,9 @@ import { QUICK_MARK_ACCELERATOR, QUICK_SHOT_ACCELERATOR } from '../core/shortcut
 import fs from 'fs'
 import { eventBus } from '../core/event-bus'
 import { ScreenshotAgent } from './services/screenshot-agent'
+import { installCapturePrerequisites } from './services/capture-prerequisites'
+import { screenshotRequestFile } from './screenshot-protocol'
+import { externalUrlAllowed } from '../core/external-url'
 import { LootDetector, listLootRules } from '../core/loot-detector'
 import { startAnchorLoop, stopAnchorLoop, verifyRandomSample } from '../core/chain-anchor'
 import { startNtpLoop, stopNtpLoop } from '../core/clock'
@@ -92,7 +95,6 @@ import { detectLink, linkForDisplay, type NetworkLink } from './services/network
 import { checkForUpdates, setUpdaterAirgap, setUpdateImpactProvider, getUpdateStatus, onUpdateStatus, cancelUpdateDownload, installReadyUpdate, setUpdateOutcome, takeUpdateOutcome, autoCheckEnabled, setAutoCheck, restoreUnfinishedUpdate } from './services/updater'
 import { readUpdateMarker, clearUpdateMarker, judgeUpdateOutcome } from './services/update-marker'
 import { recordUpdateOutcome } from '../core/update-anchor'
-import { isInsideDir } from '../core/paths'
 import { contentSecurityPolicy } from '../core/csp'
 import { backfillCastIndex, closeCastIndex } from '../core/cast-index'
 import { ProjectRuntime, type ProjectContext } from '../core/project-runtime'
@@ -263,7 +265,7 @@ async function startManagedHttpCaptureNow(): Promise<ManagedProxyStatus> {
     if (holder) {
       // The event was already written here; what was missing is the status.
       // An operator reading "stopped" has no reason to look for an event.
-      const status = managedHttpProxy.noteStartFailure(holder)
+      const status = managedHttpProxy.noteStartFailure(holder.message, holder.reason)
       publishManagedProxyEvent('http_proxy_failed', status)
       return status
     }
@@ -323,6 +325,7 @@ function httpCaptureStatus(): ManagedProxyStatus {
 }
 
 configureManagedProxyHealth(httpCaptureStatus)
+installCapturePrerequisites()
 managedHttpProxy.onStatusChange((next, previous) => {
   if (previous.state === 'running' && next.state === 'failed') {
     publishManagedProxyEvent('http_proxy_failed', next)
@@ -1350,23 +1353,15 @@ app.whenReady().then(() => {
   // v0.6.97 B: serve screenshots via a custom protocol instead of piping
   // 33%-inflated base64 data URIs through IPC. Renderer uses
   // `<img src="redlog-screenshot://<filename>">` and Chromium streams the
-  // bytes directly from disk. Path guarded by `isInsideDir(<project>/screenshots)`
-  // so a request for `redlog-screenshot://../../.ssh/id_ed25519` 404s.
+  // bytes directly from disk. Only a regular file in <project>/screenshots is
+  // served, so `redlog-screenshot://../../.ssh/id_ed25519` and a link planted
+  // in that folder are both refused.
   protocol.handle('redlog-screenshot', async (req) => {
     try {
-      const url = new URL(req.url)
-      // Only take the trailing path segment so `redlog-screenshot://local/foo.jpg`
-      // and `redlog-screenshot://foo.jpg` both resolve to <projectDir>/screenshots/foo.jpg.
-      // Callers pass basename only; the hostname/segment ordering depends on how
-      // Chromium normalises the URL (differs between platforms).
-      const segments = decodeURIComponent(url.pathname).split('/').filter(Boolean)
-      const basename = segments[segments.length - 1] || decodeURIComponent(url.hostname || '')
-      if (!basename || basename.includes('..') || basename.includes('/') || basename.includes('\\')) {
-        return new Response('', { status: 400 })
-      }
-      const screenshotDir = path.join(getProjectDir(), 'screenshots')
-      const resolved = path.resolve(screenshotDir, basename)
-      if (!isInsideDir(screenshotDir, resolved)) return new Response('', { status: 403 })
+      // Name checks and real-path containment (no links): screenshot-protocol.ts.
+      const target = screenshotRequestFile(req.url, getProjectDir())
+      if ('status' in target) return new Response('', { status: target.status })
+      const resolved = target.file
       // v0.6.100 F4: async read. With v0.6.98 A lazy-loading, 500 thumbs
       // burst-fire requests as ScreenshotsView scrolls — each 800KB-1.5MB
       // JPEG readFileSync blocked the main thread 5-15ms (same reason
@@ -1499,7 +1494,10 @@ app.whenReady().then(() => {
     startProject(project)
     return project
   })
-  ipcMain.handle('project:delete', (_e, id: string) => deleteProject(id))
+  // Never the open project: its database, casts and API token are in use, and
+  // the API answered 401 once the folder went. The picker deletes from the
+  // closed state; `false` is the refusal it already reports.
+  ipcMain.handle('project:delete', (_e, id: string) => deleteProject(id, projectRuntime.project()?.id))
   ipcMain.handle('project:rename', (_e, id: string, name: string) => {
     const updated = renameProject(id, name)
     // Keep the open project's name in sync if it is the one renamed — the
@@ -2083,8 +2081,9 @@ app.whenReady().then(() => {
   // effects, and untrusted plugin content might reach this handler.
   ipcMain.handle('app:openExternal', async (_e, url: string) => {
     try {
-      const u = new URL(url)
-      if (u.protocol !== 'http:' && u.protocol !== 'https:') return { ok: false, error: 'scheme not allowed' }
+      // http(s) only, and no `user:pass@` — credentials in a link are handed
+      // to the OS and the browser along with it (external-url.ts).
+      if (!externalUrlAllowed(url)) return { ok: false, error: 'url not allowed' }
       await shell.openExternal(url)
       return { ok: true }
     } catch (e) {

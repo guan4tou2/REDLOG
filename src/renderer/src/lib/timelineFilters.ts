@@ -16,23 +16,43 @@ import { LANES, type LaneId, BAND_OF, toLane, type PluginEventType } from './tim
  * - an amendment is drawn as its own row, and also lights its marker, whose
  *   shown title comes from it.
  */
+/** What `mapMatchesToDrawn` needs to know about the drawn rows. */
+export interface DrawnMatchIndex {
+  ids: Set<string>
+  endByCommand: Map<string, RedLogEvent>
+  rowBySession: Map<string, string>
+}
+
+/** Fold `drawn[from…]` into `index` (in place; `from` 0 builds one). */
+export function indexDrawnForMatches(drawn: readonly RedLogEvent[], from = 0, index: DrawnMatchIndex = {
+  ids: new Set(), endByCommand: new Map(), rowBySession: new Map()
+}): DrawnMatchIndex {
+  for (let i = from; i < drawn.length; i++) {
+    const e = drawn[i]
+    index.ids.add(e.id)
+    const key = operationPairKey(e)
+    if (e.agentType === 'shell' && e.data?.subtype === 'command_end' && key) index.endByCommand.set(key, e)
+    const session = sourceSessionKey(e)
+    if (e.agentType === 'agent' && session && !index.rowBySession.has(session)) index.rowBySession.set(session, e.id)
+  }
+  return index
+}
+
 export function mapMatchesToDrawn(
   matchedIds: ReadonlySet<string>,
   loaded: readonly RedLogEvent[],
-  drawn: readonly RedLogEvent[]
+  drawn: readonly RedLogEvent[],
+  // Kept by the caller across flushes (lib/timelineIncremental): the walk is
+  // then over the matches, not over every loaded row. Same answer.
+  prepared?: { drawn: DrawnMatchIndex; loadedById: ReadonlyMap<string, RedLogEvent> }
 ): { lit: Set<string>; hiddenByCollapse: number } {
-  const drawnIds = new Set(drawn.map((e) => e.id))
-  const endByCommand = new Map<string, RedLogEvent>()
-  const rowBySession = new Map<string, string>()
-  for (const e of drawn) {
-    const key = operationPairKey(e)
-    if (e.agentType === 'shell' && e.data?.subtype === 'command_end' && key) endByCommand.set(key, e)
-    const session = sourceSessionKey(e)
-    if (e.agentType === 'agent' && session && !rowBySession.has(session)) rowBySession.set(session, e.id)
-  }
+  const { ids: drawnIds, endByCommand, rowBySession } = prepared?.drawn ?? indexDrawnForMatches(drawn)
+  const matchedLoaded: Iterable<RedLogEvent> = prepared
+    ? (function* () { for (const id of matchedIds) { const e = prepared.loadedById.get(id); if (e) yield e } })()
+    : loaded
   const lit = new Set<string>()
   let hiddenByCollapse = 0
-  for (const e of loaded) {
+  for (const e of matchedLoaded) {
     if (!matchedIds.has(e.id)) continue
     if (drawnIds.has(e.id)) {
       lit.add(e.id)
@@ -264,6 +284,14 @@ export function computeWindowSlice(
   cap = 50,
   matched: ReadonlySet<string> | null = null
 ): WindowSlice {
+  // The whole track on screen with nothing hidden and no query — zoom 1, the
+  // default, and the live case — is every row: the newest `cap` and the count,
+  // without a walk (the walk below gives exactly this).
+  const widthPx = (vp.width / 100) * vp.trackW
+  const wholeTrackVisible = widthPx <= 0 || (vp.left <= 0.01 && vp.width >= 99.99) || vp.timeSpan <= 0
+  if (wholeTrackVisible && !matched && hiddenLanes.size === 0) {
+    return { recent: events.slice(Math.max(0, events.length - cap)), totalAll: events.length, total: events.length }
+  }
   return scanWindow(
     events,
     (e) => !hiddenLanes.has(toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes)),

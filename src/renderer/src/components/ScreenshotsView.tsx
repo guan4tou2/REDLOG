@@ -83,10 +83,15 @@ function ShotButtons({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.El
         {a.t('screenshots.copyHash')}
       </button>
     )}
-    {!gone && <button type="button" data-testid="screenshot-delete" className={`${LINK} hover:text-red-400`} aria-label={a.t('screenshots.deleteTitle')} onClick={() => a.remove(shot)}>
+    {/* No path, no file: there is nothing for "delete file" to remove. */}
+    {!gone && filePath && <button type="button" data-testid="screenshot-delete" className={`${LINK} hover:text-red-400`} aria-label={a.t('screenshots.deleteTitle')} onClick={() => a.remove(shot)}>
       {a.t('screenshots.deleteFile')}
     </button>}
   </div>
+}
+
+function hasImage(shot: RedLogEvent, a: ShotActions): boolean {
+  return typeof shot.data.filePath === 'string' && shot.data.filePath !== '' && !a.unreadable(shot.id)
 }
 
 function ShotMeta({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Element {
@@ -101,9 +106,11 @@ function ShotMeta({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Eleme
       <span className="font-mono text-xs text-redlog-text-faint tabular-nums">{formatTime(shot.timestamp, { seconds: true })}</span>
     </div>
     <div className="flex flex-wrap items-center gap-2 text-xs">
-      <span data-testid="screenshot-state" className={`rounded border px-1.5 ${a.deleted(shot.id) ? 'border-amber-500/40 bg-amber-500/10 text-amber-300' : 'border-redlog-border bg-redlog-elevated text-redlog-text-dim'}`}>
+      {/* "Recorded" beside an image that is not there reads as a contradiction;
+          the thumbnail placeholder already says the image is unavailable. */}
+      {(a.deleted(shot.id) || hasImage(shot, a)) && <span data-testid="screenshot-state" className={`rounded border px-1.5 ${a.deleted(shot.id) ? 'border-amber-500/40 bg-amber-500/10 text-amber-300' : 'border-redlog-border bg-redlog-elevated text-redlog-text-dim'}`}>
         {a.t(a.deleted(shot.id) ? 'screenshots.deletedKept' : 'screenshots.recorded')}
-      </span>
+      </span>}
       {/* The recorded hash, as recorded; the note says it is not a check. */}
       {sha && <span data-testid="screenshot-hash" className="font-mono text-redlog-text-faint" title={`${a.t('screenshots.hashNote')} SHA-256: ${sha}`}>SHA-256 · {sha.slice(0, 12)}…</span>}
     </div>
@@ -269,7 +276,10 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
     const ok = await confirmDialog(t('screenshots.deleteTitle'), t('screenshots.deleteConfirm', { name }), true)
     if (!ok) return
     const fp = s.data.filePath as string | undefined
-    if (!fp) return
+    if (!fp) {
+      toast(t('screenshots.deleteFailed'), { type: 'error', why: t('screenshots.deleteFailedWhy') })
+      return
+    }
     const res = await window.redlog.screenshot.deleteFile(s.id, fp)
     if (res.ok) {
       setDeletedIds((prev) => { const n = new Set(prev); n.add(s.id); return n })

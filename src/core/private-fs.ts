@@ -93,7 +93,11 @@ export function restrictRedlogHome(home: string = os.homedir()): void {
   for (const name of names) {
     const project = path.join(projects, name)
     chmodBestEffort(project, DIR_MODE)
-    for (const suffix of ['', '-wal', '-shm']) chmodBestEffort(path.join(project, `timeline.db${suffix}`), FILE_MODE)
+    for (const suffix of ['', '-wal', '-shm']) {
+      chmodBestEffort(path.join(project, `timeline.db${suffix}`), FILE_MODE)
+      chmodBestEffort(path.join(project, `cast-index.db${suffix}`), FILE_MODE)
+    }
+    chmodBestEffort(path.join(project, 'config.yaml'), FILE_MODE)
     restrictTree(path.join(project, 'exports'))
   }
 

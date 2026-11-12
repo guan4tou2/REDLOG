@@ -2,7 +2,7 @@ import { execFile } from 'child_process'
 import { eventBus } from '../../core/event-bus'
 import { ingestEvent } from '../../core/ingest'
 import { notePortPid, socketCausesFor } from '../../core/socket-attribution'
-import { noteDbError } from '../../core/capture-health'
+import { noteDbError, noteCaptureError, clearCaptureError } from '../../core/capture-health'
 import type { ProjectIdentity } from '../../core/project-runtime'
 import {
   parseSs, parseNetstatBsd, parseNetstatWin, parseLsof, attachLsof,
@@ -142,6 +142,7 @@ async function poll(): Promise<void> {
   const run = generation
   try {
     const conns = (await snapshot()).filter(capturable)
+    clearCaptureError('connection-monitor')
     // A restart or a stop ran while the table was read: its seed is what this
     // would be diffed against, and it may have turned capture off.
     if (run !== generation || !cfg.enabled) return
@@ -168,8 +169,10 @@ async function poll(): Promise<void> {
       known.delete(k)
       emitClose(c, t ? now - t.openedAt : 0)
     }
-  } catch {
-    /* table unavailable this tick — try again next poll */
+  } catch (e) {
+    // The socket table could not be read (the command is missing, or refused):
+    // nothing is being recorded, and the row has to say so. Next poll retries.
+    if (run === generation && cfg.enabled) noteCaptureError('connection-monitor', e)
   } finally {
     polling = false
   }

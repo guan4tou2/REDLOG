@@ -94,6 +94,7 @@ function body(hook: string): string {
   return `
 if [ -n "\${ZSH_VERSION:-}" ]; then zmodload zsh/datetime 2>/dev/null; fi
 echo "CLOCK \${EPOCHREALTIME:+available}"
+echo "NSDATE $(date +%s%N 2>/dev/null)"
 unset _REDLOG_DIR _REDLOG_HOST WSL_DISTRO_NAME REDLOG_EXTERNAL_SESSION REDLOG_TERMINAL REDLOG_TERMINAL_ID
 export SHELL=\${SHELL:-/bin/sh}
 . ${hook}
@@ -167,7 +168,13 @@ rm -f "$S"
   for (const m of run.stdout.matchAll(/^RC (\d+) (\d+)$/gm)) rc[Number(m[1])] = Number(m[2])
   const dumpLine = run.stdout.split('\n').find((l) => l.startsWith('DUMP '))
   if (!dumpLine) throw new Error(`${shell}: no DUMP line.\nstdout: ${run.stdout.slice(0, 400)}\nstderr: ${run.stderr.slice(0, 600)}`)
-  return { preciseClock: /^CLOCK available$/m.test(run.stdout), rc, dump: JSON.parse(dumpLine.slice(5)) }
+  return {
+    // The shell's own clock, or a `date` that prints nanoseconds: either gives
+    // the builder its millisecond. A `date` that prints a literal N does not.
+    preciseClock: /^CLOCK available$/m.test(run.stdout) || /^NSDATE \d{16,}$/m.test(run.stdout),
+    rc,
+    dump: JSON.parse(dumpLine.slice(5))
+  }
 }
 
 describeShell('the shell-built event payload', () => {
@@ -196,9 +203,10 @@ describeShell('the shell-built event payload', () => {
         })
 
         it(`${c.name}: ${c.fast ? 'is built by the shell' : 'is handed to python'}`, () => {
-          // macOS ships Bash 3 without EPOCHREALTIME. Declining every fast
-          // payload there is intentional; the Python path above must still
-          // produce every event. Bash 5 and zsh retain all fast-path checks.
+          // macOS ships Bash 3 without EPOCHREALTIME; there the builder takes
+          // its millisecond from one `date +%s%N`, and only where that `date`
+          // prints nanoseconds. Without either it declines every payload, and
+          // the Python path above must still produce every event.
           const shouldBuild = c.fast && results[shell]!.preciseClock
           expect(results[shell]!.rc[i], 'return status of the fast builder').toBe(shouldBuild ? 0 : 1)
         })

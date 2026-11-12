@@ -25,7 +25,10 @@ export function useTimelineViewport(scrollRef: RefObject<HTMLDivElement | null>,
   const updateView = useCallback(() => {
     const el = scrollRef.current
     if (!el || geometry.width <= 0) return
-    setView({ left: el.scrollLeft / geometry.width * 100, width: Math.min(100, el.clientWidth / geometry.width * 100) })
+    // Called after every layout and every flush; an unchanged view must not
+    // cost the panel another render.
+    const left = el.scrollLeft / geometry.width * 100, width = Math.min(100, el.clientWidth / geometry.width * 100)
+    setView((prev) => (prev.left === left && prev.width === width ? prev : { left, width }))
     setAtRightEdge(el.scrollLeft + el.clientWidth >= geometry.width - 10)
     if (history.hasMore && !history.loading && el.scrollLeft < 80) history.loadMore()
   }, [scrollRef, geometry.width, history.hasMore, history.loading, history.loadMore])

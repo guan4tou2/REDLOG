@@ -9,7 +9,7 @@ import { toast, toastDeferred } from './Toast'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { EmptyState } from './EmptyState'
 import { Crosshair, ChevronRight, ChevronDown } from 'lucide-react'
-import { hostInScope } from '../lib/scope'
+import { hostInScope, scopeConfigured } from '../lib/scope'
 import { useSharedFilter } from '../lib/FilterContext'
 import { createThrottledRead, type ThrottledRead } from '../lib/throttledRead'
 
@@ -44,6 +44,8 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
   const [selected, setSelected] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [evidence, setEvidence] = useState<RedLogEvent[]>([])
+  // The open target's first page: a failed read is not "no events".
+  const [evidencePhase, setEvidencePhase] = useState<'loading' | 'loaded' | 'failed'>('loaded')
   const [hasMore, setHasMore] = useState(false)
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -57,10 +59,10 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
   // the live-batch subscription below is the first render's, and classifying
   // there used the first render's empty scope — every target turned unclassified
   // after the first live event. Unknown, not in scope, when the rules could not
-  // be read, and also when none were ever declared: with no rule there is
-  // nothing to be inside of.
+  // be read, and also when no target is allowed (core's rule): exclusions
+  // alone draw no boundary to be inside of.
   const targets = useMemo<TargetEntry[]>(() => {
-    const noRules = scopeFailed || (scopeTargets.length === 0 && excludeTargets.length === 0)
+    const noRules = scopeFailed || !scopeConfigured({ targets: scopeTargets })
     return rows.map((r) => ({ ...r, inScope: noRules ? null : hostInScope(r.target, scopeTargets, excludeTargets) }))
   }, [rows, scopeTargets, excludeTargets, scopeFailed])
   // The aggregate is a whole-project scan over both tiers and a recording sends
@@ -74,12 +76,21 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
   const { t } = useI18n()
   // Re-read the selected target's first page, when a live row could not be
   // checked against it. Declared above the effect that calls it.
+  // Only the newest first-page read is applied: a reply for a target that is
+  // no longer open, or for an earlier opening of it, is dropped.
+  const evidenceSeq = useRef(0)
   const reloadEvidenceRef = useRef(async (target: string): Promise<void> => {
-    const page = await window.redlog.events.queryPage({ targetId: target, excludeHousekeeping: true, limit: 200 })
-    if (selectedRef.current !== target) return
-    setEvidence(page.items)
-    setHasMore(page.hasMore)
-    setNextCursor(page.nextCursor)
+    const mine = ++evidenceSeq.current
+    try {
+      const page = await window.redlog.events.queryPage({ targetId: target, excludeHousekeeping: true, limit: 200 })
+      if (mine !== evidenceSeq.current || selectedRef.current !== target) return
+      setEvidence(page.items)
+      setHasMore(page.hasMore)
+      setNextCursor(page.nextCursor)
+      setEvidencePhase('loaded')
+    } catch {
+      if (mine === evidenceSeq.current && selectedRef.current === target) setEvidencePhase('failed')
+    }
   })
 
   useEffect(() => {
@@ -211,8 +222,20 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
 
   const PAGE_SIZE = 200
 
-  const loadEvidence = useCallback(async (target: string) => {
+  // Housekeeping aside, as the count and the Timeline leave it (spec 038 SC-002).
+  // The previous target's rows go before the read starts, so B never shows A's.
+  const readEvidence = useCallback((target: string): void => {
+    setEvidence([])
+    setHasMore(false)
+    setNextCursor(null)
+    setEvidencePhase('loading')
+    selectedRef.current = target
+    void reloadEvidenceRef.current(target)
+  }, [])
+
+  const loadEvidence = useCallback((target: string): void => {
     if (selected === target) {
+      evidenceSeq.current++
       setSelected(null)
       setEvidence([])
       setHasMore(false)
@@ -220,24 +243,16 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
       return
     }
     setSelected(target)
-    // Housekeeping aside, as the count and the Timeline leave it (spec 038 SC-002).
-    try {
-      const page = await window.redlog.events.queryPage({ targetId: target, excludeHousekeeping: true, limit: PAGE_SIZE })
-      setEvidence(page.items)
-      setHasMore(page.hasMore)
-      setNextCursor(page.nextCursor)
-    } catch (err) {
-      setEvidence([])
-      setHasMore(false)
-      toast(t('targets.evidenceFailed'), { type: 'error', detail: err instanceof Error ? err.message : String(err) })
-    }
-  }, [selected, t])
+    readEvidence(target)
+  }, [selected, readEvidence])
 
   const loadMore = useCallback(async () => {
     if (!selected || !nextCursor || loadingMore) return
     setLoadingMore(true)
     try {
-      const page = await window.redlog.events.queryPage({ targetId: selected, excludeHousekeeping: true, limit: PAGE_SIZE, cursor: nextCursor })
+      const target = selected
+      const page = await window.redlog.events.queryPage({ targetId: target, excludeHousekeeping: true, limit: PAGE_SIZE, cursor: nextCursor })
+      if (selectedRef.current !== target) return
       setEvidence((prev) => [...prev, ...page.items])
       setHasMore(page.hasMore)
       setNextCursor(page.nextCursor)
@@ -262,24 +277,24 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
     return true
   })
   // With no readable rule there is no in/out to filter by.
-  const scopeKnown = !scopeFailed && (scopeTargets.length > 0 || excludeTargets.length > 0)
+  const scopeKnown = !scopeFailed && scopeConfigured({ targets: scopeTargets })
+
+  // One rule for the button and for ⌘↩: an open target lands on its newest
+  // evidence row, by id, so the Timeline can select it; a closed one has only
+  // its last-seen time. One target control: the FilterBar chip, the same
+  // target_id predicate the count on this page comes from.
+  const jumpToTimeline = (tgt: TargetEntry): void => {
+    setTargetId(tgt.target)
+    const newest = selected === tgt.target ? evidence[0] : undefined
+    if (newest) onOpenInTimeline?.(newest.timestamp, newest.id)
+    else onOpenInTimeline?.(tgt.lastSeen)
+  }
 
   // §7's main path: target → expand its commands → ⌘↩ to the Timeline.
   const listNav = useListKeyboard({
     count: filtered.length,
     onActivate: (i) => { const tgt = filtered[i]; if (tgt) void loadEvidence(tgt.target) },
-    onJumpToTimeline: (i) => {
-      const tgt = filtered[i]
-      if (!tgt) return
-      // One target control: the FilterBar chip, the same target_id predicate
-      // the count on this page comes from.
-      setTargetId(tgt.target)
-      // An open target lands on its newest evidence row, by id, so the
-      // Timeline can select it; a closed one has only its last-seen time.
-      const newest = selected === tgt.target ? evidence[0] : undefined
-      if (newest) onOpenInTimeline?.(newest.timestamp, newest.id)
-      else onOpenInTimeline?.(tgt.lastSeen)
-    },
+    onJumpToTimeline: (i) => { const tgt = filtered[i]; if (tgt) jumpToTimeline(tgt) },
     onEscape: () => setSelected(null)
   })
 
@@ -382,7 +397,14 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
 
               {open && (
                 <div className="ml-9 mr-4 mb-3 border-l-2 border-redlog-border pl-3 space-y-1 py-1">
-                  {evidence.length === 0 ? (
+                  {evidencePhase === 'loading' ? (
+                    <p data-testid="target-evidence-loading" role="status" className="text-redlog-text-faint text-xs">{t('targets.loading')}</p>
+                  ) : evidencePhase === 'failed' ? (
+                    <div data-testid="target-evidence-failed" role="alert" className="flex flex-wrap items-center gap-2 text-xs text-red-400">
+                      <span>{t('targets.evidenceFailed')}</span>
+                      <Button size="compact" level="quiet" onClick={() => readEvidence(tgt.target)}>{t('common.retry')}</Button>
+                    </div>
+                  ) : evidence.length === 0 ? (
                     <p className="text-redlog-text-faint text-xs">{t('targets.noEvidence')}</p>
                   ) : (
                     <>
@@ -394,7 +416,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                           }, {})
                         ).map(([type, count]) => (
                           <span key={type} className="text-xs text-redlog-text-dim bg-redlog-elevated px-1.5 py-0.5 rounded">
-                            {type}: {count}
+                            {agentTypeLabel(type, t)}: {count}
                           </span>
                         ))}
                       </div>
@@ -430,7 +452,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                       <Button size="compact" data-testid="target-work-on" onClick={() => workOn(tgt.target)}>{t('activeTarget.workOn')}</Button>
                     )}
                     {onOpenInTimeline && (
-                      <Button size="compact" data-testid="target-locate" onClick={() => { setTargetId(tgt.target); onOpenInTimeline(tgt.lastSeen) }}>{t('targets.openInTimeline')}</Button>
+                      <Button size="compact" data-testid="target-locate" onClick={() => jumpToTimeline(tgt)}>{t('targets.openInTimeline')}</Button>
                     )}
                     {tgt.inScope === false && (
                       <Button size="compact" data-testid="target-add-to-scope" onClick={() => { void addToScope(tgt) }}>{t('targets.addToScope')}</Button>

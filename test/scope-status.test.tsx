@@ -66,7 +66,9 @@ describe('Scope & Evidence page', () => {
     expect(onOpenSettings).toHaveBeenCalledWith('v1.example')
   })
 
-  it.each(['getObservations', 'getLastRecompute'] as const)('shows a failed %s read and recovers on retry without claiming an empty result', async method => {
+  // getLastRecompute used to be here too. Since #691 it is an auxiliary read
+  // that fails on its own without failing the page: test/scope-status-aux-reads.test.tsx.
+  it.each(['getObservations'] as const)('shows a failed %s read and recovers on retry without claiming an empty result', async method => {
     installBridge({ rows: [], truncated: false }, 0)
     vi.spyOn(window.redlog.scope, method).mockRejectedValueOnce(new Error('read refused'))
     render(<I18nProvider><ScopeStatus /></I18nProvider>)

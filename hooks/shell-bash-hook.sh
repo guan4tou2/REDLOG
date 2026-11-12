@@ -12,7 +12,16 @@ fi
 # twice. Plain, un-exported: a child shell is a new interpreter and must load.
 [[ "${_REDLOG_HOOK_LOADED_IN:-}" == "$$" ]] && return 0
 
-_redlog_adapter_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The directory part by expansion, as `dirname` would give it: one process
+# fewer on every new terminal.
+_redlog_adapter_dir=${BASH_SOURCE[0]}
+case "$_redlog_adapter_dir" in
+  */*) _redlog_adapter_dir=${_redlog_adapter_dir%/*}; : "${_redlog_adapter_dir:=/}" ;;
+  # Git Bash and MSYS hand over `D:\repo\hooks\shell-bash-hook.sh`.
+  *\\*) _redlog_adapter_dir=${_redlog_adapter_dir%\\*} ;;
+  *) _redlog_adapter_dir=. ;;
+esac
+_redlog_adapter_dir="$(cd "$_redlog_adapter_dir" && pwd)"
 
 # Local identity describes this interpreter; the exported value lets a
 # standalone sender identify its caller without guessing from $SHELL (#325).
@@ -64,12 +73,19 @@ _REDLOG_CMD_CAPTURE=""
 # variable survives neither a subshell nor a prompt, and an operator who types
 # `redlog stop` before a client's credential and sees it recorded anyway
 # uninstalls the tool (FR-022). The transitions live in redlog-relay.py.
-_REDLOG_SESSION_ID=${REDLOG_TERMINAL_ID:-$(_redlog_new_command_id)}
+_redlog_mint_command_id
+_REDLOG_SESSION_ID=${REDLOG_TERMINAL_ID:-$_redlog_id}
 export _REDLOG_SESSION_ID
 _REDLOG_SKIP=""
 
 _redlog_state_file() {
-  printf '%s/terminals/%s.json' "${_REDLOG_DIR:-$HOME/.redlog}" "$_REDLOG_SESSION_ID"
+  _redlog_state_path
+  printf '%s' "$_redlog_path"
+}
+
+# The same, in `_redlog_path`: the check at every command reads it.
+_redlog_state_path() {
+  _redlog_path="${_REDLOG_DIR:-$HOME/.redlog}/terminals/$_REDLOG_SESSION_ID.json"
 }
 
 _redlog_state() {
@@ -80,12 +96,65 @@ _redlog_state() {
 }
 
 # No file yet means a terminal that has not been told otherwise: recording.
+# Read by `read`, not `grep` (`_redlog_state_records`): no process.
 _redlog_is_recording() {
   _redlog_terminal_allowed || return 1
-  local file
-  file=$(_redlog_state_file)
-  [[ -f "$file" ]] || return 0
-  grep -q '"recording"[[:space:]]*:[[:space:]]*true' "$file"
+  _redlog_state_path
+  [[ -f "$_redlog_path" ]] || return 0
+  _redlog_state_records "$_redlog_path"
+}
+
+# A command line's class: what `redlog-relay.py classify` says, remembered.
+# The answer depends on the line and on three files — the shipped policy
+# beside the relay, the operator's overlay and the plugins' profiles — so it
+# is kept per line until any of those files reads differently, which is what
+# the zsh adapter does with `zstat`. bash has no builtin that stats a file, so
+# the signature is the files' contents, read by `read`: a few KB, no process.
+# Asking python3 for every command was ~50 ms each time.
+#
+# bash 3.2 has no associative arrays: two arrays, searched in order, emptied
+# when they reach 128 lines. Only an answer is kept — an empty one is python3
+# failing, and remembering it would make one bad moment permanent.
+_REDLOG_CLASS_SIG=""
+_REDLOG_CLASS_LINES=()
+_REDLOG_CLASS_VALUES=()
+
+_redlog_class_of() {
+  local line=$1 home=$2 sig="" f i
+  for f in "${_REDLOG_RELAY%/*}/command-class.json" "$home/.redlog/command-class.json" "$home/.redlog/terminal-profiles.json"; do
+    if [[ ! -e "$f" ]]; then sig+="absent|"
+    elif _redlog_read_text "$f"; then sig+="${#_redlog_text}:$_redlog_text|"
+    else sig+="unreadable|"
+    fi
+  done
+  _redlog_text=""
+  sig+=$home
+  if [[ "$sig" != "$_REDLOG_CLASS_SIG" ]]; then
+    _REDLOG_CLASS_SIG=$sig
+    _REDLOG_CLASS_LINES=()
+    _REDLOG_CLASS_VALUES=()
+  fi
+  for (( i = 0; i < ${#_REDLOG_CLASS_LINES[@]}; i++ )); do
+    if [[ "${_REDLOG_CLASS_LINES[i]}" == "$line" ]]; then
+      _redlog_class=${_REDLOG_CLASS_VALUES[i]}
+      return 0
+    fi
+  done
+  local -a words
+  read -r -a words <<<"$line"
+  # Externals are run inside `$( )` throughout the DEBUG trap. Measured on
+  # bash 3.2: a bare external command run from a DEBUG trap takes the next job
+  # number and leaves a "Done" line in the operator's `jobs`; the same command
+  # in a command substitution does neither.
+  _redlog_class=$(python3 "$_REDLOG_RELAY" classify --home "$home" \
+    --command-line "$line" -- "${words[@]}" 2>/dev/null)
+  [[ -n "$_redlog_class" ]] || return 0
+  if (( ${#_REDLOG_CLASS_LINES[@]} >= 128 )); then
+    _REDLOG_CLASS_LINES=()
+    _REDLOG_CLASS_VALUES=()
+  fi
+  _REDLOG_CLASS_LINES[${#_REDLOG_CLASS_LINES[@]}]=$line
+  _REDLOG_CLASS_VALUES[${#_REDLOG_CLASS_VALUES[@]}]=$_redlog_class
 }
 
 redlog() {
@@ -287,10 +356,29 @@ _redlog_trace_command() {
   # the first thing traced after it is our own prompt hook.
   # The rest of the hook's own prompt command, for when something runs it while
   # armed (a hook loaded twice gives a prompt command two tails).
+  # `_REDLOG_TRAP_ARMED=1` is `_redlog_arm`'s body: when stdin ends at an idle
+  # prompt, bash runs the EXIT trap and fires DEBUG before it with
+  # `$BASH_COMMAND` still naming the last simple command it ran, which is that.
   case "$BASH_COMMAND" in
-    _redlog_prompt_command|_redlog_arm*|_redlog_trap_plan*|*_REDLOG_TRAP_NEXT*) return ;;
+    _redlog_prompt_command|_redlog_arm*|_redlog_trap_plan*|*_REDLOG_TRAP_NEXT*|_REDLOG_TRAP_ARMED=*) return ;;
   esac
   [[ -n "$_REDLOG_LAST_CMD" || -n "$_REDLOG_SKIP" ]] && return
+  # bash 5, stdin ending at an idle prompt: DEBUG fires before the EXIT trap
+  # with `$BASH_COMMAND` put back to the last command the operator ran, and
+  # `history 1` still showing its line — a second start for a line that already
+  # ended. What gives it away is the line number: every line read at the prompt
+  # has a higher one than the line before, and this one does not (measured on
+  # 5.1: it reads 1). The history number is asked only then, so a real line is
+  # never dropped on the line number alone.
+  local at=${BASH_LINENO[${#BASH_LINENO[@]}-1]}
+  if [[ -n "${_REDLOG_TRACED_AT:-}" ]] && (( at <= _REDLOG_TRACED_AT )) \
+     && [[ "$(_redlog_history_number)" == "${_REDLOG_HISTNUM:-}" ]]; then
+    return
+  fi
+  _REDLOG_TRACED_AT=$at
+  # Where zsh's preexec does it: once per line, before anything is sent. A
+  # switch leaves this terminal stopped, so the check below skips the line.
+  _redlog_check_project
   local cmd whole=1
   cmd=$(_redlog_current_line) || { cmd="$BASH_COMMAND"; whole=0; }
 
@@ -306,7 +394,8 @@ _redlog_trace_command() {
   fi
   _REDLOG_LAST_CMD="$cmd"
   _REDLOG_CMD_START=$SECONDS
-  _REDLOG_CMD_ID=$(_redlog_new_command_id)
+  _redlog_mint_command_id
+  _REDLOG_CMD_ID=$_redlog_id
   _REDLOG_CMD_CLASS=native
   _REDLOG_DIVERT_FAILED=""
 
@@ -314,16 +403,11 @@ _redlog_trace_command() {
   # is known is one simple command of it, and deciding "this is relayed" from
   # the first stage of `a | less` is exactly the mistake FR-029 exists for.
   if (( whole )) && _redlog_is_running; then
-    local -a words
     local home=$HOME
     [[ -n "${_REDLOG_DIR:-}" ]] && home=${_REDLOG_DIR%/*}
-    read -r -a words <<<"$cmd"
-    # Externals are run inside `$( )` throughout this trap. Measured on bash
-    # 3.2: a bare external command run from a DEBUG trap takes the next job
-    # number and leaves a "Done" line in the operator's `jobs`; the same command
-    # in a command substitution does neither.
-    _REDLOG_CMD_CLASS=$(python3 "$_REDLOG_RELAY" classify --home "$home" \
-      --command-line "$cmd" -- "${words[@]}" 2>/dev/null)
+    _redlog_class=""
+    _redlog_class_of "$cmd" "$home"
+    _REDLOG_CMD_CLASS=$_redlog_class
     : "${_REDLOG_CMD_CLASS:=native}"
   fi
 
@@ -473,6 +557,9 @@ _redlog_record_untraced_line() {
   local exit_code=$1 line id num=$2
   [[ -n "$num" && -n "${_REDLOG_HISTNUM:-}" ]] || return 0
   (( num == _REDLOG_HISTNUM + 1 )) || return 0
+  # Sent after the line ran, so the project may have changed since the last
+  # one: the same check as a traced line, before the same recording test.
+  _redlog_check_project
   _redlog_is_recording || return 0
   line=$(HISTTIMEFORMAT='' builtin history 1 2>/dev/null) || return 0
   line="${line#"${line%%[![:space:]]*}"}"
@@ -485,7 +572,8 @@ _redlog_record_untraced_line() {
   # as they always have.
   [[ "$line" =~ ^[[:space:]]*(function[[:space:]]+)?[A-Za-z_][A-Za-z0-9_:.-]*[[:space:]]*\(\) ]] && return 0
   [[ "$line" =~ ^[[:space:]]*function[[:space:]] ]] && return 0
-  id=$(_redlog_new_command_id)
+  _redlog_mint_command_id
+  id=$_redlog_id
   _redlog_send_event "command_start" "$line" \
     "{\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$id\",\"class\":\"native\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
   _redlog_send_event "command_end" "$line" \
@@ -635,6 +723,10 @@ _redlog_install_exit_cleanup
 # Pin this terminal's identity and starting state before the first prompt.
 # `begin` is idempotent: re-sourcing does not undo a `redlog stop`.
 _redlog_state --action begin >/dev/null 2>&1
+# What `begin` pinned is what the identity file says now, so this is the first
+# sight `_redlog_check_project` compares against: a switch before the first
+# command is then a switch.
+_redlog_identity_stamp && _REDLOG_IDENTITY_SEEN=$_redlog_stamp
 # Behind the prompt: with thousands left over it is not something to wait for.
 ( _redlog_sweep_relay_dirs </dev/null >/dev/null 2>&1 & )
 _redlog_announce_shell

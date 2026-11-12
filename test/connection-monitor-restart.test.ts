@@ -13,14 +13,19 @@ const h = vi.hoisted(() => ({
   table: [] as Connection[],
   /** How long the next socket-table read takes, read when it starts. */
   delay: 5,
-  rows: [] as Array<Record<string, unknown>>
+  rows: [] as Array<Record<string, unknown>>,
+  /** The socket-table command fails (missing, refused). */
+  fail: false,
+  captureErrors: [] as string[],
+  cleared: 0
 }))
 
 vi.mock('child_process', () => ({
   // The table as it is when the command runs, delivered when it finishes.
   execFile: (_cmd: string, _args: string[], _opts: unknown, cb: (err: Error | null, stdout: string) => void) => {
     const stdout = JSON.stringify(h.table)
-    setTimeout(() => cb(null, stdout), h.delay)
+    const err = h.fail ? Object.assign(new Error(`spawn ${_cmd} ENOENT`), { code: 'ENOENT' }) : null
+    setTimeout(() => cb(err, err ? '' : stdout), h.delay)
   }
 }))
 vi.mock('../src/core/connection-table', async (importOriginal) => {
@@ -34,7 +39,11 @@ vi.mock('../src/core/ingest', () => ({
     return null
   }
 }))
-vi.mock('../src/core/capture-health', () => ({ noteDbError: () => {} }))
+vi.mock('../src/core/capture-health', () => ({
+  noteDbError: () => {},
+  noteCaptureError: (source: string, e: unknown) => { h.captureErrors.push(`${source}: ${(e as Error).message}`) },
+  clearCaptureError: () => { h.cleared++ }
+}))
 vi.mock('../src/core/socket-attribution', () => ({ notePortPid: () => {}, socketCausesFor: () => [] }))
 
 let cm: typeof import('../src/main/services/connection-monitor')
@@ -60,6 +69,9 @@ beforeEach(async () => {
   h.table = []
   h.delay = 5
   h.rows.length = 0
+  h.fail = false
+  h.captureErrors.length = 0
+  h.cleared = 0
   cm = await import('../src/main/services/connection-monitor')
 })
 
@@ -158,5 +170,33 @@ describe('connection monitor — a read that finishes late', () => {
     await vi.advanceTimersByTimeAsync(200)
     await vi.advanceTimersByTimeAsync(1000)     // the first poll after the save reads [c1, c2]
     expect(opened(), 'c2 predates the newest seed').toHaveLength(0)
+  })
+})
+
+// #688: a poll that cannot read the socket table used to be swallowed, so the
+// row stayed green while nothing was being recorded.
+describe('connection monitor — a socket table it cannot read', () => {
+  it('reports the failure on its own source, and clears it once a read succeeds', async () => {
+    h.fail = true
+    cm.configureConnectionMonitor(ON)
+    await settle()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(h.captureErrors.length).toBeGreaterThan(0)
+    expect(h.captureErrors[0]).toMatch(/^connection-monitor: spawn \S+ ENOENT/)
+    h.fail = false
+    const before = h.cleared
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(h.cleared).toBeGreaterThan(before)
+  })
+
+  it('says nothing once capture was turned off while the failing read was in flight', async () => {
+    cm.configureConnectionMonitor(ON)
+    await settle()
+    h.fail = true
+    h.delay = 50
+    await vi.advanceTimersByTimeAsync(990)
+    save(false)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(h.captureErrors).toEqual([])
   })
 })

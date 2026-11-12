@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { computeVisibility, shouldRefetch, EMPTY_SIGNALS, type VisibilitySignals } from '../lib/visibility'
 import type { SidebarViewId } from '../lib/sidebarOrder'
 
@@ -24,13 +24,32 @@ export function useVisibility(
   // `null` means "not asked yet" and is NOT the same as "nothing yet":
   // reading it as the latter would show a mature project's operator the
   // first-run screen while the real answer was still in flight.
-  const [visSignals, setVisSignals] = useState<VisibilitySignals | null>(null)
+  // Keyed by the project the answer belongs to. Between a project change and
+  // its own probe resolving, the previous project's answer must not be read as
+  // this one's: that is how a project with data reopened after a fresh one
+  // showed the first-run screen.
+  const [signalsFor, setSignalsFor] = useState<{ projectId: string | null; signals: VisibilitySignals | null }>(
+    { projectId: null, signals: null }
+  )
+  const projectId = project?.id ?? null
+  const visSignals = signalsFor.projectId === projectId ? signalsFor.signals : null
+  const setVisSignals = useCallback(
+    (s: VisibilitySignals | null) => setSignalsFor({ projectId, signals: s }),
+    [projectId]
+  )
   // Latched, not derived. `visibility.firstRun` goes false the instant the
   // first row lands — which is the exact moment the screen exists to show. Read
   // straight, the strip would be unmounted before the operator saw it light up,
   // and the answer to "is this being recorded" would be a flicker. It clears
   // when they leave the screen.
   const [firstRunActive, setFirstRunActive] = useState(false)
+  // The latch belongs to one project. Opening another (or returning to the
+  // picker) drops it, and the new project's own signals decide afresh.
+  const [latchedFor, setLatchedFor] = useState<string | null>(projectId)
+  if (latchedFor !== projectId) {
+    setLatchedFor(projectId)
+    setFirstRunActive(false)
+  }
 
   // TDZ contract (this file and Timeline.tsx have both been bitten): the memo
   // sits immediately after the state block, and every effect that reads it is
@@ -55,14 +74,14 @@ export function useVisibility(
   // answer to a question asked before it could exist. A null answer means "not
   // asked yet", never "everything has been seen".
   useEffect(() => {
-    if (!project) { setVisSignals(null); return }
+    if (!projectId) return
     let cancelled = false
     void Promise.resolve()
       .then(() => window.redlog.visibility.signals())
-      .then((signals) => { if (!cancelled) setVisSignals((signals as VisibilitySignals | null) ?? null) })
-      .catch(() => { if (!cancelled) setVisSignals(ALL_DISCLOSED) })
+      .then((signals) => { if (!cancelled) setSignalsFor({ projectId, signals: (signals as VisibilitySignals | null) ?? null }) })
+      .catch(() => { if (!cancelled) setSignalsFor({ projectId, signals: ALL_DISCLOSED }) })
     return () => { cancelled = true }
-  }, [project?.id])
+  }, [projectId])
 
   // Re-probe only when a row arrives that could answer a question still open,
   // and only after the batch settles: a scan produces hundreds of rows a
@@ -75,12 +94,12 @@ export function useVisibility(
       if (timer) clearTimeout(timer)
       timer = setTimeout(() => {
         void window.redlog.visibility.signals()
-          .then((sig) => { if (sig) setVisSignals(sig as VisibilitySignals) })
+          .then((sig) => { if (sig) setSignalsFor({ projectId, signals: sig as VisibilitySignals }) })
           .catch(() => { /* a probe failure only delays a page appearing */ })
       }, 500)
     }) ?? (() => {})
     return () => { if (timer) clearTimeout(timer); unsub() }
-  }, [project, visibility.complete, visSignals])
+  }, [project, projectId, visibility.complete, visSignals])
 
   useEffect(() => {
     if (visSignals === null) return
