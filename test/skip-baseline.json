@@ -52,7 +52,7 @@
     }
   },
   "win32": {
-    "skippedCases": 754,
+    "skippedCases": 758,
     "mustRun": [
       "test/csp-production.test.ts",
       "test/bundle-requires.test.ts",
@@ -85,6 +85,7 @@
       "test/login-path.test.ts": 2,
       "test/loot-emit-dedup.test.ts": 1,
       "test/official-agent-plugins.test.ts": 1,
+      "test/plugin-safety-boundaries.test.ts": 4,
       "test/private-modes-project-dirs.test.ts": 6,
       "test/private-modes.test.ts": 12,
       "test/profile-export.test.ts": 1,
