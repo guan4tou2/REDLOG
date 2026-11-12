@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import Database from 'better-sqlite3'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
@@ -13,7 +13,15 @@ import type { ExportSnapshot } from '../src/core/export-plan'
 // walk. The contract is that it answers exactly what the full walk answers.
 
 let dir = ''
-afterEach(() => { vi.restoreAllMocks(); closeHttpBodyIndex(); closeDB(); if (dir) fs.rmSync(dir, { recursive: true, force: true }); dir = '' })
+// While a scripted history is being played (see `play` below) the project and
+// the index belong to that history across test cases, so the per-test cleanup
+// must leave them alone; its own afterAll does the teardown.
+let scripted = false
+afterEach(() => {
+  vi.restoreAllMocks()
+  if (scripted) return
+  closeHttpBodyIndex(); closeDB(); if (dir) fs.rmSync(dir, { recursive: true, force: true }); dir = ''
+})
 
 type Tier = 'events' | 'events_logged'
 function insert(id: string, data: Record<string, unknown>, tier: Tier = 'events', agentType = 'scanner', subtype = 'http_response'): void {
@@ -62,95 +70,118 @@ function observe(mode: Mode, snapshot?: ExportSnapshot): unknown {
   return { searches, coverage: bodySearchCoverage(snapshot), index: dump() }
 }
 
-/** One scripted history. Every step ends with an observation. */
-function scenario(mode: Mode): Array<[string, unknown]> {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-body-incremental-'))
-  initDB(dir)
-  const out: Array<[string, unknown]> = []
-  const step = (name: string, snapshot?: ExportSnapshot): void => { out.push([name, observe(mode, snapshot)]) }
-  const refs: Record<string, ReturnType<typeof body>> = {}
-  for (let i = 1; i <= 6; i++) refs[`e${i}`] = bodyEvent(`e${i}`, `alpha marker${i} chained`)
-  for (let i = 1; i <= 4; i++) refs[`l${i}`] = bodyEvent(`l${i}`, `alpha marker${i + 10} logged`, 'events_logged')
-  insert('e7', { response_body: { data: Buffer.from('alpha inlineword').toString('base64'), encoding: 'base64' } })
-  insert('e8', { response_body_ref: body(Buffer.from([0, 1, 2, 255])) })
-  fs.mkdirSync(path.join(dir, 'artifacts'), { recursive: true })
-  fs.writeFileSync(path.join(dir, 'artifacts', 'a1.txt'), 'alpha artifactword')
-  insert('a1', { stored: 'artifacts/a1.txt', sha256: sha('alpha artifactword'), size: 18 }, 'events', 'file_transfer', 'artifact_added')
-  insert('c1', { sidecar_file: 'conv.jsonl' }, 'events', 'agent', 'transcript_capture_started')
-  step('seeded')
-  step('unchanged')
+/** What a step leaves behind for the steps after it. */
+interface History { refs: Record<string, ReturnType<typeof body>> }
+/** One step of the scripted history: it changes the project and may return the
+ *  export snapshot the observation after it is taken under. */
+interface Step { name: string; apply: (h: History) => ExportSnapshot | void }
 
-  // Appended rows; two linked at write time the way ingest does.
-  for (const id of ['e9', 'e10']) {
-    refs[id] = bodyEvent(id, `alpha marker9 ${id}`)
-    linkHttpBodyEvent({ id, data: { subtype: 'http_response', response_body_ref: refs[id] }, agentType: 'scanner' }, dir)
-  }
-  refs.l5 = bodyEvent('l5', 'alpha marker9 logged-five', 'events_logged')
-  step('appended')
-
-  getDB().prepare("DELETE FROM events_logged WHERE id='l2'").run()
-  step('deleted a row')
-  // The highest rowid goes; the next insert reuses it with other content.
-  getDB().prepare("DELETE FROM events_logged WHERE id='l5'").run()
-  refs.l6 = bodyEvent('l6', 'alpha reused-rowid', 'events_logged')
-  step('rowid reused')
-
-  fs.unlinkSync(path.join(dir, 'http-bodies', refs.e3.file))
-  pruneHttpBodyIndex(refs.e3.sha256, dir)
-  step('evicted and pruned')
-  pruneHttpBodyIndex(refs.e4.sha256, dir)
-  step('pruned index only')
-  pruneSavedFileIndex(path.join(dir, 'artifacts', 'a1.txt'), dir)
-  step('saved-file index pruned')
-
-  fs.unlinkSync(path.join(dir, 'http-bodies', refs.e5.file))
-  step('file removed')
-  fs.writeFileSync(path.join(dir, 'http-bodies', refs.e5.file), 'alpha marker5 chained')
-  step('file restored')
-  const e6 = path.join(dir, 'http-bodies', refs.e6.file), stat = fs.statSync(e6)
-  fs.writeFileSync(e6, 'gamma marker6 chained')
-  fs.utimesSync(e6, stat.atime, stat.mtime)
-  step('same-size rewrite')
-
-  transcript('t1', '{"m":"alpha transcriptword"}\n')
-  step('pending transcript confirmed')
-  fs.appendFileSync(path.join(dir, 'agent-transcripts', 'conv.jsonl'), '{"m":"later"}\n')
-  step('transcript grew')
-  transcript('t2', '{"m":"alpha transcriptword"}\n{"m":"later"}\n{"m":"newer"}\n')
-  step('newer transcript supersedes')
-
-  const boundary: ExportSnapshot = {
+// Appended rows; two linked at write time the way ingest does.
+const STEPS: Step[] = [
+  { name: 'seeded', apply: ({ refs }) => {
+    for (let i = 1; i <= 6; i++) refs[`e${i}`] = bodyEvent(`e${i}`, `alpha marker${i} chained`)
+    for (let i = 1; i <= 4; i++) refs[`l${i}`] = bodyEvent(`l${i}`, `alpha marker${i + 10} logged`, 'events_logged')
+    insert('e7', { response_body: { data: Buffer.from('alpha inlineword').toString('base64'), encoding: 'base64' } })
+    insert('e8', { response_body_ref: body(Buffer.from([0, 1, 2, 255])) })
+    fs.mkdirSync(path.join(dir, 'artifacts'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'artifacts', 'a1.txt'), 'alpha artifactword')
+    insert('a1', { stored: 'artifacts/a1.txt', sha256: sha('alpha artifactword'), size: 18 }, 'events', 'file_transfer', 'artifact_added')
+    insert('c1', { sidecar_file: 'conv.jsonl' }, 'events', 'agent', 'transcript_capture_started')
+  } },
+  { name: 'unchanged', apply: () => {} },
+  { name: 'appended', apply: ({ refs }) => {
+    for (const id of ['e9', 'e10']) {
+      refs[id] = bodyEvent(id, `alpha marker9 ${id}`)
+      linkHttpBodyEvent({ id, data: { subtype: 'http_response', response_body_ref: refs[id] }, agentType: 'scanner' }, dir)
+    }
+    refs.l5 = bodyEvent('l5', 'alpha marker9 logged-five', 'events_logged')
+  } },
+  { name: 'deleted a row', apply: () => { getDB().prepare("DELETE FROM events_logged WHERE id='l2'").run() } },
+  { name: 'rowid reused', apply: ({ refs }) => {
+    // The highest rowid goes; the next insert reuses it with other content.
+    getDB().prepare("DELETE FROM events_logged WHERE id='l5'").run()
+    refs.l6 = bodyEvent('l6', 'alpha reused-rowid', 'events_logged')
+  } },
+  { name: 'evicted and pruned', apply: ({ refs }) => {
+    fs.unlinkSync(path.join(dir, 'http-bodies', refs.e3.file))
+    pruneHttpBodyIndex(refs.e3.sha256, dir)
+  } },
+  { name: 'pruned index only', apply: ({ refs }) => { pruneHttpBodyIndex(refs.e4.sha256, dir) } },
+  { name: 'saved-file index pruned', apply: () => { pruneSavedFileIndex(path.join(dir, 'artifacts', 'a1.txt'), dir) } },
+  { name: 'file removed', apply: ({ refs }) => { fs.unlinkSync(path.join(dir, 'http-bodies', refs.e5.file)) } },
+  { name: 'file restored', apply: ({ refs }) => { fs.writeFileSync(path.join(dir, 'http-bodies', refs.e5.file), 'alpha marker5 chained') } },
+  { name: 'same-size rewrite', apply: ({ refs }) => {
+    const e6 = path.join(dir, 'http-bodies', refs.e6.file), stat = fs.statSync(e6)
+    fs.writeFileSync(e6, 'gamma marker6 chained')
+    fs.utimesSync(e6, stat.atime, stat.mtime)
+  } },
+  { name: 'pending transcript confirmed', apply: () => { transcript('t1', '{"m":"alpha transcriptword"}\n') } },
+  { name: 'transcript grew', apply: () => { fs.appendFileSync(path.join(dir, 'agent-transcripts', 'conv.jsonl'), '{"m":"later"}\n') } },
+  { name: 'newer transcript supersedes', apply: () => { transcript('t2', '{"m":"alpha transcriptword"}\n{"m":"later"}\n{"m":"newer"}\n') } },
+  { name: 'export boundary', apply: () => ({
     chainedMaxRowId: (getDB().prepare("SELECT rowid AS r FROM events WHERE id='e9'").get() as { r: number }).r,
     loggedMaxRowId: (getDB().prepare("SELECT rowid AS r FROM events_logged WHERE id='l3'").get() as { r: number }).r,
     takenAt: 1,
-  }
-  step('export boundary', boundary)
-  step('export boundary again', boundary)
+  }) },
+  // Same boundary, no change: the previous step's snapshot is reused below.
+  { name: 'export boundary again', apply: () => {} },
   // Ingest links a new row while the last walk was bounded: the bounded
   // search must not report it, as the full walk's prune would not.
-  refs.e11 = bodyEvent('e11', 'alpha marker9 eleven')
-  linkHttpBodyEvent({ id: 'e11', data: { subtype: 'http_response', response_body_ref: refs.e11 }, agentType: 'scanner' }, dir)
-  step('linked above the export boundary', boundary)
-  step('live again')
-  step('live unchanged')
-  closeHttpBodyIndex(); closeDB(); fs.rmSync(dir, { recursive: true, force: true }); dir = ''
-  return out
+  { name: 'linked above the export boundary', apply: ({ refs }) => {
+    refs.e11 = bodyEvent('e11', 'alpha marker9 eleven')
+    linkHttpBodyEvent({ id: 'e11', data: { subtype: 'http_response', response_body_ref: refs.e11 }, agentType: 'scanner' }, dir)
+  } },
+  { name: 'live again', apply: () => {} },
+  { name: 'live unchanged', apply: () => {} },
+]
+/** The steps whose observation is taken under the export boundary. */
+const BOUNDED = new Set(['export boundary', 'export boundary again', 'linked above the export boundary'])
+
+type Observed = { searches: unknown; coverage: { missing: number; failed: number; indexed: number }; index: unknown }
+/** What the full rebuild answered at each step; the reference every other run is held to. */
+const reference = new Map<string, Observed>()
+
+/** Plays STEPS in order as one test case per step, in one project and (for
+ *  `incremental`) one process. A step depends on the state the ones before it
+ *  left, so once one fails the rest of this run are skipped rather than
+ *  reported as misleading diffs. */
+function play(mode: Mode): void {
+  describe(`scripted history, ${mode}`, () => {
+    const h: History = { refs: {} }
+    let snapshot: ExportSnapshot | undefined, broken = ''
+    beforeAll(() => {
+      scripted = true
+      dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-body-incremental-'))
+      initDB(dir)
+    })
+    afterAll(() => { closeHttpBodyIndex(); closeDB(); fs.rmSync(dir, { recursive: true, force: true }); dir = ''; scripted = false })
+    STEPS.forEach((step, i) => {
+      it(`${mode}: step ${i + 1}/${STEPS.length} ${step.name}`, ctx => {
+        if (broken) ctx.skip(`an earlier step of the ${mode} run failed (${broken}); this step builds on its state`)
+        if (mode !== 'rebuild' && !reference.has(step.name)) ctx.skip('the rebuild reference for this step was not recorded')
+        try {
+          snapshot = step.apply(h) ?? (BOUNDED.has(step.name) ? snapshot : undefined)
+          const observed = observe(mode, snapshot) as Observed
+          if (mode === 'rebuild') reference.set(step.name, observed)
+          else expect(observed, `${mode}: ${step.name}`).toEqual(reference.get(step.name))
+        } catch (e) { broken = step.name; throw e }
+      })
+    })
+  })
 }
 
 describe('incremental body-search backfill', () => {
-  it('answers exactly what a fresh full walk answers, after every kind of change', () => {
-    const incremental = scenario('incremental'), restart = scenario('restart'), fresh = scenario('rebuild')
-    expect(incremental.map(([name]) => name)).toEqual(fresh.map(([name]) => name))
-    expect(restart.map(([name]) => name)).toEqual(fresh.map(([name]) => name))
-    for (const [i, [name, observed]] of incremental.entries()) expect(observed, name).toEqual(fresh[i][1])
-    for (const [i, [name, observed]] of restart.entries()) expect(observed, `restart: ${name}`).toEqual(fresh[i][1])
-    // The scenario is not vacuous: each kind of change moves what is observed.
-    const at = (name: string): { coverage: { missing: number; failed: number; indexed: number } } =>
-      incremental.find(([n]) => n === name)![1] as { coverage: { missing: number; failed: number; indexed: number } }
-    expect(at('file removed').coverage.missing).toBeGreaterThan(at('pruned index only').coverage.missing)
-    expect(at('same-size rewrite').coverage.failed).toBe(1)
-    expect(at('evicted and pruned').coverage.missing).toBe(1)
-  }, 60_000)
+  // The reference is played first; the other two are compared to it step by step.
+  play('rebuild')
+  play('incremental')
+  play('restart')
+
+  it('the scripted history is not vacuous: each kind of change moves what is observed', () => {
+    const at = (name: string): Observed['coverage'] => reference.get(name)!.coverage
+    expect(at('file removed').missing).toBeGreaterThan(at('pruned index only').missing)
+    expect(at('same-size rewrite').failed).toBe(1)
+    expect(at('evicted and pruned').missing).toBe(1)
+  })
 
   function seed(n: number): void {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-body-work-'))
