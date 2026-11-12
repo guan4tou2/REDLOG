@@ -20,7 +20,7 @@
 // nonce. Changing it starts a fresh attempt and marks the old one stale, so an
 // install that lands late cannot report on the shell that replaced it.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { Button } from './Button'
 import { CopyButton } from './CopyButton'
@@ -211,8 +211,13 @@ export function RecordTerminalFlow({ target, onPrepare, onSelectedLabel, onInsta
 
   // A timeout offers recovery, but the same canary can still arrive. Keep
   // listening until verification, a new attempt, or leaving this flow.
+  //
+  // A layout effect, so the commit that draws the command is the one that
+  // starts listening and starts the wait. As a passive effect it ran some time
+  // after the command was on screen, and a canary delivered in between reached
+  // no listener.
   const awaitingActivation = phase === 'waiting-for-activation' || phase === 'timed-out'
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!awaitingActivation || !nonce) return
     const mine = attempt.current
     let received = false
