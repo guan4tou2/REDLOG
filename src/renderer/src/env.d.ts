@@ -195,7 +195,10 @@ interface RedLogAPI {
   }
   config: {
     get: () => Promise<unknown>
+    /** Whole-object save, kept for the e2e fixtures. Pages send `patch`. */
     save: (config: unknown, opts?: { expectProjectId?: string }) => Promise<boolean>
+    /** The fields a page changed, each with the value it last saw there. */
+    patch: (patch: import('../../core/config-patch').ConfigPatch) => Promise<import('../../core/config-patch').ConfigSaveResult>
     exportProfile: () => Promise<string | null>
     importProfile: () => Promise<import('../../core/profile-import').ProfileImportResult>
   }

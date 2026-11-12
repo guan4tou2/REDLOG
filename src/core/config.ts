@@ -408,14 +408,27 @@ export function loadConfig(projectDir: string): RedLogConfig {
   }
 }
 
-export function saveConfig(projectDir: string, config: RedLogConfig): void {
+/** Writes the file and returns its revision (see `readConfigRevision`). */
+export function saveConfig(projectDir: string, config: RedLogConfig): string {
   mkdirPrivate(projectDir)
   const configPath = path.join(projectDir, 'config.yaml')
   // Owner-only like the database beside it: scope, operator and integration
   // settings. `mode` applies only on create, so an older 0644 file is
   // restricted as well.
-  fs.writeFileSync(configPath, yaml.dump(config, { lineWidth: 120 }), { encoding: 'utf-8', mode: 0o600 })
+  const text = yaml.dump(config, { lineWidth: 120 })
+  fs.writeFileSync(configPath, text, { encoding: 'utf-8', mode: 0o600 })
   restrictFile(configPath)
+  return revisionOf(text)
+}
+
+const revisionOf = (text: string): string => crypto.createHash('sha256').update(text).digest('hex').slice(0, 16)
+
+/** A content hash of config.yaml as it is on disk: it moves with every write
+ *  that changes the file, by any writer — including a hand edit or an older
+ *  code path that knows nothing about revisions, which a counter kept by the
+ *  saver would miss. A missing file has the revision of an empty one. */
+export function readConfigRevision(projectDir: string): string {
+  try { return revisionOf(fs.readFileSync(path.join(projectDir, 'config.yaml'), 'utf-8')) } catch { return revisionOf('') }
 }
 
 /** The scope actually in force, as one value.

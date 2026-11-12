@@ -8,6 +8,7 @@ import { toast } from './Toast'
 import { runMutation } from '../lib/mutation'
 import { useTick } from '../lib/useTick'
 import { clientLabel } from '../../../core/http-verify'
+import { valueAtPath, type ConfigPatchOp } from '../../../core/config-patch'
 import { settingsTarget } from '../lib/navigation'
 import { removeHookWithUndo } from '../lib/hookRemoval'
 import { formatTime, formatDateTime } from '../lib/time'
@@ -300,33 +301,28 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
     setBusy(s.id)
     try {
       const cfg = await window.redlog.config.get() as Record<string, unknown>
-      // config:save replaces the whole doc, so mutating the fetched object in
-      // place would be fine — a copy of only the branch we touch keeps this
-      // honest if the bridge ever starts caching.
-      const next = { ...cfg }
-      const writeFlag = (path: string, value: boolean): void => {
+      // Only the switch, with the value it had when read: anything else in
+      // the config is left as main has it.
+      const flag = (path: string, value: boolean): ConfigPatchOp => {
         const parts = path.split('.')
-        let cur = next as Record<string, unknown>
-        for (const p of parts.slice(0, -1)) {
-          cur[p] = { ...(cur[p] as Record<string, unknown> ?? {}) }
-          cur = cur[p] as Record<string, unknown>
-        }
-        cur[parts[parts.length - 1]] = value
+        const base = valueAtPath(cfg, parts)
+        return { path: parts, value, ...(base === undefined ? { baseAbsent: true as const } : { base }) }
       }
-      writeFlag(s.configPath, on)
+      const ops = [flag(s.configPath, on)]
       // A pack member is only on when its pack is too. Writing the member
       // alone would leave the operator flipping a switch and watching the row
       // stay `off` — a control reporting the opposite of what it just did.
       // Turning one OFF never touches the pack: the other members are not the
       // operator's to lose.
-      if (on && s.packPath) writeFlag(s.packPath, true)
+      if (on && s.packPath) ops.push(flag(s.packPath, true))
       // The write is for the project this config was read from; main refuses
-      // it (false) when another is open by now. A refusal or a throw leaves
-      // the row as it was: no refresh, so the switch does not flip.
+      // it when another is open by now, or when the switch changed since it
+      // was read. A refusal or a throw leaves the row as it was: no refresh,
+      // so the switch does not flip.
       const engagement = cfg.engagement as { id?: string } | undefined
       const res = await runMutation(
-        () => window.redlog.config.save(next, { expectProjectId: engagement?.id }),
-        { failed: t('capture.actionFailed'), isFailure: (ok) => ok !== true }
+        () => window.redlog.config.patch({ ops, ...(engagement?.id ? { expectProjectId: engagement.id } : {}) }),
+        { failed: t('capture.actionFailed'), isFailure: (r) => r?.ok !== true }
       )
       if (res.ok) onRefresh()
     } catch (e) {
