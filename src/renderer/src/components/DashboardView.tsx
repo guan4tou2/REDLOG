@@ -170,6 +170,7 @@ export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v
 
   const { t } = useI18n()
   const unknown = captureStatus === 'unknown' ? captureUnknownLine(t, capture, lastOkAt) : undefined
+  const projectId = typeof config?.engagement?.id === 'string' ? config.engagement.id : undefined
 
   // A failed read is said in the summary's place, not left as a missing block.
   const loadConfig = useCallback((): void => {
@@ -225,6 +226,7 @@ export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v
             ? <CaptureHealthCard
                 capture={capture}
                 unknown={unknown}
+                projectId={projectId}
                 onNavigate={onNavigate}
                 onRefresh={refreshCapture}
               />
@@ -254,6 +256,7 @@ export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v
         <CaptureHealthCard
           capture={capture}
           unknown={unknown}
+          projectId={projectId}
           onNavigate={onNavigate}
           onRefresh={refreshCapture}
           onSetup={() => onNavigate(settingsTarget('hooks'))}

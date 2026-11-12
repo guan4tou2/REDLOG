@@ -11,7 +11,7 @@ import { toast } from './Toast'
 import { isComposing } from '../lib/ime'
 
 /** The field owns its byte position; switching sources cannot reuse a cursor. */
-function ContentFieldReader({ descriptor, onReload, initialOffset = 0, expanded = false, onMark, fragment }: { descriptor: ContentDescriptor; onReload: () => void; initialOffset?: number; expanded?: boolean; onMark: () => void; fragment?: ContentAnchor }): JSX.Element {
+function ContentFieldReader({ descriptor, onReload, initialOffset = 0, initialFind, expanded = false, onMark, fragment }: { descriptor: ContentDescriptor; onReload: () => void; initialOffset?: number; initialFind?: string; expanded?: boolean; onMark: () => void; fragment?: ContentAnchor }): JSX.Element {
   const { t } = useI18n()
   const [window, setWindow] = useState<ContentWindow | null>(null)
   const [history, setHistory] = useState<number[]>([])
@@ -19,7 +19,7 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, expanded 
   const [error, setError] = useState<string | null>(null)
   const [unavailable, setUnavailable] = useState<ContentUnavailable | null>(null)
   const [changed, setChanged] = useState(false)
-  const [needle, setNeedle] = useState('')
+  const [needle, setNeedle] = useState(initialFind ?? '')
   const [findCursor, setFindCursor] = useState<ContentFindCursor | undefined>()
   const [notFound, setNotFound] = useState(false)
   const pre=useRef<HTMLPreElement>(null)
@@ -69,7 +69,7 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, expanded 
     }catch(e){if(alive.current&&mine===generation.current)setError(String(e))}finally{if(alive.current&&mine===generation.current)setBusy(false)}
   }
   const generation = useRef(0)
-  const input = useRef('')
+  const input = useRef(initialFind ?? '')
   const alive = useRef(true)
   useEffect(() => { alive.current = true; return () => { alive.current = false; generation.current++ } }, [])
   const read = async (offset = 0, direction: 'next' | 'previous' | 'initial' = 'initial'): Promise<void> => {
@@ -87,8 +87,8 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, expanded 
     } catch (e) { if (alive.current && seq === generation.current) { setError(String(e)); setUnavailable('failed') } }
     finally { if (alive.current && seq === generation.current) setBusy(false) }
   }
-  useEffect(() => { void read(initialOffset) }, [descriptor.ref?.version, initialOffset])
-  const find = async (): Promise<void> => {
+  /** `opening`: the first read is this search, so a miss still opens the start. */
+  const find = async (opening = false): Promise<void> => {
     if (!descriptor.ref || !needle) return
     const seq = ++generation.current
     const query = needle
@@ -105,12 +105,19 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, expanded 
           await read(reply.value.match.offset)
           return
         }
-        if (!reply.value.hasMore || !reply.value.nextCursor) { setNotFound(true); setFindCursor(undefined); return }
+        if (!reply.value.hasMore || !reply.value.nextCursor) {
+          setNotFound(true); setFindCursor(undefined)
+          if (opening) await read(initialOffset)
+          return
+        }
         cursor = reply.value.nextCursor
       }
     } catch (e) { if (alive.current && seq === generation.current) { setError(String(e)); setUnavailable('failed') } }
     finally { if (alive.current && seq === generation.current) setBusy(false) }
   }
+  // Opened at a hit (a loot row names the line it matched): the reader's own
+  // Find takes it there and marks it, as if the operator had typed it.
+  useEffect(() => { void (initialFind && descriptor.format !== 'binary' ? find(true) : read(initialOffset)) }, [descriptor.ref?.version, initialOffset])
   const matchAt = needle ? window?.text.indexOf(needle) ?? -1 : -1
   const raw=window?new TextEncoder().encode(window.text):null
   const fragmentStart=window&&fragment?Math.max(0,fragment.start-window.offset):0
@@ -154,7 +161,10 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, expanded 
 export type ReaderMode = 'closed' | 'inline' | 'expanded'
 export interface ReaderControl { mode: ReaderMode; setMode: (mode: ReaderMode) => void }
 
-export function EventContentReader({ projectId, eventId, active = true, anchor, expanded: expandedProp, onExpandedChange }: { projectId: string; eventId: string; active?: boolean; anchor?: ContentAnchor; expanded?: boolean; onExpandedChange?: (expanded: boolean) => void }): JSX.Element {
+export function EventContentReader({ projectId, eventId, active = true, anchor, find, expanded: expandedProp, onExpandedChange }: { projectId: string; eventId: string; active?: boolean; anchor?: ContentAnchor
+  /** Text to open each field at, through the reader's own Find. */
+  find?: string
+  expanded?: boolean; onExpandedChange?: (expanded: boolean) => void }): JSX.Element {
   const { t } = useI18n()
   const fields = useReadState(async () => {
     const reply = await window.redlog.content.list({ projectId, eventId })
@@ -199,7 +209,7 @@ export function EventContentReader({ projectId, eventId, active = true, anchor, 
       </select></div>
       {visibleFields?.filter(field => visited.has(field.field) || field.field === current.field).map(field =>
         <div key={`${projectId}:${eventId}:${field.field}:${field.ref?.version}`} hidden={field.field !== current.field}>
-          <ContentFieldReader descriptor={field} onReload={fields.retry} expanded={expanded} fragment={anchor?.ref.field===field.field?anchor:undefined} initialOffset={anchor?.ref.field===field.field?anchor.start:0} onMark={()=>setExpanded(false)} />
+          <ContentFieldReader descriptor={field} onReload={fields.retry} expanded={expanded} fragment={anchor?.ref.field===field.field?anchor:undefined} initialOffset={anchor?.ref.field===field.field?anchor.start:0} initialFind={anchor?undefined:find} onMark={()=>setExpanded(false)} />
         </div>)}
     </>}
   </div>

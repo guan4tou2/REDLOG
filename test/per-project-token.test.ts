@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -30,13 +31,13 @@ const FAKE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-tokhome-'))
 process.env.HOME = FAKE_HOME
 process.env.USERPROFILE = FAKE_HOME
 
-try {
-  const d = await import('../src/core/db/index')
+if (requires('better-sqlite3').ok) {
+  const d =await import('../src/core/db/index')
   initDB = d.initDB; closeDB = d.closeDB
   api = await import('../src/core/api-server')
   ops = await import('../src/core/db/operators')
   dbAvailable = true
-} catch { /* native module unavailable — skip */ }
+}
 
 const describeDB = dbAvailable ? describe : describe.skip
 

@@ -2,15 +2,16 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { requires } from './helpers/requires'
 
 let events: typeof import('../src/core/db/events')
 let dbmod: typeof import('../src/core/db/index')
 let ops: typeof import('../src/core/db/operators')
-try {
+if (requires('better-sqlite3').ok) {
   events = await import('../src/core/db/events')
   dbmod = await import('../src/core/db/index')
   ops = await import('../src/core/db/operators')
-} catch { /* better-sqlite3 unavailable */ }
+}
 const describeDB = events! && dbmod! && ops! ? describe : describe.skip
 
 describeDB('queryEventCausalChain', () => {

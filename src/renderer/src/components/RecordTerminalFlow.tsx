@@ -71,9 +71,11 @@ function pickInitialAdapter(choices: AdapterChoice[], recommended: string | null
   return choices.find((c) => c.available)?.hookId ?? choices[0].hookId
 }
 
-export function RecordTerminalFlow({ target, onPrepare, onSelectedLabel, onInstalled }: {
+export function RecordTerminalFlow({ target, onPrepare, onSelectedLabel, onInstalled, onInstallFailed }: {
   target: RecordTarget
   onInstalled?: () => void
+  /** The install itself failed, with the reason the flow prints. */
+  onInstallFailed?: (message: string) => void
   onPrepare: () => void
   /** Which shell the flow is actually driving. The entry button above names the
    *  detected shell as the recommendation, but the picker inside can select a
@@ -138,6 +140,12 @@ export function RecordTerminalFlow({ target, onPrepare, onSelectedLabel, onInsta
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target.kind, detected, selectedHook, choices, activeLabel])
 
+  const failInstall = (message: string): void => {
+    setInstallError(message)
+    setPhase('install-failed')
+    onInstallFailed?.(message)
+  }
+
   const run = async (override?: string | null): Promise<void> => {
     const mine = ++attempt.current
     const current = (): boolean => attempt.current === mine
@@ -157,23 +165,20 @@ export function RecordTerminalFlow({ target, onPrepare, onSelectedLabel, onInsta
         const r = await window.redlog.hooks.install(hookId)
         if (!current()) return
         if (!r.success) {
-          setInstallError(('error' in r && r.error) || r.message || '')
-          setPhase('install-failed')
+          failInstall(('error' in r && r.error) || r.message || '')
           return
         }
       } else {
         const r = await window.redlog.wsl.installHook(target.distro, target.shell)
         if (!current()) return
         if (!r.success) {
-          setInstallError(r.message || '')
-          setPhase('install-failed')
+          failInstall(r.message || '')
           return
         }
       }
     } catch (e) {
       if (!current()) return
-      setInstallError(String((e as Error)?.message ?? e))
-      setPhase('install-failed')
+      failInstall(String((e as Error)?.message ?? e))
       return
     }
     if (!current()) return

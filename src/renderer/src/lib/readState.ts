@@ -40,7 +40,7 @@ export function readValueUpdated<T>(prev: ReadState<T>, value: T): ReadState<T> 
   return { ...prev, value }
 }
 
-function describeError(error: unknown): string {
+export function describeError(error: unknown): string {
   return error instanceof Error && error.message ? error.message : String(error)
 }
 

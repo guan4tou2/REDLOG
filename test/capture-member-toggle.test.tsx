@@ -21,13 +21,15 @@ function draw(sources: Record<string, unknown>[]): HTMLElement {
 }
 
 describe('turning a pack member on from the Capture Health card', () => {
-  let saved: Record<string, unknown> | null = null
+  // The card sends only the switches it flips (config:patch), each with the
+  // value it read.
+  let saved: Array<{ path: string[]; value?: unknown }> | null = null
   beforeEach(() => {
     saved = null
     ;(window as unknown as { redlog: unknown }).redlog = {
       config: {
         get: async () => ({ packs: { hostMonitors: false } }),
-        save: async (c: Record<string, unknown>) => { saved = c; return true }
+        patch: async (p: { ops: Array<{ path: string[]; value?: unknown }> }) => { saved = p.ops; return { ok: true, config: {}, revision: 'r' } }
       },
       hooks: { install: async () => ({ success: true, message: '' }), uninstall: async () => ({ success: true, message: '' }) }
     }
@@ -51,10 +53,10 @@ describe('turning a pack member on from the Capture Health card', () => {
     fireEvent.click(within(el).getByText(/Other capture sources/))
     fireEvent.click(within(el).getByText('turn on'))
     await waitFor(() => expect(saved).not.toBeNull())
-    expect(saved).toMatchObject({
-      packs: { hostMonitors: true },
-      packMembers: { clipboard: true }
-    })
+    expect(saved).toEqual([
+      { path: ['packMembers', 'clipboard'], value: true, baseAbsent: true },
+      { path: ['packs', 'hostMonitors'], value: true, base: false }
+    ])
   })
 
   it('leaves the pack alone when one member is turned off', async () => {
@@ -65,9 +67,6 @@ describe('turning a pack member on from the Capture Health card', () => {
     fireEvent.click(within(el).getByText(/Other capture sources/))
     fireEvent.click(within(el).getByText('turn off'))
     await waitFor(() => expect(saved).not.toBeNull())
-    expect(saved).toMatchObject({
-      packs: { hostMonitors: true },
-      packMembers: { clipboard: false }
-    })
+    expect(saved).toEqual([{ path: ['packMembers', 'clipboard'], value: false, baseAbsent: true }])
   })
 })

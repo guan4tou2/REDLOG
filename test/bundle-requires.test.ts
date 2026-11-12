@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest'
+import { it, expect } from 'vitest'
 import fs from 'fs'
 import path from 'path'
+import { requires } from './helpers/requires'
 
 // v0.9.6: guards the whole "runtime require survives into the bundle" family.
 //
@@ -18,9 +19,10 @@ import path from 'path'
 const OUT = path.join(__dirname, '..', 'out', 'main')
 const RELATIVE_REQUIRE = /require\((['"])(\.\.?\/[^'"]+)\1\)/g
 
-const built = fs.existsSync(OUT)
-
-describe.skipIf(!built)('bundle integrity', () => {
+// out/main alone is not a build: `npm test` builds out/main/export-worker.js
+// first, so a check for the directory passed CI against that one file and
+// never read index.js. Ask for the main bundle itself.
+requires('built-main').describe('bundle integrity', () => {
   it('every relative require in out/main resolves to an emitted file', () => {
     const unresolved: string[] = []
     for (const file of fs.readdirSync(OUT).filter((f) => f.endsWith('.js'))) {

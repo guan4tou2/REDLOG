@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -20,7 +21,7 @@ let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let queryEvents: typeof import('../src/core/db/events').queryEvents
 
 let dbAvailable = false
-try {
+if (requires('better-sqlite3').ok) {
   const dbMod = await import('../src/core/db/index')
   const eventsMod = await import('../src/core/db/events')
   initDB = dbMod.initDB
@@ -31,8 +32,6 @@ try {
   insertEventRaw = eventsMod.insertEvent
   queryEvents = eventsMod.queryEvents
   dbAvailable = true
-} catch {
-  // better-sqlite3 not compiled for this Node.js version
 }
 
 const insertEvent: typeof import('../src/core/db/events').insertEvent = (agentType, data, opts) =>

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -18,7 +19,7 @@ let queryEvents: typeof import('../src/core/db/events').queryEvents
 let castIndex: typeof import('../src/core/cast-index')
 
 let dbAvailable = false
-try {
+if (requires('better-sqlite3').ok) {
   const d = await import('../src/core/db/index')
   const r = await import('../src/core/retention')
   const e = await import('../src/core/db/events')
@@ -26,7 +27,7 @@ try {
   findings = await import('../src/core/db/bookmarks')
   castIndex = await import('../src/core/cast-index')
   dbAvailable = true
-} catch { /* better-sqlite3 not built for this Node */ }
+}
 
 const describeDB = dbAvailable ? describe : describe.skip
 const OPTS = { engagementId: 'test', operatorId: 'op' }

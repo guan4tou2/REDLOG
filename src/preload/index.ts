@@ -75,6 +75,7 @@ const api: RedLogAPI = {
   config: {
     get: () => ipcRenderer.invoke('config:get'),
     save: (config: unknown, opts?: { expectProjectId?: string }) => ipcRenderer.invoke('config:save', config, opts),
+    patch: (patch: unknown) => ipcRenderer.invoke('config:patch', patch),
     exportProfile: () => ipcRenderer.invoke('config:exportProfile'),
     importProfile: () => ipcRenderer.invoke('config:importProfile')
   },

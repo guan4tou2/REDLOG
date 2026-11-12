@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { requires } from './helpers/requires'
 import { request, type IncomingMessage } from 'node:http'
 import net from 'node:net'
 import { once } from 'node:events'
@@ -48,7 +49,7 @@ const FAKE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-apientry-'))
 process.env.HOME = FAKE_HOME
 process.env.USERPROFILE = FAKE_HOME
 
-try {
+if (requires('better-sqlite3').ok) {
   const dbMod = await import('../src/core/db/index')
   initDB = dbMod.initDB
   closeDB = dbMod.closeDB
@@ -59,8 +60,6 @@ try {
   listBookmarks = (await import('../src/core/db/bookmarks')).listBookmarks
   getChainLength = (await import('../src/core/evidence-chain')).getChainLength
   dbAvailable = true
-} catch {
-  // native module unavailable — skip
 }
 
 const describeDB = dbAvailable ? describe : describe.skip

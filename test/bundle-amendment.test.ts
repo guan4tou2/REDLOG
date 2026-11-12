@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -24,9 +25,7 @@ let bundle: typeof import('../src/core/bundle-export') | null = null
 let sanitizeMod: typeof import('../src/core/sanitize') | null = null
 let retention: typeof import('../src/core/retention') | null = null
 let chain: typeof import('../src/core/chain-anchor') | null = null
-try {
-  const D = (await import('better-sqlite3')).default
-  new D(':memory:').close()
+if (requires('better-sqlite3').ok) {
   events = await import('../src/core/db/events')
   dbmod = await import('../src/core/db/index')
   amendMod = await import('../src/core/marker-amend')
@@ -34,7 +33,7 @@ try {
   sanitizeMod = await import('../src/core/sanitize')
   retention = await import('../src/core/retention')
   chain = await import('../src/core/chain-anchor')
-} catch { /* better-sqlite3 not built for this Node ABI */ }
+}
 
 const available = events !== null
 const OPTS = { engagementId: 'eng', operatorId: 'op' }

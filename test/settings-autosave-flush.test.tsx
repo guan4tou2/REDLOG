@@ -40,11 +40,20 @@ function installBridge(): void {
     platform: 'win32',
     config: {
       get: () => getConfig(),
-      save: async (config: Record<string, unknown>, opts?: { expectProjectId?: string }) => {
+      // Settings sends patches; `saves` records each one, and a successful
+      // one answers with the file as main would now have it.
+      patch: async (p: { ops: Array<{ path: string[]; value?: unknown }>; expectProjectId?: string }) => {
         calls.push('save')
-        saves.push({ config, opts })
+        saves.push({ config: { ops: p.ops }, opts: { expectProjectId: p.expectProjectId } })
         if (saveError) throw saveError
-        return saveResult
+        if (!(await saveResult)) return { ok: false, reason: 'invalid', error: 'refused' }
+        const config = (await getConfig()) as Record<string, unknown>
+        for (const op of p.ops) {
+          let cur = config
+          for (const k of op.path.slice(0, -1)) cur = (cur[k] ??= {}) as Record<string, unknown>
+          cur[op.path[op.path.length - 1]] = op.value
+        }
+        return { ok: true, config, revision: String(saves.length) }
       }
     },
     project: { active: async () => ({ id: 'proj-a', name: 'A' }), close: async () => { calls.push('close') } },

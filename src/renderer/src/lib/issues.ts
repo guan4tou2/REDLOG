@@ -87,7 +87,9 @@ export function snapshotIssues(): Issue[] {
   const next = snapshot()
   // `useSyncExternalStore` compares by identity and will loop forever on a
   // fresh array every call, so only hand back a new one when it differs.
-  const key = next.map((i) => `${i.id}:${i.tier}:${i.title}:${i.fix ?? ''}`).join('|')
+  // `view` is in it: the capture issue's destination follows which source is
+  // failing while its title stays the same.
+  const key = next.map((i) => `${i.id}:${i.tier}:${i.title}:${i.fix ?? ''}:${i.view ?? ''}`).join('|')
   if (key !== cacheKey) { cacheKey = key; cached = next }
   return cached
 }

@@ -11,8 +11,10 @@ import { settingsTarget } from '../lib/navigation'
 import { captureScreenshotWithFeedback } from '../lib/captureScreenshot'
 import { Modal } from './Modal'
 import { Button } from './Button'
+import { useLivePagedQuery } from '../hooks/useLivePagedQuery'
 
 const PAGE_SIZE = 100
+const shotKey = (shot: RedLogEvent): string => shot.id
 const VIEW_KEY = 'redlog-screenshots-view'
 type ViewMode = 'list' | 'grid'
 
@@ -152,21 +154,15 @@ function ShotCard({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Eleme
 }
 
 export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => void }): JSX.Element {
-  const [screenshots, setScreenshots] = useState<RedLogEvent[]>([])
   const zone = useDisplayZone()
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
   const [expanded, setExpanded] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set())
   const [unreadableIds, setUnreadableIds] = useState<Set<string>>(new Set())
   const [triggerFilter, setTriggerFilter] = useState<string | null>(null)
   // What triggers exist, counted over the unfiltered load. A filtered load holds
   // only one trigger, so counting from it would leave no way to leave the filter.
   const [triggerTotals, setTriggerTotals] = useState<Array<[string, number]>>([])
-  const [hasMore, setHasMore] = useState(false)
-  const [nextCursor, setNextCursor] = useState<string | null>(null)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [loadError, setLoadError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [mode, setMode] = useState<ViewMode>(readViewMode)
   const triggerFilterRef = useRef(triggerFilter)
@@ -185,29 +181,30 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
     return [...counts.entries()].sort((x, y) => y[1] - x[1])
   }
 
-  const loadPage = useCallback(async (trigger: string | null) => {
-    setLoading(true)
-    try {
+  // One trigger is one question: a reply for the trigger that was chosen
+  // before is dropped. A failed read is not "no screenshots": it says so and
+  // offers the read again.
+  const shotRead = useLivePagedQuery<RedLogEvent>({
+    key: JSON.stringify(triggerFilter),
+    fetch: async (cursor, signal) => {
       const page = await window.redlog.events.queryScreenshotPage({
         limit: PAGE_SIZE,
-        trigger
+        ...(cursor ? { cursor } : {}),
+        trigger: triggerFilter
       })
-      setScreenshots(page.items)
-      if (trigger === null) setTriggerTotals(countTriggers(page.items))
-      setHasMore(page.hasMore)
-      setNextCursor(page.nextCursor)
-      setLoadError(null)
-    } catch (err) {
-      // Not "no screenshots": say the read failed and offer it again.
-      setLoadError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
+      if (!cursor && triggerFilter === null && !signal.cancelled) setTriggerTotals(countTriggers(page.items))
+      return { rows: page.items, nextCursor: page.hasMore ? page.nextCursor : null }
+    },
+    rowKey: shotKey
+  })
+  const screenshots = shotRead.rows
+  const loading = shotRead.state.phase === 'loading'
+  const loadError = shotRead.state.phase === 'failed' ? shotRead.state.error : null
+  const { hasMore, loadingMore, loadMore, update: updateShots, moreFailed } = shotRead
   useEffect(() => {
-    void loadPage(triggerFilter)
-  }, [triggerFilter, loadPage])
+    if (moreFailed) toast(t('screenshots.loadFailed'), { type: 'error', detail: moreFailed.error })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moreFailed])
 
   useEffect(() => {
     return window.redlog.events.onNewBatch((events) => {
@@ -215,7 +212,7 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
         if (event.agentType === 'screenshot') {
           const tf = triggerFilterRef.current
           if (!tf || event.data?.trigger === tf) {
-            setScreenshots((prev) => {
+            updateShots((prev) => {
               if (prev.some((e) => e.id === event.id)) return prev
               return [event, ...prev]
             })
@@ -228,26 +225,7 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
         }
       }
     })
-  }, [])
-
-  const loadMore = useCallback(async () => {
-    if (!nextCursor || loadingMore) return
-    setLoadingMore(true)
-    try {
-      const page = await window.redlog.events.queryScreenshotPage({
-        limit: PAGE_SIZE,
-        cursor: nextCursor,
-        trigger: triggerFilterRef.current
-      })
-      setScreenshots((prev) => [...prev, ...page.items])
-      setHasMore(page.hasMore)
-      setNextCursor(page.nextCursor)
-    } catch (err) {
-      toast(t('screenshots.loadFailed'), { type: 'error', detail: err instanceof Error ? err.message : String(err) })
-    } finally {
-      setLoadingMore(false)
-    }
-  }, [nextCursor, loadingMore, t])
+  }, [updateShots])
 
   useEffect(() => {
     screenshots.forEach((s) => {
@@ -317,7 +295,7 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
         <div data-testid="screenshots-load-error" role="alert" className="mb-3 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
           <div>{t('screenshots.loadFailed')}</div>
           <div className="mt-1 truncate font-mono text-redlog-text-faint" title={loadError}>{loadError}</div>
-          <button type="button" onClick={() => void loadPage(triggerFilter)} className="mt-2 text-red-300 underline hover:text-red-200">
+          <button type="button" onClick={shotRead.retry} className="mt-2 text-red-300 underline hover:text-red-200">
             {t('common.retry')}
           </button>
         </div>

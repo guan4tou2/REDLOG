@@ -13,6 +13,7 @@
 //   word reports "no results" until it is finished.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -26,7 +27,7 @@ let closeHttpBodyIndex: typeof import('../src/core/http-body-index').closeHttpBo
 let executeEventQuery: typeof import('../src/core/db/event-queries').executeEventQuery
 let available = false
 
-try {
+if (requires('better-sqlite3').ok) {
   const db = await import('../src/core/db')
   const write = await import('../src/core/db/event-write')
   const queries = await import('../src/core/db/event-queries')
@@ -37,7 +38,7 @@ try {
   closeHttpBodyIndex = bodyIndex.closeHttpBodyIndex
   executeEventQuery = queries.executeEventQuery
   available = true
-} catch { /* native SQLite unavailable */ }
+}
 
 const describeDB = available ? describe : describe.skip
 let dir: string

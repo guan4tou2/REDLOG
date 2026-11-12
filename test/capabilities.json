@@ -1,0 +1,39 @@
+{
+  "$comment": "What each CI unit leg has. Read only when REDLOG_CI_CAPABILITIES=1 (ci.yml sets it); locally nothing is required. required: a file that asks for it fails if it is missing, and so does the leg (scripts/verify-skip-baseline.mjs). absent: skips are expected. unknown: reported, never failed; set it from the first run's test-results/capabilities-<platform>.json. See docs/TESTING.md.",
+  "linux": {
+    "better-sqlite3": "required",
+    "built-renderer": "required",
+    "built-main": "required",
+    "posix-shell": "required",
+    "bash": "required",
+    "zsh": "required",
+    "pwsh": "required",
+    "python-cryptography": "required",
+    "pty": "required",
+    "listen": "required"
+  },
+  "darwin": {
+    "better-sqlite3": "required",
+    "built-renderer": "required",
+    "built-main": "required",
+    "posix-shell": "required",
+    "bash": "required",
+    "zsh": "required",
+    "pwsh": "required",
+    "python-cryptography": "required",
+    "pty": "required",
+    "listen": "required"
+  },
+  "win32": {
+    "better-sqlite3": "required",
+    "built-renderer": "required",
+    "built-main": "required",
+    "posix-shell": "absent",
+    "bash": "unknown",
+    "zsh": "absent",
+    "pwsh": "required",
+    "python-cryptography": "required",
+    "pty": "absent",
+    "listen": "required"
+  }
+}

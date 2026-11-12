@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { requires } from './helpers/requires'
 import { parseQuery } from '../src/core/query/contract'
 import type { EventFilter } from '../src/core/db/event-queries'
 import fs from 'fs'
@@ -22,7 +23,7 @@ let storeBody: typeof import('../src/core/http-body-store').storeBody
 let insertEvent: typeof import('../src/core/db/events').insertEvent
 let available = false
 
-try {
+if (requires('better-sqlite3').ok) {
   const db = await import('../src/core/db')
   const events = await import('../src/core/db/events')
   const ing = await import('../src/core/ingest')
@@ -37,7 +38,7 @@ try {
   storeBody = bodies.storeBody
   insertEvent = events.insertEvent
   available = true
-} catch { /* native SQLite unavailable */ }
+}
 
 
 // Spec 026: Search's paged text query is the query contract. The pagination,

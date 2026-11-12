@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -20,7 +21,7 @@ let ops: typeof import('../src/core/db/operators')
 let exportBundle: typeof import('../src/core/bundle-export').exportBundle
 
 let dbAvailable = false
-try {
+if (requires('better-sqlite3').ok) {
   const dbMod = await import('../src/core/db/index')
   events = await import('../src/core/db/events')
   ops = await import('../src/core/db/operators')
@@ -31,7 +32,7 @@ try {
   exportBundle = bundle.exportBundle
   takeExportSnapshot = plan.takeExportSnapshot
   dbAvailable = true
-} catch { /* better-sqlite3 not compiled */ }
+}
 
 const describeDB = dbAvailable ? describe : describe.skip
 

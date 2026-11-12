@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -15,15 +16,13 @@ let dbmod: typeof import('../src/core/db/index') | null = null
 let counter: typeof import('../src/core/scope-observation-count') | null = null
 let runner: typeof import('../src/core/scope-recompute-run') | null = null
 let bus: typeof import('../src/core/event-bus') | null = null
-try {
-  const D = (await import('better-sqlite3')).default
-  new D(':memory:').close()
+if (requires('better-sqlite3').ok) {
   events = await import('../src/core/db/events')
   dbmod = await import('../src/core/db/index')
   counter = await import('../src/core/scope-observation-count')
   runner = await import('../src/core/scope-recompute-run')
   bus = await import('../src/core/event-bus')
-} catch { /* better-sqlite3 not built for this Node ABI */ }
+}
 
 const available = events !== null
 const IDS = { engagementId: 'eng', operatorId: 'op' }
