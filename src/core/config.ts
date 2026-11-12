@@ -1,8 +1,9 @@
 import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
-import yaml from 'js-yaml'
+import * as yaml from 'js-yaml'
 import { DEFAULT_BROWSER } from './browser-defaults'
+import { loadYamlDocument } from './yaml-document'
 import { mkdirPrivate, restrictFile } from './private-fs'
 
 export interface VpnAdapter {
@@ -401,7 +402,7 @@ export function loadConfig(projectDir: string): RedLogConfig {
   const configPath = path.join(projectDir, 'config.yaml')
   try {
     const raw = fs.readFileSync(configPath, 'utf-8')
-    const parsed = yaml.load(raw, { schema: yaml.JSON_SCHEMA }) as Record<string, unknown>
+    const parsed = loadYamlDocument(raw) as Record<string, unknown>
     return deepMerge(defaults() as unknown as Record<string, unknown>, parsed) as unknown as RedLogConfig
   } catch {
     return defaults()
@@ -525,7 +526,7 @@ export function readProjectScope(projectDir: string): ProjectScopeSummary {
     return (e as NodeJS.ErrnoException)?.code === 'ENOENT' ? { state: 'unset' } : { state: 'unknown' }
   }
   let parsed: unknown
-  try { parsed = yaml.load(raw, { schema: yaml.JSON_SCHEMA }) } catch { return { state: 'unknown' } }
+  try { parsed = loadYamlDocument(raw) } catch { return { state: 'unknown' } }
   if (parsed === undefined || parsed === null) return { state: 'unset' }
   if (typeof parsed !== 'object' || Array.isArray(parsed)) return { state: 'unknown' }
   const scope = (parsed as { scope?: unknown }).scope

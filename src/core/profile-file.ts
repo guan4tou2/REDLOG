@@ -4,7 +4,7 @@
 
 import fs from 'fs'
 import path from 'path'
-import yaml from 'js-yaml'
+import { loadYamlDocument } from './yaml-document'
 import { resolveProfile, type ProfileImportResult } from './profile-import'
 
 const firstLine = (e: unknown): string => String((e as Error)?.message ?? e).split('\n')[0]
@@ -20,7 +20,7 @@ export function readProfileFile(filePath: string): ProfileImportResult {
   try {
     data = path.extname(filePath).toLowerCase() === '.json'
       ? JSON.parse(raw)
-      : yaml.load(raw, { schema: yaml.JSON_SCHEMA })
+      : loadYamlDocument(raw)
   } catch (e) {
     return { status: 'failed', failure: { code: 'parse', detail: firstLine(e) } }
   }

@@ -13,7 +13,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
-import yaml from 'js-yaml'
+import * as yaml from 'js-yaml'
 import { SMOKE_FUSE_OVERRIDES, VARIANTS, VARIANT_FILE, readPackagedVariant } from './build-variant.mjs'
 
 // electron-builder's option names, in fuse-wire order (@electron/fuses

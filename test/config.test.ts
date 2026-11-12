@@ -25,6 +25,17 @@ describe('loadConfig', () => {
     expect(config.agentTailer?.sources ?? {}).toEqual({})
   })
 
+  it('reads hand-written YAML 1.2 core scalars as values, not strings', () => {
+    fs.writeFileSync(path.join(tmpDir, 'config.yaml'),
+      'scope:\n  scopeFile: ~\n  warnOnViolation: False\nscreenshot:\n  quality:\n  captureOnCommand: TRUE\nhttpCapture:\n  port: 0x1A05\n')
+    const config = loadConfig(tmpDir)
+    expect(config.scope.scopeFile).toBeNull()
+    expect(config.scope.warnOnViolation).toBe(false)
+    expect(config.screenshot.quality).toBeNull()
+    expect(config.screenshot.captureOnCommand).toBe(true)
+    expect(config.httpCapture.port).toBe(6661)
+  })
+
   it('merges partial config with defaults', () => {
     fs.writeFileSync(path.join(tmpDir, 'config.yaml'), 'engagement:\n  id: test-123\n')
     const config = loadConfig(tmpDir)

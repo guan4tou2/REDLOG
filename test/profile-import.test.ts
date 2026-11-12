@@ -114,6 +114,12 @@ describe('readProfileFile', () => {
     expect(y).toMatchObject({ status: 'imported', profile: { scope: { targets: ['192.0.2.0/24'] } } })
   })
 
+  it('says the shape is wrong, not that it failed to parse, for an empty yaml file', () => {
+    for (const text of ['', '# only a comment\n']) {
+      expect(readProfileFile(write('empty.yaml', text))).toMatchObject({ status: 'failed', failure: { code: 'shape', field: '(file)' } })
+    }
+  })
+
   it('says read when the file is not there', () => {
     const r = readProfileFile(path.join(dir, 'missing.json'))
     expect(r).toMatchObject({ status: 'failed', failure: { code: 'read' } })

@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { createRequire } from 'node:module'
-import yaml from 'js-yaml'
+import * as yaml from 'js-yaml'
 import { buildVariantFromEnv, parseVariantFile, readPackagedVariant, SMOKE_BUILD_ENV, VARIANT_FILE } from '../scripts/build-variant.mjs'
 import { expectedFuses, verifyPackageVariant } from '../scripts/verify-fuses.mjs'
 

@@ -2,7 +2,7 @@
 import { readdirSync, readFileSync, statSync, createReadStream } from 'node:fs'
 import { basename, join } from 'node:path'
 import { createHash } from 'node:crypto'
-import yaml from 'js-yaml'
+import * as yaml from 'js-yaml'
 
 const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
 if (process.env.RELEASE_TAG && process.env.RELEASE_TAG !== `v${version}`) {
