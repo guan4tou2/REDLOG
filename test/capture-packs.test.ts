@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -116,12 +117,12 @@ let db: typeof import('../src/core/db/index')
 let ch: typeof import('../src/core/capture-health')
 let pluginsIndex: typeof import('../src/core/plugins/index')
 let dbAvailable = false
-try {
+if (requires('better-sqlite3').ok) {
   db = await import('../src/core/db/index')
   ch = await import('../src/core/capture-health')
   pluginsIndex = await import('../src/core/plugins/index')
   dbAvailable = true
-} catch { /* native module unavailable */ }
+}
 const describeDB = dbAvailable ? describe : describe.skip
 
 describeDB('capture packs: health', () => {

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -11,8 +12,8 @@ let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let getChainLength: typeof import('../src/core/evidence-chain').getChainLength
 
 let dbAvailable = false
-try {
-  const dbMod = await import('../src/core/db/index')
+if (requires('better-sqlite3').ok) {
+  const dbMod =await import('../src/core/db/index')
   const evMod = await import('../src/core/db/events')
   const ecMod = await import('../src/core/evidence-chain')
   initDB = dbMod.initDB
@@ -20,7 +21,7 @@ try {
   insertEventRaw = evMod.insertEvent
   getChainLength = ecMod.getChainLength
   dbAvailable = true
-} catch { /* better-sqlite3 not compiled */ }
+}
 
 const insertEvent: typeof import('../src/core/db/events').insertEvent = (agentType, data, opts) =>
   insertEventRaw(agentType, data, { operatorId: 'test-op', ...opts })

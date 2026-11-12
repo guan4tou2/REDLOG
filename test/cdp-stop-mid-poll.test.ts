@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -13,13 +14,11 @@ import type { AddressInfo } from 'net'
 let dbmod: typeof import('../src/core/db/index') | null = null
 let events: typeof import('../src/core/db/events') | null = null
 let cdp: typeof import('../src/main/services/cdp-connector') | null = null
-try {
-  const D = (await import('better-sqlite3')).default
-  new D(':memory:').close()
+if (requires('better-sqlite3').ok) {
   dbmod = await import('../src/core/db/index')
   events = await import('../src/core/db/events')
   cdp = await import('../src/main/services/cdp-connector')
-} catch { /* better-sqlite3 not built for this Node ABI */ }
+}
 
 describe.skipIf(cdp === null)('stopping the browser monitor mid-poll', () => {
   let dir: string

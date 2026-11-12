@@ -11,6 +11,7 @@
 // between five keys and fifty is the property that actually matters.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -22,7 +23,7 @@ let insertEvent: typeof import('../src/core/db/event-write').insertEvent
 let fetchToolCounterparts: typeof import('../src/core/db/event-queries').fetchToolCounterparts
 let available = false
 
-try {
+if (requires('better-sqlite3').ok) {
   const db = await import('../src/core/db')
   const write = await import('../src/core/db/event-write')
   const queries = await import('../src/core/db/event-queries')
@@ -32,7 +33,7 @@ try {
   insertEvent = write.insertEvent
   fetchToolCounterparts = queries.fetchToolCounterparts
   available = true
-} catch { /* native SQLite unavailable */ }
+}
 
 const describeDB = available ? describe : describe.skip
 let dir: string

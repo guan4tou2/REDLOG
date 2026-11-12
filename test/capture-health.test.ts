@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -15,7 +16,7 @@ let pluginsIndex: typeof import('../src/core/plugins/index')
 let eventBusMod: typeof import('../src/core/event-bus')
 
 let dbAvailable = false
-try {
+if (requires('better-sqlite3').ok) {
   const dbMod = await import('../src/core/db/index')
   const evMod = await import('../src/core/db/events')
   const chMod = await import('../src/core/capture-health')
@@ -28,7 +29,7 @@ try {
   configureCaptureHealth = chMod.configureCaptureHealth
   invalidateHooksCache = chMod.invalidateHooksCache
   dbAvailable = true
-} catch { /* better-sqlite3 not built */ }
+}
 
 const describeDB = dbAvailable ? describe : describe.skip
 

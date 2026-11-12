@@ -1,4 +1,5 @@
 import { it, expect, describe } from 'vitest'
+import { requires } from './helpers/requires'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -13,7 +14,7 @@ it('records a refusal at a full send queue as a spooled gap', () => {
 })
 
 let db: typeof import('../src/core/db/index') | null = null
-try { db = await import('../src/core/db/index') } catch { /* native module unavailable */ }
+if (requires('better-sqlite3').ok) db = await import('../src/core/db/index')
 
 // And the app reads it back: the files the production addon wrote go through
 // the spool drain's own path — replay, then ingest — into project A's record.

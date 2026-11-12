@@ -13,6 +13,10 @@ import { useNarrowViewport } from '../hooks/useNarrowViewport'
 import { useCaptureHealthState } from '../lib/useCaptureHealth'
 import { captureUnknownLine } from '../lib/captureUnknown'
 
+function Sep({ narrow }: { narrow: boolean }): JSX.Element | null {
+  return narrow ? null : <span className="text-redlog-text-faint select-none">|</span>
+}
+
 export default function StatusBar(): JSX.Element {
   // Narrow: one line, in this order of importance — the issue counters, whether
   // it is recording, whether the IP is safe, the scope. The event count, the IP
@@ -211,8 +215,6 @@ export default function StatusBar(): JSX.Element {
     ? `${hours}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
     : `${mins}:${String(secs).padStart(2, '0')}`
 
-  const Sep = (): JSX.Element | null => narrow ? null : <span className="text-redlog-text-faint select-none">|</span>
-
   const attention = issues.filter((i) => i.tier === 'attention')
   const pending = issues.filter((i) => i.tier === 'pending')
 
@@ -247,7 +249,7 @@ export default function StatusBar(): JSX.Element {
           {t('issues.pending', { count: pending.length })}
         </button>
       )}
-      {issues.length > 0 && <Sep />}
+      {issues.length > 0 && <Sep narrow={narrow} />}
       {(() => {
         // Recording OFF → grey. Recording ON + capture healthy (or unknown) → pulsing red.
         // Recording ON + capture partial → amber (a source is failing, or a
@@ -313,7 +315,7 @@ export default function StatusBar(): JSX.Element {
         )
       })()}
 
-      <Sep />
+      <Sep narrow={narrow} />
 
       {/* The IP and scope words stay at every width: they are the OPSEC state,
           and a bare dot is unreadable exactly when space is tight. Narrow, the
@@ -333,7 +335,7 @@ export default function StatusBar(): JSX.Element {
         {narrow && <span className="sr-only">{ipStatus?.externalIP ?? ''}</span>}
       </div>
 
-      <Sep />
+      <Sep narrow={narrow} />
 
       {/* Clickable like its fault-counter neighbours: an unfixed scope is a
           setup debt the chip can only point at, and the scope states share one

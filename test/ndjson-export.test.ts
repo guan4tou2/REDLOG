@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -47,8 +48,8 @@ let ndjson: typeof import('../src/core/ndjson-export')
 let redact: typeof import('../src/core/redact-export')
 let dbIndex: typeof import('../src/core/db/index')
 let dbAvailable = false
-try {
-  const dbMod = await import('../src/core/db/index')
+if (requires('better-sqlite3').ok) {
+  const dbMod =await import('../src/core/db/index')
   events = await import('../src/core/db/events')
   ops = await import('../src/core/db/operators')
   ndjson = await import('../src/core/ndjson-export')
@@ -56,7 +57,7 @@ try {
   dbIndex = dbMod
   initDB = dbMod.initDB; closeDB = dbMod.closeDB
   dbAvailable = true
-} catch { /* better-sqlite3 not compiled for this runtime */ }
+}
 const describeDB = dbAvailable ? describe : describe.skip
 
 describeDB('ndjson-export — eventsToNdjson', () => {

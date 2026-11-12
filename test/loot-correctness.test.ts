@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -29,7 +30,7 @@ let loot: typeof import('../src/core/loot-detector')
 let ops: typeof import('../src/core/db/operators')
 let health: typeof import('../src/core/capture-health')
 let dbAvailable = false
-try {
+if (requires('better-sqlite3').ok) {
   db = await import('../src/core/db/index')
   events = await import('../src/core/db/events')
   ingestMod = await import('../src/core/ingest')
@@ -37,7 +38,7 @@ try {
   ops = await import('../src/core/db/operators')
   health = await import('../src/core/capture-health')
   dbAvailable = true
-} catch { /* native module unavailable */ }
+}
 const describeDB = dbAvailable ? describe : describe.skip
 
 describe('loot matching (pure)', () => {

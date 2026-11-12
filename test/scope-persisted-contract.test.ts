@@ -4,6 +4,7 @@
 // API that scripts and the blue-team hand-off read. This file pins them.
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -15,13 +16,13 @@ let closeDB: typeof import('../src/core/db/index').closeDB
 let insertEvent: typeof import('../src/core/db/events').insertEvent
 let anchor: typeof import('../src/core/chain-anchor')
 let dbAvailable = false
-try {
+if (requires('better-sqlite3').ok) {
   const dbMod = await import('../src/core/db/index')
   const evMod = await import('../src/core/db/events')
   anchor = await import('../src/core/chain-anchor')
   initDB = dbMod.initDB; closeDB = dbMod.closeDB; insertEvent = evMod.insertEvent
   dbAvailable = true
-} catch { /* better-sqlite3 not compiled for this Node ABI */ }
+}
 
 describe('persisted scope vocabulary', () => {
   it('keeps the stored event subtype exactly as old projects and bundles carry it', () => {

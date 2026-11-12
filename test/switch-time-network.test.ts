@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -15,14 +16,12 @@ let events: typeof import('../src/core/db/events') | null = null
 let dbmod: typeof import('../src/core/db/index') | null = null
 let anchor: typeof import('../src/core/chain-anchor') | null = null
 let clock: typeof import('../src/core/clock') | null = null
-try {
-  const D = (await import('better-sqlite3')).default
-  new D(':memory:').close()
+if (requires('better-sqlite3').ok) {
   events = await import('../src/core/db/events')
   dbmod = await import('../src/core/db/index')
   anchor = await import('../src/core/chain-anchor')
   clock = await import('../src/core/clock')
-} catch { /* better-sqlite3 not built for this Node ABI */ }
+}
 
 const IDS = { engagementId: 'eng', operatorId: 'op' }
 

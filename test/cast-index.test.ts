@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -10,15 +11,10 @@ import path from 'path'
 
 let mod: typeof import('../src/core/cast-index') | null = null
 let slice: typeof import('../src/core/cast-slice') | null = null
-try {
-  // Importing is not the check — the native binding only loads on the first
-  // `new Database`, so an import-only guard reports "available" and then
-  // every test dies inside the module under test.
-  const D = (await import('better-sqlite3')).default
-  new D(':memory:').close()
+if (requires('better-sqlite3').ok) {
   mod = await import('../src/core/cast-index')
   slice = await import('../src/core/cast-slice')
-} catch { /* better-sqlite3 not built for this Node ABI */ }
+}
 
 const available = mod !== null && slice !== null
 
