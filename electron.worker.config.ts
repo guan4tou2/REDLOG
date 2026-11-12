@@ -8,7 +8,7 @@ export default defineConfig({
     define: { __APP_VERSION__: JSON.stringify(JSON.parse(readFileSync('package.json', 'utf8')).version) },
     build: {
       emptyOutDir: false,
-      rollupOptions: { input: { 'export-worker': resolve('src/main/services/export-worker.ts') } }
+      rollupOptions: { input: { 'export-worker': resolve('src/main/services/export-worker.ts') }, output: { strict: true } }
     }
   }
 })

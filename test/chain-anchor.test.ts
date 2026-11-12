@@ -168,7 +168,6 @@ describeDB('chain-anchor', () => {
     })
   })
 })
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
 describeDB('chain-anchor air-gap', () => {
   let tmpDir: string

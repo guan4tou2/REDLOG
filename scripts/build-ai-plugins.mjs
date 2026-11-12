@@ -18,7 +18,7 @@ for (const name of names) {
     configFile: false, logLevel: 'error',
     build: { ssr: true, target: 'node22', outDir: dir, emptyOutDir: true, minify: false,
       rollupOptions: { input: path.join(source, name, 'adapter.ts'), external: [...builtinModules, ...builtinModules.map(name => `node:${name}`)],
-        output: { format: 'cjs', entryFileNames: 'adapter.cjs', inlineDynamicImports: true } } },
+        output: { format: 'cjs', entryFileNames: 'adapter.cjs', inlineDynamicImports: true, strict: true } } },
     ssr: { noExternal: true }
   })
   const manifest = JSON.parse(fs.readFileSync(path.join(source, name, 'plugin.json'), 'utf8'))
