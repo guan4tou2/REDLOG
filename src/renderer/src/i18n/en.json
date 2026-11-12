@@ -2446,7 +2446,6 @@
   "eventTitle.airgapOff": "Air-gap mode off",
   "eventTitle.ipVerdict": "Egress IP: {{verdict}}",
   "eventTitle.ipOffProfile": "not on any IP list",
-  "eventTitle.ipPresumedSafe": "presumed safe",
   "eventTitle.sessionStart": "Project opened, recording started",
   "eventTitle.chainSampleBroken": "Chain spot-check failed",
   "eventTitle.systemOther": "System event: {{name}}",

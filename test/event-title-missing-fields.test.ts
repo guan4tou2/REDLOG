@@ -71,6 +71,11 @@ describe('system event titles', () => {
     expect(titles[4]).not.toBe(titles[5])
   })
 
+  it('titles a stored presumed_safe verdict as unknown, the same as the IP card', () => {
+    expect(eventTitle(sys({ subtype: 'ip_verdict', ip_verdict_kind: 'presumed_safe' })))
+      .toBe(eventTitle(sys({ subtype: 'ip_verdict', ip_verdict_kind: 'unknown' })))
+  })
+
   it('still says it is a system event when the subtype has no title', () => {
     expect(eventTitle(sys({ subtype: 'something_new' }))).toMatch(/something_new/)
     expect(eventTitle(sys({ subtype: 'something_new' }))).not.toMatch(/^system:/)

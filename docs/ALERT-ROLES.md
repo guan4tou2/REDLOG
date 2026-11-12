@@ -112,6 +112,11 @@ Three states cannot express nine cells. The closed set is five, plus modifiers:
 | `presumed_safe` | **inferred** | blacklist-only, no match — "not obviously you" | green | **yes** — hollow, unglowing |
 | `unknown` | — (no claim) | nothing configured / no reading | amber | no |
 
+**What the app shows differs from this table for `presumed_safe`.** The status
+bar, the IP card, the HUD and the timeline row show it as unknown (amber): no list
+matched, so nothing says the address is safe. The verdict is still decided and
+stored as `presumed_safe`; only `safe` reaches a surface as safe (`shownIpSafety`).
+
 **Five verdicts, four tones.** `presumed_safe` shares the `safe` tone and is
 separated by `qualified`, so a surface paints four colours rather than five and an
 inference can never render as a solid green fill. That reuses the `lib/ip-badge.ts`

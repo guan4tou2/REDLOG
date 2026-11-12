@@ -82,6 +82,18 @@ describe('ipStatus: safe needs a current address', () => {
     expect(shown()).toBe('unknown')
   })
 
+  it('is unknown with only an exposed list and an address that is not on it', async () => {
+    // Nothing matched a safe list, so nothing says the address is safe. The
+    // policy's verdict stays presumed_safe; only what is shown changes.
+    await begin({ blacklist: ['203.0.113.99'] })
+    expect(runtime!.ipStatus()).toMatchObject({ externalIP: SAFE, ipSafety: 'unknown' })
+  })
+
+  it('stays exposed with only an exposed list and an address on it', async () => {
+    await begin({ blacklist: [SAFE] })
+    expect(shown()).toBe('exposed')
+  })
+
   it('stops reading safe once the safe address is no longer the one being read', async () => {
     // A pool that answers a different address every time never confirms a new
     // one, so the old address stays the stable value with its verdict.
