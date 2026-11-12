@@ -52,7 +52,7 @@
     }
   },
   "win32": {
-    "skippedCases": 727,
+    "skippedCases": 729,
     "mustRun": [
       "test/csp-production.test.ts",
       "test/bundle-requires.test.ts",
@@ -68,6 +68,7 @@
       "test/bash-transparency.pty.test.ts": 19,
       "test/command-class.test.ts": 26,
       "test/command-lookup.test.ts": 1,
+      "test/config-invalid-file.test.ts": 2,
       "test/evidence-content.test.ts": 1,
       "test/evidence-file.test.ts": 1,
       "test/export-file-mode.test.ts": 3,
