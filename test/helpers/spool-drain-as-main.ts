@@ -20,7 +20,9 @@ import type { SpoolReplayResult } from '../../src/core/spool-replay'
 /** Fragments of main's drain, whitespace-collapsed, in the order they appear. */
 export const MAIN_DRAIN_SHAPE = [
   'if (!projectRuntime.isCurrent(opening)) return null',
-  'drainSpoolOnce(pendingSpoolDirectory(homedir()), opening, limit, after)'
+  'spoolSession = new SpoolDrainSession(opening)',
+  'drainSpoolOnce(pendingSpoolDirectory(homedir()), opening, limit, after, {}, spoolSession ?? undefined)',
+  'if (session && projectRuntime.isCurrent(opening)) session.commit()'
 ]
 
 /** The fragments of MAIN_DRAIN_SHAPE that main's drain no longer contains. */
@@ -43,6 +45,6 @@ export function mainDrainDrift(): string[] {
 }
 
 /** One drain of `directory` for the open project, as main does it. */
-export function drainSpoolAsMain(directory: string, opening: { engagementId: string; operatorId: string }): SpoolReplayResult {
+export function drainSpoolAsMain(directory: string, opening: { engagementId: string; operatorId: string }): SpoolReplayResult | null {
   return drainSpoolOnce(directory, opening)
 }

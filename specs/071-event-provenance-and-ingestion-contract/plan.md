@@ -86,7 +86,7 @@
 
 - **專案**：取綁定的 DB（FR-007）。`ingest()` 與 `insertEvent` 的 `engagementId` 參數保留型別相容，但不再作為來源；與綁定值不同時回 `retry`／`foreign-project`。
 - **操作者**：見 FR-009，讀機器層級設定（O12）。
-- **時間**：沿用 `timestamp`（來源時間）與 `created_at`（收到時間）的雙時間設計。另記觀察時間 `observed_at`（OTel 的 Timestamp 與 ObservedTimestamp）。暫停判斷與目標承接都用觀察時間。
+- **時間**：沿用 `timestamp`（來源時間）與 `created_at`（收到時間）的雙時間設計。另記觀察時間 `observed_at`（OTel 的 Timestamp 與 ObservedTimestamp）。目標承接用觀察時間。暫停判斷**不**用觀察時間（修訂 2026-11-13）：即時入口依收到時間；交接目錄只在暫停結束後、以可用的來源時間對照已記錄的暫停區間（spec FR-082）。觀察時間是來源的自述；Phase 2 審查以 probe 證明信任它會在來源時鐘偏慢、relay chunk 延遲送出、系統時鐘倒退三種情況寫入暫停內容。
 - **目標**（O11）：`explicit` → `extracted` → `command` → `terminal-last` → `none`。
   - `terminal-last` 與 `command` 改從持久資料查，取代 `ingest.ts:83,399` 只存在記憶體的 map（01-F5(a)(b)）。
   - 新增衍生、可重建的 `terminal_targets(terminal, observed_at, target)` 表，放在專案 DB，本規格擁有；寫入路徑在同一個 commit 交易內寫入（Spec 074 的投影執行器在此呼叫 `advanceInTransaction`）。

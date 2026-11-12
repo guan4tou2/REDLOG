@@ -174,6 +174,15 @@ export function recordingStateRows(): Array<{ subtype: string; timestamp: number
     ORDER BY timestamp ASC, rowid ASC`).all() as Array<{ subtype: string; timestamp: number }>
 }
 
+/** Durable stream boundary, including a resume before an app restart. Delayed
+ * bytes from a closed recording interval may be omitted, never replayed. */
+export function lastRecordingResumeTime(): number {
+  const row = getReadonlyDB().prepare(`SELECT timestamp FROM events
+    WHERE agent_type = 'system' AND subtype = 'recording_resumed'
+    ORDER BY timestamp DESC, rowid DESC LIMIT 1`).get() as { timestamp: number } | undefined
+  return row?.timestamp ?? 0
+}
+
 /** Historical command proof for the open project, independent of recent rows.
  * This does not assert that the source is still running or that stdout arrived. */
 export function commandEvidence(): { builtin: boolean; external: boolean } {

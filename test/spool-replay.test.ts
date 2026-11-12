@@ -22,7 +22,7 @@ describe('spool replay isolation', () => {
     const d = dir(); const file = write(d, 'secret-a', 'project-a'); const before = fs.readFileSync(file)
     const emitted: SpoolReplayEvent[] = []
     expect(replaySpoolDirectory(d, { engagementId: 'project-b', operatorId: 'op-b' }, e => { emitted.push(e); return true }))
-      .toEqual({ replayed: 0, deferred: 1, unattributed: 0, invalid: 0, failed: 0, last: 'secret-a.json', losses: [] })
+      .toEqual({ replayed: 0, deferred: 1, unattributed: 0, invalid: 0, failed: 0, last: 'secret-a.json', losses: [], outcomes: { 'secret-a.json': 'deferred' } })
     expect(emitted).toEqual([])
     expect(fs.readFileSync(file)).toEqual(before)
   })
@@ -31,7 +31,7 @@ describe('spool replay isolation', () => {
     const d = dir(); const file = write(d, 'secret-a', 'project-a'); const emitted: SpoolReplayEvent[] = []
     replaySpoolDirectory(d, { engagementId: 'project-b', operatorId: 'op-b' }, e => { emitted.push(e); return true })
     expect(replaySpoolDirectory(d, { engagementId: 'project-a', operatorId: 'op-new' }, e => { emitted.push(e); return true }))
-      .toEqual({ replayed: 1, deferred: 0, unattributed: 0, invalid: 0, failed: 0, last: 'secret-a.json', losses: [] })
+      .toEqual({ replayed: 1, deferred: 0, unattributed: 0, invalid: 0, failed: 0, last: 'secret-a.json', losses: [], outcomes: { 'secret-a.json': 'ingested' } })
     expect(emitted[0]).toMatchObject({ engagementId: 'project-a', operatorId: 'op-a', data: { command: 'secret-a', recovered_from_spool: true } })
     expect(fs.existsSync(file)).toBe(false)
   })
@@ -40,17 +40,17 @@ describe('spool replay isolation', () => {
     const d = dir(); const file = write(d, 'unknown')
     const emitted: SpoolReplayEvent[] = []
     expect(replaySpoolDirectory(d, { engagementId: 'project-b', operatorId: 'op-b' }, e => { emitted.push(e); return true }))
-      .toEqual({ replayed: 0, deferred: 0, unattributed: 1, invalid: 0, failed: 0, last: 'unknown.json', losses: [] })
+      .toEqual({ replayed: 0, deferred: 0, unattributed: 1, invalid: 0, failed: 0, last: 'unknown.json', losses: [], outcomes: { 'unknown.json': 'quarantined' } })
     expect(emitted).toEqual([])
     expect(fs.existsSync(file)).toBe(false)
     // Spec 071 T012: set aside in the quarantine, under its reason.
-    expect(fs.existsSync(path.join(d, 'quarantine', 'no-project--unknown.json'))).toBe(true)
+    expect(fs.existsSync(path.join(d, 'quarantine', '_no-project', 'no-project--unknown.json'))).toBe(true)
   })
 
   it('keeps an attributable item pending until the write is accepted', () => {
     const d = dir(); const file = write(d, 'during-pause', 'project-a')
     expect(replaySpoolDirectory(d, { engagementId: 'project-a', operatorId: 'op-a' }, () => false))
-      .toEqual({ replayed: 0, deferred: 1, unattributed: 0, invalid: 0, failed: 0, last: 'during-pause.json', losses: [] })
+      .toEqual({ replayed: 0, deferred: 1, unattributed: 0, invalid: 0, failed: 0, last: 'during-pause.json', losses: [], outcomes: { 'during-pause.json': 'deferred' } })
     expect(fs.existsSync(file)).toBe(true)
   })
 })

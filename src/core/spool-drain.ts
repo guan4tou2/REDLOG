@@ -6,41 +6,108 @@
 // source. It is here so main and the tests run the same code.
 //
 // One drain, in order:
+//   0. Nothing while recording is paused: the files wait, as on main.
 //   1. (first slice only) an earlier version's `.bad` / `.unattributed` files
-//      are moved into quarantine (Spec 071 FR-069);
+//      are planned into quarantine (Spec 071 FR-069);
 //   2. each waiting file of this project goes through the same kind policy a
 //      bearer of the API token meets, narrowed for a file that carries no
-//      credential (external-event-policy.ts, `legacy-handoff`), then through
-//      ingest() like every other producer;
-//   3. what was not written — quarantined, or rejected — is counted in a
-//      chained `system.capture_gap` row in this project (FR-054), so a loss is
-//      on the Timeline and in every export, not only in a directory listing.
+//      credential (external-event-policy.ts, `legacy-handoff`); then the pause
+//      rule below; then ingest() like every other producer;
+//   3. what was not written is counted in one chained `system.capture_gap` per
+//      reason per drain (FR-054) — and only once that row is committed are the
+//      files it counts moved or removed. A row that cannot be written leaves
+//      them in place and is reported like any other capture-write failure.
+//
+// The pause rule for a spool file (Spec 071 FR-082 as revised 2026-11-13): it
+// is refused, intentionally and for good, if its source time is usable and lies
+// inside a pause this project recorded (a recorded pause with no resume ends at
+// the reopen). Otherwise it is written, at receipt — including a command_end
+// observed before a pause, and a file whose source time is missing or not
+// usable. A producer's own record of a loss is never refused as paused.
 
-import { replaySpoolDirectory, migrateLegacySpoolFiles, type SpoolLoss, type SpoolOutcome, type SpoolReplayEvent, type SpoolReplayOptions, type SpoolReplayResult } from './spool-replay'
+import { replaySpoolDirectory, migrateLegacySpoolFiles, applySpoolLosses, type SpoolLoss, type SpoolOutcome, type SpoolReplayEvent, type SpoolReplayOptions, type SpoolReplayResult } from './spool-replay'
 import { isKindAllowed } from './external-event-policy'
-import { ingest } from './ingest'
+import { ingest, committedEventOf } from './ingest'
 import { isPauseJudgedGap, queueGapAgainstPauses, pauseIntervals } from './queue-gap'
-import { recordingStateRows } from './db/events'
-import { recordingStateAt } from './recording-state'
+import { recordingStateRows, sourceTimeRejection } from './db/events'
+import { recordingStateAt, pauseBeganBetween } from './recording-state'
 import { eventBus } from './event-bus'
+import { noteDbError } from './capture-health'
 
 export interface SpoolDrainIdentity { engagementId: string; operatorId: string }
 
+/** What one drain — every slice of it — has to count, committed at its end. */
+export class SpoolDrainSession {
+  private readonly groups = new Map<string, SpoolLoss>()
+  constructor(private readonly opening: SpoolDrainIdentity) {}
+
+  add(losses: readonly SpoolLoss[]): void {
+    for (const loss of losses) {
+      const key = `${loss.reason}\u0000${loss.owner}`
+      const row = this.groups.get(key)
+      if (!row) { this.groups.set(key, { ...loss, files: [...loss.files] }); continue }
+      row.count += loss.count
+      row.kept += loss.kept
+      row.firstAt = Math.min(row.firstAt, loss.firstAt)
+      row.lastAt = Math.max(row.lastAt, loss.lastAt)
+      row.files.push(...loss.files)
+    }
+  }
+
+  /** Write each gap row; apply its files' plan only once the row is there.
+   *  Returns what each counted file became. */
+  commit(): Record<string, 'quarantined' | 'dropped' | 'deferred'> {
+    const out: Record<string, 'quarantined' | 'dropped' | 'deferred'> = {}
+    for (const loss of this.groups.values()) {
+      if (recordLoss(loss, this.opening)) Object.assign(out, applySpoolLosses([loss]))
+      else for (const f of loss.files) out[f.name] = 'deferred'
+    }
+    this.groups.clear()
+    return out
+  }
+}
+
+/** A usable source time, by the rule the row's timestamp uses (FR-004), or
+ *  null — a rejected one counts as none. */
+function usableSourceTime(value: unknown, now: number): number | null {
+  return value !== undefined && value !== null && sourceTimeRejection(value, now) === null ? value as number : null
+}
+
+/** Was this spooled item observed inside a pause the project recorded? */
+function observedInRecordedPause(data: Record<string, unknown>, now: number): boolean {
+  // A producer's record of its own loss is evidence about capture, not
+  // captured content: never refused as paused.
+  if (data.subtype === 'capture_gap') return false
+  const at = usableSourceTime(data.source_timestamp, now)
+  if (at === null) return false
+  if (recordingStateAt(at) === 'paused') return true
+  // A command's end that carries its output inline was observed from the
+  // output's start: a pause recorded anywhere in between keeps it out.
+  if (data.subtype === 'command_end' && data.output_streamed !== true) {
+    const started = usableSourceTime(data.output_started_at, now)
+    if (started !== null && started < at && (recordingStateAt(started) === 'paused' || pauseBeganBetween(started, at))) return true
+  }
+  return false
+}
+
 /** One drain of `directory` for the open project: up to `limit` files after
- *  `after`. */
+ *  `after`. Null while recording is paused. With a `session`, counted files
+ *  wait for `session.commit()` (main commits once per drain, across slices);
+ *  without one, they are committed before this returns. */
 export function drainSpoolOnce(
   directory: string,
   opening: SpoolDrainIdentity,
   limit = Number.POSITIVE_INFINITY,
   after = '',
-  options: SpoolReplayOptions = {}
-): SpoolReplayResult {
-  // No "if paused, wait": whether an item was recorded is decided by when it
-  // was observed (Spec 071 FR-082), so a file observed before a pause is
-  // written while the pause lasts, and one observed during it never is.
-  const migrated = after === '' ? migrateLegacySpoolFiles(directory, opening, options).losses : []
+  options: SpoolReplayOptions = {},
+  session?: SpoolDrainSession
+): SpoolReplayResult | null {
+  if (eventBus.paused) return null
+  const clock = options.now ?? Date.now
+  const own = session ?? new SpoolDrainSession(opening)
+  const migrated = after === '' ? migrateLegacySpoolFiles(directory, opening, options) : null
   let pauses: ReturnType<typeof pauseIntervals> | null = null
-  const emit = ({ agentType, data: spooled, engagementId: spoolEngagement, operatorId: spoolOperator, observedAt }: SpoolReplayEvent): boolean | SpoolOutcome => {
+  const emit = ({ agentType, data: spooled, engagementId: spoolEngagement, operatorId: spoolOperator }: SpoolReplayEvent): boolean | SpoolOutcome => {
     // The question the API asks, asked first: a forged file gets no further.
     if (!isKindAllowed('legacy-handoff', agentType, spooled)) {
       return { outcome: 'invalid', reason: 'kind-not-allowed', detail: `agent_type "${agentType}" may not be written through the spool` }
@@ -52,39 +119,42 @@ export function drainSpoolOnce(
       ? queueGapAgainstPauses(spooled, pauses ??= pauseIntervals(recordingStateRows()))
       : spooled
     if (!data) return true
-    const judgedGap = isPauseJudgedGap(spooled)
-    // A file with no source time is judged by receipt time in ingest (FR-004),
-    // and its row is stamped with it; but it was observed no later than it was
-    // written. Written inside a recorded pause: never recorded. Written outside
-    // one but drained during the pause in effect now: left for after it, so the
-    // row is neither lost nor stamped inside the pause. (Every hook RedLog ships
-    // sends a source time; this is older hooks and hand-made files.)
-    if (!judgedGap && (data.source_timestamp === undefined || data.source_timestamp === null)) {
-      if (recordingStateAt(observedAt) === 'paused') return { outcome: 'rejected', reason: 'paused' }
-      if (eventBus.paused) return false
-    }
+    if (observedInRecordedPause(data, clock())) return { outcome: 'rejected', reason: 'paused' }
     // Through ingest(), like every other producer. Spooling is not rare — the
     // built-in terminal sources its adapter into a fresh pty within a second of
     // the pane opening, which is exactly when the API may not be up yet — so
     // the events most likely to take this path must get the whole pipeline.
-    // A gap already judged against the pauses above is not judged again.
-    const result = ingest({
-      agentType, data, engagementId: spoolEngagement, operatorId: spoolOperator,
-      ...(judgedGap ? { bypassPause: true } : {}),
-      envelope: { source: 'spool', mapper: { id: 'identity', version: '1' } }
-    })
+    let result: ReturnType<typeof ingest>
+    try {
+      result = ingest({
+        agentType, data, engagementId: spoolEngagement, operatorId: spoolOperator, spoolJudged: true,
+        envelope: { source: 'spool', mapper: { id: 'identity', version: '1' } }
+      })
+    } catch (e) {
+      // The row is in; a step after the commit threw. Retrying would write it
+      // again.
+      if (committedEventOf(e)) {
+        console.error('[hook-spool] a step after the commit failed; the row is written:', e)
+        noteDbError('hook-spool-post-commit', e)
+        return true
+      }
+      throw e
+    }
     if (result.event) return true
-    // Observed during a pause, or from a terminal that was not recording: never
-    // written, now or later; counted.
-    if (result.skipped === 'paused') return { outcome: 'rejected', reason: 'paused' }
+    // Recording was paused between slices: leave it for after the pause.
+    if (result.skipped === 'paused') return false
     if (result.skipped === 'unrecorded') return { outcome: 'rejected', reason: 'terminal-not-recording' }
     // No row, but handled: `plumbing` is deliberately never recorded and
     // `dedup` means the row is already there. Both mean this file is done.
     return true
   }
   const run = replaySpoolDirectory(directory, opening, emit, limit, after, options)
-  run.losses = [...migrated, ...run.losses]
-  for (const loss of run.losses) recordLoss(loss, opening)
+  if (migrated) {
+    run.losses = [...migrated.losses, ...run.losses]
+    run.outcomes = { ...migrated.outcomes, ...run.outcomes }
+  }
+  own.add(run.losses)
+  if (!session) Object.assign(run.outcomes, own.commit())
   return run
 }
 
@@ -96,6 +166,8 @@ function describeLoss(loss: SpoolLoss): string {
     : loss.reason === 'kind-not-allowed' ? 'named a kind the spool may not write'
     : loss.reason === 'malformed' ? 'could not be read'
     : loss.reason === 'legacy-bad' ? 'had been set aside as unreadable by an earlier version'
+    : loss.reason === 'unreadable' ? 'could not be opened, after repeated tries'
+    : loss.reason === 'failed' ? 'could not be written, after repeated tries'
     : `(${loss.reason})`
   const notKept = loss.count - loss.kept
   const where = loss.intentional ? '' : loss.kept > 0 ? `; kept in ~/.redlog/pending/quarantine` : ''
@@ -104,11 +176,13 @@ function describeLoss(loss: SpoolLoss): string {
   return `${loss.count} spooled event(s) not recorded: ${what}${where}${lost}${owner}`
 }
 
-/** A chained `system.capture_gap` for one group of losses, at the time the
- *  first of them was observed so it stands in its place on the Timeline. */
-function recordLoss(loss: SpoolLoss, opening: SpoolDrainIdentity): void {
+/** Commit a chained `system.capture_gap` for one group of losses, at the time
+ *  the first of them was observed so it stands in its place on the Timeline.
+ *  False when the row is not there — refused, deduplicated or thrown — and the
+ *  failure is reported where capture-write failures are. */
+function recordLoss(loss: SpoolLoss, opening: SpoolDrainIdentity): boolean {
   try {
-    ingest({
+    const result = ingest({
       agentType: 'system', engagementId: opening.engagementId, operatorId: opening.operatorId,
       occurredAt: loss.firstAt,
       data: {
@@ -122,7 +196,12 @@ function recordLoss(loss: SpoolLoss, opening: SpoolDrainIdentity): void {
         description: describeLoss(loss)
       }
     })
+    if (result.event) return true
+    throw new Error(`the ${loss.reason} gap row was not written (${result.skipped ?? 'no row'})`)
   } catch (e) {
-    console.error(`[hook-spool] a ${loss.reason} gap of ${loss.count} could not be recorded:`, e)
+    if (committedEventOf(e)) return true
+    console.error(`[hook-spool] a ${loss.reason} gap of ${loss.count} could not be recorded; its files stay in the spool:`, e)
+    noteDbError('hook-spool-gap', e)
+    return false
   }
 }

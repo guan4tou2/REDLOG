@@ -103,7 +103,7 @@ import { ProjectRuntime, type ProjectContext } from '../core/project-runtime'
 import { applyOperatorChange } from './operator-change'
 import { closeHttpBodyIndex } from '../core/http-body-index'
 import { startSpoolDrain } from '../core/spool-replay'
-import { drainSpoolOnce } from '../core/spool-drain'
+import { drainSpoolOnce, SpoolDrainSession } from '../core/spool-drain'
 import { writeActiveIdentity } from '../core/active-identity'
 import { registerContextMenuIpc } from './context-menu'
 import { registerClipboardIpc } from './ipc/clipboard'
@@ -928,22 +928,34 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
     // recoverable on disk and are picked up when their owning project opens.
     // What a file becomes — written, quarantined, counted — is decided in
     // core/spool-drain.ts, where the tests run the same code.
+    // One drain, every slice of it, counts what it did not write once, at its
+    // end: one gap row per reason per drain.
+    let spoolSession: SpoolDrainSession | null = null
     const drainSpool = (limit = Number.POSITIVE_INFINITY, after = ''): string | null => {
       if (!projectRuntime.isCurrent(opening)) return null
-      // A proxy killed while it held events left a bound on disk (#291). Into
-      // the spool with it, so its own project gets the gap and no other does.
-      if (after === '') reapInflightMarkers(inflightMarkerDirectory(homedir()), pendingSpoolDirectory(homedir()))
-      const run = drainSpoolOnce(pendingSpoolDirectory(homedir()), opening, limit, after)
+      if (after === '') {
+        // A proxy killed while it held events left a bound on disk (#291). Into
+        // the spool with it, so its own project gets the gap and no other does.
+        reapInflightMarkers(inflightMarkerDirectory(homedir()), pendingSpoolDirectory(homedir()))
+        spoolSession = new SpoolDrainSession(opening)
+      }
+      const run = drainSpoolOnce(pendingSpoolDirectory(homedir()), opening, limit, after, {}, spoolSession ?? undefined)
+      if (!run) return null
       if (run.replayed > 0) console.log(`[hook-spool] replayed ${run.replayed} spooled event(s)`)
-      if (run.invalid > 0 || run.unattributed > 0) console.log(`[hook-spool] set aside ${run.invalid + run.unattributed} spooled file(s) in quarantine`)
       return run.last
+    }
+    const finishSpoolDrain = (): void => {
+      const session = spoolSession
+      spoolSession = null
+      // A project that closed mid-drain counts nothing; its files stay.
+      if (session && projectRuntime.isCurrent(opening)) session.commit()
     }
     // The API shares this thread, so no drain holds it: the open starts one
     // that replays everything waiting ten files a turn once the open has
     // returned, and every 30 s the same drain looks at up to two hundred more
     // (Spec 071 FR-069; #291).
     startSpoolDrain({
-      drainOnce: drainSpool, total: 200, slice: 10, isCurrent: () => projectRuntime.isCurrent(opening),
+      drainOnce: drainSpool, finish: finishSpoolDrain, total: 200, slice: 10, isCurrent: () => projectRuntime.isCurrent(opening),
       repeat: (tick) => projectRuntime.setInterval(opening, tick, 30_000)
     })
 

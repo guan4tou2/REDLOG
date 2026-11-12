@@ -1,18 +1,19 @@
-// Spec 071 T015 (US2, FR-082–084): the pause property, the forerunner of T022.
+// Spec 071 T015 (US2, FR-082–084 as revised 2026-11-13): the pause property,
+// the forerunner of T022.
 //
 // Random pause intervals × random observation times × random door × random
-// arrival time. For every world:
-//   1. no shell row in either tier is timestamped inside a pause interval;
-//   2. an item is written if and only if it was observed outside every pause —
-//      observed before a pause it is written whenever it arrives, including
-//      while a later pause is in effect; observed inside one it never is;
-//   3. the exemptions are unchanged: a marker is written whenever observed.
-//
-// Doors: the API path (ingest with the api envelope), in-process
-// (ingestEvent), the spool drain with a source time, the spool drain with no
-// source time (judged by the file's mtime, held while a pause is in effect),
-// and the API with a source time ingest rejects (judged by receipt time,
-// FR-004 / the spec's edge cases).
+// arrival time. The rule:
+//   - a live door (API, in-process) is judged by receipt: refused while
+//     recording is paused, written otherwise — whatever time the producer
+//     claims, usable or not;
+//   - the spool drain does not run while paused; after the pause, a file is
+//     refused only if its usable source time lies inside a recorded pause, and
+//     written otherwise (no source time, or a rejected one, counts as none);
+//   - a marker is written whenever it arrives (FR-084).
+// For every world:
+//   1. no row other than a marker was RECEIVED during a pause (created_at);
+//   2. no spooled row's usable source time lies inside a recorded pause;
+//   3. every item is written exactly as the rule says, exactly once.
 //
 // Seeded and deterministic: the clock is faked, every choice comes from one
 // PRNG. WORLDS × ITEMS cases; the full 10 000 is T022.
@@ -58,8 +59,8 @@ function mulberry32(seed: number): () => number {
   }
 }
 
-type Door = 'api' | 'in-process' | 'spool' | 'spool-no-time' | 'api-bad-time' | 'marker'
-const DOORS: Door[] = ['api', 'in-process', 'spool', 'spool-no-time', 'api-bad-time', 'marker']
+type Door = 'api' | 'api-bad-time' | 'in-process' | 'spool' | 'spool-no-time' | 'spool-bad-time' | 'marker'
+const DOORS: Door[] = ['api', 'api-bad-time', 'in-process', 'spool', 'spool-no-time', 'spool-bad-time', 'marker']
 
 interface Item { n: number; door: Door; observed: number; arrival: number }
 type Step = { at: number; kind: 'pause' | 'resume' } | { at: number; kind: 'item'; item: Item }
@@ -77,8 +78,7 @@ sqlite.describe(`the pause property (${WORLDS * ITEMS} seeded cases)`, () => {
     process.env.REDLOG_KEYS_DIR = path.join(root, 'keys')
     const rand = mulberry32(SEED)
     for (let w = 0; w < WORLDS; w++) {
-      // A world a day after the last: the clock never runs backwards, as the
-      // pause in this process (eventBus) is the machine's, not the project's.
+      // A world a day after the last: the clock never runs backwards.
       const BASE = ORIGIN + w * DAY
       const eng = `eng-prop-${w}`
       const id = { engagementId: eng, operatorId: `op-prop-${w}` }
@@ -106,13 +106,11 @@ sqlite.describe(`the pause property (${WORLDS * ITEMS} seeded cases)`, () => {
         steps.push({ at: a, kind: 'pause' })
         if (Number.isFinite(b)) steps.push({ at: b, kind: 'resume' })
       }
-      // An item the source observed during a pause is still offered: an old
-      // hook, a spool written with the app down. It is the receiver that must
-      // refuse it (FR-082).
       for (const item of items) steps.push({ at: item.arrival, kind: 'item', item })
       steps.sort((x, y) => x.at - y.at || (x.kind === 'item' ? 1 : 0) - (y.kind === 'item' ? 1 : 0))
 
       const command = (item: Item): string => `prop-${w}-${item.n}`
+      const pausedAtArrival = new Map<number, boolean>()
       for (const step of steps) {
         vi.setSystemTime(step.at)
         if (step.kind === 'pause') {
@@ -126,13 +124,13 @@ sqlite.describe(`the pause property (${WORLDS * ITEMS} seeded cases)`, () => {
           continue
         }
         const { item } = step
+        pausedAtArrival.set(item.n, busMod.eventBus.paused)
         const data = { subtype: 'command_start', command: `true ${command(item)}`, terminalId: `t-${w}-${item.n}`, pid: 10_000 + item.n }
+        const badTime = Math.floor(item.observed / 1000)
         switch (item.door) {
           case 'api':
-            ingestMod.ingest({ agentType: 'shell', data: { ...data, source_timestamp: item.observed }, ...id, envelope: { source: 'api', mapper: { id: 'identity', version: '1' } } })
-            break
           case 'api-bad-time':
-            ingestMod.ingest({ agentType: 'shell', data: { ...data, source_timestamp: Math.floor(item.observed / 1000) }, ...id, envelope: { source: 'api', mapper: { id: 'identity', version: '1' } } })
+            ingestMod.ingest({ agentType: 'shell', data: { ...data, source_timestamp: item.door === 'api' ? item.observed : badTime }, ...id, envelope: { source: 'api', mapper: { id: 'identity', version: '1' } } })
             break
           case 'in-process':
             ingestMod.ingestEvent('shell', { ...data, source_timestamp: item.observed }, id)
@@ -140,17 +138,16 @@ sqlite.describe(`the pause property (${WORLDS * ITEMS} seeded cases)`, () => {
           case 'marker':
             ingestMod.ingestEvent('marker', { subtype: 'note', title: command(item), source_timestamp: item.observed }, id)
             break
-          case 'spool':
-          case 'spool-no-time': {
-            const file = path.join(spool, `${String(item.observed).padStart(16, '0')}-${item.n}.json`)
-            fs.writeFileSync(file, JSON.stringify({ agent_type: 'shell', data: item.door === 'spool' ? { ...data, source_timestamp: item.observed } : data, _identity: id }))
-            fs.utimesSync(file, item.observed / 1000, item.observed / 1000)
+          default: {
+            const body = item.door === 'spool' ? { ...data, source_timestamp: item.observed }
+              : item.door === 'spool-bad-time' ? { ...data, source_timestamp: badTime } : data
+            fs.writeFileSync(path.join(spool, `${String(item.arrival).padStart(16, '0')}-${item.n}.json`), JSON.stringify({ agent_type: 'shell', data: body, _identity: id }))
             drainMod.drainSpoolOnce(spool, id)
           }
         }
       }
       // The world ends: whatever pause is open ends, and the spool drains once
-      // more — "whenever it arrives" includes after the pause it waited out.
+      // more — what waited out a pause is written now.
       const end = BASE + SPAN + 31 * 60_000
       vi.setSystemTime(end)
       if (busMod.eventBus.paused) {
@@ -160,25 +157,32 @@ sqlite.describe(`the pause property (${WORLDS * ITEMS} seeded cases)`, () => {
       drainMod.drainSpoolOnce(spool, id)
       const closed = pauses.map(([a, b]): [number, number] => [a, Number.isFinite(b) ? b : end])
 
-      // What landed, from both tiers.
-      const rows = (db.getDB().prepare(`SELECT agent_type, timestamp, data FROM events WHERE agent_type IN ('shell','marker')
-        UNION ALL SELECT agent_type, timestamp, data FROM events_logged WHERE agent_type IN ('shell','marker')`).all() as Array<{ agent_type: string; timestamp: number; data: string }>)
-        .map((r) => ({ type: r.agent_type, timestamp: r.timestamp, data: JSON.parse(r.data) as Record<string, unknown> }))
+      const rows = (db.getDB().prepare(`SELECT agent_type, created_at, data FROM events WHERE agent_type IN ('shell','marker')
+        UNION ALL SELECT agent_type, created_at, data FROM events_logged WHERE agent_type IN ('shell','marker')`).all() as Array<{ agent_type: string; created_at: number; data: string }>)
+        .map((r) => ({ type: r.agent_type, createdAt: r.created_at, data: JSON.parse(r.data) as Record<string, unknown> }))
       const written = new Map<string, number>()
       for (const r of rows) {
         const key = r.type === 'marker' ? String(r.data.title) : String(r.data.command).replace(/^true /, '')
         written.set(key, (written.get(key) ?? 0) + 1)
-        if (r.type === 'shell' && inside(r.timestamp, closed)) failures.push(`world ${w}: shell row ${key} timestamped ${r.timestamp - BASE} inside a pause`)
+        if (r.type === 'shell' && inside(r.createdAt, closed)) failures.push(`world ${w}: shell row ${key} received at ${r.createdAt - BASE}, inside a pause`)
+        if (r.type === 'shell' && r.data.recovered_from_spool === true && typeof r.data.source_timestamp === 'number'
+          && r.data.source_timestamp > 1.4e12 && inside(r.data.source_timestamp, closed)) {
+          failures.push(`world ${w}: spooled row ${key} observed at ${r.data.source_timestamp - BASE}, inside a recorded pause`)
+        }
       }
       for (const item of items) {
         cases++
-        const judgedAt = item.door === 'api-bad-time' ? item.arrival : item.observed
-        const expected = item.door === 'marker' ? 1 : inside(judgedAt, closed) ? 0 : 1
+        const live = item.door === 'api' || item.door === 'api-bad-time' || item.door === 'in-process'
+        const expected = item.door === 'marker' ? 1
+          : live ? (pausedAtArrival.get(item.n) ? 0 : 1)
+          : item.door === 'spool' ? (inside(item.observed, closed) ? 0 : 1)
+          : 1
         const got = written.get(command(item)) ?? 0
         if (got !== expected) {
           failures.push(`world ${w} item ${item.n} via ${item.door}: observed ${item.observed - BASE}, arrived ${item.arrival - BASE}, pauses ${JSON.stringify(closed.map(([a, b]) => [a - BASE, b - BASE]))}: ${got} row(s), expected ${expected}`)
         }
       }
+      if (fs.readdirSync(spool).some((n) => n.endsWith('.json'))) failures.push(`world ${w}: spool files left after the last drain`)
       db.closeDB()
       vi.useRealTimers()
     }
@@ -196,7 +200,7 @@ sqlite.describe(`the pause property (${WORLDS * ITEMS} seeded cases)`, () => {
     expect(cases).toBe(WORLDS * ITEMS)
   })
 
-  sqlite.it('no row inside a pause; written iff observed outside every pause; markers always', () => {
+  sqlite.it('nothing received during a pause; no spooled row observed in a recorded pause; each item as the rule says', () => {
     expect(failures.slice(0, 10), `${failures.length} violation(s)`).toEqual([])
   })
 })

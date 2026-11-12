@@ -16,8 +16,7 @@
 //
 // `insertEvent` stays the DB write; ingest is the policy around it.
 
-import { insertEvent, sourceTimeRejection, PAUSE_EXEMPT_AGENT_TYPES, type RedLogEvent, type EnvelopeInput } from './db/events'
-import { pausedBetween } from './recording-state'
+import { insertEvent, lastRecordingResumeTime, PAUSE_EXEMPT_AGENT_TYPES, type RedLogEvent, type EnvelopeInput } from './db/events'
 import { dbEngagement, dbGeneration } from './db/index'
 import { eventBus } from './event-bus'
 import { isCapturePlumbing } from './capture-plumbing'
@@ -104,6 +103,18 @@ export interface IngestInput {
   /** A companion emitted by the pipeline itself. Skips enrichment so a
    *  derived row cannot derive further rows (no pivot-of-a-pivot). */
   derived?: boolean
+  /** Set by the spool drain only: the file was judged against the project's
+   *  recorded pause intervals before it got here (Spec 071 FR-082 as revised
+   *  2026-11-13). The pause in effect now still refuses it. */
+  spoolJudged?: boolean
+}
+
+/** The row an error was thrown after: ingest committed it, then a step after
+ *  the commit (publish, scope dispatch, companions, bookkeeping) threw. A
+ *  caller that retries on a throw must not retry this one — the row is there.
+ *  Null for an error thrown before anything was written. */
+export function committedEventOf(error: unknown): RedLogEvent | null {
+  return (error as { committedEvent?: RedLogEvent } | null)?.committedEvent ?? null
 }
 
 export interface IngestResult {
@@ -155,24 +166,29 @@ export function ingest(input: IngestInput): IngestResult {
     return { event: null, skipped: 'unrecorded', companions: [] }
   }
 
-  // 1. Pause gate, judged by when the item was OBSERVED, against the pause
-  //    intervals the project records plus the one in effect now (Spec 071
-  //    FR-082, core/recording-state.ts) — not by whether recording is paused
-  //    at the moment it arrives. Observed inside a pause: refused, now and on
-  //    every later arrival (FR-083). Observed outside: written, even if
-  //    recording is paused now. Nothing below may run for a refused item: the
-  //    derivations emit their own rows and would leak the very content the
-  //    operator paused to keep out — a scope_violation names the target of a
-  //    command that was never recorded — and a sidecar would keep its bytes.
-  //    `system`, `marker` and `bypassPause` are exempt, as before (FR-084).
-  const pauseJudged = !PAUSE_EXEMPT_AGENT_TYPES.has(agentType) && !input.bypassPause
-  if (pauseJudged) {
-    const observed = observedSpan(agentType, data, input, Date.now())
-    if (pausedBetween(observed.from, observed.at)) return { event: null, skipped: 'paused', companions: [] }
+  // An asynchronous sender can arrive after the operator resumed. Receipt
+  // time cannot authorize bytes observed in the closed interval. Reject the
+  // whole mixed batch conservatively, before any sidecar or derivation.
+  const outputAt = data.subtype === 'command_end' && data.output_streamed !== true
+    ? data.output_started_at : data.source_timestamp
+  const delayedCapture = (agentType === 'shell' && ['command_output', 'session_output', 'command_end'].includes(String(data.subtype)))
+    || (agentType === 'scanner' && ['http_response_chunk', 'ws_message', 'tcp_message'].includes(String(data.subtype)))
+  // The spool drain has already judged its file against the recorded pause
+  // intervals (core/spool-drain.ts); this "older than the last resume" rule
+  // is what left a command_end observed before a pause stuck there forever.
+  if (delayedCapture && !input.bypassPause && !input.spoolJudged
+      && typeof outputAt === 'number' && Number.isFinite(outputAt)
+      && outputAt <= Math.max(eventBus.resumedAt, lastRecordingResumeTime())) {
+    return { event: null, skipped: 'paused', companions: [] }
   }
-  // Observed before a pause that is in effect now. insertEvent's own gate and
-  // the bus would drop it as "paused"; this row has already been judged.
-  const writtenWhilePaused = pauseJudged && eventBus.paused
+
+  // 1. Pause gate. Nothing below may run while paused: the derivations emit
+  //    their own rows and would leak the very content the operator paused to
+  //    keep out — a scope_violation names the target of a command that was
+  //    never recorded. insertEvent has the same gate; this one is earlier.
+  if (!PAUSE_EXEMPT_AGENT_TYPES.has(agentType) && !input.bypassPause && eventBus.paused) {
+    return { event: null, skipped: 'paused', companions: [] }
+  }
 
   // 1b. RedLog's own plumbing never enters the record. The shell adapters
   //    report every command their shell runs, including the one that sourced
@@ -260,10 +276,21 @@ export function ingest(input: IngestInput): IngestResult {
 
   // 5. Write. insertEvent stores the raw bytes and hashes the envelope.
   const event = insertEvent(agentType, data, {
-    engagementId, operatorId, targetId, bypassPause: input.bypassPause || writtenWhilePaused, envelope: input.envelope,
+    engagementId, operatorId, targetId, bypassPause: input.bypassPause, envelope: input.envelope,
     occurredAt: input.occurredAt
   })
   if (!event) return { event: null, skipped: 'dedup', companions: [] }
+  // Everything after the commit. A throw from here still propagates, but
+  // carries the committed row (committedEventOf), so a caller that retries on
+  // failure — the spool drain — does not write it a second time.
+  try {
+    return afterCommit(event)
+  } catch (error) {
+    const marked = error !== null && typeof error === 'object' ? error : new Error(String(error))
+    throw Object.assign(marked, { committedEvent: event })
+  }
+
+  function afterCommit(event: RedLogEvent): IngestResult {
   if (agentType === 'shell' && !input.derived) terminalLifecycle?.recorded(event)
   if (agentType === 'shell' && !input.derived && data.subtype === 'command_output' && (data.late === true || data.streamed === true)
       && typeof data.command_id === 'string' && typeof data.seq === 'number') {
@@ -290,7 +317,7 @@ export function ingest(input: IngestInput): IngestResult {
   }
 
   // 6. Publish — once, here, for every producer.
-  eventBus.publish(event, { bypassPause: input.bypassPause || writtenWhilePaused })
+  eventBus.publish(event, { bypassPause: input.bypassPause })
   noteStartEvent(agentType, data, event.id)
   // Record pid → this command_start so later traffic on that pid's sockets can
   // cite it (docs/design/DESIGN-traffic-attribution.md §2.3).
@@ -311,9 +338,7 @@ export function ingest(input: IngestInput): IngestResult {
     try {
       const r = ingest({
         agentType: type, data: { ...d, _causes: [event.id] }, operatorId, engagementId,
-        // A companion follows its row's pause judgment: derived from content
-        // observed outside a pause, it is written even while paused now.
-        targetId: tid ?? targetId, derived: true, bypassPause: writtenWhilePaused,
+        targetId: tid ?? targetId, derived: true,
         envelope: { source: input.envelope?.source, mapper: { id: 'derived', version: '1' } }
       })
       if (r.event) companions.push(r.event)
@@ -373,34 +398,7 @@ export function ingest(input: IngestInput): IngestResult {
   }
 
   return { event, companions }
-}
-
-// ── Observation time ────────────────────────────────────────────────────────
-
-/** Output that can arrive after the moment it was produced: a command's end
- *  with its output, a streamed chunk, a proxied stream's segment. */
-function isDelayedCapture(agentType: string, data: Record<string, unknown>): boolean {
-  return (agentType === 'shell' && ['command_output', 'session_output', 'command_end'].includes(String(data.subtype)))
-    || (agentType === 'scanner' && ['http_response_chunk', 'ws_message', 'tcp_message'].includes(String(data.subtype)))
-}
-
-/** When this item was observed, for the pause judgment (FR-082).
- *
- *  `at` is the time the row's `timestamp` will be: the producer's time, by the
- *  same precedence and the same validation as the write (FR-004), else the
- *  receipt time — so a rejected source time is judged by receipt time, as the
- *  spec's edge cases say. `from` is earlier only for a command's end that
- *  carries its output inline: that output was observed from
- *  `output_started_at` on, and a pause anywhere in between keeps it out. */
-function observedSpan(agentType: string, data: Record<string, unknown>, input: IngestInput, now: number): { from: number; at: number } {
-  const candidate = input.occurredAt ?? input.envelope?.tsSource ?? data.source_timestamp
-  const at = candidate !== undefined && candidate !== null && sourceTimeRejection(candidate, now) === null ? candidate as number : now
-  let from = at
-  if (isDelayedCapture(agentType, data) && data.subtype === 'command_end' && data.output_streamed !== true) {
-    const started = data.output_started_at
-    if (sourceTimeRejection(started, now) === null && (started as number) < at) from = started as number
   }
-  return { from, at }
 }
 
 // ── Enrichment ──────────────────────────────────────────────────────────────

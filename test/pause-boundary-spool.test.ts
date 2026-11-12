@@ -27,10 +27,12 @@
 //     (returns false) and retries it every 30 s, and the command_start already
 //     in the record never gets its end.
 //
-// Phase 2 (T015) judges by the persisted pause intervals
-// (src/core/recording-state.ts) and the drain runs while paused; both tests
-// below were `it.fails` until then. The rule itself is property-tested in
-// test/pause-interval-property.test.ts.
+// Phase 2 (T015, as revised 2026-11-13) judges a spool file, after the pause,
+// by its usable source time against the RECORDED pause intervals
+// (src/core/recording-state.ts, src/core/spool-drain.ts); both tests below were
+// `it.fails` until then. The rule itself is property-tested in
+// test/pause-interval-property.test.ts, the review's probes in
+// test/pause-spool-review.test.ts.
 
 import fs from 'node:fs'
 import os from 'node:os'

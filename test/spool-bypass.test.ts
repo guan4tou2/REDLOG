@@ -82,6 +82,6 @@ sqlite.describe('a spool file naming a kind the API refuses', () => {
     // Not written, not deleted: set aside under its reason (T010).
     expect(run?.invalid).toBe(1)
     expect(fs.existsSync(file)).toBe(false)
-    expect(fs.readdirSync(path.join(spool, 'quarantine')).sort()).toEqual(['kind-not-allowed--0001-forged.json', 'kind-not-allowed--0001-forged.json.why'])
+    expect(fs.readdirSync(path.join(spool, 'quarantine', ENG)).sort()).toEqual(['kind-not-allowed--0001-forged.json', 'kind-not-allowed--0001-forged.json.why'])
   })
 })
