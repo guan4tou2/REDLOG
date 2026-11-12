@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { RedLogEvent } from '../src/core/db/event-types'
 import { mergeSortedRows } from '../src/renderer/src/lib/timelineMerge'
-import { binarySearchInsert } from '../src/renderer/src/lib/timelineDomain'
+import { binarySearchInsert, eventCompare } from '../src/renderer/src/lib/timelineDomain'
 
 // Paged history used to be merged one `binarySearchInsert` per row, each
 // shifting the whole store when the page is older than everything held. The
@@ -11,8 +11,18 @@ function rng(seed: number): () => number {
   let s = seed >>> 0
   return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 2 ** 32 }
 }
-const row = (id: string, timestamp: number, monotonicNs?: string): RedLogEvent =>
-  ({ id, timestamp, agentType: 'shell', data: {}, ...(monotonicNs ? { monotonicNs } : {}) }) as unknown as RedLogEvent
+const row = (id: string, timestamp: number, more: Partial<RedLogEvent> = {}): RedLogEvent =>
+  ({ id, timestamp, agentType: 'shell', data: {}, tier: 'chained', ...more }) as unknown as RedLogEvent
+/** A mix of everything a store can hold in one millisecond: rows from either
+ *  tier, with and without the rowId a page read carries, with and without a
+ *  monotonic stamp (which the order no longer reads). */
+function mixed(r: () => number): Partial<RedLogEvent> {
+  return {
+    tier: r() < 0.5 ? 'chained' : 'logged',
+    ...(r() < 0.7 ? { rowId: 1 + Math.floor(r() * 6) } : {}),
+    ...(r() < 0.3 ? { monotonicNs: String(Math.floor(r() * 1e6)) } : {})
+  }
+}
 
 function reference(sorted: RedLogEvent[], byId: Map<string, RedLogEvent>, rows: readonly RedLogEvent[]): void {
   for (const e of rows) {
@@ -41,14 +51,14 @@ describe('mergeSortedRows', () => {
           const size = Math.floor(r() * 30)
           for (let k = 0; k < size; k++) {
             if (shape === 'dupes' && n > 0 && r() < 0.3) { rows.push(row(`e${Math.floor(r() * n)}`, 0)); continue }
-            const ts = shape === 'older' ? (older -= Math.floor(r() * 50))
-              : shape === 'newer' ? (newer += Math.floor(r() * 50))
-              : Math.floor(r() * 2_000_000)
-            // Rows sharing a millisecond either all carry monotonicNs or none
-            // do: with a mix, eventCompare is not transitive (eventOrder.ts
-            // answers 0 when one side lacks it), so no order is "the" sorted
-            // one and the per-row inserts were already arrival-dependent.
-            rows.push(row(`e${n++}`, shape === 'dupes' ? Math.floor(r() * 20) : ts, shape !== 'dupes' && r() < 0.3 ? String(Math.floor(r() * 1e6)) : undefined))
+            const ts = shape === 'older' ? (older -= Math.floor(r() * 3))
+              : shape === 'newer' ? (newer += Math.floor(r() * 3))
+              : Math.floor(r() * 40)
+            // Timestamps are drawn close together so most rows share a
+            // millisecond with others, and every mix of tie-break fields meets
+            // every other. eventCompare is a strict weak order over any mix, so
+            // there is one sorted arrangement and both paths must reach it.
+            rows.push(row(`e${n++}`, shape === 'dupes' ? Math.floor(r() * 20) : ts, mixed(r)))
           }
           // A page arrives newest first, as the query returns it.
           if (shape === 'older') rows.reverse()
@@ -56,10 +66,22 @@ describe('mergeSortedRows', () => {
           held = mergeSortedRows(held, mapB, rows)
           expect(held.map((e) => e.id)).toEqual(a.map((e) => e.id))
           expect([...mapB]).toEqual([...mapA])
+          for (let i = 1; i < held.length; i++) expect(eventCompare(held[i - 1], held[i])).toBeLessThan(0)
         }
       }
     })
   }
+
+  it('orders a same-millisecond pair by ingestion, whichever arrives first and whatever the ids', () => {
+    // A logged request/response pair carries no monotonic stamp; ids sort the wrong way.
+    const req = row('z-req', 5, { tier: 'logged', rowId: 40 }), resp = row('a-resp', 5, { tier: 'logged', rowId: 41 })
+    for (const arrival of [[req, resp], [resp, req]]) {
+      const sorted: RedLogEvent[] = []
+      for (const e of arrival) binarySearchInsert(sorted, e)
+      expect(sorted.map(e => e.id)).toEqual(['z-req', 'a-resp'])
+      expect(mergeSortedRows([], new Map(), arrival).map(e => e.id)).toEqual(['z-req', 'a-resp'])
+    }
+  })
 
   it('returns the held array itself when the page brings nothing new', () => {
     const held = [row('a', 1), row('b', 2)]

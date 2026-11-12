@@ -93,8 +93,8 @@ export function amendedFields(e: RedLogEvent): AmendableField[] {
  * is why the DB pages by `created_at` — and "the latest correction wins" has to
  * mean the one written last, not the one whose clock read highest.
  *
- * The monotonic comparison itself is shared with the timeline (lib/eventOrder),
- * so the two cannot disagree about which of two events came first.
+ * The monotonic comparison itself lives in one place (lib/eventOrder). The
+ * timeline's display order is core/event-order, which is keyed on wall clock.
  */
 export function compareAmendments(a: RedLogEvent, b: RedLogEvent): number {
   const mono = compareMonotonicNs(a.monotonicNs, b.monotonicNs)

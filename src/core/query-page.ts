@@ -1,12 +1,13 @@
 // Shared keyset-cursor pagination primitive for event queries.
 //
-// Cursor key = (timestamp, _row, tier) — matches the canonical
-// ORDER BY timestamp DESC, _row DESC, tier_rank DESC exactly.
+// Cursor key = (timestamp, _row, tier) — the display order of
+// core/event-order, newest first.
 //
 // _row is SQLite rowid, which is per-table. Two rows from different tiers
 // can share the same (timestamp, _row), so tier is the final tie-break.
 import type { ActivitySnapshot } from './activity-contract'
 import type { ParsedQuery } from './query/contract'
+import { EVENT_TIER_RANK, eventOrderBy } from './event-order'
 
 export interface QueryPage<T> {
   items: T[]
@@ -24,7 +25,7 @@ export interface CursorKey {
   }
 }
 
-const TIER_RANK: Record<string, number> = { chained: 1, logged: 0 }
+const TIER_RANK: Record<string, number> = EVENT_TIER_RANK
 
 const CURSOR_VERSION = 1
 
@@ -104,9 +105,9 @@ export function toQueryPage<T>(
 
 // SQL fragment for tier_rank in SELECT: chained=1, logged=0.
 // Used inside each UNION arm to produce a sortable column.
-export const TIER_RANK_CHAINED = '1 AS tier_rank'
-export const TIER_RANK_LOGGED = '0 AS tier_rank'
+export const TIER_RANK_CHAINED = `${EVENT_TIER_RANK.chained} AS tier_rank`
+export const TIER_RANK_LOGGED = `${EVENT_TIER_RANK.logged} AS tier_rank`
 
 // The canonical ORDER BY for event queries — all surfaces must use this
 // exact ordering so cursors produced by one query work with another.
-export const CANONICAL_ORDER = 'ORDER BY timestamp DESC, _row DESC, tier_rank DESC'
+export const CANONICAL_ORDER = `ORDER BY ${eventOrderBy('DESC')}`

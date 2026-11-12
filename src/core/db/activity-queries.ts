@@ -6,6 +6,7 @@ import { rowToEvent, type RedLogEvent } from './event-types'
 import { compileEventSelection, HOUSEKEEPING_SQL } from './event-queries'
 import { activityKey, activityId, activityClassification } from '../activity-projection'
 import { QUERY_FIELDS, type ParsedQuery } from '../query/contract'
+import { EVENT_TIER_RANK, eventOrderAfter, eventOrderBy, type EventOrderColumns } from '../event-order'
 import type { ActivityRequest, ActivityPage, ActivityMembersRequest, ActivityMembersPage, ActivitySnapshot, ActivitySummary } from '../activity-contract'
 
 const registered = new WeakSet<object>()
@@ -57,8 +58,8 @@ function register(): ReturnType<typeof getReadonlyDB> {
     db.exec(`CREATE TEMP TABLE activity_projection_v1 (
       tier TEXT NOT NULL, _row INTEGER NOT NULL, id TEXT NOT NULL, engagement_id TEXT NOT NULL,
       timestamp INTEGER NOT NULL, ak TEXT NOT NULL, role TEXT NOT NULL, digest TEXT NOT NULL,
-      classification TEXT NOT NULL, hk INTEGER NOT NULL, PRIMARY KEY(tier,_row)
-    ); CREATE INDEX activity_projection_key_v1 ON activity_projection_v1(ak,timestamp,id); CREATE INDEX activity_projection_id_v1 ON activity_projection_v1(id);
+      classification TEXT NOT NULL, hk INTEGER NOT NULL, tier_rank INTEGER NOT NULL, PRIMARY KEY(tier,_row)
+    ); CREATE INDEX activity_projection_key_v1 ON activity_projection_v1(ak,timestamp,_row,tier_rank); CREATE INDEX activity_projection_id_v1 ON activity_projection_v1(id);
     CREATE TEMP TABLE activity_groups_v1 (
       engagement_id TEXT NOT NULL, ak TEXT NOT NULL, source_count INTEGER NOT NULL, hk_count INTEGER NOT NULL,
       first_at INTEGER, last_at INTEGER, start_at INTEGER, sort_at INTEGER, has_begin INTEGER, has_result INTEGER,
@@ -69,14 +70,20 @@ function register(): ReturnType<typeof getReadonlyDB> {
   return db
 }
 
+/** A groups cursor is (sort_at, ak), version 1. A members cursor is the last
+ *  row's display-order position, version 2: version 1 stood on (timestamp, id),
+ *  an order this build no longer reads in, so resuming from one could repeat
+ *  or skip rows of that millisecond. It is refused instead. */
 interface Cursor {
-  v: 1; kind: 'groups' | 'members'; q: string; s: ActivitySnapshot; p: ParsedQuery; body: string
-  ts: number; key: string; matched?: number; toolSession?: ActivityPage['toolSession']
+  v: 1 | 2; kind: 'groups' | 'members'; q: string; s: ActivitySnapshot; p: ParsedQuery; body: string
+  ts: number; key: string; row?: number; tier?: 'chained' | 'logged'; matched?: number; toolSession?: ActivityPage['toolSession']
 }
+const CURSOR_VERSION = { groups: 1, members: 2 } as const
 function decode(raw: string, kind: Cursor['kind'], q: string): Cursor {
   try {
     const c = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8')) as Cursor
-    if (c.v !== 1 || c.kind !== kind || c.q !== q || !Number.isSafeInteger(c.ts) || typeof c.key !== 'string' || !c.s || typeof c.body !== 'string') throw new Error()
+    if (c.v !== CURSOR_VERSION[kind] || c.kind !== kind || c.q !== q || !Number.isSafeInteger(c.ts) || typeof c.key !== 'string' || !c.s || typeof c.body !== 'string') throw new Error()
+    if (kind === 'members' && (!Number.isSafeInteger(c.row) || (c.tier !== 'chained' && c.tier !== 'logged'))) throw new Error()
     validateParsed(c.p)
     return c
   } catch { throw new Error('Invalid Activity cursor or changed query/project') }
@@ -118,13 +125,18 @@ const PROJECTION = 'temp.activity_projection_v1'
 /** A projected row inside the request's dataset snapshot. */
 const within = (alias: string): string =>
   `((${alias}.tier='chained' AND ${alias}._row<=@bc) OR (${alias}.tier='logged' AND ${alias}._row<=@bl))`
+/** The display order (core/event-order) over a projected row. `tier_rank` is
+ *  stored so the key index serves the whole order without a sort. */
+const order = (alias: string): EventOrderColumns =>
+  ({ timestamp: `${alias}.timestamp`, row: `${alias}._row`, tierRank: `${alias}.tier_rank` })
 /** Every aggregate an Activity row shows, over the projected rows `where`
  *  admits, grouped per project and key. The anchor is the earliest Call (or
- *  the earliest row when there is no Call), lowest id on a tie. */
+ *  the earliest row when there is no Call), first in display order on a tie. */
 function groupStatsSql(where: string): string {
   return `SELECT s.*,COALESCE(s.start_at,s.first_at) AS sort_at,
-    (SELECT MIN(a.id) FROM ${PROJECTION} a WHERE a.ak=s.ak AND a.engagement_id=s.engagement_id
-      AND a.timestamp=COALESCE(s.start_at,s.first_at) AND (s.has_begin=0 OR a.role='begin') AND ${within('a')}) AS anchor_id
+    (SELECT a.id FROM ${PROJECTION} a WHERE a.ak=s.ak AND a.engagement_id=s.engagement_id
+      AND a.timestamp=COALESCE(s.start_at,s.first_at) AND (s.has_begin=0 OR a.role='begin') AND ${within('a')}
+      ORDER BY ${eventOrderBy('ASC', order('a'))} LIMIT 1) AS anchor_id
     FROM (SELECT p.engagement_id,p.ak,COUNT(*) AS source_count,SUM(p.hk) AS hk_count,
       MIN(p.timestamp) AS first_at,MAX(p.timestamp) AS last_at,
       MIN(CASE WHEN p.role='begin' THEN p.timestamp END) AS start_at,
@@ -166,7 +178,7 @@ function syncProjection(db: ReturnType<typeof getReadonlyDB>): void {
           WHEN subtype IN ('command_start','tool_call','http_request_start') THEN 'begin'
           WHEN subtype IN ('command_end','tool_result','http_response','http_error') THEN 'result'
           WHEN subtype='tool_interrupted' THEN 'interrupted' ELSE 'member' END,
-        redlog_activity_digest_v1(data),redlog_activity_class_v1(agent_type,data),hk FROM keyed`).run(oldMax, max, tier)
+        redlog_activity_digest_v1(data),redlog_activity_class_v1(agent_type,data),hk,? FROM keyed`).run(oldMax, max, tier, EVENT_TIER_RANK[tier])
   }
   // Re-aggregate only the Activities that gained a row: the work is the new
   // rows and their groups, not the project.
@@ -273,9 +285,9 @@ export function queryActivityPage(request: ActivityRequest): ActivityPage {
     const rows = db.prepare(`${c.sql}, counted AS (SELECT *,COUNT(*) OVER() AS total_groups,SUM(matched_count) OVER() AS total_matches FROM filtered)
       ,paged AS (SELECT * FROM counted ${past} ORDER BY sort_at DESC,ak DESC LIMIT @lim)
       SELECT paged.*,anchor.*,
-      (SELECT json_group_array(id) FROM (SELECT p.id FROM ${PROJECTION} p WHERE p.ak=paged.ak AND p.engagement_id=@eng AND ${within('p')} ORDER BY p.timestamp,p.id LIMIT ${PREVIEW})) AS source_ids,
-      (SELECT json_group_array(id) FROM (SELECT m.id FROM ${PROJECTION} m WHERE m.ak=paged.ak AND m.engagement_id=@eng AND ${within('m')} AND ${matchedRow(c.mode, 'm')} ORDER BY m.timestamp,m.id LIMIT ${PREVIEW})) AS matched_ids,
-      (SELECT r.id FROM ${PROJECTION} r WHERE r.ak=paged.ak AND r.engagement_id=@eng AND ${within('r')} AND r.role='result' ORDER BY r.timestamp DESC,r.id DESC LIMIT 1) AS result_id
+      (SELECT json_group_array(id) FROM (SELECT p.id FROM ${PROJECTION} p WHERE p.ak=paged.ak AND p.engagement_id=@eng AND ${within('p')} ORDER BY ${eventOrderBy('ASC', order('p'))} LIMIT ${PREVIEW})) AS source_ids,
+      (SELECT json_group_array(id) FROM (SELECT m.id FROM ${PROJECTION} m WHERE m.ak=paged.ak AND m.engagement_id=@eng AND ${within('m')} AND ${matchedRow(c.mode, 'm')} ORDER BY ${eventOrderBy('ASC', order('m'))} LIMIT ${PREVIEW})) AS matched_ids,
+      (SELECT r.id FROM ${PROJECTION} r WHERE r.ak=paged.ak AND r.engagement_id=@eng AND ${within('r')} AND r.role='result' ORDER BY ${eventOrderBy('DESC', order('r'))} LIMIT 1) AS result_id
       FROM paged JOIN ${PROJECTION} anchor ON anchor.id=paged.anchor_id AND anchor.engagement_id=@eng AND ${within('anchor')} ORDER BY paged.sort_at DESC,paged.ak DESC`)
       .all(...c.params, { ...c.named, lim: limit + 1, ...(s.cursor ? { cts: s.cursor.ts, ckey: s.cursor.key } : {}) }) as Array<Record<string, unknown>>
     if (!rows.length && s.cursor) throw new Error('Activity cursor no longer references a page')
@@ -292,7 +304,7 @@ export function queryActivityPage(request: ActivityRequest): ActivityPage {
       } as ActivitySummary
     })
     const last = picked.at(-1)
-    const nextCursor = hasMore && last ? encode({ v: 1, kind: 'groups', q: s.q, s: s.boundary, p: s.resolved, body: s.body, ts: Number(last.sort_at), key: String(last.ak), toolSession: s.toolSession }) : null
+    const nextCursor = hasMore && last ? encode({ v: CURSOR_VERSION.groups, kind: 'groups', q: s.q, s: s.boundary, p: s.resolved, body: s.body, ts: Number(last.sort_at), key: String(last.ak), toolSession: s.toolSession }) : null
     return { items, hasMore, nextCursor, bodyCoverage: s.coverage, totalGroups: Number(rows[0]?.total_groups ?? 0), totalMatches: Number(rows[0]?.total_matches ?? 0), snapshot: s.boundary, ...(s.toolSession ? { toolSession: s.toolSession } : {}) }
   })
 }
@@ -306,17 +318,18 @@ export function queryActivityMembers(request: ActivityMembersRequest): ActivityM
     const c = ctes(request, s, `${JSON.parse(request.ref.key)[1]}:${request.ref.id}`)
     const byMatch = request.matchesFirst === true
     if (byMatch && s.cursor && ![0, 1].includes(s.cursor.matched!)) throw new Error('Invalid Activity source cursor')
-    const past = s.cursor ? byMatch ? 'AND (p.matched<@cm OR (p.matched=@cm AND (p.timestamp>@cts OR (p.timestamp=@cts AND p.id>@ckey))))' : 'AND (p.timestamp>@cts OR (p.timestamp=@cts AND p.id>@ckey))' : ''
+    const after = eventOrderAfter('ASC', order('p'), { timestamp: '@cts', row: '@crow', tierRank: '@crank' })
+    const past = s.cursor ? byMatch ? `AND (p.matched<@cm OR (p.matched=@cm AND ${after}))` : `AND ${after}` : ''
     const rows = db.prepare(`${c.sql} SELECT p.*,f.source_count,f.matched_count
       FROM (SELECT q.*,${matchedRow(c.mode, 'q')} AS matched FROM ${PROJECTION} q WHERE q.ak=@only AND q.engagement_id=@eng AND ${within('q')}) p
       JOIN filtered f ON f.ak=p.ak
-      WHERE 1=1 ${past} ORDER BY ${byMatch ? 'p.matched DESC,' : ''}p.timestamp,p.id LIMIT @lim`)
-      .all(...c.params, { ...c.named, lim: limit + 1, ...(s.cursor ? { cts: s.cursor.ts, ckey: s.cursor.key, ...(byMatch ? { cm: s.cursor.matched } : {}) } : {}) }) as Array<Record<string, unknown>>
+      WHERE 1=1 ${past} ORDER BY ${byMatch ? 'p.matched DESC,' : ''}${eventOrderBy('ASC', order('p'))} LIMIT @lim`)
+      .all(...c.params, { ...c.named, lim: limit + 1, ...(s.cursor ? { cts: s.cursor.ts, crow: s.cursor.row, crank: EVENT_TIER_RANK[s.cursor.tier!], ...(byMatch ? { cm: s.cursor.matched } : {}) } : {}) }) as Array<Record<string, unknown>>
     if (!rows.length) throw new Error('Activity source unavailable in this query snapshot')
     const hasMore = rows.length > limit, picked = rows.slice(0, limit), last = picked.at(-1)!
     return {
       items: picked.map(row => ({ event: sourceEvent(db, row), matched: row.matched === 1 })), hasMore,
-      nextCursor: hasMore ? encode({ v: 1, kind: 'members', matched: Number(last.matched), q: s.q, s: s.boundary, p: s.resolved, body: s.body, ts: Number(last.timestamp), key: String(last.id), toolSession: s.toolSession }) : null,
+      nextCursor: hasMore ? encode({ v: CURSOR_VERSION.members, kind: 'members', matched: Number(last.matched), q: s.q, s: s.boundary, p: s.resolved, body: s.body, ts: Number(last.timestamp), key: String(last.id), row: Number(last._row), tier: last.tier as 'chained' | 'logged', toolSession: s.toolSession }) : null,
       sourceCount: Number(rows[0].source_count), matchedCount: Number(rows[0].matched_count), snapshot: s.boundary
     }
   })

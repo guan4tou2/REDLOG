@@ -251,13 +251,15 @@ describe('the vocabulary that spans the bundle boundary', () => {
     expect(coreList).toEqual([...MARKER_SEVERITIES])
   })
 
-  it('shares one monotonic comparator with the timeline', () => {
-    // These used to disagree: Timeline's tiebreak did BigInt() on a stamp that
-    // carries a boot prefix, so it threw every time and ordered ties by UUID.
-    // Two answers to "which happened first" is one too many.
+  it('keeps each ordering in its one shared definition', () => {
+    // Timeline's tiebreak once did BigInt() on a stamp that carries a boot
+    // prefix, so it threw every time and ordered ties by UUID. The timeline now
+    // sorts in the queries' display order (core/event-order: timestamp, rowid,
+    // tier), which logged rows — no monotonic stamp — take part in too; the fold
+    // orders amendments by write order through the shared monotonic comparator.
     const tl = fs.readFileSync(path.join(__dirname, '../src/renderer/src/lib/timelineDomain.ts'), 'utf-8')
     const fold = fs.readFileSync(path.join(__dirname, '../src/renderer/src/lib/markerFold.ts'), 'utf-8')
-    expect(tl).toContain('compareMonotonicNs')
+    expect(tl).toContain('compareEventOrder')
     expect(fold).toContain('compareMonotonicNs')
     expect(tl, 'the dead BigInt tiebreak is back').not.toMatch(/BigInt\(am\)|BigInt\(a\.monotonicNs\)/)
   })

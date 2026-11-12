@@ -1,5 +1,6 @@
 import { capturedContentIsPartial, commandOutputState, responseBodyState } from '../../../core/content-contract'
 import { operationPairKey } from '../../../core/operation-pair-key'
+import { compareEventOrder } from '../../../core/event-order'
 import { buildToolPairIndex } from '../lib/toolPairing'
 import type { ToolPairKey } from '../../../core/db/events'
 import { Button } from './Button'
@@ -49,6 +50,8 @@ interface Ev {
   operatorId: string
   targetId?: string | null
   data?: Record<string, unknown>
+  tier?: 'chained' | 'logged'
+  rowId?: number
 }
 
 function toolPairKey(e: Ev): string | null {
@@ -143,7 +146,7 @@ function mergeEvents(current: Ev[], incoming: Ev[]): Ev[] {
     byId.set(event.id, event)
     added = true
   }
-  return added ? [...byId.values()].sort((a, b) => a.timestamp - b.timestamp) : current
+  return added ? [...byId.values()].sort(compareEventOrder) : current
 }
 
 const fmtBytes = formatSize
@@ -504,7 +507,7 @@ export default function TranscriptView({ onOpenInTimeline, active = true, readin
       }
       const completed = await completeToolPairs(merged)
       if (seq !== loadSeqRef.current) return
-      completed.sort((a, b) => a.timestamp - b.timestamp)
+      completed.sort(compareEventOrder)
       setEvents(completed)
       if (reading) setExpanded(prev => new Set([...prev, ...completed.map(event => event.id)]))
       setBucketPages(pages)

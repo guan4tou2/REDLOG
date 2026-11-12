@@ -20,6 +20,20 @@ export interface RedLogEvent {
   signature?: string | null
   /** Storage and integrity tier for this event. */
   tier: EventTier
+  /** The row's rowid in its tier's table: ingestion order within the tier, and
+   *  the same-millisecond tie-break of the display order (core/event-order).
+   *  Set after the row is written and never part of the hash or signature;
+   *  absent when the reading query did not select it. */
+  rowId?: number
+}
+
+/** The event as it leaves RedLog — an export file, the HTTP API — without
+ *  `rowId`, which is where this database stores the row, not part of the
+ *  record, and which those outputs never carried. */
+export function withoutRowId(e: RedLogEvent): RedLogEvent {
+  if (e.rowId === undefined) return e
+  const { rowId: _rowId, ...record } = e
+  return record
 }
 
 /** A bounded output preview; exporting uses the full snapshot selection. */
@@ -96,6 +110,7 @@ export function rowToEvent(row: Record<string, unknown>): RedLogEvent {
     monotonicNs: (row.monotonic_ns as string | null) ?? null,
     ntpOffsetMs: (row.ntp_offset_ms as number | null) ?? null,
     signature: (row.signature as string | null) ?? null,
-    tier: row.tier as EventTier
+    tier: row.tier as EventTier,
+    ...(typeof row._row === 'number' ? { rowId: row._row } : {})
   }
 }

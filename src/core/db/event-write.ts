@@ -637,7 +637,9 @@ function insertChainedEvent(
   const transcriptUuid = typeof dataForChain.transcript_uuid === 'string' ? dataForChain.transcript_uuid : null
 
   try {
-    prepared(db, `
+    // `rowId` is assigned only after the hash and signature above were taken,
+    // so it is never part of them (see RedLogEvent.rowId).
+    event.rowId = Number(prepared(db, `
       INSERT INTO events (id, timestamp, engagement_id, session_id, operator_id, agent_type, subtype, hostname, source_ip, target_id, data, hash, prev_hash, created_at, monotonic_ns, ntp_offset_ms, signature, raw_ref, mapper, schema_version, ts_source, source, transcript_uuid)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
@@ -648,7 +650,7 @@ function insertChainedEvent(
       env.rawRef ? JSON.stringify(env.rawRef) : null,
       env.mapper ? JSON.stringify(env.mapper) : null,
       env.schemaVersion, env.tsSource, env.source, transcriptUuid
-    )
+    ).lastInsertRowid)
   } catch (e) {
     // v0.6.95 P0-4b: any INSERT failure invalidates the cached prev-hash —
     // we don't know whether the row actually landed, so the next insert must
@@ -733,7 +735,7 @@ function insertLoggedEvent(
   const subtypeCol = typeof data.subtype === 'string' ? data.subtype : null
 
   try {
-    prepared(db, `
+    event.rowId = Number(prepared(db, `
       INSERT INTO events_logged
         (id, timestamp, engagement_id, session_id, operator_id, agent_type, subtype,
          hostname, source_ip, target_id, data, created_at, raw_ref, mapper, schema_version, ts_source, source)
@@ -745,7 +747,7 @@ function insertLoggedEvent(
       env.rawRef ? JSON.stringify(env.rawRef) : null,
       env.mapper ? JSON.stringify(env.mapper) : null,
       env.schemaVersion, env.tsSource, env.source
-    )
+    ).lastInsertRowid)
   } catch (e) {
     // Thrown, like a chained insert. Returning null read as "deliberately not
     // recorded" to callers, so a failed write of a thinking turn went
