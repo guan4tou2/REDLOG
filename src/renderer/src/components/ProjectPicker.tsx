@@ -11,6 +11,7 @@ import { runMutation } from '../lib/mutation'
 import { Button } from './Button'
 import { useReadState } from '../lib/readState'
 import { CreateProjectModal } from './CreateProjectModal'
+import { isComposing } from '../lib/ime'
 
 type Translate = (key: string, vars?: Record<string, string | number>) => string
 
@@ -178,7 +179,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
   // match, never one the operator cannot see; an Enter that confirms an
   // input-method composition is not an Enter.
   const onSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
-    if (e.key !== 'Enter' || e.nativeEvent.isComposing || e.keyCode === 229) return
+    if (e.key !== 'Enter' || isComposing(e)) return
     e.preventDefault()
     if (selected) void handleOpen(selected.id)
   }
@@ -226,7 +227,7 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
               className={`group flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-3 transition-colors ${isSel ? 'bg-redlog-elevated border-redlog-border' : 'border-transparent hover:bg-redlog-elevated/60 hover:border-redlog-border-subtle'}`}>
             <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${isSel ? 'bg-redlog-accent' : 'bg-redlog-accent/60 group-hover:bg-redlog-accent'}`} />
             {renamingId === p.id ? <input autoFocus aria-label={t('project.rename')} value={renameValue} onChange={e => setRenameValue(e.target.value)} onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()} onKeyDown={e => {
-              if (e.nativeEvent.isComposing || e.keyCode === 229) return
+              if (isComposing(e)) return
               if (e.key === 'Enter') { e.preventDefault(); void handleRenameCommit(p.id) }
               if (e.key === 'Escape') { e.preventDefault(); setRenamingId(null) }
             }} onBlur={() => void handleRenameCommit(p.id)} className="flex-1 min-w-0 bg-redlog-surface border border-redlog-border rounded px-2 py-1" /> :

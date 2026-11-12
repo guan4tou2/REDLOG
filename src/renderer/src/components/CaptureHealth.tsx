@@ -348,8 +348,12 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
     }
     setBusy(s.id)
     try {
-      const api = window.redlog.hooks
-      const r = await api?.install(s.hookId)
+      const hookId = s.hookId
+      const res = await runMutation(() => window.redlog.hooks?.install(hookId), {
+        failed: t('capture.actionFailed'), why: t('capture.actionFailedWhy'), isFailure: () => false
+      })
+      if (!res.ok) return
+      const r = res.value
       if (r && r.success === false) {
         toast(t('capture.actionFailed'), {
           type: 'error',

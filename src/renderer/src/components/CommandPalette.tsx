@@ -20,6 +20,7 @@ import { confirmLeaveProject } from '../lib/leaveProject'
 import { captureScreenshotWithFeedback } from '../lib/captureScreenshot'
 import { toggleRecordingWithFeedback } from '../lib/recordingToggle'
 import { MOD } from '../lib/platform'
+import { isComposing } from '../lib/ime'
 
 // ⌘K — the jumper.
 //
@@ -317,7 +318,7 @@ export function CommandPalette({
 
   const onKeyDown = (e: React.KeyboardEvent): void => {
     // An input method owns Enter, Escape and the arrows while it composes.
-    if (e.nativeEvent.isComposing || e.keyCode === 229) return
+    if (isComposing(e)) return
     if (e.key === 'Escape') { e.preventDefault(); onClose(); return }
     if (e.key === 'ArrowDown') { e.preventDefault(); setCursor((c) => Math.min(items.length - 1, c + 1)); return }
     if (e.key === 'ArrowUp') { e.preventDefault(); setCursor((c) => Math.max(0, c - 1)); return }

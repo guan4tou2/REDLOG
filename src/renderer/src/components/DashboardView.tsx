@@ -20,7 +20,7 @@ import { settingsTarget } from '../lib/navigation'
 import { useRevalidateOnFocus } from '../hooks/useRevalidateOnFocus'
 import { useCaptureHealthState } from '../lib/useCaptureHealth'
 import { captureUnknownLine } from '../lib/captureUnknown'
-import { liveThrottle } from '../lib/liveThrottle'
+import { createThrottledRead } from '../lib/throttledRead'
 import { scopeConfigured } from '../lib/scope'
 
 type HudTone = 'red' | 'amber' | 'cyan'
@@ -194,8 +194,8 @@ export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v
     // by useAppCounts's own onNew subscription. Capture health and the anchor
     // follow live batches at most once a second: per batch, a burst re-read
     // them a few times a second for a card nobody reads that fast.
-    const live = liveThrottle(() => { refreshCapture(); return loadAnchor() })
-    const unsub = window.redlog.events.onNewBatch(live.trigger)
+    const live = createThrottledRead({ read: () => { refreshCapture(); return loadAnchor() }, minIntervalMs: 1000 })
+    const unsub = window.redlog.events.onNewBatch(() => live.request())
     const anchorTimer = setInterval(loadAnchor, 60_000)
     return () => { unsub(); live.dispose(); clearInterval(anchorTimer) }
   }, [refreshCapture, loadConfig])

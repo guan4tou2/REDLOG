@@ -1746,6 +1746,7 @@
   "screenshots.loadFailed": "Screenshots could not be loaded",
   "common.copied": "Copied",
   "common.copyFailed": "Could not copy to the clipboard",
+  "common.unexpectedError": "An action failed unexpectedly",
   "firstRun.http.preflightFailed": "The environment check failed, so it is not known whether mitmproxy is installed.",
   "artifacts.addedMany": "Added {{count}} of {{total}} files as evidence",
   "terminal.castRecordingShort": "rec",

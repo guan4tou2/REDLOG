@@ -5,6 +5,7 @@ import { useI18n } from '../i18n'
 import { useReadState } from '../lib/readState'
 import { Button } from './Button'
 import { formatDateTime } from '../lib/time'
+import { isComposing } from '../lib/ime'
 
 type Translate = (key: string, vars?: Record<string, string | number>) => string
 
@@ -99,7 +100,7 @@ export default function SourceSessionPicker({kind,provider,value,onChange}: {
   }
   const move=(to:number):void=>setActiveKey(entries[Math.max(0,Math.min(entries.length-1,to))]?.token ?? '')
   const onKeyDown=(e:React.KeyboardEvent):void=>{
-    if(e.nativeEvent.isComposing||e.keyCode===229)return
+    if(isComposing(e))return
     if(e.key==='ArrowDown'){e.preventDefault();move(active+1)}
     else if(e.key==='ArrowUp'){e.preventDefault();move(active-1)}
     else if(e.key==='Home'&&e.target===field.current&&search===''){e.preventDefault();move(0)}

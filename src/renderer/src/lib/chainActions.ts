@@ -1,4 +1,5 @@
 import { toast } from '../components/Toast'
+import { runMutation } from './mutation'
 import { raiseIssue, clearIssue } from './issues'
 import { setLastVerifyResult, type FullVerifyResult as CachedFullVerifyResult } from './verifyResultCache'
 import { settingsTarget } from './navigation'
@@ -34,7 +35,11 @@ export interface FullVerifyResult {
  *  showing the anchor list can reload it, or null when there was nothing to
  *  anchor. `onRetry` is offered on the failure toast. */
 export async function anchorNowWithFeedback(t: T, onRetry?: () => void): Promise<ChainAnchorInfo | null> {
-  const result = await window.redlog.chain.anchorNow()
+  // A rejection is said here; a null reply is the "nothing to anchor" case
+  // below, not a failure.
+  const reply = await runMutation(() => window.redlog.chain.anchorNow(), { failed: t('settings.anchorFailed'), isFailure: () => false })
+  if (!reply.ok) return null
+  const result = reply.value
   // Neither a failure nor an anchor: an offline project does not submit.
   if (result && 'skipped' in result) {
     toast(t('settings.integritySkippedOffline'), 'info')

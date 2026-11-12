@@ -1746,6 +1746,7 @@
   "screenshots.loadFailed": "無法載入截圖",
   "common.copied": "已複製",
   "common.copyFailed": "無法複製到剪貼簿",
+  "common.unexpectedError": "有操作意外失敗",
   "firstRun.http.preflightFailed": "環境檢查失敗，無法確認是否已安裝 mitmproxy。",
   "artifacts.addedMany": "已將 {{total}} 個檔案中的 {{count}} 個加入為證據",
   "terminal.castRecordingShort": "錄製中",
