@@ -32,7 +32,7 @@ import fs from 'fs'
 import path from 'path'
 import { dbGeneration, dbOpenedAt, getDB, getProjectDir } from './db/index'
 import { writePrivateFileAtomic } from './private-fs'
-import { recordingStateRows } from './db/events'
+import { recordingStateRows, lastRecordingSubtype, sourceTimeRejection } from './db/events'
 import { noteDbError } from './capture-health'
 
 export type RecordingState = 'recording' | 'paused' | 'pause-end-unknown' | 'unknown'
@@ -63,13 +63,57 @@ function pendingFile(): string | null {
   try { return path.join(getProjectDir(), PENDING_FILE) } catch { return null }
 }
 
-function readPersisted(file: string): PersistedMarker[] {
+const UNREADABLE_SUFFIX = '.unreadable'
+/** The database generation in which a pending-marker file was found that could
+ *  not be read. For that open nothing about pauses is known. */
+let brokenIn: number | null = null
+
+/** One entry, rebuilt from its checked fields only: whatever else the file
+ *  says is ignored, so the file cannot write any other row. Null when it does
+ *  not check. */
+function checkedMarker(m: unknown): PersistedMarker | null {
+  const e = m as { subtype?: unknown; at?: unknown; data?: { source?: unknown; description?: unknown } } | null
+  if (!e || (e.subtype !== 'recording_paused' && e.subtype !== 'recording_resumed')) return null
+  if (sourceTimeRejection(e.at, Date.now()) !== null) return null
+  const subtype = e.subtype
+  const source = typeof e.data?.source === 'string' && e.data.source.length <= 64 ? e.data.source : 'unknown'
+  const description = subtype === 'recording_paused' ? 'Recording paused' : 'Recording resumed'
+  return { subtype, at: e.at as number, data: { subtype, description, source } }
+}
+
+/** The pending markers on disk. Only a missing file means none. A file that
+ *  cannot be read or parsed, or holds an entry that does not check, is set
+ *  aside as `<name>.unreadable` — never overwritten — reported, and makes this
+ *  open's pause record unknown; the entries that do check are still returned.
+ *  `writable` is false when it could not be set aside: nothing may then be
+ *  written over it. */
+function readPersisted(file: string): { markers: PersistedMarker[]; writable: boolean } {
+  let text: string
+  try { text = fs.readFileSync(file, 'utf8') } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { markers: [], writable: true }
+    return { markers: [], writable: setAside(file, error) }
+  }
   let parsed: unknown
-  try { parsed = JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return [] }
-  if (!Array.isArray(parsed)) return []
-  return parsed.filter((m): m is PersistedMarker =>
-    !!m && (m.subtype === 'recording_paused' || m.subtype === 'recording_resumed') &&
-    typeof m.at === 'number' && Number.isFinite(m.at) && !!m.data && typeof m.data === 'object')
+  try { parsed = JSON.parse(text) } catch (error) { return { markers: [], writable: setAside(file, error) } }
+  if (!Array.isArray(parsed)) return { markers: [], writable: setAside(file, new Error('not a list of markers')) }
+  const markers = parsed.map(checkedMarker)
+  const good = markers.filter((m): m is PersistedMarker => m !== null)
+  if (good.length !== markers.length) return { markers: good, writable: setAside(file, new Error(`${markers.length - good.length} pending marker(s) did not check`)) }
+  return { markers: good, writable: true }
+}
+
+function setAside(file: string, error: unknown): boolean {
+  noteDbError('recording-marker', error)
+  brokenIn = dbGeneration()
+  let to = `${file}${UNREADABLE_SUFFIX}`
+  for (let n = 1; fs.existsSync(to); n++) to = `${file}${UNREADABLE_SUFFIX}.${n}`
+  try { fs.renameSync(file, to); return true } catch { return false }
+}
+
+/** A pending-marker file set aside earlier and not yet dealt with by the
+ *  operator keeps the record unknown. */
+function brokenOnDisk(file: string): boolean {
+  try { return fs.readdirSync(path.dirname(file)).some((n) => n.startsWith(`${path.basename(file)}${UNREADABLE_SUFFIX}`)) } catch { return false }
 }
 
 function writePersisted(file: string, markers: PersistedMarker[]): void {
@@ -89,8 +133,8 @@ export function markerPending(at: number, record?: PersistedMarker): () => void 
   const file = record ? pendingFile() : null
   if (record && file) {
     try {
-      const kept = readPersisted(file)
-      if (!kept.some((m) => sameMarker(m, record))) writePersisted(file, [...kept, record])
+      const { markers: kept, writable } = readPersisted(file)
+      if (writable && !kept.some((m) => sameMarker(m, record))) writePersisted(file, [...kept, record])
     } catch (error) { noteDbError('recording-marker', error) }
   }
   return () => { pending.delete(key) }
@@ -101,9 +145,9 @@ export function markerLanded(record: PersistedMarker): void {
   const file = pendingFile()
   if (!file) return
   try {
-    const kept = readPersisted(file)
+    const { markers: kept, writable } = readPersisted(file)
     const rest = kept.filter((m) => !sameMarker(m, record))
-    if (rest.length !== kept.length) writePersisted(file, rest)
+    if (writable && rest.length !== kept.length) writePersisted(file, rest)
   } catch (error) { noteDbError('recording-marker', error) }
 }
 
@@ -111,7 +155,22 @@ export function markerLanded(record: PersistedMarker): void {
  *  its own time when the project opens, before the drain can run. */
 export function persistedMarkers(): PersistedMarker[] {
   const file = pendingFile()
-  return file ? readPersisted(file).sort((a, b) => a.at - b.at) : []
+  if (!file) return []
+  const { markers } = readPersisted(file)
+  if (brokenOnDisk(file)) brokenIn = dbGeneration()
+  return markers.sort((a, b) => a.at - b.at)
+}
+
+/** The last pause or resume as far as anyone knows: the chain's, or a marker
+ *  still waiting to be written if it is later. What `markerForOpen` decides
+ *  from. */
+export function lastRecordingMarker(): string | null {
+  const waiting = persistedMarkers()
+  if (waiting.length === 0) return lastRecordingSubtype()
+  const rows = recordingStateRows()
+  const chained = rows[rows.length - 1]
+  const latest = waiting[waiting.length - 1]
+  return chained && chained.timestamp > latest.at ? chained.subtype : latest.subtype
 }
 
 function pendingFrom(): number | null {
@@ -190,6 +249,7 @@ export function recordedPauses(read: () => PauseRecord = readRecord, report: (so
     report('recording-state', error)
     return { spans: [], unknownFrom: Number.NEGATIVE_INFINITY }
   }
+  if (brokenIn !== null && brokenIn === dbGeneration()) return { spans: [], unknownFrom: Number.NEGATIVE_INFINITY }
   return pausesFromRecord(record, dbOpenedAt(), pendingFrom())
 }
 

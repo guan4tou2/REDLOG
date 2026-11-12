@@ -20,7 +20,14 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { requires } from './helpers/requires'
-import { writeMarkerWithRetry, writePersistedMarkers, MARKER_RETRY_DELAYS_MS } from '../src/core/recording-state-marker'
+import { writeMarkerWithRetry, writePersistedMarkers, recordProjectOpen, MARKER_RETRY_DELAYS_MS } from '../src/core/recording-state-marker'
+
+// Failures reported where capture-write failures are, observed here.
+const dbErrors = vi.hoisted(() => [] as string[])
+vi.mock('../src/core/capture-health', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../src/core/capture-health')>(),
+  noteDbError: (source: string) => { dbErrors.push(source) }
+}))
 
 const sqlite = requires('better-sqlite3')
 
@@ -453,7 +460,7 @@ sqlite.describe('the spool drain counts each file once (review round 3)', () => 
 
   // ── Review round 5 (ed4498db) ───────────────────────────────────────────
 
-  sqlite.it('F1: a pause left open by the previous open, no reopen marker, then a pause and resume in this open: this open\'s recording waits, it is not a loss', () => {
+  sqlite.it('F1: a pause left open by the previous open, no reopen marker, then a pause and resume in this open: this open\'s recording waits in this open', () => {
     pause(T0 + 1 * SEC)
     db.closeDB()
     bus().resume('ui') // the process restarts: not paused
@@ -562,6 +569,100 @@ sqlite.describe('the spool drain counts each file once (review round 3)', () => 
     at(T0 + 20 * SEC)
     put('0001.json', { agent_type: 'scanner', data: { subtype: 'capture_gap', reason: 'queue-full', gap_ended_at: T0 + 5 * SEC, skipped_units: 7 }, _identity: id })
     expect(drain.drainSpoolOnce(spool, id)!.outcomes).toEqual({ '0001.json': 'deferred' })
+  })
+
+  // ── Review round 6 (88e12692) ───────────────────────────────────────────
+
+  const pendingPath = (): string => path.join(dir, 'recording-markers-pending.json')
+  /** Main's open, after the database: session_start, carried markers, the
+   *  open's own marker. `fail` decides which marker writes throw. */
+  const recordOpen = (log: string[] = [], fail: (data: Record<string, unknown>) => boolean = () => false): string[] => {
+    recordProjectOpen({
+      sessionStart: () => { log.push('session_start'); sessionStart() },
+      write: (data, occurredAt) => {
+        if (fail(data)) throw new Error('disk full')
+        log.push(`${String(data.subtype)}@${occurredAt ?? 'now'}`)
+        events.insertEvent('system', data, occurredAt === undefined ? id : { ...id, occurredAt })
+      },
+      paused: bus().paused, onError: () => undefined, schedule: () => undefined, isCurrent: () => true
+    })
+    return log
+  }
+
+  sqlite.it('G1: a pending-marker file that cannot be parsed is kept aside, reported, and leaves this open unknown', () => {
+    resume(T0 + 1 * SEC)
+    db.closeDB()
+    const broken = '[{"subtype":"recording_paused","at":' + String(T0 + 5 * SEC)
+    fs.writeFileSync(pendingPath(), broken)
+    at(T0 + 3600 * SEC)
+    open(false)
+    dbErrors.length = 0
+    recordOpen()
+    put('0001.json', shell('command_start', 'some-time', { source_timestamp: T0 + 20 * SEC }))
+    put('0002.json', shell('command_start', 'no-time'))
+    at(T0 + 3601 * SEC)
+    expect(drain.drainSpoolOnce(spool, id)!.outcomes).toEqual({ '0001.json': 'deferred', '0002.json': 'deferred' })
+    expect(dbErrors).toContain('recording-marker')
+    expect(fs.readFileSync(`${pendingPath()}.unreadable`, 'utf8')).toBe(broken)
+    // A later marker that fails is kept under the normal name; the set-aside bytes stay.
+    const record = { subtype: 'recording_paused' as const, at: T0 + 3700 * SEC, data: { subtype: 'recording_paused', source: 'ui' } }
+    writeMarkerWithRetry({ at: record.at, record, write: () => { throw new Error('disk full') }, onError: () => undefined, schedule: () => undefined, isCurrent: () => true })
+    expect(fs.readFileSync(`${pendingPath()}.unreadable`, 'utf8')).toBe(broken)
+    expect(JSON.parse(fs.readFileSync(pendingPath(), 'utf8'))).toEqual([expect.objectContaining({ at: T0 + 3700 * SEC })])
+  })
+
+  sqlite.it('G1: an entry that does not check is not dropped silently', () => {
+    db.closeDB()
+    fs.writeFileSync(pendingPath(), JSON.stringify([{ subtype: 'recording_paused', at: 1_700_000, data: {} }]))
+    at(T0 + 3600 * SEC)
+    open(false)
+    dbErrors.length = 0
+    recordOpen()
+    put('0001.json', shell('command_start', 'x', { source_timestamp: T0 + 20 * SEC }))
+    expect(drain.drainSpoolOnce(spool, id)!.outcomes).toEqual({ '0001.json': 'deferred' })
+    expect(dbErrors).toContain('recording-marker')
+    expect(fs.existsSync(`${pendingPath()}.unreadable`)).toBe(true)
+  })
+
+  sqlite.it('G2: a carried marker writes only its checked fields, whatever else the file says', () => {
+    db.closeDB()
+    fs.writeFileSync(pendingPath(), JSON.stringify([{ subtype: 'recording_paused', at: T0 + 5 * SEC, data: { subtype: 'config_changed', source: 'ui', extra: 'x' } }]))
+    at(T0 + 3600 * SEC)
+    open(false)
+    recordOpen()
+    const written = (db.getDB().prepare(`SELECT subtype, timestamp, data FROM events WHERE agent_type = 'system' AND subtype IN ('recording_paused', 'config_changed')`).all() as Array<{ subtype: string; timestamp: number; data: string }>)
+      .map((r) => ({ subtype: r.subtype, t: r.timestamp, extra: (JSON.parse(r.data) as Record<string, unknown>).extra }))
+    expect(written).toEqual([{ subtype: 'recording_paused', t: T0 + 5 * SEC, extra: undefined }])
+  })
+
+  sqlite.it('G3: the open decides its marker from a carried marker still waiting, not only from the chain', () => {
+    resume(T0 + 1 * SEC)
+    db.closeDB()
+    fs.writeFileSync(pendingPath(), JSON.stringify([{ subtype: 'recording_paused', at: T0 + 100 * SEC, data: { subtype: 'recording_paused', source: 'ui' } }]))
+    at(T0 + 3600 * SEC)
+    open(false)
+    expect(recordState.lastRecordingMarker()).toBe('recording_paused')
+    const log = recordOpen([], (data) => data.subtype === 'recording_paused')
+    expect(log).toEqual(['session_start', 'recording_resumed@now'])
+  })
+
+  sqlite.it('G5: the open writes session_start, then carried markers at their own time, then its own marker', () => {
+    db.closeDB()
+    fs.writeFileSync(pendingPath(), JSON.stringify([{ subtype: 'recording_paused', at: T0 + 5 * SEC, data: { subtype: 'recording_paused', source: 'ui' } }]))
+    at(T0 + 3600 * SEC)
+    open(false)
+    expect(recordOpen()).toEqual(['session_start', `recording_paused@${T0 + 5 * SEC}`, 'recording_resumed@now'])
+    expect(fs.existsSync(pendingPath())).toBe(false)
+  })
+
+  sqlite.it('G4: a drain whose project closes puts back the files of unknown owner it moved', () => {
+    put('0001.json', '{"agent_type":"shell","data":{"comm', T0 - 3600e3)
+    const session = new drain.SpoolDrainSession(id)
+    drain.drainSpoolOnce(spool, id, 1, '', {}, session)
+    expect(files()).toEqual(['quarantine/_unknown/malformed--0001.json'])
+    expect(session.abandon()).toEqual({ '0001.json': 'deferred' })
+    expect(files()).toEqual(['0001.json'])
+    expect(gaps()).toEqual([])
   })
 
   sqlite.it('R6: a pause record that cannot be read leaves everything unknown, and says so', () => {

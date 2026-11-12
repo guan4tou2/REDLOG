@@ -125,12 +125,16 @@ sqlite.describe('the pause boundary on spool replay', () => {
     expect(run).not.toBeNull()
     const insidePause = shellRows().filter((r) => r.timestamp >= pausedAt)
     expect(insidePause, 'shell rows timestamped inside the pause reached the chain').toEqual([])
-    // Refused for good, not left to be retried; and counted, intentionally, in
-    // a chained gap row at the time they were observed (Spec 071 T011/T015).
-    expect(fs.readdirSync(spool)).toEqual([])
+    // Refused for good, not left to be retried; counted in a chained gap row at
+    // the time they were observed (Spec 071 T011/T015). The record shows the
+    // pause beginning but not ending — the reopen closed it — so the operator
+    // may have resumed: a loss, not an intentional pause, and the content is
+    // kept in quarantine (FR-082, review rounds 4–5).
+    expect(fs.readdirSync(spool)).toEqual(['quarantine'])
+    expect(fs.readdirSync(path.join(spool, 'quarantine', ENG)).filter((n) => !n.endsWith('.why'))).toHaveLength(2)
     const gaps = (db.getDB().prepare(`SELECT timestamp, data, hash FROM events WHERE subtype = 'capture_gap'`).all() as Array<{ timestamp: number; data: string; hash: string | null }>)
     expect(gaps.map((g) => ({ ...JSON.parse(g.data) as Record<string, unknown>, at: g.timestamp, chained: g.hash !== null })))
-      .toEqual([expect.objectContaining({ reason: 'paused', intentional: true, skipped_units: 2, at: typedAt, chained: true })])
+      .toEqual([expect.objectContaining({ reason: 'pause-end-unknown', intentional: false, skipped_units: 2, quarantined: 2, at: typedAt, chained: true })])
     // And a later drain, after the reopen marker, does not change its mind.
     at(pausedAt + 61 * SEC)
     events.insertEvent('system', { subtype: 'recording_resumed', source: 'project-open' }, opening)

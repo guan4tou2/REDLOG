@@ -18,7 +18,7 @@ import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir, bindDBEngagement } from '../core/db/index'
 import { restrictRedlogHome } from '../core/private-fs'
 import { restrictProjectDirs } from './project-dir-modes'
-import { insertEvent, queryEvents, queryEventById, getLootCount, lastRecordingSubtype, type RedLogEvent } from '../core/db/events'
+import { insertEvent, queryEvents, queryEventById, getLootCount, type RedLogEvent } from '../core/db/events'
 import { pivotsMayChange, type LastPivotAnswer } from './pivot-refresh'
 import { readActivePivots, type ActivePivot } from './active-pivots'
 import { inflightMarkerDirectory, reapInflightMarkers } from '../core/inflight-marker'
@@ -60,7 +60,7 @@ import {
   killAllTerminals, detachTerminalRecordings, resumeTerminalRecordings, setTerminalWindow, configureTerminal, configureTerminalProxy, recoverOrphanSessions, discoverShells,
   getCastPosition, listTerminals, countProxiedTerminals
 } from './terminal-manager'
-import { markerForOpen, writeMarkerWithRetry, writePersistedMarkers } from '../core/recording-state-marker'
+import { recordProjectOpen, writeMarkerWithRetry } from '../core/recording-state-marker'
 import { quitImpact, quitDialog, defaultQuitText, parseQuitText, allowQuit, isQuitAllowed, type QuitText } from './quit-guard'
 import { runPreflight, type PreflightCommand } from '../core/runtime-preflight'
 import { readExecutionPolicy } from '../core/powershell-policy'
@@ -957,6 +957,8 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
       spoolSession = null
       // A project that closed mid-drain counts nothing; its files stay.
       if (session && projectRuntime.isCurrent(opening)) session.commit()
+      // Files of unknown owner it already moved go back, uncounted.
+      else session?.abandon()
     }
     // The API shares this thread, so no drain holds it: the open starts one
     // that replays everything waiting ten files a turn once the open has
@@ -1034,29 +1036,19 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
   })
   onApiProjectOpen()
 
-  insertEvent('system', { subtype: 'session_start' }, opening)
-  // Pause lives in memory, not in the project: say in this record what it
-  // would otherwise leave unexplained (see core/recording-state-marker).
-  // A marker that fails to write must not stop the project opening; it is
-  // reported and retried like a toggle's (the spool drain reads it). First the
-  // markers an earlier open could not write, each at its own time — the drain
-  // starts on a later turn of the event loop, after these.
-  const markerRetry = {
+  // session_start, then what the record needs about recording: pause lives in
+  // memory, not in the project (core/recording-state-marker). A marker that
+  // fails to write must not stop the project opening; it is reported and
+  // retried (the spool drain reads it, and starts on a later turn of the event
+  // loop, after these).
+  recordProjectOpen({
+    sessionStart: () => { insertEvent('system', { subtype: 'session_start' }, opening) },
+    write: (data, occurredAt) => writeRecordingMarker(opening, data, occurredAt),
+    paused: eventBus.paused,
     onError: (error: unknown) => noteDbError('recording-marker', error),
     schedule: (retry: () => void, ms: number) => projectRuntime.setTimeout(opening, retry, ms),
     isCurrent: () => projectRuntime.isCurrent(opening)
-  }
-  writePersistedMarkers({ ...markerRetry, write: (marker) => writeRecordingMarker(opening, marker.data, marker.at) })
-  let openMarker: ReturnType<typeof markerForOpen> = null
-  try { openMarker = markerForOpen(eventBus.paused, lastRecordingSubtype()) } catch (error) { noteDbError('recording-marker', error) }
-  if (openMarker) {
-    const at = Date.now()
-    const record = {
-      subtype: openMarker.subtype, at,
-      data: { subtype: openMarker.subtype, description: openMarker.description, source: openMarker.source }
-    }
-    writeMarkerWithRetry({ ...markerRetry, at, record, write: (retry) => writeRecordingMarker(opening, record.data, retry ? at : undefined) })
-  }
+  })
 
   // OPSEC air-gap: suppress every outbound request RedLog makes of its own —
   // anchoring, NTP sync, and the update check. Capture and the local API are

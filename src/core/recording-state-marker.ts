@@ -5,7 +5,7 @@
 // next `recording_resumed`, and a reader of a handed-over record cannot see the
 // app's memory.
 
-import { markerPending, markerLanded, persistedMarkers, type PersistedMarker } from './recording-state'
+import { markerPending, markerLanded, persistedMarkers, lastRecordingMarker, type PersistedMarker } from './recording-state'
 
 export interface RecordingMarker {
   subtype: 'recording_paused' | 'recording_resumed'
@@ -71,6 +71,31 @@ export function writePersistedMarkers(options: {
   for (const marker of persistedMarkers()) {
     writeMarkerWithRetry({ ...options, at: marker.at, record: marker, write: () => options.write(marker) })
   }
+}
+
+/** What opening a project writes about recording, in this order (Spec 071
+ *  FR-082): `session_start`; the markers an earlier open could not write, each
+ *  at its own time; then the marker the open itself needs, decided from the
+ *  last marker anyone knows of — the chain's, or one still waiting
+ *  (`lastRecordingMarker`). Main calls this before the drain can run. */
+export function recordProjectOpen(options: {
+  sessionStart: () => void
+  /** Write a marker row; `occurredAt` for one that lands after its toggle. */
+  write: (data: Record<string, unknown>, occurredAt?: number) => void
+  paused: boolean
+  onError: (error: unknown) => void
+  schedule: (retry: () => void, ms: number) => void
+  isCurrent: () => boolean
+}): void {
+  const { sessionStart, write, paused, ...retry } = options
+  sessionStart()
+  writePersistedMarkers({ ...retry, write: (marker) => write(marker.data, marker.at) })
+  let marker: RecordingMarker | null = null
+  try { marker = markerForOpen(paused, lastRecordingMarker()) } catch (error) { retry.onError(error) }
+  if (!marker) return
+  const at = Date.now()
+  const record: PersistedMarker = { subtype: marker.subtype, at, data: { subtype: marker.subtype, description: marker.description, source: marker.source } }
+  writeMarkerWithRetry({ ...retry, at, record, write: (again) => write(record.data, again ? at : undefined) })
 }
 
 /** The marker a project needs when it is opened, or null when its record

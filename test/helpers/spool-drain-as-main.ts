@@ -22,7 +22,8 @@ export const MAIN_DRAIN_SHAPE = [
   'if (!projectRuntime.isCurrent(opening)) return null',
   'spoolSession = new SpoolDrainSession(opening)',
   'drainSpoolOnce(pendingSpoolDirectory(homedir()), opening, limit, after, {}, spoolSession ?? undefined)',
-  'if (session && projectRuntime.isCurrent(opening)) session.commit()'
+  'if (session && projectRuntime.isCurrent(opening)) session.commit()',
+  'else session?.abandon()'
 ]
 
 /** The fragments of MAIN_DRAIN_SHAPE that main's drain no longer contains. */

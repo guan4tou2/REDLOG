@@ -97,6 +97,16 @@ export class SpoolDrainSession {
     this.retries.push(...retries)
   }
 
+  /** End the drain without counting anything — its project closed. Files of
+   *  unknown owner it already moved are put back; every other file stays where
+   *  it is. */
+  abandon(): Record<string, 'quarantined' | 'deferred'> {
+    const files = [...this.groups.values()].flatMap((g) => g.files)
+    this.groups.clear()
+    this.retries = []
+    return unmoveSpoolFiles(files) as Record<string, 'quarantined' | 'deferred'>
+  }
+
   /** Write each gap row; apply its files' plan only once the row is there.
    *  Returns what each counted file became. While recording is paused nothing
    *  is written or moved: the plan is dropped and every file stays, to be
