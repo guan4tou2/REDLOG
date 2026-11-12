@@ -15,8 +15,28 @@ import { I18nProvider } from '../src/renderer/src/i18n'
 // target at mount, the "deferred write" lands (the bridge now answers with it),
 // and the save that goes out is inspected.
 
+// Settings now sends patches (config:patch): only the fields it changed, each
+// with the value it last saw. `saves` records the file after each accepted
+// patch, so the cases still read "what the save left behind".
 const saves: Array<Record<string, unknown>> = []
+const refused: unknown[] = []
 let stored: Record<string, unknown>
+type Op = { path: string[]; value?: unknown; base?: unknown; baseAbsent?: true }
+const at = (root: unknown, p: string[]): unknown => p.reduce<unknown>((c, k) => (c && typeof c === 'object' ? (c as Record<string, unknown>)[k] : undefined), root)
+function patch(p: { ops: Op[] }): unknown {
+  const conflicts = p.ops.filter((op) => ('base' in op || op.baseAbsent) &&
+    JSON.stringify(at(stored, op.path)) !== JSON.stringify(op.base) && JSON.stringify(at(stored, op.path)) !== JSON.stringify(op.value))
+  if (conflicts.length) { refused.push(conflicts); return { ok: false, reason: 'conflict', conflicts, config: structuredClone(stored), revision: 'r' } }
+  const next = structuredClone(stored)
+  for (const op of p.ops) {
+    let cur = next
+    for (const k of op.path.slice(0, -1)) cur = (cur[k] ??= {}) as Record<string, unknown>
+    cur[op.path[op.path.length - 1]] = structuredClone(op.value)
+  }
+  stored = next
+  saves.push(structuredClone(stored))
+  return { ok: true, config: structuredClone(stored), revision: String(saves.length) }
+}
 
 const baseConfig = (targets: string[]): Record<string, unknown> => ({
   engagement: { id: 'proj-a', name: 'A' },
@@ -28,6 +48,7 @@ const baseConfig = (targets: string[]): Record<string, unknown> => ({
 
 beforeEach(() => {
   saves.length = 0
+  refused.length = 0
   stored = baseConfig([])
   const fallback = (): unknown => new Proxy({}, {
     get: (_t, prop: string) => (prop.startsWith('on') ? () => () => {} : async () => null)
@@ -36,7 +57,7 @@ beforeEach(() => {
     platform: 'win32',
     config: {
       get: async () => structuredClone(stored),
-      save: async (c: Record<string, unknown>) => { saves.push(c); stored = structuredClone(c); return true }
+      patch: async (p: { ops: Op[] }) => patch(p)
     },
     project: { active: async () => ({ id: 'proj-a', name: 'A' }), close: async () => true },
     hooks: { detect: async () => [], install: async () => ({ success: true, message: '' }) },
@@ -102,14 +123,20 @@ describe('Settings opened before a deferred scope:addTarget lands', () => {
   })
 
   // The other half of the rule: when the edit waiting to be saved IS a change
-  // to the list, the operator's list is what they meant to save. It is not
-  // merged with the outside write, which they have not seen.
-  it("keeps the operator's own list when the pending edit changed it", async () => {
+  // to the list, neither list silently wins. The operator's list stays on
+  // screen, the outside write stays in the file, and the save is refused as a
+  // conflict until the operator retries (which writes theirs).
+  it("refuses, rather than merges or drops, when the pending edit changed the same list", async () => {
     await openScopePage()
     const targets = document.querySelectorAll('textarea')[0] as HTMLTextAreaElement
     fireEvent.change(targets, { target: { value: '10.9.9.9' } })
     fireEvent.keyDown(targets, { key: 'Enter', ctrlKey: true })
     outsideWrite(['new.example'])
+    await waitFor(() => expect(document.querySelector('[data-testid="settings-save-failed"]')).not.toBeNull(), { timeout: 3000 })
+    expect(saves).toHaveLength(0)
+    expect((stored.scope as { targets: string[] }).targets).toEqual(['new.example'])
+    expect(document.body.textContent).toContain('10.9.9.9')
+    fireEvent.click(document.querySelector('[data-testid="settings-save-failed"] button')!)
     await waitFor(() => expect(saves).toHaveLength(1), { timeout: 3000 })
     expect(lastTargets()).toEqual(['10.9.9.9'])
   })

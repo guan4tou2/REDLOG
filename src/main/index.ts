@@ -1,5 +1,6 @@
 import { createOfficialAgentPluginManager } from '../core/plugins/official-agents'
 import { createConfigApplier } from './config-apply'
+import { createConfigStore } from './config-store'
 import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, dialog, screen, session, shell, protocol, powerMonitor } from 'electron'
 import { electronApp, is } from '@electron-toolkit/utils'
 import path from 'path'
@@ -586,17 +587,21 @@ const configApplier = createConfigApplier({
   homedir
 })
 
-/** The writer of a project's config.yaml once it exists: Settings, the
- *  Targets view, the current-target switch and project creation all write
- *  here, and everything but `create` applies what it wrote. (Opening a
- *  project rewrites its file in `startProject` and applies it through the
- *  open sequence.) */
-function commitProjectConfig(projectDir: string, next: RedLogConfig,
-  how: { reason: 'create' } | { reason: 'save' | 'target-context'; identity: ProjectContext; diskPrev: RedLogConfig }): void {
-  saveConfig(projectDir, next)
-  if (how.reason === 'create') return
-  configApplier.apply({ reason: how.reason, identity: how.identity, next, diskPrev: how.diskPrev })
-}
+/** The writer of a project's config.yaml once it exists (main/config-store.ts):
+ *  Settings, the capture card, the Targets view, the current-target switch and
+ *  project creation all write here, and everything but `create` applies what
+ *  it wrote. (Opening a project rewrites its file in `startProject` and applies
+ *  it through the open sequence.) */
+const configStore = createConfigStore({
+  projectDir: () => openProjectDir(),
+  identity: () => projectRuntime.current(),
+  // Before the write, so what is saved is the operator actually in effect (a
+  // blank or refused id keeps the old one), and the audit row and every
+  // source are already the new operator's. The sources hold the open's
+  // context and need no identity passed again.
+  resolveOperator: (prev, next, open) => applyOperatorChange(projectRuntime, open, prev, next, { writeSpoolIdentity, setPrimaryOperator }),
+  apply: (request) => configApplier.apply(request)
+})
 
 /** Something the config diff cannot see changed (plugins, hook exclusions):
  *  re-apply the open project's config for that reason. */
@@ -1485,7 +1490,7 @@ app.whenReady().then(() => {
       const dir = openProjectDir()
       const open = projectRuntime.current()
       if (!dir || !open) return false
-      commitProjectConfig(dir, next, { reason: 'target-context', identity: open, diskPrev: prev })
+      configStore.commit(dir, next, { reason: 'target-context', identity: open, diskPrev: prev })
       return true
     }
   })
@@ -1506,7 +1511,7 @@ app.whenReady().then(() => {
     const projectDir = getProjectPath(project)
     // Written, not applied: another project may still be open. The open below
     // applies it.
-    commitProjectConfig(projectDir, mergeInitialConfig(loadConfig(projectDir), project.id, initialConfig), { reason: 'create' })
+    configStore.commit(projectDir, mergeInitialConfig(loadConfig(projectDir), project.id, initialConfig), { reason: 'create' })
     startProject(project)
     return project
   })
@@ -1578,39 +1583,14 @@ app.whenReady().then(() => {
     if (result.canceled || result.filePaths.length === 0) return null
     return result.filePaths[0]
   })
-  const saveProjectConfig = (newConfig: RedLogConfig, opts?: { expectProjectId?: string }): boolean => {
-    const projectDir = openProjectDir()
-    if (!projectDir) return false
-    const oldConfig = loadConfig(projectDir)
-    // A form is bound to the project it was loaded from. Settings flushes a
-    // pending write when it unmounts, and the operator may have switched
-    // project by the time it lands; applying one engagement's settings to
-    // another is worse than losing the edit.
-    if (opts?.expectProjectId && opts.expectProjectId !== oldConfig.engagement.id) return false
-    // The project id is the durable attribution boundary used by spool replay
-    // and every Event row. Renderer state, imported profiles and direct IPC
-    // calls may update other settings, but cannot rename this identity.
-    newConfig.engagement.id = oldConfig.engagement.id
-    // Active target has a dedicated, audited IPC. A Settings form may have
-    // loaded its config before the title-bar target changed; preserving the
-    // latest stored value prevents that stale form from silently reverting
-    // attribution context on its next auto-save.
-    newConfig.engagement.activeTarget = oldConfig.engagement.activeTarget ?? null
-    // Before the save, so what is saved is the operator actually in effect (a
-    // blank or refused id keeps the old one), and before anything below
-    // writes, so the audit row and every source are already the new
-    // operator's. The sources hold `open` and need no identity passed again.
-    const open = projectRuntime.current()!
-    newConfig.operator = { ...newConfig.operator,
-      ...applyOperatorChange(projectRuntime, open, oldConfig.operator, newConfig.operator, { writeSpoolIdentity, setPrimaryOperator }) }
-    // Only what the change touches: a save that leaves capture settings alone
-    // starts and stops no capture source (main/config-apply.ts). The audit
-    // row and the scope recompute describe the change from the file as it was.
-    commitProjectConfig(projectDir, newConfig, { reason: 'save', identity: open, diskPrev: oldConfig })
-    return true
-  }
-  ipcMain.handle('config:save', (_e, newConfig: RedLogConfig, opts?: { expectProjectId?: string }) =>
-    saveProjectConfig(newConfig, opts))
+  // Settings and the capture card: the fields the page changed, each with the
+  // value it last saw (core/config-patch.ts). Validated here — the renderer is
+  // not trusted to send a well-formed patch.
+  ipcMain.handle('config:patch', (_e, patch: unknown) => configStore.patch(patch))
+  // The whole-object save. No renderer page uses it any more; the e2e suite
+  // sets its fixtures through it. Same validation, write and apply as a patch.
+  ipcMain.handle('config:save', (_e, newConfig: unknown, opts?: { expectProjectId?: string }) =>
+    configStore.saveWhole(newConfig, opts))
   // Widening the scope by one target. The Targets view used to read the whole
   // config when the button was pressed and write the whole thing back when the
   // undo window closed, seconds later: a project switch in between wrote A's
@@ -1620,14 +1600,12 @@ app.whenReady().then(() => {
   ipcMain.handle('scope:addTarget', (_e, target: unknown, opts?: { expectProjectId?: string }) => {
     const projectDir = openProjectDir()
     if (!projectDir || typeof target !== 'string' || !target.trim()) return false
-    const current = loadConfig(projectDir)
-    if (opts?.expectProjectId && opts.expectProjectId !== current.engagement.id) return false
-    const targets = current.scope?.targets ?? []
+    const targets = loadConfig(projectDir).scope?.targets ?? []
     if (targets.includes(target)) return true
-    return saveProjectConfig(
-      { ...current, scope: { ...current.scope, targets: [...targets, target] } } as RedLogConfig,
-      opts
-    )
+    return configStore.patch({
+      ops: [{ path: ['scope', 'targets'], value: [...targets, target], base: targets }],
+      ...(opts?.expectProjectId ? { expectProjectId: opts.expectProjectId } : {})
+    }).ok
   })
   // Per-tick push — fires every IP check so `lastCheck`/link updates reach the
   // UI even when the verdict doesn't flip. IPPolicy dedup ensures the CHAIN
