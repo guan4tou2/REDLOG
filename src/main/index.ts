@@ -16,7 +16,7 @@ import { debugLog, debugLogPath, isDebugLogEnabled, setDebugLogEnabled } from '.
 import { unsavedGapForProject } from '../core/unsaved-gap'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir, bindDBEngagement } from '../core/db/index'
-import { mkdirPrivate, restrictRedlogHome } from '../core/private-fs'
+import { restrictRedlogHome } from '../core/private-fs'
 import { restrictProjectDirs } from './project-dir-modes'
 import { insertEvent, queryEvents, queryEventById, getLootCount, lastRecordingSubtype, recordingStateRows, type RedLogEvent } from '../core/db/events'
 import { pivotsMayChange, type LastPivotAnswer } from './pivot-refresh'
@@ -104,6 +104,7 @@ import { ProjectRuntime, type ProjectContext } from '../core/project-runtime'
 import { applyOperatorChange } from './operator-change'
 import { closeHttpBodyIndex } from '../core/http-body-index'
 import { drainInSlices, replaySpoolDirectory } from '../core/spool-replay'
+import { writeActiveIdentity } from '../core/active-identity'
 import { registerContextMenuIpc } from './context-menu'
 import { registerClipboardIpc } from './ipc/clipboard'
 import { registerDataExportIpc } from './ipc/data-export'
@@ -377,8 +378,7 @@ const SPOOL_IDENTITY_PATH = path.join(homedir(), '.redlog', 'active-identity.jso
 // HTTP addon stamp what they capture with whatever this file says.
 function writeSpoolIdentity({ engagementId, operatorId }: ProjectContext): void {
   try {
-    mkdirPrivate(path.dirname(SPOOL_IDENTITY_PATH))
-    fs.writeFileSync(SPOOL_IDENTITY_PATH, JSON.stringify({ engagementId, operatorId }), { mode: 0o600 })
+    writeActiveIdentity(SPOOL_IDENTITY_PATH, { engagementId, operatorId })
   } catch { /* best-effort */ }
 }
 
