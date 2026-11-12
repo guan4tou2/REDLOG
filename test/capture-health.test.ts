@@ -76,9 +76,9 @@ describeDB('capture-health', () => {
     vi.spyOn(hooksMod, 'detectHooks').mockReturnValue([
       { id: 'shell-zsh', name: 'shell-zsh', description: '', agentType: 'shell', installed: true, available: true, installMethod: 'shell-source' as const, hookFile: '' },
       { id: 'pcap-capture.pcap-tcpdump', name: 'pcap-capture', description: '', agentType: 'scanner', emits: ['packet_flow'], installed: false, available: true, installMethod: 'manual' as const, hookFile: '' },
-      { id: 'transparent-proxy.mitmproxy-transparent', name: 'transparent-proxy', description: '', agentType: 'scanner', emits: ['http_request_start', 'http_response'], installed: false, available: true, installMethod: 'manual' as const, hookFile: '' }
+      { id: 'c2-tailers.sliver', name: 'c2-tailers', description: '', agentType: 'scanner', emits: ['c2_checkin'], installed: false, available: true, installMethod: 'manual' as const, hookFile: '' }
     ])
-    // pcap has fed a packet_flow just now; the transparent proxy never fed.
+    // pcap has fed a packet_flow just now; the C2 tailer never fed.
     ins('scanner', { subtype: 'packet_flow', src: '10.0.0.5', dst: '10.0.0.9', syn_only: true })
     const h = getCaptureHealth()
 
@@ -87,9 +87,9 @@ describeDB('capture-health', () => {
     expect(pcap?.state).toBe('ready')        // it has delivered
     expect(pcap?.lastEventAt).not.toBeNull()
 
-    const tproxy = h.sources.find((s) => s.id === 'transparent-proxy.mitmproxy-transparent')
-    expect(tproxy?.state).toBe('off')        // declared emits, but never fed
-    expect(tproxy?.lastEventAt).toBeNull()
+    const c2 = h.sources.find((s) => s.id === 'c2-tailers.sliver')
+    expect(c2?.state).toBe('off')        // declared emits, but never fed
+    expect(c2?.lastEventAt).toBeNull()
 
     // A live plugin producer counts as recording (capture IS happening), and an
     // idle sibling still can't drag the verdict down.
@@ -274,26 +274,6 @@ describeDB('capture-health', () => {
     expect(getCaptureHealth().sources.find((s) => s.id === 'terminal')?.ownShellLastEventAt).toBeNull()
     ins('shell', { subtype: 'command_end', command: 'whoami', source: 'auto-relay', shell: 'bash' })
     expect(getCaptureHealth(Date.now() + 5000).sources.find((s) => s.id === 'terminal')?.ownShellLastEventAt).not.toBeNull()
-  })
-
-  // Spec 060 FR-011: the two proxies emit the same subtypes; a request through
-  // the regular one must not make the transparent one look like it captured.
-  it('does not let a regular-proxy request vouch for the transparent proxy', () => {
-    invalidateHooksCache()
-    vi.spyOn(hooksMod, 'detectHooks').mockReturnValue([
-      { id: 'shell-zsh', name: 'shell-zsh', description: '', agentType: 'shell', installed: true, available: true, installMethod: 'shell-source' as const, hookFile: '' },
-      { id: 'transparent-proxy.mitmproxy-transparent', name: 'transparent-proxy', description: '', agentType: 'scanner', emits: ['http_request_start', 'http_response'], installed: false, available: true, installMethod: 'manual' as const, hookFile: '' }
-    ])
-    ins('scanner', { subtype: 'http_request_start', url: 'http://a.test/', proxy_mode: 'regular' })
-    ins('scanner', { subtype: 'http_request_start', url: 'http://old.test/' })
-    let tproxy = getCaptureHealth().sources.find((s) => s.id === 'transparent-proxy.mitmproxy-transparent')
-    expect(tproxy?.state).toBe('off')
-    expect(tproxy?.lastEventAt).toBeNull()
-
-    ins('scanner', { subtype: 'http_request_start', url: 'http://b.test/', proxy_mode: 'transparent' })
-    tproxy = getCaptureHealth(Date.now() + 5000).sources.find((s) => s.id === 'transparent-proxy.mitmproxy-transparent')
-    expect(tproxy?.state).toBe('ready')
-    expect(tproxy?.lastEventAt).not.toBeNull()
   })
 
   // The card does not poll. It re-reads capture health once on mount and once
@@ -742,13 +722,10 @@ describeDB('capture-health: the indexed probes answer what the IN-list probes di
     at('shell', { subtype: 'session_start', shell: 'zsh', source: 'auto-relay' }, 10_000)
     at('shell', { command: 'no-subtype', shell: 'zsh', source: 'auto-relay' }, 20_000)
 
-    // HTTP: regular, unstamped, an explicit regular stamp, and transparent rows
-    // that are old and nothing else.
+    // HTTP from the proxy.
     at('scanner', { subtype: 'http_request_start', url: 'https://a.test/', method: 'GET' }, 15 * MIN)
     at('scanner', { subtype: 'http_response', url: 'https://a.test/', status: 200 }, 20 * MIN)
-    at('scanner', { subtype: 'http_response', url: 'https://b.test/', status: 200, proxy_mode: 'regular' }, 25 * MIN)
-    at('scanner', { subtype: 'http_request_start', url: 'https://t.test/', proxy_mode: 'transparent' }, 50 * DAY + 1000)
-    at('scanner', { subtype: 'http_response', url: 'https://t.test/', proxy_mode: 'transparent' }, 50 * DAY)
+    at('scanner', { subtype: 'http_response', url: 'https://b.test/', status: 200 }, 25 * MIN)
     at('scanner', { subtype: 'connection', remote_addr: '10.0.0.5:443' }, 9 * MIN)
     at('scanner', { subtype: 'packet_flow', src: '10.0.0.5', dst: '10.0.0.9' }, 60 * DAY)
     at('dns', { subtype: 'dns_query', query_name: 'a.test' }, 70 * DAY)
@@ -799,14 +776,11 @@ describeDB('capture-health: the indexed probes answer what the IN-list probes di
     return newest?.s ?? null
   }
 
-  const PROXY_MODE: Record<string, string> = { 'transparent-proxy.mitmproxy-transparent': 'transparent' }
-
   function oracle(shellNames: string[], plugins: Array<{ id: string; agentType: string; emits: string[] }>) {
     const ownShellWhere = `agent_type = 'shell'
      AND COALESCE(json_extract(data,'$.source'), '') != 'builtin-terminal'
      AND json_extract(data,'$.shell') IN (${shellNames.map(() => '?').join(',') || "''"})`
-    const mitm = oldLast(`agent_type = 'scanner' AND subtype NOT IN ('connection','connection_end')
-    AND COALESCE(json_extract(data,'$.proxy_mode'), 'regular') != 'transparent'`)
+    const mitm = oldLast(`agent_type = 'scanner' AND subtype NOT IN ('connection','connection_end')`)
     const dns = oldLast(`agent_type = 'dns'`)
     const core: Record<string, number | null> = {
       terminal: oldLast(`agent_type = 'shell' AND subtype IN ('command_start','command_end')`),
@@ -828,12 +802,11 @@ describeDB('capture-health: the indexed probes answer what the IN-list probes di
     }
     const pluginRows: Record<string, { last: number | null; hb: number | null }> = {}
     for (const p of plugins) {
-      const mode = PROXY_MODE[p.id]
       const placeholders = p.emits.map(() => '?').join(',')
       pluginRows[p.id] = {
         last: oldLast(
-          `agent_type = ? AND subtype IN (${placeholders})${mode ? ` AND json_extract(data,'$.proxy_mode') = ?` : ''}`,
-          [p.agentType, ...p.emits, ...(mode ? [mode] : [])]
+          `agent_type = ? AND subtype IN (${placeholders})`,
+          [p.agentType, ...p.emits]
         ),
         hb: oldLast(
           `agent_type = 'system' AND subtype = 'producer_heartbeat' AND json_extract(data,'$.producer') = ?`,
@@ -845,7 +818,6 @@ describeDB('capture-health: the indexed probes answer what the IN-list probes di
   }
 
   const PLUGINS = [
-    { id: 'transparent-proxy.mitmproxy-transparent', agentType: 'scanner', emits: ['http_request_start', 'http_response'] },
     { id: 'pcap-capture.pcap-tcpdump', agentType: 'scanner', emits: ['packet_flow', 'pcap_segment'] },
     { id: 'c2-tailers.sliver', agentType: 'scanner', emits: ['c2_checkin'] }
   ]
@@ -920,9 +892,6 @@ describeDB('capture-health: the indexed probes answer what the IN-list probes di
     const names = HOOK_SETS.map((s) => oracle(s, PLUGINS).own)
     expect(new Set(names.map((n) => n.name)).size, 'each hook set should see a different newest shell').toBe(4)
     expect(new Set(names.map((n) => n.output)).size, 'and a different captured-output time').toBeGreaterThanOrEqual(3)
-    const o = oracle(['zsh'], PLUGINS)
-    expect(o.pluginRows['transparent-proxy.mitmproxy-transparent'].last, 'old-only transparent rows').not.toBeNull()
-    expect(o.core.mitmproxy, 'must not be fed by the transparent rows').toBe(NOW - 15 * MIN)
   })
 
   it.each(HOOK_SETS.map((s) => [s]))('an empty database, with shell hooks %j', (shells) => {

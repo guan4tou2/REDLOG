@@ -1,8 +1,7 @@
 // A capture RedLog cannot start, and what has to stay true about it.
 //
-// tcpdump needs root; the transparent proxy rewrites this host's nat rules.
-// RedLog holds neither, so these producers run outside it — which means
-// switching them off inside RedLog does not stop them. Two things follow, and
+// tcpdump needs root, which RedLog does not hold, so these producers run
+// outside it — which means switching them off inside RedLog does not stop them. Two things follow, and
 // both were wrong:
 //
 //   1. Unregistering deleted the capture outright, so a disabled source

@@ -382,13 +382,12 @@ function applySchema(): void {
   // when the query repeats its WHERE terms and its expressions character for
   // character, so the probe SQL and these definitions are one contract; the
   // plan guard in test/query-plans.test.ts fails when they drift. The repeated
-  // expression column in the last two keys is load-bearing: keyed as
+  // expression column in the last key is load-bearing: keyed as
   // (subtype, timestamp) the planner chose idx_*_agent_subtype_ts instead.
   for (const table of ['events', 'events_logged']) {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_agent_kind_ts ON ${table}(json_extract(data,'$.agent'), timestamp DESC) WHERE agent_type = 'agent'`)
     db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_own_shell_ts ON ${table}(json_extract(data,'$.shell'), subtype, timestamp DESC) WHERE agent_type = 'shell' AND COALESCE(json_extract(data,'$.source'), '') != 'builtin-terminal'`)
     db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_own_shell_output_ts ON ${table}(json_extract(data,'$.shell'), subtype, json_extract(data,'$.output_disposition'), timestamp DESC) WHERE agent_type = 'shell' AND COALESCE(json_extract(data,'$.source'), '') != 'builtin-terminal' AND json_extract(data,'$.output_disposition') = 'captured'`)
-    db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_transparent_proxy_ts ON ${table}(json_extract(data,'$.proxy_mode'), subtype, timestamp DESC) WHERE agent_type = 'scanner' AND json_extract(data,'$.proxy_mode') = 'transparent'`)
   }
 
   db.exec('CREATE INDEX IF NOT EXISTS idx_events_source_ts ON events(source, timestamp DESC)')

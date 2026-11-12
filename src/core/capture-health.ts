@@ -69,7 +69,7 @@ export interface CaptureSource {
    *  rather than the hardcoded core list. Informational sources are DISPLAY
    *  ONLY — they are appended after the verdict is computed and never feed
    *  `verdict`/`recording`, so a manual producer that the operator has not run
-   *  (pcap-capture, transparent-proxy, a c2 tailer…) can never tip the
+   *  (pcap-capture, a c2 tailer…) can never tip the
    *  recording indicator amber. See computeCaptureHealth. */
   informational?: boolean
   /** Human label for an informational source (the plugin's own name), since it
@@ -333,12 +333,6 @@ export function _configureAgentActivityProbe(opts: { fs?: ProbeFs } | null | und
 // missed beat or two without flapping.
 const PRODUCER_HEARTBEAT_WINDOW_MS = 60 * 1000
 
-/** Producers that share the mitmproxy addon's subtypes with the regular proxy,
- *  and the `proxy_mode` stamp that is theirs alone (Spec 060 FR-011). */
-const PROXY_MODE_PRODUCERS: Record<string, string> = {
-  'transparent-proxy.mitmproxy-transparent': 'transparent'
-}
-
 // System events (api_started/session_start) are RedLog's own housekeeping — they
 // don't prove anything is being captured, so they never count as "recording".
 /** One probe: a WHERE clause and what it binds. */
@@ -542,11 +536,7 @@ function computeCaptureHealth(now: number): CaptureHealth {
   // mitmproxy addon writes scanner http_request/http_error events.
   // mitmproxy and the connection monitor both land on agent_type='scanner';
   // split them by subtype so one does not light the other's indicator.
-  // A transparent-proxy event is not the regular proxy's: both run the same
-  // addon and emit the same subtypes, and `proxy_mode` is the only thing that
-  // tells them apart. Rows from before the stamp count as regular.
-  const mitmLast = lastEventFor(`agent_type = 'scanner' AND subtype NOT IN ('connection','connection_end')
-    AND COALESCE(json_extract(data,'$.proxy_mode'), 'regular') != 'transparent'`)
+  const mitmLast = lastEventFor(`agent_type = 'scanner' AND subtype NOT IN ('connection','connection_end')`)
   const connLast = newestEvent(
     ['connection', 'connection_end'].map((s): Probe => [`agent_type = 'scanner' AND subtype = ?`, [s]])
   ).t
@@ -767,7 +757,7 @@ function computeCaptureHealth(now: number): CaptureHealth {
   // the built-ins (their namespaced `<pluginId>.<captureId>` ids are the only
   // ones carrying a dot). When a producer's manifest declares `emits`, we give
   // it a REAL feed readout — the last event of its agentType with one of those
-  // subtypes — so a live pcap/transparent-proxy/c2 tailer shows `active`, a
+  // subtypes — so a live pcap/c2 tailer shows `active`, a
   // stale one `idle`, an unrun one `off` (not a fault: a manual producer that
   // simply isn't running).
   const pluginSources: CaptureSource[] = hooks
@@ -776,16 +766,7 @@ function computeCaptureHealth(now: number): CaptureHealth {
       const emits = h.emits ?? []
       let last: number | null = null
       if (emits.length > 0) {
-        const mode = PROXY_MODE_PRODUCERS[h.id]
-        // The transparent-proxy producer is the one whose rows have an index
-        // of their own, and a partial index applies only to literal terms, so
-        // its agent type and mode are written into the SQL rather than bound.
-        const transparent = mode === 'transparent' && h.agentType === 'scanner'
-        last = newestEvent(emits.map((s): Probe => transparent
-          ? [`agent_type = 'scanner' AND json_extract(data,'$.proxy_mode') = 'transparent' AND subtype = ?`, [s]]
-          : [`agent_type = ? AND ${mode ? `json_extract(data,'$.proxy_mode') = ? AND ` : ''}subtype = ?`,
-            [h.agentType, ...(mode ? [mode] : []), s]]
-        )).t
+        last = newestEvent(emits.map((s): Probe => [`agent_type = ? AND subtype = ?`, [h.agentType, s]])).t
       }
       // E3: is the operator running this producer right now? A running producer
       // posts `system.producer_heartbeat` with its pluginId periodically; a

@@ -152,7 +152,6 @@ describeDB('query plans', () => {
     healthMod.invalidateHooksCache()
     vi.spyOn(hooksMod, 'detectHooks').mockReturnValue([
       hook('shell-zsh'), hook('shell-bash'),
-      hook('transparent-proxy.mitmproxy-transparent', { agentType: 'scanner', emits: ['http_request_start', 'http_response'], installed: false }),
       hook('pcap-capture.pcap-tcpdump', { agentType: 'scanner', emits: ['packet_flow', 'pcap_segment'], installed: false }),
       hook('c2-tailers.sliver', { agentType: 'scanner', emits: ['c2_checkin'], installed: false })
     ])
@@ -190,7 +189,7 @@ describeDB('query plans', () => {
       // SQLite prints an indexed expression as `<expr>`, so the seek on the
       // discriminator reads `(<expr>=? ...)`; a plan that only reaches
       // `agent_type=?` is the bucket walk this test exists to refuse.
-      if (where.includes("'$.agent'") || where.includes("'$.shell'") || where.includes("= 'transparent'")) {
+      if (where.includes("'$.agent'") || where.includes("'$.shell'")) {
         expect(detail, sql).toContain('<expr>=?')
       } else if (where.includes('subtype = ')) {
         expect(detail, sql).toContain('subtype=?')
@@ -201,14 +200,13 @@ describeDB('query plans', () => {
       // shell to find a captured one. Name the index it must reach.
       if (where.includes("'$.output_disposition'")) expect(detail, sql).toContain('_own_shell_output_ts')
       else if (where.includes("'$.shell'")) expect(detail, sql).toContain('_own_shell_ts')
-      else if (where.includes("= 'transparent'")) expect(detail, sql).toContain('_transparent_proxy_ts')
       else if (where.includes("'$.agent'")) expect(detail, sql).toContain('_agent_kind_ts')
     }
     expect(checked, 'the allow-list swallowed the probes').toBeGreaterThan(30)
   })
 
   it('opening a project twice leaves each Capture Health index defined once', () => {
-    const names = ['agent_kind_ts', 'own_shell_ts', 'own_shell_output_ts', 'transparent_proxy_ts']
+    const names = ['agent_kind_ts', 'own_shell_ts', 'own_shell_output_ts']
     const count = (): Array<{ name: string }> => getDB()
       .prepare(`SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx\\_events%\\_ts' ESCAPE '\\'`)
       .all() as Array<{ name: string }>

@@ -220,8 +220,7 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.source.lastReceived',
     'settings.source.neverReceived',
     'settings.externalDesc.c2-tailers',
-    'settings.externalDesc.pcap-capture',
-    'settings.externalDesc.transparent-proxy'
+    'settings.externalDesc.pcap-capture'
   ],
   loot: [
     'settings.lootGroup',

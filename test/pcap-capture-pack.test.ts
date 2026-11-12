@@ -35,29 +35,9 @@ describe('pcap-capture pack', () => {
 })
 
 describe('transparent-proxy pack', () => {
-  const pack = () => {
-    const p = loadPlugins().find((x) => x.manifest.id === 'transparent-proxy')
-    if (!p) throw new Error('transparent-proxy pack not found on disk')
-    return p
-  }
-
-  it('loads as an active, declarative bundled capture producer', () => {
-    const p = pack()
-    expect(p.status).toBe('active')
-    expect(p.tier).toBe('declarative')
-    expect(p.source).toBe('bundled')
-    expect(p.error).toBeFalsy()
-  })
-
-  it('declares an elevated mitmproxy transparent hook with up + down steps', () => {
-    const cap = pack().manifest.contributes?.capture
-    expect(cap?.length).toBe(1)
-    expect(cap?.[0]).toMatchObject({ agentType: 'scanner', installMethod: 'manual' })
-    expect(cap?.[0].hookFile).toBe('hooks/transparent-proxy.sh')
-    expect(cap?.[0].requires).toContain('mitmdump')
-    const steps = JSON.stringify(cap?.[0].manualSteps)
-    expect(steps).toMatch(/sudo/)      // rewrites nat rules — needs root
-    expect(steps).toMatch(/up/)        // start
-    expect(steps).toMatch(/down/)      // teardown is offered, not left implicit
+  // Removed: it rewrote this host's nat rules as root to capture tools that
+  // ignore HTTP_PROXY. The operator runs their own proxy.
+  it('is not shipped', () => {
+    expect(loadPlugins().find((x) => x.manifest.id === 'transparent-proxy')).toBeUndefined()
   })
 })

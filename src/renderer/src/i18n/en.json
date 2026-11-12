@@ -801,7 +801,6 @@
   "plugins.builtin.pack-windows-output": "Full command output on Windows, not just the commands themselves.",
   "settings.externalDesc.pcap-capture": "Packets the connection monitor cannot see: SYN and UDP scans that never finish a handshake. Needs root.",
   "plugins.builtin.starter-pack": "RedLog's built-in capture sources: the shell hooks (zsh/bash/PowerShell/WSL) and the mitmproxy addon.",
-  "settings.externalDesc.transparent-proxy": "Redirects this host's outbound 80/443 into mitmproxy, to capture tools that ignore HTTP_PROXY. Needs iptables/pf.",
   "plugins.reload": "Reload",
   "plugins.openFolder": "Open folder",
   "plugins.openFolderHint": "Opens ~/.redlog/plugins in Finder / Explorer",

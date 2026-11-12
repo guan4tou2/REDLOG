@@ -801,7 +801,6 @@
   "plugins.builtin.pack-windows-output": "Windows 上記下完整的指令輸出，不只指令本身。",
   "settings.externalDesc.pcap-capture": "補上連線監控看不到的封包：SYN、UDP 這類沒完成握手的掃描。需要 root。",
   "plugins.builtin.starter-pack": "RedLog 內建的擷取來源：shell hook（zsh／bash／PowerShell／WSL）與 mitmproxy addon。",
-  "settings.externalDesc.transparent-proxy": "把本機對外的 80/443 導進 mitmproxy，擷取不理會 HTTP_PROXY 的工具。需要 iptables／pf。",
   "plugins.reload": "重新載入",
   "plugins.openFolder": "開啟資料夾",
   "plugins.openFolderHint": "在 Finder / Explorer 中開啟 ~/.redlog/plugins",
