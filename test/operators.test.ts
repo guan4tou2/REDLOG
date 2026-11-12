@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -8,14 +9,12 @@ let closeDB: typeof import('../src/core/db/index').closeDB
 let ops: typeof import('../src/core/db/operators')
 
 let dbAvailable = false
-try {
-  const dbMod = await import('../src/core/db/index')
+if (requires('better-sqlite3').ok) {
+  const dbMod =await import('../src/core/db/index')
   ops = await import('../src/core/db/operators')
   initDB = dbMod.initDB
   closeDB = dbMod.closeDB
   dbAvailable = true
-} catch {
-  // better-sqlite3 not compiled for this Node.js version
 }
 
 const describeDB = dbAvailable ? describe : describe.skip

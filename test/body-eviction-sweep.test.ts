@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -17,7 +18,7 @@ let sweepBodyStore: typeof import('../src/core/retention').sweepBodyStore
 let queryEvents: typeof import('../src/core/db/events').queryEvents
 
 let dbAvailable = false
-try {
+if (requires('better-sqlite3').ok) {
   const d = await import('../src/core/db/index')
   const e = await import('../src/core/db/events')
   const r = await import('../src/core/retention')
@@ -26,7 +27,7 @@ try {
   insertEvent = e.insertEvent; queryEvents = e.queryEvents
   sweepBodyStore = r.sweepBodyStore
   dbAvailable = true
-} catch { /* better-sqlite3 not built for this Node ABI */ }
+}
 
 const describeDB = dbAvailable ? describe : describe.skip
 const OPTS = { engagementId: 'eng', operatorId: 'op' }

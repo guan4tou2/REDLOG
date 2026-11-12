@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -12,7 +13,7 @@ let sanitize: typeof import('../src/core/sanitize').sanitize
 let getSanitizedFields: typeof import('../src/core/sanitize').getSanitizedFields
 
 let dbAvailable = false
-try {
+if (requires('better-sqlite3').ok) {
   const dbMod = await import('../src/core/db/index')
   const eventsMod = await import('../src/core/db/events')
   const sanMod = await import('../src/core/sanitize')
@@ -24,7 +25,7 @@ try {
   sanitize = sanMod.sanitize
   getSanitizedFields = sanMod.getSanitizedFields
   dbAvailable = true
-} catch { /* better-sqlite3 unavailable — skip */ }
+}
 
 const describeDB = dbAvailable ? describe : describe.skip
 

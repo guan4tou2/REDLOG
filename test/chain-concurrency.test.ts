@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -23,14 +24,14 @@ let insertEvent: typeof import('../src/core/db/events').insertEvent
 let verifyChainFullAsync: typeof import('../src/core/chain-anchor').verifyChainFullAsync
 
 let dbAvailable = false
-try {
+if (requires('better-sqlite3').ok) {
   const d = await import('../src/core/db/index')
   const e = await import('../src/core/db/events')
   const c = await import('../src/core/chain-anchor')
   initDB = d.initDB; closeDB = d.closeDB; insertEvent = e.insertEvent
   verifyChainFullAsync = c.verifyChainFullAsync
   dbAvailable = true
-} catch { /* better-sqlite3 not built for this Node */ }
+}
 
 const describeDB = dbAvailable ? describe : describe.skip
 

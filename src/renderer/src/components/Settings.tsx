@@ -21,6 +21,7 @@ import IntegrityPanel from './settings/IntegrityPanel'
 import LootRulesGroup from './settings/LootRulesGroup'
 import RetentionPage from './settings/RetentionPage'
 import { searchSettings } from '../lib/settingsSearch'
+import { applyConfigPatch, diffConfig, rebaseDraft, valueAtPath, type ConfigPatchOp, type ConfigSaveResult } from '../../../core/config-patch'
 
 // Existing settings routes. A typo must fail typechecking, not open an empty pane.
 export type SettingsPage =
@@ -77,13 +78,41 @@ function SettingsHomeRow({ row, title, desc, status, onOpen, t }: {
   )
 }
 
-type ScopeLists = { targets: string[]; excludeTargets: string[] }
-const scopeLists = (c: ConfigState): ScopeLists => ({ targets: c.scope?.targets ?? [], excludeTargets: c.scope?.excludeTargets ?? [] })
+/** What Settings had not managed to save when it was left. Kept until a save
+ *  of it succeeds, so leaving after a failed save and coming back shows the
+ *  operator's edit again instead of the file. */
+let unsavedDraft: { projectId: string | undefined; baseline: ConfigState; draft: ConfigState } | null = null
+
+const stripBase = (op: ConfigPatchOp): ConfigPatchOp => {
+  const { base: _base, baseAbsent: _absent, ...rest } = op
+  return rest
+}
+/** An op that sets `path` to what `source` holds there. */
+const pinTo = (source: unknown, path: ConfigPatchOp['path']): ConfigPatchOp => {
+  const value = valueAtPath(source, path)
+  return value === undefined ? { path, unset: true } : { path, value }
+}
 
 /** `request` is the page a link asked for (lib/navigation.ts). A new object
  *  per request, so asking again for the same page switches back to it. */
 export default function Settings({ request = null }: { request?: { page: SettingsPage; scopeCandidate?: string; sourceId?: string } | null } = {}): JSX.Element {
-  const [config, setConfig] = useState<ConfigState | null>(null)
+  // Two copies of the config. `baseline` is the file as this page last saw
+  // it; `config` (and `draft`, the same value readable outside a render) is
+  // what the operator sees and edits. A save sends the difference, each field
+  // with its baseline value, so main writes only what was changed here and
+  // refuses — rather than overwrites — a field someone else changed meanwhile.
+  const [config, setConfigState] = useState<ConfigState | null>(null)
+  const baseline = useRef<ConfigState | null>(null)
+  const draft = useRef<ConfigState | null>(null)
+  const setConfig = useCallback((next: ConfigState): void => { draft.current = next; setConfigState(next) }, [])
+  const adopt = (nextBaseline: ConfigState, nextDraft: ConfigState): void => {
+    baseline.current = nextBaseline
+    draft.current = nextDraft
+    setConfigState(nextDraft)
+  }
+  const unsaved = (): ConfigPatchOp[] => (baseline.current && draft.current ? diffConfig(baseline.current, draft.current) : [])
+  // The file as it was when the last save was refused for a conflict.
+  const conflictAt = useRef<ConfigState | null>(null)
   // `null` is the home list. Settings is one column: a list of pages, and a
   // page opened from it with a way back (#590) — no second sidebar. A link that
   // names a page (`request`) lands on that page directly.
@@ -141,20 +170,10 @@ export default function Settings({ request = null }: { request?: { page: Setting
 
   // Auto-save on every change so toggles apply live to the HUD / event pipeline
   // without a manual "save & apply" click. Debounced 350ms so text-input typing
-  // coalesces into a single write instead of one per keystroke. The initial
-  // fetch is skipped by tracking whether we've seen a user-driven change.
-  const dirty = useRef(false)
+  // coalesces into a single write instead of one per keystroke.
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // What the debounce is holding. Cleared once it has been handed to main.
-  const pending = useRef<ConfigState | null>(null)
   const live = useRef(true)
   const inFlight = useRef<Promise<boolean> | null>(null)
-  // The scope lists as main last had them, as far as this form knows: what a
-  // pending edit is compared with to tell whether it touched them.
-  const scopeBaseline = useRef<ScopeLists | null>(null)
-  // Set when the form state is replaced by a read from main, which is not an
-  // edit and must not be written back.
-  const adopted = useRef(false)
 
   // A failed first read used to leave "Loading…" on screen for good: the
   // rejection was not handled, so nothing ever said the settings could not be
@@ -163,99 +182,125 @@ export default function Settings({ request = null }: { request?: { page: Setting
   const loadConfig = (): void => {
     setLoadFailed(false)
     window.redlog.config.get()
-      .then((c) => { if (live.current) { scopeBaseline.current = scopeLists(c as ConfigState); setConfig(c as ConfigState) } })
+      .then((c) => {
+        if (!live.current) return
+        const fresh = c as ConfigState
+        // An edit that never saved comes back onto the file as it is now, and
+        // the autosave below tries it again.
+        const kept = unsavedDraft && unsavedDraft.projectId === fresh.engagement?.id ? unsavedDraft : null
+        unsavedDraft = null
+        if (kept) { const r = rebaseDraft(kept.baseline, kept.draft, fresh); adopt(r.baseline, r.draft) }
+        else adopt(fresh, fresh)
+      })
       .catch(() => { if (live.current) setLoadFailed(true) })
   }
 
-  const writeConfig = useCallback((next: ConfigState): Promise<boolean> => {
-    pending.current = null
-    if (live.current) setSaveState('saving')
-    // A write that did not land is put back, so the next flush — closing the
-    // project, leaving the page — tries it again instead of finding nothing
-    // pending and reporting success.
-    const keep = (): void => { if (pending.current === null) pending.current = next }
+  const writeConfig = useCallback(async (): Promise<boolean> => {
+    // One write at a time, each computed against the baseline the one before
+    // it left.
+    while (inFlight.current) await inFlight.current
+    const base = baseline.current
+    const sent = draft.current
+    if (!base || !sent) return true
+    const ops = diffConfig(base, sent)
+    if (ops.length === 0) return true
     // The project this form was loaded from. `engagement.id` is the project
     // id — main treats it as the durable attribution boundary — so passing it
     // back lets main refuse a write aimed at a project the operator has since
     // switched away from, rather than applying a stale form to a new
     // engagement.
-    const failureKey = `settings-save:${next.engagement?.id}`
-    const write = window.redlog.config.save(next, { expectProjectId: next.engagement?.id })
-      .then((ok) => {
-        window.dispatchEvent(new CustomEvent('redlog:config-saved', { detail: { source: 'settings' } }))
-        if (ok === false) keep()
-        else { dismissToast(failureKey); scopeBaseline.current = scopeLists(next) }
-        if (live.current) {
-          setSaveState(ok === false ? 'failed' : 'saved')
-          if (ok !== false) setTimeout(() => { if (live.current) setSaveState('idle') }, 1500)
-        }
-        return ok !== false
-      })
-      .catch(() => {
-        keep()
+    const projectId = sent.engagement?.id
+    const failureKey = `settings-save:${projectId}`
+    if (live.current) setSaveState('saving')
+    const write = (async (): Promise<boolean> => {
+      let res: ConfigSaveResult
+      try {
+        res = await window.redlog.config.patch({ ops, ...(projectId ? { expectProjectId: projectId } : {}) })
+      } catch {
+        // Nothing is put back: the draft is still the draft until a save of
+        // it succeeds.
         if (live.current) setSaveState('failed')
         toast(t('toast.saveFailed'), { type: 'error', key: failureKey })
         return false
-      })
-      .finally(() => { if (inFlight.current === write) inFlight.current = null })
+      }
+      window.dispatchEvent(new CustomEvent('redlog:config-saved', { detail: { source: 'settings' } }))
+      if (!res.ok) {
+        if (res.reason === 'conflict') {
+          conflictAt.current = res.config as ConfigState
+          toast(t('toast.saveConflict'), { type: 'error', key: failureKey })
+        }
+        if (live.current) setSaveState('failed')
+        return false
+      }
+      dismissToast(failureKey)
+      conflictAt.current = null
+      // Main's file is the new baseline. Edits made while this write was on
+      // its way are carried onto it; the ones that were not part of this
+      // write keep their old baseline value, so a change someone else made to
+      // them still reads as a conflict next time.
+      const fresh = res.config as ConfigState
+      const now = draft.current ?? sent
+      const later = diffConfig(sent, now)
+      const written = new Set(ops.map((op) => JSON.stringify(op.path)))
+      const nextDraft = applyConfigPatch(fresh, later.map(stripBase)).config
+      const nextBaseline = applyConfigPatch(fresh, later.filter((op) => !written.has(JSON.stringify(op.path))).map((op) => pinTo(base, op.path))).config
+      if (live.current) {
+        adopt(nextBaseline, nextDraft)
+        setSaveState('saved')
+        setTimeout(() => { if (live.current) setSaveState('idle') }, 1500)
+      } else {
+        baseline.current = nextBaseline
+        draft.current = nextDraft
+      }
+      return true
+    })().finally(() => { if (inFlight.current === write) inFlight.current = null })
     inFlight.current = write
     return write
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Retry. After a conflict it is the operator choosing their value: the
+  // fields they changed are written over what is there now.
+  const retry = (): void => {
+    const disk = conflictAt.current
+    if (disk && baseline.current && draft.current) {
+      baseline.current = applyConfigPatch(baseline.current, unsaved().map((op) => pinTo(disk, op.path))).config
+      conflictAt.current = null
+    }
+    void writeConfig()
+  }
+
   useEffect(() => {
     if (!config) return
-    if (!dirty.current) { dirty.current = true; return }  // ignore the setConfig from the initial fetch
-    if (adopted.current) { adopted.current = false; return }
-    if (saveTimer.current) clearTimeout(saveTimer.current)
-    pending.current = config
-    saveTimer.current = setTimeout(() => { saveTimer.current = null; void writeConfig(config) }, 350)
+    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
+    // A config read from main, or put back after a save, is not an edit.
+    if (unsaved().length === 0) return
+    saveTimer.current = setTimeout(() => { saveTimer.current = null; void writeConfig() }, 350)
     return () => { if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null } }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config])
 
-  // This form holds the whole document, and a save replaces the whole document
-  // in main. A scope change made elsewhere while it is open (Targets ▸ Add to
-  // scope) would otherwise be removed by the next unrelated autosave. So an
-  // outside write is read back: into the form when no edit is waiting, and
-  // otherwise into the scope lists the pending edit did not change.
+  // Another page or view saved (Targets ▸ Add to scope, the capture card).
+  // Take what it wrote, and keep this page's own unsaved edits on top.
   useEffect(() => {
     const onOutsideSave = (e: Event): void => {
       if ((e as CustomEvent<{ source?: string } | undefined>).detail?.source === 'settings') return
       window.redlog.config.get().then((raw) => {
-        if (!live.current) return
-        const fresh = raw as ConfigState
-        const freshLists = scopeLists(fresh)
-        const base = scopeBaseline.current
-        scopeBaseline.current = freshLists
-        if (pending.current === null && saveTimer.current === null) {
-          adopted.current = true
-          setConfig(fresh)
-          return
-        }
-        setConfig((prev) => {
-          if (!prev) return prev
-          const same = (a: string[], b: string[] | undefined): boolean => JSON.stringify(a) === JSON.stringify(b ?? [])
-          const takeTargets = !base || same(prev.scope.targets, base.targets)
-          const takeExcludes = !base || same(prev.scope.excludeTargets, base.excludeTargets)
-          if (!takeTargets && !takeExcludes) return prev
-          return { ...prev, scope: {
-            ...prev.scope,
-            ...(takeTargets ? { targets: freshLists.targets } : {}),
-            ...(takeExcludes ? { excludeTargets: freshLists.excludeTargets } : {})
-          } }
-        })
+        if (!live.current || !baseline.current || !draft.current) return
+        const r = rebaseDraft(baseline.current, draft.current, raw as ConfigState)
+        adopt(r.baseline, r.draft)
       }).catch(() => {})
     }
     window.addEventListener('redlog:config-saved', onOutsideSave)
     return () => window.removeEventListener('redlog:config-saved', onOutsideSave)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Settings is unmounted by navigating away — App renders it as
-  // `view === 'settings' && <Settings/>`. The debounce's cleanup cancelled the
-  // pending write, so a change made within 350ms of leaving the page was
-  // dropped with nothing said. Flush it instead: the IPC completes in main
-  // whether or not this component is still on screen.
+  // `view === 'settings' && <Settings/>`. A change made within 350ms of
+  // leaving is flushed rather than dropped: the IPC completes in main whether
+  // or not this component is still on screen. Until a save of it succeeds the
+  // edit is also kept for the next time Settings opens.
   //
   // `live` is re-armed in setup: React.StrictMode mounts, cleans up and mounts
   // again in development, and a ref that only ever went false left the form
@@ -264,8 +309,13 @@ export default function Settings({ request = null }: { request?: { page: Setting
     live.current = true
     return () => {
       live.current = false
-      const unsaved = pending.current
-      if (unsaved) void writeConfig(unsaved)
+      if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
+      const b = baseline.current
+      const d = draft.current
+      if (!b || !d || diffConfig(b, d).length === 0) return
+      const kept = { projectId: d.engagement?.id, baseline: b, draft: d }
+      unsavedDraft = kept
+      void writeConfig().then((ok) => { if (ok && unsavedDraft === kept) unsavedDraft = null })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -274,11 +324,10 @@ export default function Settings({ request = null }: { request?: { page: Setting
   // registered save before it calls project.close(), and stops if one fails.
   useEffect(() => registerPendingSave(async () => {
     if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
-    // A write already on its way is waited for; if it fails it puts its change
-    // back, and that is tried once more here.
+    // A write already on its way is waited for; whatever it did not save is
+    // still in the draft, and is tried once more here.
     if (inFlight.current) await inFlight.current
-    const unsaved = pending.current
-    return unsaved ? writeConfig(unsaved) : true
+    return unsaved().length > 0 ? writeConfig() : true
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [])
 
@@ -414,7 +463,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
             {t(`settings.save.${saveState}`)}
             {saveState === 'failed' && (
               <button
-                onClick={() => { if (config) writeConfig(config) }}
+                onClick={retry}
                 className="ml-2 underline hover:text-red-300"
               >{t('settings.save.retry')}</button>
             )}

@@ -81,6 +81,9 @@
 | 紀錄 | 用途 |
 |---|---|
 | [可用性審查收尾](2026-11-12/USABILITY-AUDIT-CLOSEOUT.md) | #684、#694、#696、#697、#698、#693 的內容、驗證條件、行為變更與未完成事項（`main@aaee01fd`） |
+| [根因審查與落地計畫](2026-11-12/ROOT-CAUSE-REVIEW.md) | 七份根因審查的整合、抽查結果、落地階段與當日決定（`main@a087c16c`） |
+| 根因審查原文：[01 擷取完整性](2026-11-12/root-cause/01-capture-integrity.md)、[02 主行程回應性](2026-11-12/root-cause/02-main-thread.md)、[03 介面狀態與資料流](2026-11-12/root-cause/03-renderer-state.md)、[04 來源生命週期](2026-11-12/root-cause/04-source-lifecycle.md)、[05 信任邊界](2026-11-12/root-cause/05-trust-boundaries.md)、[06 驗證](2026-11-12/root-cause/06-verification.md)、[07 架構](2026-11-12/root-cause/07-architecture.md) | 唯讀審查者依程式碼推得的原始報告；未經逐項確認，抽查結果見整合頁 §2 |
+| [操作摩擦盤點](2026-11-12/FLOW-FRICTION-AUDIT.md) | 三條流程的操作步數與概念數（依程式路徑計數，非真人操作）；十項排名中兩項經查不成立，見整合頁 §2 |
 
 ## 放置與維護
 

@@ -11,6 +11,9 @@ export default defineConfig({
   test: {
     include: ['test/**/*.test.ts', 'test/**/*.test.tsx'],
     setupFiles: ['./test/setup.ts'],
+    // Prints which capabilities test/helpers/requires.ts found missing, and in
+    // CI writes them to test-results/ for scripts/verify-skip-baseline.mjs.
+    globalSetup: ['./test/helpers/capability-report.ts'],
     pool: 'forks',
     // Vitest 4 removed `poolOptions` and moved these to the top level, so the
     // `minForks: 2, maxForks: 4` that used to live here has been silently

@@ -22,9 +22,12 @@ npm run typecheck
 npm run verify:specs
 npm run verify:architecture
 npm run verify:i18n
-npm test
 npm run build
+npm test
 ```
+
+Build before `npm test`, as CI does: `csp-production` and `bundle-requires` read
+`out/renderer` and `out/main/index.js`, and skip (saying so) without them.
 
 `npm test` rebuilds SQLite for Node, then runs Vitest. `npm run e2e` rebuilds it
 for Electron. Do not run these concurrently. Use `npm test` to request a Node
@@ -120,8 +123,8 @@ UI events prove rendering and interaction, not producer coverage.
 
 ## CI and platforms
 
-- CI runs the five gates and build on Linux, Windows and macOS; Electron source
-  journeys run on Linux. A green Linux result does not prove macOS PTY behavior.
+- CI runs the five gates, the build and skip accounting on Linux, Windows and
+  macOS; Electron source journeys run on Linux. A green Linux result does not prove macOS PTY behavior.
 - Linux package smoke installs/removes the x64 DEB and checks real capture,
   HTTP(S), export/restart and cancellation. Windows smoke installs/removes NSIS
   and checks native PowerShell plus capture/export. Both require strict JSON.
@@ -131,6 +134,37 @@ UI events prove rendering and interaction, not producer coverage.
 - Manual download, desktop launch, trust prompts and first-install friction use
   [the release walkthrough](RELEASE-SMOKE-TEST.md). Exact prior package results
   and remaining limitations are in [the package matrix](PACKAGED-SMOKE.md).
+
+### What each unit leg does not run
+
+A skipped test reports green, so the skips are counted. Each unit leg in
+`ci.yml` builds, runs Vitest, then runs `scripts/verify-skip-baseline.mjs`
+against the leg's JUnit report, even when Vitest failed.
+
+- `test/skip-baseline.json` records, per OS, the skipped-case total, which
+  files may skip and how many, and `mustRun` files that may not skip at all.
+  More skips, a new skipping file, a skipped or missing `mustRun` file: the leg
+  fails. Fewer skips print a notice; lower the baseline in the same change.
+- `test/capabilities.json` says what each OS has. CI sets
+  `REDLOG_CI_CAPABILITIES=1`; then a file asking `requires('<capability>')`
+  (`test/helpers/requires.ts`) for a `required` capability that is missing
+  fails instead of skipping, and so does the leg. `unknown` is reported, not
+  failed. Locally nothing is required: a missing capability skips the file and
+  prints one line saying which and why.
+- The baseline is a file in the repository, not another ref, so a run on
+  `main` checks as much as a run on a branch.
+
+From the 2026-11-12 run (after this accounting moved the build before Vitest):
+
+| Leg | Skipped cases | Not executed there |
+| --- | ---: | --- |
+| ubuntu | 31 in 10 files | opt-in perf suites (`*-perf`, ratio checks), `zsh-latency`, `zsh-nc-upgrade` (needs traditional nc), Windows-only ACL and Git Bash tests |
+| macOS | 34 in 11 files | as ubuntu, plus 3 `bash-hook-prompt-command` cases (bash ≥ 5.1) |
+| Windows | 727 in 73 files | every zsh/bash PTY, relay and `shell-*` test, POSIX file modes, `zsh-class-cache`, part of `command-class` — the bash adapter that Git Bash runs is not exercised beyond `git-bash-direct-send` |
+
+All three legs run the SQLite-backed tests (`better-sqlite3` required) and the
+built-renderer CSP and bundle checks. `test/capabilities.json` marks Windows
+`bash` unknown: the leg reports what `bash` resolves to there.
 
 ### Export workload at project scale
 

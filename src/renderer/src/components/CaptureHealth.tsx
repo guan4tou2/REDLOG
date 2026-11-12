@@ -8,10 +8,14 @@ import { toast } from './Toast'
 import { runMutation } from '../lib/mutation'
 import { useTick } from '../lib/useTick'
 import { clientLabel } from '../../../core/http-verify'
+import { valueAtPath, type ConfigPatchOp } from '../../../core/config-patch'
 import { settingsTarget } from '../lib/navigation'
 import { removeHookWithUndo } from '../lib/hookRemoval'
 import { formatTime, formatDateTime } from '../lib/time'
 import { writeClipboard } from '../lib/clipboard'
+import { RecordTerminalFlow } from './RecordTerminalFlow'
+import { shellLabel, shellNameForHook } from '../lib/terminalActivation'
+import { dismissUnrecordedAgent, dismissedUnrecordedAgents } from '../lib/unrecordedAgentDismissals'
 
 
 /** What the `terminal` row says about the operator's OWN shell — three states,
@@ -187,8 +191,11 @@ function CoreCaptureLine({ readiness, readUnknown, http, listenAddress, source, 
   )
 }
 
-export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onSetup }: {
+export function CaptureHealthCard({ capture, unknown, projectId, onNavigate, onRefresh, onSetup }: {
   capture: CaptureHealthInfo
+  /** The open project, which a dismissed "in use, not recorded" note belongs
+   *  to. Without one the note is not listed: it could not stay dismissed. */
+  projectId?: string
   /** Set when the last read failed: what to say in place of a verdict. `capture`
    *  is then the last good snapshot, and the rows and controls below stay
    *  usable, but the headline and the "all good" line are not drawn. */
@@ -234,6 +241,9 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
   // opens the full inventory with the controls.
   const [manage, setManage] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
+  // The shell hook whose install is being proved here: the same nonce flow as
+  // first run and Settings (FR-015), so an install is never the end state.
+  const [shellFlow, setShellFlow] = useState<string | null>(null)
   // Hooks whose removal is waiting out its undo window, shown removed until
   // the health poll reports them gone (lib/hookRemoval.ts).
   const [removing, setRemoving] = useState<ReadonlySet<string>>(new Set())
@@ -295,38 +305,46 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
   const problems = sources.filter(isProblem)
   const healthy = sources.filter((s) => s.state === 'ready')
 
+  // An AI tool writing sessions this project is not recording. Below a fault:
+  // it changes no verdict and raises nothing, and it can be put away for good.
+  // It cannot tell the engagement's AI use from the operator's own.
+  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => projectId ? dismissedUnrecordedAgents(projectId) : new Set())
+  useEffect(() => { setDismissed(projectId ? dismissedUnrecordedAgents(projectId) : new Set()) }, [projectId])
+  const isUnrecordedNote = (s: CaptureSourceInfo): boolean =>
+    s.unrecordedActivityAt != null && projectId !== undefined && !dismissed.has(s.id)
+  const dismissNote = (s: CaptureSourceInfo): void => {
+    if (!projectId) return
+    dismissUnrecordedAgent(projectId, s.id)
+    setDismissed(dismissedUnrecordedAgents(projectId))
+  }
+
   const setEnabled = async (s: CaptureSourceInfo, on: boolean): Promise<void> => {
     if (!s.configPath) return
     setBusy(s.id)
     try {
       const cfg = await window.redlog.config.get() as Record<string, unknown>
-      // config:save replaces the whole doc, so mutating the fetched object in
-      // place would be fine — a copy of only the branch we touch keeps this
-      // honest if the bridge ever starts caching.
-      const next = { ...cfg }
-      const writeFlag = (path: string, value: boolean): void => {
+      // Only the switch, with the value it had when read: anything else in
+      // the config is left as main has it.
+      const flag = (path: string, value: boolean): ConfigPatchOp => {
         const parts = path.split('.')
-        let cur = next as Record<string, unknown>
-        for (const p of parts.slice(0, -1)) {
-          cur[p] = { ...(cur[p] as Record<string, unknown> ?? {}) }
-          cur = cur[p] as Record<string, unknown>
-        }
-        cur[parts[parts.length - 1]] = value
+        const base = valueAtPath(cfg, parts)
+        return { path: parts, value, ...(base === undefined ? { baseAbsent: true as const } : { base }) }
       }
-      writeFlag(s.configPath, on)
+      const ops = [flag(s.configPath, on)]
       // A pack member is only on when its pack is too. Writing the member
       // alone would leave the operator flipping a switch and watching the row
       // stay `off` — a control reporting the opposite of what it just did.
       // Turning one OFF never touches the pack: the other members are not the
       // operator's to lose.
-      if (on && s.packPath) writeFlag(s.packPath, true)
+      if (on && s.packPath) ops.push(flag(s.packPath, true))
       // The write is for the project this config was read from; main refuses
-      // it (false) when another is open by now. A refusal or a throw leaves
-      // the row as it was: no refresh, so the switch does not flip.
+      // it when another is open by now, or when the switch changed since it
+      // was read. A refusal or a throw leaves the row as it was: no refresh,
+      // so the switch does not flip.
       const engagement = cfg.engagement as { id?: string } | undefined
       const res = await runMutation(
-        () => window.redlog.config.save(next, { expectProjectId: engagement?.id }),
-        { failed: t('capture.actionFailed'), isFailure: (ok) => ok !== true }
+        () => window.redlog.config.patch({ ops, ...(engagement?.id ? { expectProjectId: engagement.id } : {}) }),
+        { failed: t('capture.actionFailed'), isFailure: (r) => r?.ok !== true }
       )
       if (res.ok) onRefresh()
     } catch (e) {
@@ -346,6 +364,9 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
       })
       return
     }
+    // The operator's own shell: installed is not recording, so the install
+    // runs inside the flow that waits for a command to come back.
+    if (s.id === 'terminal') { setShellFlow(s.hookId); return }
     setBusy(s.id)
     try {
       const hookId = s.hookId
@@ -411,7 +432,8 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
   // The core line always carries HTTP(S), so a mitmproxy row beneath it would
   // say the same thing twice. A rogue one stays: the core line has no word for
   // "switched off and still writing".
-  const shown = manage ? sources : problems.filter((s) => s.id !== 'mitmproxy' || isRogue(s))
+  const shown = manage ? sources : sources.filter((s) =>
+    (problems.includes(s) && (s.id !== 'mitmproxy' || isRogue(s))) || isUnrecordedNote(s))
 
   // One action, when there is one.
   //
@@ -433,7 +455,7 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
     ? readiness.nextStep.status === 'todo'
       ? { label: t('capture.ctaOpenTerminal'), run: () => onNavigate('terminal') }
       : { label: t('capture.ctaRunCommand'), run: () => onNavigate('terminal') }
-    : notEnrolled
+    : notEnrolled && shellFlow === null
       ? { label: t('capture.ctaInstallShellHook'), run: () => { void setInstalled(terminalSource!, true) } }
       : null
   const mitmSource = sources.find((s) => s.id === 'mitmproxy')
@@ -473,8 +495,9 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
         // row keeps its state word and controls, not a second copy.
         const detail = s.id !== 'mitmproxy'
         const missing = missingPrerequisite(s)
+        const note = !manage && isUnrecordedNote(s)
         return (
-        <div key={s.id} data-testid={`capture-row-${s.id}`} className="flex items-center gap-2 text-xs">
+        <div key={s.id} data-testid={`capture-row-${s.id}`} className={`flex items-center gap-2 text-xs ${note ? 'flex-wrap' : ''}`}>
           <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.id === 'mitmproxy' ? httpDot(http) : dot(s.state)}`} />
           <span title={s.label ?? SOURCE_LABEL[s.id] ?? s.id} className={`flex-1 min-w-0 ${s.state === 'off' ? 'text-redlog-text-dim' : 'text-redlog-text'}`}>
             <span className="block truncate" title={s.label ?? SOURCE_LABEL[s.id] ?? s.id}>
@@ -513,7 +536,9 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
             {detail && missing
               ? <span data-testid={`capture-prereq-${s.id}`} className="block text-red-400">{prerequisiteText(missing, t)}</span>
               : detail && s.lastError && <span className="block text-red-400" title={s.lastError.message}>{s.lastError.message}</span>}
-
+            {s.unrecordedActivityAt != null && (manage || note) && (
+              <span data-testid={`capture-unrecorded-${s.id}`} className="block text-redlog-text-dim">{t('capture.unrecordedActivity')}</span>
+            )}
           </span>
           <span data-testid={`capture-state-${s.id}`} className="text-redlog-text-faint text-xs">
             {s.id === 'mitmproxy' ? t(`capture.http.${http}`) : stateLabel(s.state)}
@@ -536,6 +561,9 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
               not the page that holds it (#590). */}
           {!manage && isAgentRow(s) && (
             <button data-testid={`capture-open-${s.id}`} onClick={() => onNavigate(settingsTarget('captureControl', { source: s.id }))} className="text-xs text-redlog-text-dim underline shrink-0">{t('settings.agents')}</button>
+          )}
+          {note && (
+            <Button size="compact" level="quiet" data-testid={`capture-dismiss-${s.id}`} onClick={() => dismissNote(s)}>{t('capture.unrecordedDismiss')}</Button>
           )}
           {manage && (
             <span className="flex items-center gap-1.5 shrink-0">
@@ -637,6 +665,16 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
             <button onClick={() => onNavigate(settingsTarget('hooks'))} className="text-xs text-redlog-text-dim hover:text-redlog-text underline">
               {t('capture.openHooks')}
             </button>
+          </div>
+        )}
+        {shellFlow !== null && (
+          <div data-testid="capture-shell-flow" className="border-t border-redlog-border-subtle px-pad pb-2">
+            <RecordTerminalFlow
+              target={{ kind: 'host', hookId: shellFlow, label: shellLabel(shellNameForHook(shellFlow) ?? t('capture.tag.shell')) }}
+              onInstalled={onRefresh}
+              onInstallFailed={(message) => toast(t('capture.actionFailed'), { type: 'error', why: t('capture.actionFailedWhy'), detail: message })}
+              onPrepare={() => onNavigate(settingsTarget('hooks'))}
+            />
           </div>
         )}
         {/* An exception stays in view with the list folded: a source that

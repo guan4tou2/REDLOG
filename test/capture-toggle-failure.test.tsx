@@ -5,18 +5,20 @@ import { I18nProvider } from '../src/renderer/src/i18n'
 import { ToastContainer } from '../src/renderer/src/components/Toast'
 import { CaptureHealthCard } from '../src/renderer/src/components/CaptureHealth'
 
-// The card's source switch writes the whole config. A refused (false) or
-// rejected write must say so and must not refresh the card as if it flipped.
+// The card's source switch writes that switch (config:patch). A refused write
+// (a conflict, another project, an invalid patch) or a rejected one must say
+// so and must not refresh the card as if it flipped.
 
 let save: ReturnType<typeof vi.fn>
 const onRefresh = vi.fn()
+const OK = { ok: true, config: {}, revision: 'r' }
 
 beforeEach(() => {
   window.localStorage.setItem('redlog-locale', 'en')
   onRefresh.mockClear()
-  save = vi.fn(async () => false)
+  save = vi.fn(async () => ({ ok: false, reason: 'conflict', conflicts: [], config: {}, revision: 'r' }))
   ;(window as unknown as { redlog: unknown }).redlog = {
-    config: { get: async () => ({ engagement: { id: 'proj-a' }, packs: { hostMonitors: true } }), save: (...a: unknown[]) => save(...a) },
+    config: { get: async () => ({ engagement: { id: 'proj-a' }, packs: { hostMonitors: true } }), patch: (...a: unknown[]) => save(...a) },
     hooks: { install: async () => ({ success: true, message: '' }), uninstall: async () => ({ success: true, message: '' }) }
   }
   const capture = {
@@ -54,9 +56,9 @@ describe('switching a capture source from the Capture Health card', () => {
   })
 
   it('binds the write to the project the config was read from, and refreshes on success', async () => {
-    save = vi.fn(async () => true)
+    save = vi.fn(async () => OK)
     flip()
     await waitFor(() => expect(onRefresh).toHaveBeenCalled())
-    expect(save.mock.calls[0][1]).toEqual({ expectProjectId: 'proj-a' })
+    expect(save.mock.calls[0][0]).toMatchObject({ expectProjectId: 'proj-a' })
   })
 })
