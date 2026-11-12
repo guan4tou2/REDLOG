@@ -25,6 +25,14 @@
 | O10 | 每個有 adapter 的本機 shell 都裝 hook；hook 啟動時經本契約送出 hello，作為「此 shell 有被記錄」的證據；shell 初始化時 hook 不輸出任何文字；專案被切換的終端機進入暫停，綁定的專案重新開啟時恢復，並寫入 `capture_resumed`；A 的指令絕不記到 B | A、H、J、K |
 | O11 | 沒有可擷取目標的列帶 `target_via`（目標如何決定），並承接同一終端機最後擷取到的目標，不承接全域的目前目標 | A |
 | O12 | 機器／個人層級的設定移到 `~/.redlog/machine.yaml`，操作者身分是其中之一 | 依賴（operator 蓋章讀取它；搬遷本身不在本規格） |
+| O13 | （原開放問題 Q1）AI 工具整合預設取得 `agent-tools` 憑證：可寫入 `agent`、`marker`，另可讀取狀態；不含控制錄製、搜尋內容或變更設定 | G |
+| O14 | （原 Q2）舊入口與舊版憑證的保留期依 FR-037；移除另立規格並附 gate | C |
+| O15 | （原 Q3）算不出交接檔 MAC 的 shell（沒有 python3），其交接檔進隔離區（`unauthenticated`），保留並計數，不自動寫入 | F |
+| O16 | （原 Q4）不屬於任何終端機的 app 內操作（標記、手動截圖、`artifact_added`），由 app 在操作當下明確帶入所選目標，記為 `target_via: "operator-selected"`；接收端不自行套用全域目前目標 | A |
+| O17 | （原 Q5）外掛 Source 停用後才送達的積壓一律拒收，計為有意（`credential-revoked`） | E、G |
+| O18 | 因果歸屬不用猜的：指令 id 由環境變數 `REDLOG_COMMAND_ID` 帶給子行程，並在 proxy 位址的 userinfo 帶標記，兩者都做、userinfo 先上；都取不到時不寫 `_causes`（[擷取種類盤點](../../docs/records/2026-11-12/root-cause/10-capture-kinds-and-presentation.md) 問題 4；proxy userinfo 的可行性尚未實測） | 待併入 A、I 與 tasks |
+
+> 本檔與 plan、tasks 中仍寫作「開放問題 Q1–Q5」之處，分別對應 O13–O17，已決定。O18 是起草後才做的決定，FR 與 tasks 尚未為它展開，動工前需補上。
 
 ### 本規格自行決定的（理由與被否決的替代方案見 plan.md）
 
