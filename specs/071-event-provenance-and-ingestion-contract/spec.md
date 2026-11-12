@@ -22,6 +22,8 @@
 | O7 | 來源的心跳／存活訊號不是事件，不寫入任何一層 | K |
 | O8 | 外掛宣告、但不在核心表內的 subtype 一律進 logged 層；只有核心的表能把一種事件升為 chained | K |
 | O9 | 第三方來源只能手動設定；官方 AI adapter 從 app bundle 在行程內執行，不用 token；同意以專案為單位 | G、I |
+
+> **Superseded（2026-11-13，修訂 A4）**：O9 的「同意以專案為單位」改為：AI adapter 的啟用與同意是機器層；**哪個工作階段記到哪個專案**仍是逐專案的選擇，且可重新綁定（Spec 073 F 段修訂、Spec 076 FR-045–046）。O9 的其餘部分不變。
 | O10 | 每個有 adapter 的本機 shell 都裝 hook；hook 啟動時經本契約送出 hello，作為「此 shell 有被記錄」的證據；shell 初始化時 hook 不輸出任何文字；專案被切換的終端機進入暫停，綁定的專案重新開啟時恢復，並寫入 `capture_resumed`；A 的指令絕不記到 B | A、H、J、K |
 | O11 | 沒有可擷取目標的列帶 `target_via`（目標如何決定），並承接同一終端機最後擷取到的目標，不承接全域的目前目標 | A |
 | O12 | 機器／個人層級的設定移到 `~/.redlog/machine.yaml`，操作者身分是其中之一 | 依賴（operator 蓋章讀取它；搬遷本身不在本規格） |
@@ -35,6 +37,20 @@
 > 本檔與 plan、tasks 中仍寫作「開放問題 Q1–Q5」之處，分別對應 O13–O17，已決定。O18 是起草後才做的決定，FR 與 tasks 尚未為它展開，動工前需補上（Spec 074 Phase 5 的 `cause_counts` 依賴它，見 [specs/README.md](../README.md)「071–075 的跨規格順序」）。新的未決事項見文末「開放問題（需要擁有者）」。
 >
 > **2026-11-12 跨規格對帳（071–075）**：本規格依同批起草的 072–075 做了下列增補，均為新增、不改既有列的形狀：`_ingest.rules`／`rules_partial`（FR-005、FR-006，Spec 075 的 Processor 規則紀錄）；`/api/whoami` 回傳呼叫者來源的狀態（FR-07B，Spec 075）；`CommitReceipt`（FR-096，Spec 074）；`terminal_targets` 的回填歸屬（FR-010，Spec 074）；種類的 tier 改由 Spec 072 的登記表回答（FR-113）；每個來源在本專案的第一次與最近一次接受（FR-056，Spec 075）。另依 Phase 1 實作（#716）更正三處事實：直接呼叫 `insertEvent(` 為 31 處；`PRAGMA synchronous` 實為 NORMAL（其後依 Q6 改為 FULL）；relay 不重試 5xx。
+
+### 修訂（2026-11-13）
+
+依 [2026-11-13 的決定](../../docs/records/2026-11-13/DECISIONS.md) §2、§5 與同日擁有者對 Spec 076 的修訂。被取代的原文保留在原處，以「> **Superseded（2026-11-13）**」標示。
+
+| # | 改了什麼 | 為什麼 | 落點 |
+|---|---|---|---|
+| A1 | **出口進每一筆新事件**：接收端把最後讀到的出口位址填進既有的 `source_ip` 欄位（已在雜湊輸入內，今天寫死 `null`，`event-write.ts:609,723`），讀取時間、方式與狀態放在 `_ingest`；出口改變時寫一列帶位址的 `system:egress_changed`。舊列不動 | DECISIONS §5 #2；14 號審查 D(1)：deconfliction 的核心欄位不在紀錄裡 | M 段 FR-120–123 |
+| A2 | **遠端主機與跳板上的 hook 正式支援**：事件寫回本機接收端，以只能寫入、限定單一專案的 `remote:<名稱>` 憑證（FR-071 已列）；規定遠端存什麼、永不存什麼；取代 `hooks/vps-deploy.sh` | DECISIONS §5 #3 | N 段 FR-130–134 |
+| A3 | **每筆指令事件帶 hook 能知道的終端機事實**：使用者、tty／pane、shell，以及 shell 知道自己在遠端時的主機 | 14 號 F #4；多工器使用者以 pane 分辨 | L 段 FR-088 |
+| A4 | **來源屬於機器**：移除以專案為單位的來源啟用（FR-07A 的外掛部分、FR-072 的發放時機、O9 的同意以專案為單位）；保留專案層的**綁定**（終端機 pin，FR-085；AI 工作階段的選擇仍逐專案，Spec 073 F 段修訂） | DECISIONS §2；Spec 076 E5、R1 | O9、FR-07A、FR-072 的標示；FR-07C |
+| A5 | **暫停規則正在實作分支上改寫**：FR-080–084 與 US2 依 DECISIONS §6 改為「即時入口依收到時間判斷、暫停中即拒收；暫存檔恢復後只採信通過驗證的來源時間與已記錄的暫停區間」。本修訂**不動**這些條文，只加指標 | DECISIONS §6 | US2、H 段的指標 |
+| A6 | **第一次綁定的提示與 `redlog private`** 是來源端行為，進共用向量 | DECISIONS §5 #1；Spec 076 FR-043、FR-044 | L 段 FR-086、FR-087 |
+| A7 | 擴充功能（Spec 076）的 `plugin:<id>` 憑證可另帶受 manifest `reads` 限定的 `read` 能力，供 L0 讀取 API（`/api/v1/*`）；Exporter 不寫事件，送出紀錄由核心以行程內入口寫入 | Spec 076 FR-062、FR-091 | FR-070 的指標 |
 
 ### 本規格自行決定的（理由與被否決的替代方案見 plan.md）
 
@@ -78,6 +94,8 @@
 5. **Given** 同樣內容分別經 API、交接檔、行程內送入（不同 `event_id`），**Then** 三列除 `_ingest.door`／`auth`／`credential` 與收到時間外完全相同。
 
 ### User Story 2 — 暫停期間的內容永遠不會補進紀錄（P1）
+
+> **修訂中（2026-11-13，修訂 A5）**：本故事與 FR-080–084 正在實作分支上依 DECISIONS §6 改寫（即時入口依收到時間判斷；暫存檔恢復後只採信通過驗證的來源時間與已記錄的暫停區間）。下文是 2026-11-12 的版本，以實作分支合併時的改寫為準。
 
 **Why this priority**：暫停中 app 當掉後，spool 會把暫停期間打的指令重放進 chained 紀錄；暫停前就該寫入的 `command_end` 則永遠卡在 spool（01-F4，違反 DESIGN-capture-trust §3）。
 
@@ -330,7 +348,7 @@
 
 #### G. 憑證與能力（US4、US5）
 
-- **FR-070** 能力為封閉列舉：`append`（限定種類）、`read`、`control`（錄製、錨定、截圖觸發等）、`export`、`sanitize`、`admin`（憑證與操作者）、`seed`（只在測試建置）。每條 API 路由宣告恰好一種所需能力。操作者憑證擁有 `seed` 以外的全部能力；來源憑證只有 `append`，外加存活回報、`/api/whoami`，以及 HTTP 代理專用的 `/api/http-verify`。
+- **FR-070** 能力為封閉列舉：`append`（限定種類）、`read`、`control`（錄製、錨定、截圖觸發等）、`export`、`sanitize`、`admin`（憑證與操作者）、`seed`（只在測試建置）。每條 API 路由宣告恰好一種所需能力。操作者憑證擁有 `seed` 以外的全部能力；來源憑證只有 `append`，外加存活回報、`/api/whoami`，以及 HTTP 代理專用的 `/api/http-verify`。（2026-11-13，修訂 A7：`plugin:<id>` 另可帶 `read`，範圍限於該擴充功能 manifest 的 `reads`，只用於 `/api/v1/*`；能力與稽核由 Spec 076 FR-062、FR-091 定義。）
 - **FR-071** 每個來源一把憑證，種類範圍固定：
   - 外部 shell（zsh、bash、PowerShell hook、relay、session recorder）：`shell`；
   - 內建終端機 pane 內的 hook：`builtin-terminal`；
@@ -349,6 +367,8 @@
   - 操作者第一次在任一專案啟用外掛 Source（Spec 075 FR-076 的 `on`）時：發放 `plugin:<id>`（O9）；憑證是機器層級的（plan D7），之後其他專案的啟用不再發放；
   - 操作者以 CLI 執行時：發放遠端主機的憑證。
 
+  > **Superseded（2026-11-13，修訂 A4）**：上面第二項改為「操作者在**這台機器上**啟用擴充功能 Source（Spec 076 FR-040，`machine.yaml` 的 `extensions.<id>.enabled`）時：發放 `plugin:<id>`」；不再有專案層的啟用。第三項改為「操作者以 `redlog remote add <名稱> --project <id>` 執行時」（FR-130）。
+
   每次寫入憑證檔都經 Spec 073 的安裝帳本（`install-ledger.apply`，類型 `credential-file`），使移除能收回它；073 的帳本落地前直接寫檔。
 - **FR-073** 來源讀取 `~/.redlog/credentials/<來源>.cred`（單行，0600，目錄 0700）。接收端只保存 secret 的摘要與 MAC 金鑰，secret 本身不進資料庫、日誌或任何事件。
 - **FR-074** 憑證從不出現在任何行程的 argv 或子行程的環境變數中。內建終端機的 hook 以既有的非秘密旗標 `REDLOG_TERMINAL` 找到自己的憑證檔。`test/shell-token-not-in-argv.test.ts` 擴充到每個來源。
@@ -363,9 +383,14 @@
   - CLI 讀新路徑。
 - **FR-079** 不需操作者重新安裝即可延續：app 啟動時更新 hook 檔並寫好憑證檔。仍在執行舊函式的 shell 經舊入口繼續寫入。無法自動重新發放的地方（WSL 中手動複製的 hook、VPS、第三方來源）同樣經舊入口繼續，但只能寫入；狀態呈現指出哪些來源仍在用舊入口，遠端主機需要操作者以 CLI 重新發放。
 - **FR-07A** 以專案為單位的啟用由接收端強制：官方 AI adapter 的項目，若所屬專案沒有有效的同意（O9；同意狀態由 Spec 073 的 `ai-consent` 回答）；外掛 Source 的項目，若所屬專案對該來源不是 `on`（Spec 075 的 `enabledForProject`）；兩者都回 `rejected`／`source-disabled`，計為有意。專案層的 `off` 不撤銷機器層的憑證（FR-076 的撤銷只對機器層的停用、撤銷、雜湊改變、移除）。
+
+  > **Superseded（2026-11-13，修訂 A4）**：外掛 Source 不再有專案層的 `on`／`off`（Spec 075 的 `enabledForProject` 已改為機器層啟用加專案層綁定）。本條的外掛部分由 FR-07C 取代；AI adapter 的部分改為「該工作階段不屬於所屬專案的選擇」，由 tailer 在讀取前判斷（AI adapter 在行程內，不經接收端的憑證檢查），不改為接收端的拒收。
+- **FR-07C**（2026-11-13，修訂 A4）接收端對來源的「啟用」只看機器層：憑證已發放、未撤銷、世代有效（FR-073–076）。專案層只有**綁定**：外部與遠端終端機依 FR-085 的 pin（不是綁定的專案時在來源端本地暫停，不送）；AI 工作階段依 Spec 073 F 段的逐專案選擇與 Spec 076 FR-045 的認領索引；`binding: none` 的來源寫到觀察當下開著的專案（FR-008）。綁定不改變憑證。
 - **FR-07B** `GET /api/whoami`（來源憑證可呼叫，FR-070）回傳呼叫者的憑證 id、來源類別、世代，以及該來源在目前開著的專案中的狀態：Spec 075 的狀態碼、理由碼與動作碼（075 FR-031 的同一份 payload 中該來源的一項）。沒有開著的專案時狀態為 `unknown`；075 落地前一律回 `unknown` 並說明。shell 的 `redlog status` 讀它（075 FR-035）。
 
 #### H. 暫停邊界（US2）
+
+> **修訂中（2026-11-13，修訂 A5）**：FR-080–084 正在實作分支上改寫，見 US2 的指標。本修訂不動這五條；FR-085 不在改寫範圍內。
 
 - **FR-080** app 把暫停狀態放在 `~/.redlog/state/recording`：暫停時存在，內容為開始時間；恢復時移除；app 啟動時依實際狀態重寫。shell 不需啟動行程即可檢查。
 - **FR-081** 來源在觀察點檢查暫停狀態。暫停中不建立項目、不寫交接檔，只計 `paused` 並用掉一個序號。
@@ -404,6 +429,35 @@
 - **FR-111** 舊入口收到的 `system.producer_heartbeat` 改送存活通道，回 2xx 但不寫入。外部事件政策不再允許任何 `system` 種類。
 - **FR-112** 「此 shell 有被記錄」的依據，是該專案收到一個綁定到此專案的 instance 的 `hello`（O10）。
 - **FR-113** 分層規則：核心表決定哪些種類為 chained。`plugin:<id>` 憑證寫入、但不在核心表內的種類一律進 logged 層。核心來源與舊入口的未知種類維持今天的預設（chained）。只影響新列。「核心表」就是 Spec 072 的種類登記表：本規格的 `classifyTier` 只呼叫 072 的 `tierFor(agentType, subtype, producerClass)`，不另立任何 tier 表。072 的登記表落地前，本規格照今天的 `classifyTier` 出貨（外掛種類仍為 chained），本條在 072 Phase 4 的 T040 才生效。
+
+#### L. 終端機事實、第一次綁定與私人（修訂 A3、A6，2026-11-13）
+
+- **FR-086** 外部 shell 第一次綁定到某個專案時（FR-085 的 pin 成立、第一個項目被接受後），hook 在**下一個 prompt 之前**於 stderr 印恰好一行：專案名稱與 `redlog private`。每個 shell instance 每個專案至多一次；shell 初始化期間仍為 0 位元組（O10）；stderr 不是終端機時不印。共用向量加「第一次綁定恰好一行、之後 0 行」。
+- **FR-087** `redlog private`：(a) 從未綁定的 instance：之後不送 `hello`、不送任何項目、不寫交接檔、不累計 `discarded`（私人 pane 的活動量本身就是私人資訊）；(b) 已綁定的 instance：送一列 `capture_stopped{reason:"private"}`（既有的 subtype），之後同 (a)。`redlog start` 撤銷它；從未綁定者的 `start` 視同第一次綁定（FR-086 再印一次）。終端機狀態檔的停止原因增加 `private`（Spec 073 FR-041 的封閉清單加一項，永久直到 `start`）。共用向量涵蓋 (a)(b)。
+- **FR-088** 每個 shell 的 `hello`、`command_start`、`command_end` 在 `data.term` 帶 hook 能知道的終端機事實：`user`（`$USER`／`$env:USERNAME`）、`tty`（`tty` 的結果，例如 `/dev/pts/3`）、`pane`（多工器提供的識別，依序取 `$TMUX_PANE`、`$WEZTERM_PANE`、`$KITTY_WINDOW_ID`、`$ZELLIJ_PANE_ID`；都沒有則省略）、`shell`（名稱與主版本）、`host`（只有在 shell 知道自己在遠端時：遠端 hook 一律帶 `hostname`；本機 hook 不帶，本機主機名已在列的 `hostname`）。這些是**來源自述的內容**，不是身分：在 `data` 內（受雜湊涵蓋），不進 `_ingest`；接收端只做長度上限（每項 64 位元組）與控制字元移除。FR-103 的行程數限制適用：取得這些值不得多啟動行程（`tty` 在 shell 啟動時讀一次並快取）。
+
+#### M. 出口（修訂 A1，2026-11-13）
+
+- **FR-120** 接收端為每一列新事件（兩層、任何入口）填 `source_ip`：值取核心出口讀取器（`IPSignalProducer`，`ip-signal-producer.ts:143-155`）在**接收當下**的穩定位址 `external`，依 FR-121 的狀態決定是否填。`source_ip` 已在雜湊與簽章輸入內（FR-020），雜湊公式不變；兩個 verifier 已讀這個欄位（`chain-anchor.ts:482,550`、`tools/redlog-verify.py:192`），只需新增「非 null 值」的共用向量。不填、不回填任何既有列（FR-021）。
+- **FR-121** `_ingest` 增加三個鍵（FR-006 的型別限制內，約 60 位元組）：
+
+  | 鍵 | 值 |
+  |---|---|
+  | `egress` | `current`（最近一次讀取成功、未在確認新位址、且距今不超過讀取週期的 3 倍）、`changing`（讀到不同位址、尚未確認；`source_ip` 仍為原穩定位址）、`stale`（最近一次讀取失敗，或成功讀取已超過 3 倍週期；`source_ip` 為最後的穩定位址）、`none`（本次 app 執行中從未讀到；`source_ip` 為 null）、`airgap`（`network.offline` 開；null）、`remote`（`remote:<名稱>` 的項目，見 FR-133；null） |
+  | `egress_at` | 該位址最後一次被成功讀到的時間（毫秒，`externalReadAt`）；`none`／`airgap`／`remote` 為 null |
+  | `egress_via` | `dns`／`http`；null 同上 |
+
+  「未知」＝`none`、`airgap`、`remote`，以及 `stale`；它們在任何介面、CLI 與匯出中都顯示為位址加讀取時間或「未知」，**從不顯示為安全**（Spec 075 FR-025）。舊列沒有 `_ingest.egress`，顯示為「未記錄」。出口是 app 讀到的公有位址，不是封包層的證明，閱讀器照實寫讀取時間。
+- **FR-122** 出口的對外形狀 `Egress = {address: string|null, read_at: number|null, state, via}`，由 `/api/whoami`（FR-07B）、Spec 075 的狀態 payload 與 `redlog status` 共用。
+- **FR-123** 核心在下列時刻以行程內入口寫一列 chained `system:egress_changed`：穩定位址改變；`egress` 狀態在 `current`／`stale`／`none`／`airgap` 之間改變；每個 capture session 開始時一次。內容：`address`、`previous`、`read_at`、`via`、`state`、`vpn_interfaces`（`opsec-state.ts` 的 `vpnInterfaces`）、`link_type`。不依 IP 判斷字去重（與 `system:ip_verdict` 並存，後者不變）；種類由 Spec 072 登記（指標已加）。`changing` 不寫列，確認後以位址改變寫一列。
+
+#### N. 遠端主機與跳板（修訂 A2，2026-11-13）
+
+- **FR-130** 遠端 hook 經操作者自己的 ssh 反向轉送寫回本機接收端（`ssh -R <遠端埠>:127.0.0.1:<本機埠>`）；RedLog 提供 `redlog remote add <名稱> --project <id>`：發放 `remote:<名稱>` 憑證（只能寫入 `shell` 種類、限定單一專案、機器層登記）並印出要在遠端執行的安裝指令與 ssh 參數。`redlog remote revoke <名稱>` 立即撤銷（FR-076）。`hooks/vps-deploy.sh` 由此取代並刪除。
+- **FR-131** 遠端**存放**：hook 腳本（與本機相同版本，安裝指令帶雜湊供核對）、`remote:<名稱>` 憑證檔（0600，目錄 0700）、有界的待送佇列（預設 500 項或 8 MiB，滿了丟最新的並計 `handoff-full`；接收 `accepted` 後即刪）、終端機狀態檔。遠端**永不存放**：操作者憑證、簽章私鑰、任何專案資料庫或匯出、其他來源的憑證、專案名稱（憑證在本機綁定專案，遠端只帶不透明的憑證 id）、已被接受的事件內容。`redlog remote uninstall` 刪除以上全部並印出結果。
+- **FR-132** 遠端的待送佇列由遠端 hook 自己在通道恢復時重送（HTTP），不經本機的交接目錄；它的 MAC 與 FR-064 相同。可在安裝時以 `--no-spool` 關閉：通道不通時直接丟棄並計數。
+- **FR-133** 接收端對 `remote:<名稱>` 的列：`_ingest.producer = remote:<名稱>`；`source_ip` 為 null、`_ingest.egress = "remote"`（本機出口不是遠端指令的出口）；`data.term.host` 為遠端 hook 回報的主機名（FR-088）；時間依 FR-004（遠端時鐘不校正，見 Assumptions）。
+- **FR-134** 遠端 hook 讀不到本機的暫停狀態檔；暫停對遠端項目的判斷依修訂中的 FR-080–084（修訂 A5）在接收端進行，本修訂不另定。
 
 ### Key Entities
 

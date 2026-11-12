@@ -41,11 +41,12 @@
 | [068 專案選擇畫面 — 搜尋與範圍狀態徽章](068-project-picker-search-scope/spec.md) | Draft | 2026-11-11 補列；剩餘工作未在索引核對，見該 spec 與 verification。 |
 | [069 活動紀錄與時間軸 — 對齊 Stitch 設計決策](069-activity-timeline-alignment/spec.md) | Draft | 2026-11-11 補列；剩餘工作未在索引核對，見該 spec 與 tasks。 |
 | [070 截取來源、設定導航與外部工具整合](070-capture-sources-and-integrations/spec.md) | Draft | 2026-11-11 補列；剩餘工作未在索引核對，見該 spec 與 tasks。 |
-| [071 核心蓋章的事件身分與來源、單一寫入契約](071-event-provenance-and-ingestion-contract/spec.md) | Draft | 2026-11-12 起草；Phase 1 在 #716，其餘未開始；根因審查階段 1 與 4。原五個開放問題已決定（O13–O17）；一項新決定待擁有者：耐久度（Q6，`synchronous` 實為 NORMAL）。 |
+| [071 核心蓋章的事件身分與來源、單一寫入契約](071-event-provenance-and-ingestion-contract/spec.md) | Draft | 2026-11-12 起草；Phase 1 在 #716，其餘未開始；根因審查階段 1 與 4。原五個開放問題已決定（O13–O17）；一項新決定待擁有者：耐久度（Q6，`synchronous` 實為 NORMAL）。2026-11-13 修訂：出口進每一筆事件、遠端 hook、終端機事實、來源改為機器層、第一次綁定與 `redlog private`；暫停規則（FR-080–084）在實作分支上改寫中。 |
 | [072 事件種類登記表與閱讀器契約](072-event-kind-registry-and-readers/spec.md) | Draft | 2026-11-12 起草，未開始實作；根因審查 §4「擷取種類盤點的決定」（支援階段 4、6）。開放問題待擁有者（Q1–Q3）。 |
-| [073 專案執行期、設定層級與安裝帳本](073-project-runtime-and-setting-scopes/spec.md) | Draft | 2026-11-12 起草，未開始實作；根因審查階段 2。開放問題待擁有者（Q1–Q5）。 |
+| [073 專案執行期、設定層級與安裝帳本](073-project-runtime-and-setting-scopes/spec.md) | Draft | 2026-11-12 起草，未開始實作；根因審查階段 2。開放問題待擁有者（Q1–Q5）。2026-11-13 修訂：來源啟用與 AI 同意移到機器層，AI 工作階段的選擇仍逐專案；終端機綁定適用於每一種終端機來源；擴充功能設定的兩層儲存。 |
 | [074 查詢工作執行緒、增量投影與讀取契約](074-query-worker-projections-and-read-contract/spec.md) | Draft | 2026-11-12 起草，未開始實作；根因審查階段 3 與 6。沒有自己的開放問題（相關問題在 072 Q3、071 O18）。 |
-| [075 來源描述、單一狀態模型與外掛 manifest v2](075-source-status-and-plugin-manifest/spec.md) | Draft | 2026-11-12 起草，未開始實作；根因審查階段 5。開放問題待擁有者（Q1）。 |
+| [075 來源描述、單一狀態模型與外掛 manifest v2](075-source-status-and-plugin-manifest/spec.md) | Draft | 2026-11-12 起草，未開始實作；根因審查階段 5。開放問題待擁有者（Q1）。2026-11-13 修訂：類型加回 Exporter（Q5 反轉）、內建終端機預設關閉、專案層啟用改為機器層啟用加專案層綁定、manifest 移交 076、未知從不顯示為安全（FR-025）；新開放問題 Q6（「已啟用」一詞）。 |
+| [076 擴充功能模型與機器層級的擷取來源](076-extensions-and-machine-scoped-sources/spec.md) | Draft | 2026-11-13 起草，未開始實作；擴充功能 API v1 的規範性契約在 `contracts/extension-api-v1.md`。開放問題待擁有者（Q1–Q5，含 L2 等級的一行決定 FR-096）。 |
 
 ### 071–075 的跨規格順序
 

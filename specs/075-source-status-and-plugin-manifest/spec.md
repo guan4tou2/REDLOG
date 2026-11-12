@@ -25,15 +25,35 @@
 | P10 | 個人流量規則與機器、個人層級的事實放在機器層級設定檔（`~/.redlog/machine.yaml`，Spec 073 擁有） | 依賴 |
 | P11 | 外掛只有 Source 與 Processor；沒有 UI 外掛、沒有外掛 host，第三方程式碼不在 RedLog 的行程內執行；內建來源不改成外掛；不新增頁面；單欄；文案最少 | 全部 |
 
+> **Superseded（2026-11-13，修訂 C1、C3）**：P11 改為：類型為 Source、Processor、Exporter；有獨立的擴充功能主機行程，第三方程式碼仍不在 RedLog 的 main 或 renderer 行程內執行；內建的選用來源成為內建擴充功能（Spec 076 FR-020 的兩層清單）；介面擴充依 Spec 076 J 段。P4 的「第一次在某專案啟用時取得同意」改為機器層一次，工作階段的選擇仍逐專案（Spec 073 修訂 B2）。其餘不變。
+
+### 修訂（2026-11-13）
+
+依 [2026-11-13 的決定](../../docs/records/2026-11-13/DECISIONS.md) §2、§3、§5 與 Spec 076。被取代的原文保留在原處，以「> **Superseded（2026-11-13）**」標示。
+
+| # | 改了什麼 | 為什麼 | 落點 |
+|---|---|---|---|
+| C1 | **外掛（擴充功能）類型為 Source、Processor、Exporter**；Q5 的答覆反轉。內建的選用來源成為內建擴充功能（只限搬了不影響基本功能的，Spec 076 FR-020） | DECISIONS §3 | P11、決定 7、FR-051、FR-060、FR-061、Q5 的標示 |
+| C2 | **內建終端機預設關閉**（「已關閉」），不是「待命」；擷取瀏覽器、受管代理同 | DECISIONS §2、§5 #6 | US1 的標示 |
+| C3 | **「本專案啟用」三值事實改為機器層啟用加專案層綁定**：`enabledOnMachine`（`on`／`off`，預設取描述）與 `boundToProject`（終端機：有終端機綁定本專案；`binding: explicit` 的來源（AI）：本專案有選擇；`binding: none`：不適用）。AI 是例外：工作階段的選擇仍逐專案，沒有選擇時為「未設定」並帶理由 | DECISIONS §2；Spec 076 R1 | 決定 2、FR-010、FR-012、FR-016、FR-021、FR-074、FR-076、P4 的標示 |
+| C4 | **manifest 的擁有者改為 Spec 076**（擴充功能 manifest 第 1 版取代本規格的 v2）。本規格只保留狀態需要的描述欄位：FR-001 的 `SourceDescriptor` 由 076 的 `toDescriptor` 從 manifest 產生（內建的基本來源仍由核心描述表提供） | Spec 076 決定 6 | D 段（FR-050–063）、FR-002、FR-003、F 段（FR-080–083）的標示 |
+| C5 | **未知從不顯示為安全**：新 FR-025 與 gate；狀態 payload 加出口（Spec 071 FR-122） | DECISIONS §5「停止做的事」；14 號 E.1 | FR-025、FR-031 |
+| C6 | 理由碼增加：`api-too-new`、`api-retired`、`experimental-changed`、`uses-deprecated`、`builtin-mismatch`、`host-unavailable`、`no-session-selected`、`view-imitates-status`（Spec 076 契約 §4.2、§5.5）；`bound-elsewhere` 也用於「工作階段已被另一個專案認領」。FR-090 的上限由 41 改為 49 | Spec 076 | FR-090 |
+| C7 | 開放問題 Q6（新）：選用來源是否另用「已啟用」一詞 | DECISIONS §7 | 開放問題 |
+
 ### 本規格自行決定的（理由與被否決的替代方案見 plan.md）
 
 1. 來源狀態只在核心以一個純函式算出，main 把結果（不是事實袋）送給每個畫面、CLI 與 API。renderer 不再判斷任何來源的狀態（plan D1）。
 2. 「本專案啟用」是三值事實：`on`／`off`／`unset`。`off` 對應「已關閉」，`unset` 對應「未設定」，因此「從沒打開過」與「刻意關掉」不再共用一個字（plan D2）。
+
+   > **Superseded（2026-11-13，修訂 C3）**：改為兩個事實：機器層 `enabledOnMachine`（`on`／`off`；`off` 對應「已關閉」）與專案層 `boundToProject`。`binding: explicit` 的來源（AI）在本專案沒有選擇時為「未設定」，理由 `no-session-selected`；終端機來源沒有綁定本專案的終端機時為「待命」（能記、尚未接受）。
 3. 「需要處理」只由兩種來源狀態構成：與本專案相關的「失敗」，以及操作者明確啟用卻「無法使用」。已關閉、未設定、未啟動、待命、無法確認都不會讓整體變成需要處理；每個需要處理的來源各一則 issue（plan D3）。
 4. 啟動寬限期：一個來源在其最近一次「開始」（app 啟動、專案開啟、本專案啟用、行程啟動，取最晚）之後 30 秒內（以心跳判定存活的來源為 60 秒），暫時性的失敗事實不判為「失敗」，而是「未啟動」並帶理由「啟動中」（plan D4）。
 5. 每個有 adapter 的 shell 是一個獨立的來源；內建終端機是另一個。儀表板以一列「指令」概括它們，只有需要處理、或在本專案送過 hello 的 shell 才另外列出（plan D5）。
 6. HTTP 的四個事實依「觀察到的 client」記錄，client 由已保存的 flow 推出（UA 族群，加上可得時的行程名稱），不由驗證流程推出。「已驗證」只是理由，從不改變狀態或顏色（plan D6）。
 7. Manifest v2 每個資料夾只有一種 kind；`files` 列出每一個檔案與其 sha256；每個 schema 欄位都必須登記一個讀它的程式位置，否則 gate 失敗；**不建 Exporter**（plan D7）。
+
+   > **Superseded（2026-11-13，修訂 C1、C4）**：manifest 由 Spec 076 的擴充功能 manifest 第 1 版取代（`files` 完整、每欄位有讀者的規則保留在那裡）；Exporter 建立（076 H 段，experimental）。
 8. 寫入路徑上的 Processor 共用每個事件一個總時限；其推導在列上記錄規則集的外掛 id 與內容雜湊（Spec 071 已接受，`_ingest.rules`／`rules_partial`，071 FR-005、FR-006）；被停掉的規則保留到該外掛的內容雜湊改變為止（plan D8）。
 9. v1 manifest 照讀並轉成內部 v2 形狀；v1 的雜湊算法保留給 v1 manifest，既有核准不失效；v1 使用者 Source 的提權步驟在改寫成 v2 之前不顯示（plan D9）。
 10. 「曾經成功過」不另建機器層的 proof 檔：專案層取 Spec 071 寫入的「第一次接受」里程碑；機器層的 shell 證據沿用既有的 `~/.redlog/tool-detection/shell:*.json`（plan D10）。
@@ -78,6 +98,8 @@
 **Why this priority**：今天新專案判 `dark`（`capture-health.ts:849`，`test/capture-health.test.ts:65` 釘住），同一個空專案在裝過 hook 的機器上卻是 `healthy`；每次啟動因 proxy 自動啟動而 HTTPS 未重新驗證，標題變成 amber「部分來源待確認」（`CaptureHealth.tsx:464`）。這教操作者忽略唯一不能被忽略的指示（04-F2、F3）。
 
 **Independent Test**：決策表測試（plan「決策表」每一列一個案例），加上兩個機器情境 × 三個專案情境的矩陣：{無 hook、hook 已裝} × {新專案、有事件的專案、缺 python3 的新專案}。斷言整體為 {waiting, waiting, recording, recording, none, none}，與機器上其他專案無關。再加一個時間注入測試：啟動後 0–30 秒 proxy 為 `starting`，整體從不是 `attention`。
+
+> **Superseded（2026-11-13，修訂 C2）**：情境 1 的「內建終端機為『待命』，整體為『等待第一筆事件』」改為「內建終端機為『已關閉』；沒有任何 shell hook 時整體為『無可用來源』，活動紀錄頂端的清單展開成首次使用清單（DECISIONS §4），唯一的動作是安裝 hook」。情境 3 的「內建終端機為『無法使用』」改為：內建終端機為「已關閉」（優先序 3 先於 4）；缺 python3 的理由出現在各 POSIX shell 的列；整體仍為「無可用來源」。獨立測試的矩陣期望值依此改寫。其餘情境不變。
 
 **Acceptance Scenarios**：
 
@@ -207,6 +229,8 @@
   | `privilegedSteps` | 需要提權的步驟（只有外掛 Source 可能有），見 FR-063 |
   | `core` | 是否為核心來源（影響 FR-021 的「與本專案相關」） |
 
+> **Superseded（2026-11-13，修訂 C1、C4）**：FR-001 的「內建來源…**不**因此成為外掛」與 FR-002、FR-003 改為：基本層來源（Spec 076 FR-020）的描述在核心的表；內建與安裝的擴充功能 Source 的描述由 076 的 `toDescriptor` 從擴充功能 manifest 產生；兩者合成同一份清單，欄位不變。`scope` 欄位只剩 `machine`（`binding` 另由 manifest 宣告）。下方原文保留。
+
 - **FR-002** 內建來源的描述集中在核心的一張表，涵蓋今天 capture-health 列出的每一個來源（terminal、各 shell adapter、受管 HTTP proxy、browser-console、screenshot、connection-monitor、clipboard、process-monitor、file-watcher、每個官方 AI 整合）。這張表取代 starter-pack 的 `builtinProducers`、`STARTER_PACK_FALLBACK`、pack 外掛 manifest 與「哪些 shell 能接」的各份清單（plan「要取代的判斷」）。
 - **FR-003** 外掛 Source 的描述由其 manifest v2 機械地產生（FR-051）；外掛不能宣告 `owner`：一律是擷取控制頁上該來源的列。
 - **FR-004** 前置條件只由核心檢查並以事實回報（FR-010）。任何畫面都不得從描述文字推出依賴（取代 `ExternalCaptureGroup.tsx:108` 的 regex）。
@@ -232,6 +256,8 @@
   | `captureError` | 執行期 | 該來源自己回報的擷取錯誤（沿用 `noteCaptureError` 的存活期） |
   | `selfCheck` | 終端機 | hook 的執行期自我檢查：`ok`／`detached`（附原因） |
   | `residue` | 機器 | 安裝帳本中，停用或移除後仍留著的寫入（Spec 073） |
+
+  > **Superseded（2026-11-13，修訂 C3）**：`enabledForProject` 一列改為兩列：`enabledOnMachine`（機器；`on`／`off`；`machine.yaml` 的 `extensions.<id>.enabled`，基本層來源恆為 `on`）與 `boundToProject`（專案；終端機來源：本專案綁定的終端機數；`binding: explicit`：本專案的選擇是否非空，AI 依 Spec 073 FR-063′；`binding: none`：不適用）。FR-012 中「本專案為 `off`」→「機器層為 `off`」；「本專案為 `unset`」→「`binding: explicit` 且本專案沒有選擇」（理由 `no-session-selected`）。FR-016、FR-021 中的「本專案為 `on`」→「機器層為 `on`」（基本層來源視為 `on`）。
 
   後四項不在擁有者給的清單上；加入的理由見 plan D12。另有兩個不屬於任何來源的全域事實：`paused` 與 `integrity`。本表是來源事實唯一的封閉清單；狀態理由碼是另一份封閉清單（FR-090，plan「理由與動作」）；兩者都不重複 071 FR-050 的遺失原因。
 - **FR-011** 只有一個純函式把（描述、事實、時間、寬限期）算成一個來源狀態、一個理由碼與至多一個動作碼。同一輸入永遠得到同一輸出；函式不做 IO、不讀時鐘以外的全域狀態（時間由參數給）。
@@ -268,11 +294,12 @@
 - **FR-022** 每個需要處理的來源各一則 issue（id `source:<來源 id>`），目的地為其 owner。toast 只在一個來源**進入**需要處理且已過寬限期時出現；issue 的狀態以專案為範圍，換專案時重置，不因換專案產生 toast。
 - **FR-023** `recording` 只說「本專案接受過且現在沒壞」；最近一筆的時間以「多久以前」作為資料顯示，不分級。不新增「閒置」。
 - **FR-024** 紅色只用於失敗；無法使用在本專案為 `on` 時用警示色，其餘狀態用中性色；狀態從不只靠顏色表達（承接 Spec 070 FR-004）。
+- **FR-025**（2026-11-13，修訂 C5）**未知從不顯示為安全**。payload 中任何值為 unknown 的事實或讀數（來源事實、出口 `Egress.state` 為 `none`／`stale`／`airgap`／`remote`、IP 判斷在沒有 `current` 出口時），每個 surface（狀態行、狀態列、HUD、設定、CLI、`redlog status`、`/api/status`）都顯示為「無法確認」、「未知」或位址加讀取時間，從不使用「安全」或同義字，也從不使用表示安全的顏色。安全判斷只在出口為 `current` 時可以成立。Gate：`test/source-status/unknown-never-safe.test.ts`——對每個 surface 的 render 測試，以全部 unknown 組合的 payload 斷言輸出不含 `safe`、`安全` 與安全色的 class；另以 property test 斷言 IP 判斷函式在出口非 `current` 時永不回傳 `safe`。
 
 #### C. 單一讀者
 
 - **FR-030** HTTP 的事實依 client 分開記錄，每個 client 四個獨立事實（PRIOR-ART-C §6.3）：`proxyListening`、`clientRouted`、`tlsTrusted`、`trafficStored`。client 由本專案已保存的 flow 推出（UA 族群，加上 socket 歸因可得時的行程名稱）。HTTP 來源的狀態：proxy 失敗為失敗；不在聽為未啟動；任一 client 已保存為記錄中；在聽而沒有已保存的為待命。TLS 不信任、擷取瀏覽器送往別處、尚未有 client，都是理由。proxy 失敗時，client 的 TLS 事實為 unknown，不另外標失敗。
-- **FR-031** main 對外只送一份狀態 payload：整體、每個來源的狀態（含理由、動作、owner 與唯讀的事實）、完整性、暫停。`capture:health` IPC、`/api/status`、`/api/capture` 與 CLI 都讀這一份。
+- **FR-031** main 對外只送一份狀態 payload：整體、每個來源的狀態（含理由、動作、owner 與唯讀的事實）、完整性、暫停。（2026-11-13，修訂 C5：另加 `egress`，形狀為 Spec 071 FR-122 的 `Egress`。）`capture:health` IPC、`/api/status`、`/api/capture` 與 CLI 都讀這一份。
 - **FR-032** 儀表板卡、狀態列、設定的各來源列（指令與終端、HTTP、擷取控制、外掛詳情的生效軸）、首次使用、HUD、終端機 pane 徽章、CLI、`redlog status`（shell）都只渲染這份 payload；它們不得從事實算出任何狀態、整體或注意數。
 - **FR-033** `/api/status` 保留舊的 `capture.verdict` 與 `capture.sources[].state` 欄位一個 minor 版本並標為 deprecated，舊值由新狀態對映（plan「舊欄位對映」）；新欄位為 `capture.v`、`capture.overall`、`capture.statuses`。`docs/codex-tools.json` 與 agent skill 同步更新。
 - **FR-034** 首次使用就是儀表板上的同一份來源清單，預設展開；刪除「核心擷取已就緒」與 `coreCaptureReady`；preflight、hook 偵測、外掛目錄、proxy 自動啟動都在背景進行，列先以無法確認畫出再補上，不擋整頁（04-F6）。
@@ -282,6 +309,8 @@
 - **FR-042** Gate：(a) 型別：bridge 型別的事實只在 `statuses[i].facts`，以 readonly 不透明型別提供；(b) 靜態掃描：`src/renderer/**` 除指定的檢視模組外，出現讀取事實、比較狀態碼以外的來源欄位、或比較舊 verdict 時失敗；(c) ratchet：今天的獨立判斷數為基準，只能下降，最後為 0（plan「Gates」G2）。
 
 #### D. 外掛 manifest v2
+
+> **Superseded（2026-11-13，修訂 C1、C4）**：本段（FR-050–063）的擁有者改為 Spec 076，由擴充功能 manifest 第 1 版（076 契約 §2）取代。對應：FR-050、FR-052、FR-053 → 076 契約 §2、§10；FR-051（不建 Exporter）→ 反轉，076 H 段；FR-054、FR-055 → 076 契約 §2.2；FR-056 → 076 FR-063；FR-057 → 076 FR-004；FR-058 → 076 FR-071 與契約 §2.9（核准對話框的規則照舊）；FR-059 → 076 契約 §2.3（執行規則照舊，仍由本規格的 Processor 時限實作）；FR-060、FR-061 → 076 FR-020 的兩層清單；FR-062、FR-063 照舊，由 076 引用。本規格對 manifest 只保留一件事：`toDescriptor` 產生的 `SourceDescriptor`（FR-001）欄位不變。下方原文保留。
 
 - **FR-050** 只有一份有版本的 JSON Schema（`plugins/plugin.schema.json`）。loader 的驗證、`plugin check`、測試與文件的欄位參考都由它產生或以它驗證。
 - **FR-051** `kind` 只有 `source` 與 `processor`；一個資料夾一種。`pack`、`producer`、`mapper`、`enrichment`、`exporter` 不再被接受（v2 為錯誤；v1 照 FR-070 轉譯）。**不建 Exporter**：產品不做報告產生；HAR、JSON、NDJSON、bundle 在核心並經 snapshot 與封存；若將來需要第三方格式，契約是「讀封存 bundle 或 NDJSON 匯出檔的外部程式」，它不需要 RedLog 提供任何 host（08 §3a）。
@@ -309,6 +338,8 @@
 
 #### E. 生命週期
 
+> **Superseded（2026-11-13，修訂 C3）**：FR-073 的專案層 `unset → on ⇄ off` 改為專案層的綁定（終端機 pin、AI 選擇）；FR-074 中「擷取控制的來源列（專案範圍）：在此專案記錄」改為：來源列只有綁定相關的動作（AI 的工作路徑與工作階段選擇、「記錄到這個專案」改綁）與顯示步驟；啟用、停用、核准、撤回同意都在設定 ▸ 擴充功能（機器範圍）；FR-076 的「第一次在任一專案啟用（`on`）時發放」改為「在這台機器上啟用時發放」，專案層的 `off` 不再存在（Spec 071 FR-07C）。
+
 - **FR-070** v1 manifest 的對映：
   - generic `plugin.json` v1 → 轉成內部 v2 形狀；同時有 `capture` 與規則的拆成一個 Source 與一個 Processor，共用 id 與核准；非 `manual` 的使用者 capture 不再被安裝（P3），已安裝的寫入交由 Spec 073 收回或保留並顯示；v1 的雜湊算法保留給 v1，既有 grant 不失效；
   - producer manifest（`builtinProducers`、`STARTER_PACK_FALLBACK`）→ 核心描述表；已安裝在磁碟上的 hook 不動，由 Spec 073 補登帳本；
@@ -327,6 +358,8 @@
 
 #### F. 開發者體驗
 
+> **Superseded（2026-11-13，修訂 C4）**：本段由 Spec 076 契約 §10 與 076 T028 取代（`redlog-cli extension init|check|test`）；FR-083 列出的文件錯誤由 076 T091 一併修正。
+
 - **FR-080** `redlog-cli plugin check <dir>`：以 FR-050 的 schema 驗證，錯誤指出 JSON pointer、期望值、實際值與附近的欄位；重算 `files` 的雜湊；執行規則的靜態線性檢查。
 - **FR-081** 本機一致性工具組：沿用 Spec 071 的共用向量與 mock receiver，並套用與核心相同的 `emits` 範圍與蓋章；Processor 另有 `testSample` 的 CLI 版本（`core/plugins/test-sample.ts` 已是純函式）。
 - **FR-082** 相容：`manifestVersion` 讀 1 與 2；`engines.pluginApi` 讀 N 與 N-1；N+1 只讀已知的資料部分（保留今天 `apiAhead` 的行為，`loader.ts:70-77`）。
@@ -334,7 +367,7 @@
 
 #### G. 文案與詞表
 
-- **FR-090** 狀態字只存在 `source.state.<碼>`（8 個）；整體字只存在 `capture.overall.<碼>`（4 個）；理由只存在 `source.reason.<碼>`（封閉清單，至多 41 個，plan「理由與動作」，含 Spec 073 要求的 4 個：`project-archived`、`bound-elsewhere`、`consent-scope-changed`、`hook-file-missing`）；動作只存在 `source.action.<碼>`（至多 5 個）。每個語系新增至多 58 個 key。
+- **FR-090** 狀態字只存在 `source.state.<碼>`（8 個）；整體字只存在 `capture.overall.<碼>`（4 個）；理由只存在 `source.reason.<碼>`（封閉清單，至多 41 個，plan「理由與動作」，含 Spec 073 要求的 4 個：`project-archived`、`bound-elsewhere`、`consent-scope-changed`、`hook-file-missing`）；動作只存在 `source.action.<碼>`（至多 5 個）。每個語系新增至多 58 個 key。（2026-11-13，修訂 C6：理由上限 49、每語系新增上限 66，新增的 8 個理由碼見修訂表。）
 - **FR-091** 任何其他命名空間的值不得與這 12 個狀態字完全相同。
 - **FR-092** 退役的 key（plan「退役的 key」，101 個，分屬 `capture.state.*`、`capture.http.*`、`httpCapture.state.*`、`capture.{dark,partial,healthy,healthyGap}`、`capture.confirmed.*`、`statusBar.capture*`、`issues.captureDetail`、`activity.status.sourceAlert`、`settings.external*`（8 個）、`plugins.healthAxis.*`、`plugins.projectAxis.*`、`capture.tag.*`、`capture.terminalOwnShell*`、`firstRun.core.{pending,verified,capturedTrustUnproven,ready}`、`httpVerification.*`、`settings.{hookNotFound,shellInstalled,hookDisable}`、`terminal.meta.hook{On,Off}`、`capture.summary.*`、`capture.sub.*`、`capture.*` 的 11 個動作與標籤、`settings.source.*`）在同一個變更中刪除；斷言它們的 test 與 e2e 是該變更的一部分（plan 列出）。每個語系的淨 key 數下降。
 - **FR-093** `plugins.installState.*` 與 `plugins.status.*` 保留：它們是外掛頁的機器層信任軸，不是擷取狀態；擷取相關的畫面不得引用它們。
@@ -388,7 +421,7 @@
 - **Spec 035（Verified）** FR-001「每個可選來源由 bundled pack manifest 宣告」、FR-002「停用 pack 移除其來源」：FR-060 刪除 pack manifest，可選來源改由核心描述宣告，pack 只剩專案層開關。`capture-health.ts:736-746` 的註解與 `test/capture-packs.test.ts` 依此改寫。
 - **Spec 033（Verified）** FR-004「重新登記外掛規則會清除停止」：FR-059 改為保留到內容雜湊改變為止；FR-003 的呈現位置改為外掛詳情。
 - **`docs/UIUX-STANDARD.md:342`**「儀表板只列有問題的來源（開著但沒在送、已就緒但未有事件）」：已就緒而未有事件是「待命」，不是問題（FR-016）。依 AGENTS.md，此差異回報擁有者，由擁有者修訂標準。
-- **`test/capture-health.test.ts:65`**「dark when no hooks installed」釘住的契約被 FR-015、FR-017 取代；`README.md:247`「RedLog captures nothing until a source is wired up」不再成立（內建終端機開箱可記）。
+- **`test/capture-health.test.ts:65`**「dark when no hooks installed」釘住的契約被 FR-015、FR-017 取代；`README.md:247`「RedLog captures nothing until a source is wired up」不再成立（內建終端機開箱可記）。（2026-11-13，修訂 C2：內建終端機預設關閉，`README.md:247` 的說法在沒有 shell hook 時**仍然成立**，不需修訂。）
 - **`capture-health.ts:818-830` 的註解與 `producerStalled`**（存活但停送使整體為 partial）：被決定 12 取代；釘住它的 `test/capture-health.test.ts` 案例屬於本變更。
 - **`capture-health.ts:22-44` 的註解**（狀態軸 `ready/unset/off/error`）與 **`captureReadiness.ts:145-149`**（新安裝必須讀成 dark）。
 - **`DESIGN-plugin-kernel.md`**（current）：§1 starter pack 為「可移除的外掛格式」、§2 四種角色（mapper、exporter）、manifest 草案（`kind: producer`、`health`、`schemaVersion`、`capabilities`）、§5 第 5 步。由 FR-050–061 取代。
@@ -408,7 +441,8 @@
 | Q2 | 已驗收的 Spec 035 FR-001／002（內建 pack 的 manifest）在 pack manifest 刪除後是否一併修訂？ | 是，同一個 PR（T075） |
 | Q3 | 已驗收的 Spec 033 FR-004 是否改為：被停用的規則在外掛內容雜湊變更前維持停用？ | 是 |
 | Q4 | 「仍回報存活但沒有送出任何事件」由失敗改為原因說明（未送出事件）？ | 是 |
-| Q5 | 外掛類型去掉 Exporter，只留 Source 與 Processor？ | 是（理由見根因報告 08 §3a） |
+| Q5 | 外掛類型去掉 Exporter，只留 Source 與 Processor？ | 是（理由見根因報告 08 §3a）（**2026-11-13 反轉**：類型為 Source、Processor、Exporter，DECISIONS §3；Spec 076 H 段） |
+| Q6（2026-11-13 新增） | 選用來源要不要另用「已啟用」一詞，還是只用八個來源狀態（「已關閉」＝未啟用，其他任何狀態＝已啟用）？ | 建議只用八個字：「已啟用」會與「待命」「記錄中」並存於同一列，違反固定詞表；設定 ▸ 擴充功能的開關本身已表達啟用。本規格不替擁有者決定（DECISIONS §7） |
 
 跨規格的協調事項（不是給擁有者的問題，由規格協調處理）：hook 的執行期自我檢查 `detached` 要經 Spec 071 的存活通道送達（FR-010 `selfCheck`），071 的 `hello`／`alive` 目前沒有這個欄位。在 071 加上之前，`selfCheck` 事實缺席（等於 unknown），決策表 F6 不會成立。
 
