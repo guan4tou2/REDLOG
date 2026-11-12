@@ -22,6 +22,11 @@ interface LootEvent {
   /** The event whose text produced the hit (`_causes`); null when none was
    *  recorded — clipboard and API scans keep no source text. */
   sourceEventId: string | null
+  /** Matches the event stored, before any filter. */
+  stored: number
+  /** How many new values the event found, when that was more than it could
+   *  store (#695: an event keeps at most 500); null when it stored them all. */
+  found: number | null
   /** The line the first hit sits on, as stored: where the reader opens. Taken
    *  before any filter, so narrowing the list does not move an open reader. */
   hit: string
@@ -58,6 +63,8 @@ function projectLootEvent(e: { id: string; timestamp: number; targetId?: string 
     source: (e.data.source as string) ?? null,
     matches,
     sourceEventId: causes[0] ?? null,
+    stored: matches.length,
+    found: e.data.matches_truncated === true && typeof e.data.matches_total === 'number' ? e.data.matches_total : null,
     hit: typeof matches[0]?.preview === 'string' ? matches[0].preview : ''
   }
 }
@@ -169,7 +176,7 @@ export function LootPanel({ onOpenInTimeline, projectId, active = true }: {
             <span data-testid="loot-count" className="ml-1.5 font-mono text-xs tabular-nums text-redlog-text-faint">{visibleMatchCount}</span>
           </h2>
           <span data-testid="loot-completeness" className="text-xs text-redlog-text-faint">
-            {t(hasMore ? 'loot.recentSubset' : 'loot.complete')}
+            {t(hasMore ? 'loot.recentSubset' : lootEvents.some((le) => le.found !== null) ? 'loot.partialEvents' : 'loot.complete')}
           </span>
         </div>
         <p className="mt-0.5 font-medium text-amber-300">{t('loot.disclaimerTitle')}</p>
@@ -272,7 +279,9 @@ export function LootPanel({ onOpenInTimeline, projectId, active = true }: {
                   {le.targetId && (
                     <span> · {t('loot.target')} <span className="text-redlog-text font-mono">{le.targetId}</span></span>
                   )}
-                  <span> · {t('loot.items', { count: le.matches.length })}</span>
+                  <span data-testid="loot-items"> · {le.found !== null
+                    ? t('loot.itemsOfTotal', { count: le.stored, total: le.found })
+                    : t('loot.items', { count: le.matches.length })}</span>
                 </div>
                 <span aria-hidden className="shrink-0 text-redlog-text-faint">{open.has(le.id) ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</span>
               </div>

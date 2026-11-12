@@ -77,12 +77,26 @@ export function captureInstallProblem(cap: {
  *  folder must not be able to set it unasked. So does a plugin with a capture
  *  entry that RedLog installs (`shell-source`, `claude-settings`): the hook
  *  becomes a script that runs in every new shell, or after every tool call.
- *  Everything else is data RedLog reads and is active from the start. */
-export function requiresApproval(manifest: PluginManifest): boolean {
+ *  So does a plugin from the operator's plugins folder whose capture steps
+ *  carry a command: RedLog shows that command on its own page for the operator
+ *  to paste into a terminal, often under sudo, so it is shown only for content
+ *  the operator approved. A bundled plugin ships with RedLog and is not asked
+ *  about. Everything else is data RedLog reads and is active from the start. */
+export function requiresApproval(manifest: PluginManifest, source: 'bundled' | 'user' = 'user'): boolean {
   const c = manifest.contributes ?? {}
   return tierOf(manifest) === 'privileged'
     || (Array.isArray(c.terminalProfiles) && c.terminalProfiles.length > 0)
     || (Array.isArray(c.capture) && c.capture.some(installsHook))
+    || (source === 'user' && Array.isArray(c.capture) && c.capture.some(hasStepCommand))
+}
+
+/** Whether a capture entry gives the operator a command to run. */
+function hasStepCommand(cap: unknown): boolean {
+  const steps = (cap as { manualSteps?: unknown } | null)?.manualSteps
+  return Array.isArray(steps) && steps.some((s: unknown) => {
+    const command = (s as { command?: unknown } | null)?.command
+    return typeof command === 'string' && command.trim() !== ''
+  })
 }
 
 /** The capture entries an approval is an approval of: the ones that install. */
@@ -173,7 +187,7 @@ function contributesShapeError(c: Record<string, unknown>): string | null {
   for (const cap of (c.capture ?? []) as Array<Record<string, unknown>>) {
     if (cap.id !== undefined && typeof cap.id !== 'string') return 'contributes.capture: id must be text'
     if (cap.hookFile !== undefined && typeof cap.hookFile !== 'string') return 'contributes.capture: hookFile must be text'
-    for (const list of ['requires', 'emits']) {
+    for (const list of ['requires', 'requiresAll', 'emits']) {
       if (cap[list] !== undefined && !isStringList(cap[list])) return `contributes.capture: ${list} must be a list of text`
     }
     if (cap.manualSteps !== undefined) {

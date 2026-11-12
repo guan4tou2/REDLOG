@@ -67,7 +67,7 @@ describe('a target\'s evidence', () => {
     b.queryPage.mockResolvedValueOnce(page([makeEvent('s1', T0, 'scanner', { data: { subtype: 'http_response', status: 200 } })]))
     mountPage()
     fireEvent.click(await screen.findByText('a.test'))
-    expect(await screen.findByText('Proxy: 1')).toBeTruthy()
+    expect(await screen.findByText('Network: 1')).toBeTruthy()
     expect(screen.queryByText('scanner: 1')).toBeNull()
   })
 })

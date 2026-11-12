@@ -12,6 +12,7 @@ import { Button } from './Button'
 import { useReadState } from '../lib/readState'
 import { CreateProjectModal } from './CreateProjectModal'
 import { isComposing } from '../lib/ime'
+import { configInvalidDetail } from '../../../core/config-invalid'
 
 type Translate = (key: string, vars?: Record<string, string | number>) => string
 
@@ -116,10 +117,12 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
       if (project) onProjectOpen({ id: project.id, name: project.name })
       else toast(t('project.openMissing'), { type: 'error', why: t('project.openMissingWhy') })
     } catch (e) {
+      const message = String((e as Error)?.message ?? e)
+      const configFile = configInvalidDetail(message)
       toast(t('project.openFailedTitle'), {
         type: 'error',
-        why: t('project.openFailedWhy'),
-        detail: String((e as Error)?.message ?? e)
+        why: configFile ? t('project.openFailedConfigWhy') : t('project.openFailedWhy'),
+        detail: configFile ?? message
       })
     } finally {
       openPending.current = false

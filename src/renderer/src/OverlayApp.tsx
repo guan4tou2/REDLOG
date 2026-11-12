@@ -5,6 +5,7 @@ import { usePivotRead } from './lib/usePivots'
 import { formatTime, formatFreshness, useDisplayZone } from './lib/time'
 import { useTick } from './lib/useTick'
 import { hudWindowWidth, hudWindowHeight } from '../../core/overlay-layout'
+import { shownIpSafety } from '../../core/alert/ip-safety'
 
 // HUD palette — cyberpunk, but DESATURATED for dark-UI comfort (see lib/hud):
 // cyan frame identity, calmer state accents, angular corner brackets that frame
@@ -238,7 +239,7 @@ export default function OverlayApp(): JSX.Element {
   }
   const hair = <span style={{ width: 1, height: px(13), background: 'rgba(34,211,238,0.25)', flexShrink: 0 }} />
 
-  const safety = status?.ipSafety ?? 'unknown'
+  const safety = shownIpSafety(status)
   const link = status?.link
   const linkText = link?.type === 'wifi' ? (link.name || 'Wi-Fi')
     : link?.type === 'wired' ? t('overlay.wired') : ''

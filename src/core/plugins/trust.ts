@@ -53,6 +53,13 @@ export function isTrusted(pluginId: string, contentHash: string, requested: Capa
   return requested.every((c) => g.capabilities.includes(c))
 }
 
+/** The content hash the operator last approved for this plugin, if any. A
+ *  grant whose hash no longer matches is what `hash-changed` means: approved
+ *  once, and the content is not what was approved. */
+export function grantedHash(pluginId: string): string | undefined {
+  return read()[pluginId]?.contentHash
+}
+
 export function grant(pluginId: string, contentHash: string, capabilities: Capability[], grantedBy?: string): void {
   const store = read()
   store[pluginId] = { contentHash, capabilities, grantedAt: nowMs(), grantedBy }

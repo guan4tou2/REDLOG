@@ -4,7 +4,7 @@ import { getPrimaryOperator } from './db/operators'
 import https from 'https'
 import { URL } from 'url'
 import { getDB, openReadOnlyDB, dbGeneration, getProjectDir } from './db/index'
-import { loadConfig } from './config'
+import { ConfigInvalidError, loadConfig } from './config'
 import { verifyEventSignature } from './signing'
 import { authenticationVerdict, chainedRowCanonical } from './evidence-rules'
 
@@ -48,7 +48,9 @@ export interface AnchorSkipped { skipped: 'offline' }
 // the settings button, the local API and the CLI all obey one switch and a
 // change in Settings applies without a restart.
 function airgapped(): boolean {
-  try { return loadConfig(getProjectDir()).network?.offline === true } catch { return false }
+  // A config.yaml that cannot be read does not say offline is off: no request
+  // is made until it can be read again.
+  try { return loadConfig(getProjectDir()).network?.offline === true } catch (e) { return e instanceof ConfigInvalidError }
 }
 
 interface AnchorRow {

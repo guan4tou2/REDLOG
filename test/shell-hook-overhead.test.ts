@@ -172,7 +172,7 @@ async function runSession(shell: Shell, lines: string[], counting = false): Prom
     // zsh draws `%` and a carriage return ahead of each prompt: what follows
     // the last `\r` is what the operator reads on that line.
     notices: transcript.split('\n').map((l) => l.split('\r').pop()!)
-      .filter((l) => l.startsWith('[redlog]') && !l.includes('shell hook loaded')),
+      .filter((l) => l.startsWith('[redlog]')),
     exec: out.slice(out.indexOf('@@EXEC\n') + 7).split('\n').filter(Boolean),
     raw: out + r.stderr
   }

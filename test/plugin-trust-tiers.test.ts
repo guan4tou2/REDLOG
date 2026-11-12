@@ -76,7 +76,7 @@ describe('a capture that installs into the shell or Claude settings needs approv
     expect(grantPluginTrust('pinned').ok).toBe(true)
     expect(statusOf('pinned')).toBe('active')
     fs.writeFileSync(path.join(dir, 'hook.sh'), '#!/bin/sh\n# changed\n')
-    expect(statusOf('pinned')).toBe('needs-consent')
+    expect(statusOf('pinned')).toBe('hash-changed')
   })
 
   it('until approved, only the manual entries are registered; approval releases the rest, revoke takes them back', () => {

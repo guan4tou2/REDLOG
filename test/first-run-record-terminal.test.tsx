@@ -417,9 +417,6 @@ describe('first run: record my terminal', () => {
     draw()
     fireEvent.click(await screen.findByTestId('first-run-record-terminal'))
     const cmd = (await screen.findByTestId('record-terminal-command')).textContent ?? ''
-    // Showing the nonce precedes React's passive subscription effect. Let
-    // that render settle before delivering the operator's canary event.
-    await act(async () => {})
     const before = snapshot()
     emit([{ id: 'x', timestamp: 5, agentType: 'shell', data: { subtype: 'command_end', command: cmd, shell: (await bridge.preflight()).shell?.name === 'powershell' ? 'powershell' : 'zsh' } }])
     await screen.findByTestId('record-terminal-verified')
@@ -460,10 +457,7 @@ describe('first run: HTTP(S) card', () => {
     bridge.proxyStatus.mockResolvedValue({ state: 'unavailable', url: null })
     act(() => { window.dispatchEvent(new Event('focus')) })
     fireEvent.click(await screen.findByTestId('first-run-http-prepare'))
-    // The focus re-probe and the click both settle through several awaited
-    // bridge calls; on a loaded runner that has taken longer than the default
-    // 1 s twice (ubuntu, macOS), on a branch that touches none of this.
-    await screen.findByTestId('capture-prepare', undefined, { timeout: 4000 })
+    await screen.findByTestId('capture-prepare')
     bridge.runtimeInstall.mockImplementationOnce(async () => {
       bridge.preflight.mockResolvedValue(preflight())
       bridge.proxyStatus.mockResolvedValue(RUNNING)
@@ -473,6 +467,41 @@ describe('first run: HTTP(S) card', () => {
     expect((await screen.findByTestId('first-run-http-status')).textContent).toBe('○ 尚未驗證')
     expect(screen.queryByTestId('first-run-core-ready')).toBeNull()
     expect(screen.getByTestId('first-run-commands-status').textContent).toBe('✓ 已驗證')
+  })
+
+  // The page and the HTTP card each ask preflight on their own, and either
+  // answer can come back first. The test above failed about once in eighty
+  // runs under load: the page's answer had committed but its effect had not
+  // yet run when the click landed, and that effect — still judging the
+  // Commands source — closed the panel the click had just opened. The same
+  // close happens deterministically when the page's answer is simply slower
+  // than the card's, which is what this pins: preparation opened for HTTP is
+  // decided by an answer asked for after it opened, never by an older one.
+  it('opens HTTP preparation even when the page\'s own check answers after the card\'s', async () => {
+    install({ proxy: RUNNING })
+    draw()
+    await shownNonce()
+    const answers: Array<(p: Preflight) => void> = []
+    bridge.preflight.mockImplementation(() => new Promise<Preflight>((resolve) => { answers.push(resolve) }))
+    bridge.proxyStatus.mockResolvedValue({ state: 'unavailable', url: null })
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    // The page subscribed to focus first, so it asked first.
+    expect(answers).toHaveLength(2)
+    const [pageAnswer, cardAnswer] = answers
+    await act(async () => { cardAnswer(preflight({ missing: ['mitmdump'] })) })
+    fireEvent.click(await screen.findByTestId('first-run-http-prepare'))
+    expect(screen.getByTestId('capture-prepare')).toBeTruthy()
+
+    // The page's focus check was asked before the click; it lands late and
+    // reads as if nothing were missing. It must not close the panel.
+    await act(async () => { pageAnswer(preflight()) })
+    expect(screen.getByTestId('capture-prepare')).toBeTruthy()
+
+    // The click's own check decides.
+    expect(answers).toHaveLength(3)
+    await act(async () => { answers[2](preflight({ missing: ['mitmdump'] })) })
+    expect(screen.getByTestId('capture-prepare')).toBeTruthy()
+    expect(screen.getByTestId('prepare-install-mitmdump')).toBeTruthy()
   })
 
   // The preparation panel used to replace the whole page, so going to install

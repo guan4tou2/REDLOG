@@ -51,6 +51,8 @@ export interface PluginView {
   contributes: string[]
   terminalProfiles?: PluginTerminalProfile[]
   captureInstalls?: PluginCaptureInstall[]
+  /** commands a user plugin's capture steps give, shown once it is approved */
+  captureSteps?: string[]
   /** why the shell's profiles could not be brought up to date, the same on
    *  every row; null when they were */
   profilesError?: string | null
@@ -195,7 +197,7 @@ export function pluginTone(p: PluginView): PluginTone {
  *  agrees to; so is a plugin with nothing left to approve. */
 export function cannotBeTrusted(p: PluginView): boolean {
   const tailerRefused = p.source === 'user' && p.report?.tailers?.state === 'rejected'
-  return tailerRefused && !(p.terminalProfiles?.length) && !(p.captureInstalls?.length)
+  return tailerRefused && !(p.terminalProfiles?.length) && !(p.captureInstalls?.length) && !(p.captureSteps?.length)
 }
 
 /** Everything the search box may match against. `describe` applies the

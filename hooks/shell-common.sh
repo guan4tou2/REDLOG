@@ -123,6 +123,13 @@ _redlog_terminal_allowed() {
 
 # Said once, by an adapter that is not loading because of the selection above.
 # Without it a terminal outside the chosen app looked like a broken install.
+#
+# Said at the first prompt, not while the shell starts: nothing of RedLog's is
+# printed during shell init (2026-11-12, "Shell 啟動時的輸出"). Startup output
+# lands in every nested shell and tmux pane, in scp/rsync's stream when an rc
+# has no interactive guard, and under prompt frameworks that forbid it. "The
+# hook loaded" is `redlog status`; what is said is a change the operator would
+# otherwise not see. Each adapter arranges the one prompt-time call.
 _redlog_announce_terminal_refused() {
   local dir="${_REDLOG_DIR:-$HOME/.redlog}" wanted=""
   { IFS= read -r -d '' wanted <"$dir/terminal-app"; } 2>/dev/null
@@ -1124,17 +1131,4 @@ _redlog_warn_dropped() {
   fi
   _REDLOG_UNSAVED=told
   return 0
-}
-
-# Loading the adapter is not proof of recording or delivery. The terminal's
-# explicit status names its project and switch; startup must not promise output.
-_redlog_announce_shell() {
-  local where=""
-  [[ -n "${WSL_DISTRO_NAME:-}" ]] && where=" (WSL: ${WSL_DISTRO_NAME})"
-  echo "[redlog] shell hook loaded${where}"
-  # Said at startup because it is the one thing an operator cannot discover by
-  # looking: everything else about this adapter is visible in the timeline.
-  if [[ "${_REDLOG_ADAPTER_SHELL:-}" == "zsh" || "${_REDLOG_ADAPTER_SHELL:-}" == "bash" ]]; then
-    echo "[redlog] redlog status  ·  redlog stop"
-  fi
 }

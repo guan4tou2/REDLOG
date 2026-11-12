@@ -53,7 +53,6 @@
       "drwx------"
     ],
     "notices": [
-      "[redlog] redlog status  ·  redlog stop",
       "[redlog] recording stopped in this terminal — redlog start to resume",
       "[redlog] RedLog is not reachable; this terminal is not being recorded",
       "[redlog] the project changed — this terminal stopped recording; open a new terminal for the new project"
@@ -113,7 +112,6 @@
       "drwx------"
     ],
     "notices": [
-      "[redlog] redlog status  ·  redlog stop",
       "[redlog] recording stopped in this terminal — redlog start to resume",
       "[redlog] RedLog is not reachable; this terminal is not being recorded",
       "[redlog] the project changed — this terminal stopped recording; open a new terminal for the new project"

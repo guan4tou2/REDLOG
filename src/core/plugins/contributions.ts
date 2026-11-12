@@ -8,6 +8,7 @@ import { registerCapturePlugins, unregisterCapturePlugins } from '../hooks-manag
 import { registerTerminalProfiles, unregisterTerminalProfiles } from '../terminal-profiles'
 import { contributeTailer, withdrawTailer, type TailerLike } from './tailer-registry'
 import { installsHook } from './manifest'
+import { contentStillApproved } from './loader'
 import type { LoadedPlugin } from './types'
 import type { RuleRejection } from '../loot-detector'
 import type { RedactionRuleRejection } from '../redaction'
@@ -64,6 +65,17 @@ function fillHookPath(steps: Array<{ label: string; command?: string }> | undefi
   }))
 }
 
+/** The commands a user plugin's approval would let RedLog show, with the
+ *  absolute path of the file whose bytes the approval pins. What the approval
+ *  dialog lists. A bundled plugin is not asked about, so it has none. */
+export function approvalStepCommands(p: Pick<LoadedPlugin, 'manifest' | 'dir' | 'source'>): string[] {
+  if (p.source !== 'user') return []
+  return (p.manifest.contributes?.capture ?? []).flatMap((cap) =>
+    (fillHookPath(cap.manualSteps, join(p.dir, String(cap.hookFile ?? ''))) ?? [])
+      .map((s) => s.command?.trim() ?? '')
+      .filter((command) => command !== ''))
+}
+
 export function applyContributions(p: LoadedPlugin): ContributionReport {
   const c = p.manifest.contributes ?? {}
   const id = p.manifest.id
@@ -107,6 +119,13 @@ export function applyContributions(p: LoadedPlugin): ContributionReport {
     // shows steps and registers at once.
     const waiting = AWAITING_APPROVAL.includes(p.status)
     const entries = waiting ? c.capture.filter((cap) => !installsHook(cap)) : c.capture
+    // A manual entry registers while its plugin waits, so its row says what it
+    // is waiting for; its commands do not come with it (08-plugin-system F7).
+    // Once approved, each command is checked against the approved content at
+    // the moment it is shown, not only at load.
+    const gate = waiting
+      ? { withheld: p.status === 'hash-changed' ? 'hash-changed' as const : 'needs-consent' as const }
+      : { verify: () => contentStillApproved(p) ? undefined : p.source === 'bundled' ? 'bundled-changed' as const : 'hash-changed' as const }
     const r = registerCapturePlugins(
       id,
       p.dir,
@@ -118,12 +137,14 @@ export function applyContributions(p: LoadedPlugin): ContributionReport {
         emits: cap.emits,
         platforms: cap.platforms,
         requires: cap.requires,
+        requiresAll: cap.requiresAll,
         hookFile: cap.hookFile,
         installMethod: cap.installMethod,
         installTarget: cap.installTarget,
         shellRcFile: cap.shellRcFile,
-        manualSteps: fillHookPath(cap.manualSteps, join(p.dir, cap.hookFile))
-      }))
+        manualSteps: waiting ? undefined : fillHookPath(cap.manualSteps, join(p.dir, cap.hookFile))
+      })),
+      gate
     )
     report.capture = waiting && entries.length < c.capture.length ? { ...r, waiting: true } : r
   }

@@ -1,4 +1,6 @@
 import { commandOutputState } from '../../../core/content-contract'
+import { OUTPUT_NOTE_KEY } from '../lib/commandOutputNote'
+import { screenshotSrc } from '../lib/screenshotSrc'
 import { useReadState } from '../lib/readState'
 import { EventContentReader, type ReaderControl } from './EventContentReader'
 import { Button } from './Button'
@@ -87,8 +89,18 @@ export function CommandEndDetail({ data, projectId, eventId, reader }: {
   const stdoutRef = asRef(data.stdout_ref)
   const stderrRef = asRef(data.stderr_ref)
   const hasStreamedOutput = (data.late_output === true || data.output_streamed === true) && typeof data.command_id === 'string'
+  // A PowerShell transcript row carries its output as one preview field.
+  const preview = typeof data.output_preview === 'string' ? data.output_preview : ''
+  // Text is shown, but the producer says some of it never arrived and no
+  // stream is marked cut (a part file lost to the drain timeout).
+  const lostPart = outputState === 'inline' && data.completeness === 'truncated'
+    && data.stdout_truncated !== true && data.stderr_truncated !== true
   return (
     <div className="mt-2 space-y-1.5">
+      {preview !== '' && (
+        <CollapsibleStream label={t('content.field.output_preview')} content={preview} accent="emerald" startOpen={false} />
+      )}
+      {lostPart && <IoAbsenceNote data={{ completeness: 'truncated' }} builtin={false} />}
       {hasStdout && ((data.stdout as string).length > 0 || Number(data.stdout_bytes) > 0 || data.stdout_truncated === true) && (
         <CollapsibleStream
           label={t('timeline.detail.stdout')}
@@ -113,13 +125,13 @@ export function CommandEndDetail({ data, projectId, eventId, reader }: {
 
       {(stdoutRef || stderrRef || readerOpen) && <>
         <Button size="compact" level="quiet" aria-expanded={readerOpen} onClick={() => setReaderOpen(!readerOpen)}>{t('content.savedContent')}</Button>
-        {readerOpen && <EventContentReader projectId={projectId} eventId={eventId} {...(reader ? { expanded: reader.mode === 'expanded', onExpandedChange: (x: boolean) => reader.setMode(x ? 'expanded' : 'inline') } : {})} />}
+        {readerOpen && <EventContentReader projectId={projectId} eventId={eventId} outputState={outputState} {...(reader ? { expanded: reader.mode === 'expanded', onExpandedChange: (x: boolean) => reader.setMode(x ? 'expanded' : 'inline') } : {})} />}
       </>}
       {hasStreamedOutput && (
         <LateOutput commandId={data.command_id as string} />
       )}
       {/* v0.9.6 (T2/T3): say what happened to this command's output. */}
-      {!readerOpen && !hasStreamedOutput && ['empty', 'recorded', 'unbracketed', 'not-captured'].includes(outputState) && (
+      {!readerOpen && !hasStreamedOutput && outputState !== 'inline' && outputState !== 'saved' && (
         <IoAbsenceNote
           data={data}
           builtin={data.source === 'builtin-terminal'}
@@ -181,6 +193,26 @@ export function EvidenceFileDetail({ data }: { data: Record<string, unknown> }):
   )
 }
 
+// ── Screenshot ───────────────────────────────────────────────────────
+
+/** The image itself, then what identifies it. A file that cannot be read (or
+ *  that the event never named) says so instead of drawing a broken image.
+ *  Keyed on the event by the caller, so a failed load does not carry over. */
+export function ScreenshotDetail({ data }: { data: Record<string, unknown> }): JSX.Element {
+  const { t } = useI18n()
+  const src = screenshotSrc(data)
+  const [failed, setFailed] = useState(false)
+  return (
+    <div className="mt-2 space-y-1.5" data-testid="screenshot-detail">
+      {src && !failed
+        ? <img src={src} alt={typeof data.filename === 'string' ? data.filename : ''} onError={() => setFailed(true)}
+            className="max-h-80 max-w-full rounded border border-redlog-border object-contain" />
+        : <p data-testid="screenshot-unreadable" className="text-xs text-redlog-text-faint">{t('screenshots.imageUnavailable')}</p>}
+      <MetadataGrid entries={[['trigger', data.trigger], ['sha256', data.sha256], ['file', data.filename]]} />
+    </div>
+  )
+}
+
 // ── I/O absence note ─────────────────────────────────────────────────
 
 /** v0.9.6 (T2): explains the absence — or the on-disk location — of a shell
@@ -189,24 +221,26 @@ export function IoAbsenceNote({ builtin, io, data }: { builtin: boolean; io?: Re
   const { t } = useI18n()
   const state = commandOutputState(data ?? { source: builtin ? 'builtin-terminal' : undefined, io })
   const len = typeof io?.len === 'number' ? (io.len as number) : 0
+  const key = OUTPUT_NOTE_KEY[state]
+  if (!key) return <></>
 
   if (state === 'recorded') {
     return (
       <p className="text-xs text-emerald-400/80 font-mono px-2 py-1 rounded border border-emerald-600/30 bg-emerald-900/10">
-        {t('timeline.detail.ioOnDisk', { size: formatBytes(len) })}
+        {t(key, { size: formatBytes(len) })}
       </p>
     )
   }
   if (state === 'empty') {
     return (
       <p className="text-xs text-redlog-text-dim font-mono px-2 py-1 rounded border border-redlog-border/60 bg-redlog-bg/40">
-        {t('content.empty')}
+        {t(key)}
       </p>
     )
   }
   return (
-    <p className="text-xs text-amber-400/80 font-mono px-2 py-1 rounded border border-amber-600/30 bg-amber-900/10">
-      {t(state === 'unbracketed' ? 'timeline.detail.ioUnbracketed' : 'timeline.detail.ioNotCaptured')}
+    <p data-output-state={state} className="text-xs text-amber-400/80 font-mono px-2 py-1 rounded border border-amber-600/30 bg-amber-900/10">
+      {t(key)}
     </p>
   )
 }
@@ -377,13 +411,16 @@ function genericValue(value: unknown): string {
 /** The Reader for a source with no reader of its own (Spec 069 FR-007): the
  *  fields the event actually recorded, as text. Values are never interpreted,
  *  nested ones are only counted, and nothing here can throw on an odd shape. */
-export function GenericEventDetail({ data }: { data: Record<string, unknown> | undefined }): JSX.Element {
+export function GenericEventDetail({ data, kind }: { data: Record<string, unknown> | undefined
+  /** The stored kind (`agent_type · subtype`): with no reader of its own, the
+   *  stored name is the only exact one there is. */
+  kind?: string }): JSX.Element {
   const { t } = useI18n()
   const entries = Object.entries(data ?? {}).filter(([, v]) => v !== undefined && v !== null && v !== '')
   if (entries.length === 0) return <></>
   return (
     <div className="mt-2" data-testid="generic-event-detail">
-      <p className="mb-1 text-xs text-redlog-text-dim">{t('timeline.detail.genericFields')}</p>
+      <p className="mb-1 text-xs text-redlog-text-dim">{t('timeline.detail.genericFields')}{kind && <> · <span className="font-mono">{kind}</span></>}</p>
       <MetadataGrid entries={entries.slice(0, GENERIC_MAX_FIELDS).map(([k, v]): [string, unknown] => [k, genericValue(v)])} />
       {entries.length > GENERIC_MAX_FIELDS && <p className="mt-1 text-xs text-redlog-text-dim">{t('timeline.detail.genericMore', { count: entries.length - GENERIC_MAX_FIELDS })}</p>}
     </div>

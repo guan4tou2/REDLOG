@@ -199,4 +199,15 @@ describeDB('chain-anchor air-gap', () => {
     await expect(anchor.anchorNow(['https://cal.invalid'])).rejects.toThrow('reached network')
     expect(spy).toHaveBeenCalled()
   })
+
+  // A config.yaml that cannot be read says nothing about `offline`. Reading
+  // that as "offline is off" sent the chain head to the public calendars from
+  // an engagement that had asked for nothing to leave the machine.
+  it('makes no request when config.yaml is there but cannot be read', async () => {
+    fs.writeFileSync(path.join(tmpDir, 'config.yaml'), 'network:\n  offline: true\n  checkInterval: [60\n')
+    const https = (await import('https')).default
+    const spy = vi.spyOn(https, 'request').mockImplementation((() => { throw new Error('network call on an unreadable config') }) as never)
+    expect(await anchor.anchorNow()).toEqual({ skipped: 'offline' })
+    expect(spy).not.toHaveBeenCalled()
+  })
 })

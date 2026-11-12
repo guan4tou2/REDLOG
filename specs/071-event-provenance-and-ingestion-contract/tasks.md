@@ -22,7 +22,7 @@
   - 舊列匯出的 `events.jsonl` 逐位元組相同。
 - [ ] T003 [P] [US5] `test/api-events-legacy-mapping.test.ts`：表格驅動，列出 `/api/events` 每種情況今天的狀態碼與主體：accepted、2 秒去重、late chunk 去重、ingest 內跨專案、標頭 pin、paused、unrecorded、plumbing、政策 403、`marker`／`amended` 403、400、401、503、heartbeat。
 - [ ] T004 [P] [US6] `test/legacy-producer-decisions.test.ts`：對 mock 伺服器記錄 shell、relay、mitm、pcap-agent、pcap-capture、c2、PowerShell sender 對每種回應的反應（01-F1 的表，依實測更正：relay 只重試網路錯誤、不重試 5xx；pcap-capture 不檢查 POST 結果）。已知缺陷以 `it.fails` 標示。（在 PR #716 中，未合併前不勾）
-- [ ] T005 [P] `test/hash-input-pin.test.ts`：釘住 `insertChainedEvent`、`chain-anchor.canonicalHashPayload`、`redlog-verify._rebuild_shapes` 的鍵集合，以及**今天的事實** `PRAGMA synchronous` 在第一次 WAL 寫入後為 NORMAL（1）。Q6 若決定改為 FULL，該斷言在同一個 PR 改寫。（在 PR #716 中，未合併前不勾）
+- [ ] T005 [P] `test/hash-input-pin.test.ts`：釘住 `insertChainedEvent`、`chain-anchor.canonicalHashPayload`、`redlog-verify._rebuild_shapes` 的鍵集合，以及 `PRAGMA synchronous`：寫入連線在寫入後為 FULL（2），含新專案、重開、切換專案；唯讀連線與匯出 worker 的唯讀連線維持 NORMAL（1）。（Q6 已答覆並實作：Phase 1 時這裡釘的是 NORMAL。）（在 PR #716 中，未合併前不勾）
 - [ ] T006 [P] `test/single-ingest-door.test.ts`：掃描 `src/**` 中的 `insertEvent(`，基準值 31（#716 量得），只能下降（ratchet；形式同 `test/mutation-guard.test.ts`），取代 `test/canonical-ingest-sources.test.ts` 的檔案清單。
 - [ ] T007 [P] [US4] RED：`test/spool-bypass.test.ts`。spool 檔放 `agent_type: system`／`recording_resumed`，今天會寫出 chained 列。以 `it.fails` 標示，Phase 2 翻正。
 - [ ] T008 [P] [US2] RED：`test/pause-boundary-spool.test.ts`。(a) 暫停中當掉後重放會寫入；(b) 暫停前的 `command_end` 被永久卡住。以 `it.fails` 標示。
@@ -127,7 +127,7 @@
 - [ ] T080 新增 `docs/domain/SPEC-ingestion-contract.md`（用戶端規格本文，契約 1）；glossary 加入 Producer、Producer Instance、Credential、Handoff Directory、Receipt、Loss Ledger、Observation Time。
 - [ ] T081 [P] 更新 `docs/api-reference.md`（`/api/ingest`、`/api/whoami`、舊入口新增的欄位、能力表）與 `docs/agent-integration.md`（依 O13）。
 - [ ] T082 [P] 修訂 `DESIGN-plugin-kernel.md` §3（`/api/ingest` 的新定義）、`DESIGN-two-tier-chain.md` §2.1（外掛種類預設為 logged）、`DESIGN-capture-trust.md` §3（暫停改以區間判斷）。
-- [ ] T083 [P] 修訂 `hooks/vps-deploy.sh` 中「沒有較窄的 token 可用」的說明，改用 `remote:<名稱>` 憑證。
+- [ ] T083 [P] 遠端主機部署：`hooks/vps-deploy.sh` 因把 API token 複製到遠端已移除（2026-11-13）；若要恢復，以 `remote:<名稱>` 憑證重建，不得複製 API token。
 - **Gate**：五道 gate；`verify:specs`。
 
 ## Phase 8 — 驗收
@@ -142,6 +142,20 @@
   - Windows：PowerShell 5.1 與 7、WSL。
   - 打包版：跑 `redlog-verify.py` 的來源報告，以及 `docs/RELEASE-SMOKE-TEST.md` 的 INSTALL、EXTERNAL SHELL、HTTP 節。
 - [ ] T092 更新 `specs/README.md` 的索引；全部完成並驗證前，Spec 071 維持 Draft。
+
+## Phase 9 — 修訂（2026-11-13）的任務
+
+每項都先 RED；不改 FR-080–084（修訂 A5）。
+
+- [ ] T100 [P] RED：`test/egress-stamp.test.ts`。對 FR-121 的六種狀態各一案例（以注入的 `IPProducerState`）：`source_ip` 與 `_ingest.egress`、`egress_at`、`egress_via`；舊列不變（T002 不變）；`_ingest` 大小仍在 FR-006 內。共用向量加「`source_ip` 非 null 的 chained 列」，兩個 verifier 結果一致。
+- [ ] T101 `event-write.ts:609,723` 改由入口傳入的出口填值（入口在蓋章階段讀一次出口讀取器的快照）；T100 翻正。
+- [ ] T102 [P] `system:egress_changed`（FR-123）：寫入時機的狀態表測試；與 072 的登記同 PR。
+- [ ] T103 [P] `Egress` 形狀進 `/api/whoami` 與 075 payload（FR-122）；075 FR-025 的「未知不顯示為安全」測試共用同一組案例。
+- [ ] T104 [P] FR-088 的 `data.term`：zsh、bash、PowerShell 的 hook 與向量；`tty` 快取、不多起行程（FR-103 的計數測試）。
+- [ ] T105 [P] FR-086、FR-087：第一次綁定的提示行、`redlog private` 的 (a)(b)；共用向量；與 Spec 073 FR-041 的停止原因清單同 PR。
+- [ ] T106 FR-07C：刪除專案層外掛啟用的接收端檢查（FR-07A 的外掛部分），改為只看憑證；FR-072 的發放時機改為機器層啟用（Spec 076 T050–T051 配對）。
+- [ ] T107 [env: Linux 跳板＋ssh 反向轉送] FR-130–134：`redlog remote add|revoke|uninstall`、遠端佇列、`--no-spool`；遠端永不存放項目的檔案掃描測試；刪除 `hooks/vps-deploy.sh`。
+- **Gate**：五道 gate；T002、T003 不變。
 
 ## Dependencies & Execution Order
 

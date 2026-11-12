@@ -86,7 +86,7 @@ test.beforeAll(async () => {
       }
     }
     ipcMain.removeHandler('ip:getStatus')
-    ipcMain.handle('ip:getStatus', () => ({ ipSafety: 'safe', publicIP: '192.0.2.10', internalIP: '192.0.2.20', lastCheck: 0 }))
+    ipcMain.handle('ip:getStatus', () => ({ ipSafety: 'safe', externalIP: '192.0.2.10', internalIP: '192.0.2.20', lastCheck: 0, error: null }))
   })
   await page.evaluate(() => localStorage.setItem('redlog-locale', 'zh-TW'))
 

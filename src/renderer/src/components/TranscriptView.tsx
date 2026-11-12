@@ -1,4 +1,8 @@
-import { capturedContentIsPartial, commandOutputState, responseBodyState } from '../../../core/content-contract'
+import { capturedContentIsPartial, commandOutputState, responseBodyState, type CommandOutputState } from '../../../core/content-contract'
+import { commandOutputOf, OUTPUT_NOTE_KEY } from '../lib/commandOutputNote'
+
+/** Output notes whose wording is shared with the Timeline, not transcript-only. */
+const SHARED_OUTPUT_NOTES: ReadonlySet<string | undefined> = new Set(['empty', 'redirected', 'interactive', 'incomplete', 'unknown'])
 import { operationPairKey } from '../../../core/operation-pair-key'
 import { compareEventOrder } from '../../../core/event-order'
 import { buildToolPairIndex } from '../lib/toolPairing'
@@ -200,7 +204,7 @@ function buildBlocks(events: Ev[], names: Record<string, string>, t: (k: string,
       // A background job's later output is part of this command. Nothing is
       // said about it while it is whole; only a still-open or lossy one is.
       const lateSum = (d.late_output === true || d.output_streamed === true) && typeof d.command_id === 'string' ? late[d.command_id] : undefined
-      const inlineOut = [d.stdout, d.stderr, lateSum?.stdout, lateSum?.stderr].filter((x) => typeof x === 'string').join('')
+      const inlineOut = [d.stdout, d.stderr, d.output_preview, lateSum?.stdout, lateSum?.stderr].filter((x) => typeof x === 'string').join('')
       const lateNote = lateSum?.state === 'preview' ? ` · ${t('timeline.detail.outputPreview')}`
         : lateSum?.state === 'running' ? ` · ${t('transcript.metaLateRunning')}`
         : lateSum?.state === 'incomplete' ? ` · ${t('transcript.metaLateIncomplete')}` : ''
@@ -228,6 +232,7 @@ function buildBlocks(events: Ev[], names: Record<string, string>, t: (k: string,
         else if (state === 'saved') outputNote = 'saved'
         else if (state === 'unbracketed') outputNote = 'unbracketed'
         else if (state === 'not-captured') outputNote = 'uncaptured'
+        else outputNote = state
       }
       out.push({
         id: e.id, ts: e.timestamp, kind: 'shell', actor: actorOf(e),
@@ -381,7 +386,10 @@ function buildBlocks(events: Ev[], names: Record<string, string>, t: (k: string,
       out.push({
         id: e.id, ts: e.timestamp, kind: 'loot', actor: actorOf(e),
         input: `◆ ${matches.map((m) => m.type).join(', ') || 'loot'}`,
-        meta: `${matches.length} match${matches.length === 1 ? '' : 'es'}`,
+        // A capped event (#695) stored only part of what it found.
+        meta: d.matches_truncated === true && typeof d.matches_total === 'number'
+          ? t('loot.itemsOfTotal', { count: matches.length, total: d.matches_total })
+          : `${matches.length} match${matches.length === 1 ? '' : 'es'}`,
         events: [e]
       })
     }
@@ -1076,7 +1084,7 @@ export default function TranscriptView({ onOpenInTimeline, active = true, readin
                         ? 'text-amber-400/80 border-amber-600/30 bg-amber-900/10'
                         : 'text-amber-400/80 border-amber-600/30 bg-amber-900/10'
                 }`}>
-                  {b.outputNote === 'pending' ? '⏳ ' : ''}{t(b.outputNote === 'empty' ? 'content.empty' : `transcript.note.${b.outputNote}`, { size: fmtBytes(b.outputBytes ?? 0) })}
+                  {b.outputNote === 'pending' ? '⏳ ' : ''}{t(SHARED_OUTPUT_NOTES.has(b.outputNote) ? OUTPUT_NOTE_KEY[b.outputNote as CommandOutputState]! : `transcript.note.${b.outputNote}`, { size: fmtBytes(b.outputBytes ?? 0) })}
                 </p>
               )}
               {savedSource && (big || b.outputNote === 'recorded' || reading) && <div className="px-2.5 pb-2 min-w-0">
@@ -1087,7 +1095,7 @@ export default function TranscriptView({ onOpenInTimeline, active = true, readin
                     return next
                   })}>{t('content.savedContent')}</Button>
                 <div hidden={!readerOpen}>
-                  {readerOpen && <EventContentReader active={active} projectId={savedSource.engagementId!} eventId={savedSource.id} />}
+                  {readerOpen && <EventContentReader active={active} projectId={savedSource.engagementId!} eventId={savedSource.id} outputState={commandOutputOf(savedSource)} />}
                 </div>
               </div>}
             </div>

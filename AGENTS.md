@@ -43,6 +43,13 @@ Let the layout do the explaining.
 `docs/UIUX-STANDARD.md` §25.2 is the necessity test; the same file
 holds the empty-state and settings conventions.
 
+§26 of that file is a hard constraint set by the owner and outranks the rest:
+cut features before cutting copy; one primary action per page with every
+secondary entry collapsed; the first screen must be understood within three
+seconds; one implementation per concept; UX first, then DX and AX. Before
+adding a string, control, setting or page, ask whether the feature is needed at
+all.
+
 `test/ui-copy.test.ts` is the mechanical half of this rule and runs in CI. It
 fails on: the same explanation stored under two keys, a descriptive key nothing
 renders, a hint that only repeats its label, a tooltip that repeats the visible

@@ -27,6 +27,8 @@ export type {
 
 export { ChainEmitter, BadgeSurface, AdherenceCounter, ObservationLog } from './surface'
 export { AlertBus } from './bus'
+// The renderer imports './ip-safety' directly: this index pulls in the DB.
+export { shownIpSafety, ipReadMaxAgeMs, type IpSafety, type IpSafetyReading } from './ip-safety'
 
 export {
   classifyScopeTarget,

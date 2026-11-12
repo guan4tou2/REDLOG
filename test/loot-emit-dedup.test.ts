@@ -7,7 +7,7 @@ import { describe, it, expect, vi } from 'vitest'
 // ingest and in POST /api/loot/scan alike. These pin both halves: what is
 // recorded is unchanged, and the work grows with the values, not their square.
 
-const written: Array<{ matches: Array<{ type: string; preview: string }>; count: number }> = []
+const written: Array<{ matches: Array<{ type: string; preview: string }>; count: number; matches_truncated?: boolean; matches_total?: number }> = []
 vi.mock('../src/core/db/events', () => ({
   insertEvent: (_type: string, data: { matches: Array<{ type: string; preview: string }>; count: number }) => {
     written.push(data)
@@ -33,6 +33,38 @@ describe('loot emit dedup', () => {
     // a second target is a second fact
     d.emit([match('a1')], { targetId: 'u' })
     expect(written[1].matches.map((m) => m.preview)).toEqual(['a1'])
+  })
+
+  // #695: one pathological text (8 MiB of distinct hashes) produced one loot
+  // event whose `matches` grew without bound, and that row was stored, hashed
+  // into the chain and rendered whole. An event keeps the first 500 new values
+  // and says how many it found; the ones it did not keep are not marked as
+  // recorded, so a later sighting records them rather than losing them.
+  it('stores at most 500 matches per event, says how many it found, and leaves the rest to a later sighting', () => {
+    const values = Array.from({ length: 1200 }, (_, i) => `h${i}`)
+    const d = new LootDetector()
+    d.configure({ identity })
+    written.length = 0
+    d.emit(values.map(match), { targetId: 't' })
+    expect(written[0].matches.map((m) => m.preview)).toEqual(values.slice(0, 500))
+    expect(written[0]).toMatchObject({ count: 500, matches_truncated: true, matches_total: 1200 })
+    d.emit(values.map(match), { targetId: 't' })
+    expect(written[1].matches.map((m) => m.preview)).toEqual(values.slice(500, 1000))
+    expect(written[1]).toMatchObject({ count: 500, matches_truncated: true, matches_total: 700 })
+    d.emit(values.map(match), { targetId: 't' })
+    expect(written[2].matches.map((m) => m.preview)).toEqual(values.slice(1000))
+    expect(written[2].count).toBe(200)
+    d.emit(values.map(match), { targetId: 't' })
+    expect(written).toHaveLength(3)
+  })
+
+  it('writes an event within the limit with exactly the fields it always had', () => {
+    const d = new LootDetector()
+    d.configure({ identity })
+    written.length = 0
+    d.emit(Array.from({ length: 500 }, (_, i) => match(`k${i}`)), {})
+    expect(Object.keys(written[0]).sort()).toEqual(['count', 'matches', 'subtype'])
+    expect(written[0].count).toBe(500)
   })
 
   // Wall-clock, so the bound is a ratio: four times the distinct values may

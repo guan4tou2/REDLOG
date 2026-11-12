@@ -19,7 +19,10 @@ describe('agentTypeLabel', () => {
   })
 
   it('shows the operator word, and keeps a plugin type it has no word for', () => {
-    expect(agentTypeLabel('http_navigation', tr(en))).toBe('HTTP')
+    // The lane holds page navigations from the capture browser; the HTTP
+    // traffic is in the network lane (report 10, A.2).
+    expect(agentTypeLabel('http_navigation', tr(en))).toBe('Navigation')
+    expect(agentTypeLabel('scanner', tr(en))).toBe('Network')
     expect(agentTypeLabel('shell', tr(en))).toBe('Shell')
     expect(agentTypeLabel('acme_scanner', tr(en))).toBe('acme_scanner')
   })
@@ -30,7 +33,7 @@ describe('agentTypeLabel', () => {
     // that names its conditions uses, and that label names the type this way.
     expect(src).toMatch(/label=\{labels\.type/)
     const base = { targetId: null, timeRange: null, inScopeOnly: false, hidePersonal: false, tier: 'all' as const }
-    expect(conditionLabels({ ...base, agentType: 'http_navigation' }, tr(en)).type).toBe('Type: HTTP')
+    expect(conditionLabels({ ...base, agentType: 'http_navigation' }, tr(en)).type).toBe('Type: Navigation')
     expect(src).toMatch(/label: agentTypeLabel\(at, t\)/)
     expect(src).not.toMatch(/label: at \}/)
   })

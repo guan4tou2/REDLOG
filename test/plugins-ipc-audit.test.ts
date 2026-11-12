@@ -23,7 +23,7 @@ vi.mock('../src/core/project-manager', () => ({ getProjectDir: () => '/p' }))
 vi.mock('../src/core/capture-health', () => ({ invalidateHooksCache: vi.fn() }))
 vi.mock('../src/core/hooks-manager', () => ({ invalidateHooksCache: vi.fn() }))
 vi.mock('../src/core/plugins/test-sample', () => ({ testSample: vi.fn() }))
-vi.mock('../src/core/plugins/contributions', () => ({ getContributionReport: () => undefined }))
+vi.mock('../src/core/plugins/contributions', () => ({ getContributionReport: () => undefined, approvalStepCommands: () => [] }))
 
 import { registerPluginsIpc } from '../src/main/ipc/plugins'
 

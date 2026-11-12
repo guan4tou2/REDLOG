@@ -74,6 +74,10 @@ export interface HookInfo {
   agentType: string
   installed: boolean
   available: boolean
+  /** Listed dependencies not found on PATH, by name from the manifest. */
+  missing?: string[]
+  /** Set when a plugin capture's commands are withheld, and why. */
+  stepsWithheld?: 'needs-consent' | 'hash-changed' | 'bundled-changed'
   installMethod: 'claude-settings' | 'shell-source' | 'powershell-profile' | 'manual'
   hookFile: string
   manualSteps?: ManualStep[]

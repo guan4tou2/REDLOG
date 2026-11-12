@@ -16,8 +16,8 @@ import type { MarkerFold, MarkerValues } from '../../lib/markerFold'
 import { isMarkerAmendment } from '../../lib/markerFold'
 import { TierBadge } from '../TierBadge'
 import { ReplayCommand } from '../ReplayCommand'
-import { CommandEndDetail, CommandUnfinishedNote, AgentTurnDetail, BrowserConsoleDetail, EvidenceFileDetail, GenericEventDetail } from '../TimelineEventDetails'
-import { hasSpecificEventDetail } from '../../lib/timelineEvents'
+import { CommandEndDetail, CommandUnfinishedNote, AgentTurnDetail, BrowserConsoleDetail, EvidenceFileDetail, GenericEventDetail, ScreenshotDetail } from '../TimelineEventDetails'
+import { eventReader } from '../../lib/timelineEvents'
 import { HttpDetail } from '../HttpDetail'
 import { MarkerDetail } from '../MarkerDetail'
 import { EventContentReader, type ReaderControl } from '../EventContentReader'
@@ -78,6 +78,7 @@ export function TimelineEventInspector({
   // closed. A remembered-open graph would fire a causal-chain query on every
   // row an operator clicks through.
   const [graphOpen, setGraphOpen] = useState(false)
+  const kindReader = eventReader(event)
   return (
     <>
       {/* Pinned to the top of the pane, not scrolled with the body — so
@@ -421,7 +422,7 @@ export function TimelineEventInspector({
           CollapsibleStream so the operator sees the prompt/response
           on click without another expand. tool_call renders the
           parsed input JSON; tool_result its output stream. */}
-      {event.agentType === 'agent' && (
+      {kindReader === 'agent-turn' && (
         <AgentTurnDetail projectId={event.engagementId} eventId={event.id} reader={reader}
           data={event.data as Record<string, unknown>}
           paired={paired}
@@ -433,20 +434,25 @@ export function TimelineEventInspector({
           `response_preview`, CDP sends the console message and stack — but
           neither had a detail body, so the only way to read any of it was
           the raw-JSON toggle: unformatted, redaction-masked, in a 120px
-          box. Same treatment as shell and agent events now. */}
-      {event.agentType === 'scanner' && (
+          box. Same treatment as shell and agent events now. Only HTTP-shaped
+          scanner rows: a connection, C2 or pcap row has no request to show. */}
+      {kindReader === 'http' && (
         <HttpDetail projectId={event.engagementId} data={event.data as Record<string, unknown>} eventId={event.id} reader={reader} />
       )}
-      {event.agentType === 'browser' && (
+      {kindReader === 'console' && (
         <BrowserConsoleDetail data={event.data as Record<string, unknown>} />
       )}
-      {event.agentType === 'file_transfer' && event.data?.subtype === 'artifact_added' && (
+      {kindReader === 'artifact' && (
         <EvidenceFileDetail data={event.data as Record<string, unknown>} />
       )}
-      {!hasSpecificEventDetail(event) && (reader && reader.mode !== 'closed'
+      {kindReader === 'image' && (
+        <ScreenshotDetail key={event.id} data={event.data as Record<string, unknown>} />
+      )}
+      {kindReader === 'generic' && (reader && reader.mode !== 'closed'
         ? <EventContentReader key={event.id} projectId={event.engagementId} eventId={event.id}
             expanded={reader.mode === 'expanded'} onExpandedChange={expanded => reader.setMode(expanded ? 'expanded' : 'inline')} />
-        : <GenericEventDetail data={event.data as Record<string, unknown>} />)}
+        : <GenericEventDetail data={event.data as Record<string, unknown>}
+            kind={[event.agentType, event.data?.subtype].filter(Boolean).join(' · ')} />)}
       {event.agentType === 'marker' && (
         <MarkerDetail
           key={event.id}

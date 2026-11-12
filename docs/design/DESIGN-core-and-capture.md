@@ -139,11 +139,12 @@ Deploying the hook to a remote box and tunnelling events back over `ssh -R`,
 through the same code path as the local hook, with the envelope's `hostname`
 distinguishing origin, is the right answer for infrastructure **you** own —
 your VPS, a redirector, a team jump box — and it yields complete structured
-events. `hooks/vps-deploy.sh` was written for this but is **not currently
-supported**: it exits immediately, because it copies fewer files than the shell
-hook install plan (`redlog-relay.py` and `command-class.json` are missing), so a
-VPS set up by it would not record. Until it is rebuilt on that plan, this
-option is a design direction, not a working tool.
+events. It is **not supported** until per-producer append-only credentials
+exist (Spec 071): the only credential today is the API token, which can read
+every event, export the evidence bundle, sanitise recorded output and switch
+recording, so it must not be copied to another host. `hooks/vps-deploy.sh`,
+which did copy it, was removed. Until then this option is a design direction,
+not a working tool.
 
 It is the wrong answer for a **target** host: writing a hook onto a machine
 you are assessing is an OPSEC footprint and, under many rules of engagement,

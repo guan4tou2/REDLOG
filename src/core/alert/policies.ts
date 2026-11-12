@@ -136,6 +136,8 @@ export class IPPolicy implements Policy {
     // real off-profile fact (ea A-4). If no safe list is set, we can't
     // say "off-profile" — the best we can do is `presumed_safe` when an
     // exposed list is set (implication: address ≠ leak), or `unknown`.
+    // `presumed_safe` is stored as is but never shown as safe: no list
+    // matched, so every surface shows it as unknown (alert-runtime).
     if (this.cfg.safeIps.length > 0) {
       return {
         value: 'off_profile',

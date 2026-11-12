@@ -22,6 +22,7 @@
 // locale is pinned to zh-TW.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { Profiler } from 'react'
 import { render, cleanup, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { RecordTerminalFlow, type RecordTarget } from '../src/renderer/src/components/RecordTerminalFlow'
@@ -239,6 +240,31 @@ it('does not install when detection fails, and can retry detection', async () =>
   expect(bridge.install).not.toHaveBeenCalled()
   fireEvent.click(failure.querySelector('button')!)
   await waitFor(() => expect(bridge.install).toHaveBeenCalledWith('shell-zsh'))
+})
+
+// The command is the operator's cue to run it, so the flow must already be
+// listening in the commit that draws it. Subscribing from a passive effect left
+// a gap after that commit — short in a browser, long enough on a loaded test
+// runner for a canary delivered the moment the command appeared to reach no
+// listener, and for a 60 s wait advanced at that moment to be armed afterwards.
+// The Profiler reports during the commit, after the flow's layout effects and
+// before any passive one.
+it('is listening in the same commit that shows the command', async () => {
+  install()
+  const commits: Array<{ command: string; listening: number }> = []
+  render(
+    <I18nProvider>
+      <Profiler id="record-terminal-listening" onRender={() => {
+        const command = screen.queryByTestId('record-terminal-command')?.textContent ?? ''
+        if (command) commits.push({ command, listening: listeners.length })
+      }}>
+        <RecordTerminalFlow target={ZSH_TARGET} onPrepare={vi.fn()} />
+      </Profiler>
+    </I18nProvider>
+  )
+  await commandText()
+  expect(commits.length).toBeGreaterThan(0)
+  expect(commits.filter((c) => c.listening === 0)).toEqual([])
 })
 
 it('does not accept a canary without observed shell identity', async () => {
