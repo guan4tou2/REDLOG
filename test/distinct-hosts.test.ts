@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -12,13 +13,13 @@ let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let distinctHosts: typeof import('../src/core/db/events').distinctHosts
 
 let dbAvailable = false
-try {
+if (requires('better-sqlite3').ok) {
   const dbMod = await import('../src/core/db/index')
   const eventsMod = await import('../src/core/db/events')
   initDB = dbMod.initDB; closeDB = dbMod.closeDB
   insertEventRaw = eventsMod.insertEvent; distinctHosts = eventsMod.distinctHosts
   dbAvailable = true
-} catch { /* better-sqlite3 not built for this Node */ }
+}
 
 const insertEvent: typeof import('../src/core/db/events').insertEvent = (a, d, o) =>
   insertEventRaw(a, d, { operatorId: 'test-op', ...o })

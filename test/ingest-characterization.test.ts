@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -35,8 +36,8 @@ let spool: typeof import('../src/core/spool-replay')
 let gap: typeof import('../src/core/queue-gap')
 let busMod: typeof import('../src/core/event-bus')
 let dbAvailable = false
-try {
-  const dbMod = await import('../src/core/db/index')
+if (requires('better-sqlite3').ok) {
+  const dbMod =await import('../src/core/db/index')
   initDB = dbMod.initDB; closeDB = dbMod.closeDB; getDB = dbMod.getDB; bindDBEngagement = dbMod.bindDBEngagement
   ingestMod = await import('../src/core/ingest')
   events = await import('../src/core/db/events')
@@ -46,7 +47,7 @@ try {
   gap = await import('../src/core/queue-gap')
   busMod = await import('../src/core/event-bus')
   dbAvailable = true
-} catch { /* native module unavailable — skip */ }
+}
 
 const describeDB = dbAvailable ? describe : describe.skip
 

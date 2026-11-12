@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -10,8 +11,8 @@ let queryEvents: typeof import('../src/core/db/event-queries').queryEvents
 let takeExportSnapshot: typeof import('../src/core/export-plan').takeExportSnapshot
 
 let dbAvailable = false
-try {
-  const dbMod = await import('../src/core/db/index')
+if (requires('better-sqlite3').ok) {
+  const dbMod =await import('../src/core/db/index')
   const queryMod = await import('../src/core/db/event-queries')
   const planMod = await import('../src/core/export-plan')
   initDB = dbMod.initDB
@@ -20,8 +21,6 @@ try {
   queryEvents = queryMod.queryEvents
   takeExportSnapshot = planMod.takeExportSnapshot
   dbAvailable = true
-} catch {
-  // better-sqlite3 not compiled for this Node.js version
 }
 
 const describeDB = dbAvailable ? describe : describe.skip

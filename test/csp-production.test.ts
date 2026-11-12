@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { contentSecurityPolicy } from '../src/core/csp'
+import { requires } from './helpers/requires'
 
 // The packaged renderer's policy, read as directives rather than substrings,
 // and the built html checked against it: a policy that would block the app's
@@ -75,14 +76,15 @@ describe('renderer html against the production script-src', () => {
     expect(blockedByScriptSrc(fs.readFileSync(path.join(root, 'src/renderer', page), 'utf8'))).toEqual([])
   })
 
-  // CI's unit leg runs before `npm run build`, so the built pages are checked
-  // where a build exists (locally, and wherever this runs after one).
+  // CI builds before the unit step and requires the build (test/capabilities.json);
+  // locally these skip, with the reason printed, until `npm run build`.
   const built = path.join(root, 'out/renderer')
-  it.skipIf(!fs.existsSync(path.join(built, 'index.html'))).each(pages)('out/renderer/%s', (page) => {
+  const build = requires('built-renderer')
+  build.it.each(pages)('out/renderer/%s', (page) => {
     expect(blockedByScriptSrc(fs.readFileSync(path.join(built, page), 'utf8'))).toEqual([])
   })
 
-  it.skipIf(!fs.existsSync(path.join(built, 'assets')))('no built renderer chunk needs unsafe-eval', () => {
+  build.it('no built renderer chunk needs unsafe-eval', () => {
     const chunks = fs.readdirSync(path.join(built, 'assets')).filter((f) => f.endsWith('.js'))
     expect(chunks.length).toBeGreaterThan(0)
     const evaling = chunks.filter((f) => /new Function\(|[^\w.$]eval\(/.test(fs.readFileSync(path.join(built, 'assets', f), 'utf8')))

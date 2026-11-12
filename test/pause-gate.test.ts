@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -16,8 +17,8 @@ let exemptSet: ReadonlySet<string>
 let bus: typeof import('../src/core/event-bus').eventBus
 
 let dbAvailable = false
-try {
-  const dbMod = await import('../src/core/db/index')
+if (requires('better-sqlite3').ok) {
+  const dbMod =await import('../src/core/db/index')
   const eventsMod = await import('../src/core/db/events')
   const busMod = await import('../src/core/event-bus')
   initDB = dbMod.initDB
@@ -28,8 +29,6 @@ try {
   exemptSet = eventsMod.PAUSE_EXEMPT_AGENT_TYPES
   bus = busMod.eventBus
   dbAvailable = true
-} catch {
-  // better-sqlite3 not compiled for this Node.js version
 }
 
 const insert: typeof import('../src/core/db/events').insertEvent = (a, d, o) =>

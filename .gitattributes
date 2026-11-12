@@ -4,6 +4,20 @@
 *.py   text eol=lf
 *.svg  text eol=lf
 
+# Source and scripts are LF on every checkout, Windows included. Without this a
+# Windows checkout (core.autocrlf=true on the CI runner) turns every .ts/.mjs/
+# .ps1 into CRLF: a `#!` line then broke the ESM import of verify-fuses.mjs
+# (ca87f903), and source-scanning tests must match `\r?\n` to pass there.
+# PowerShell 5.1 and 7 both read LF scripts; nothing here needs CRLF.
+# test/line-endings.test.ts fails on a CRLF file of these types.
+*.ts   text eol=lf
+*.tsx  text eol=lf
+*.mts  text eol=lf
+*.js   text eol=lf
+*.cjs  text eol=lf
+*.mjs  text eol=lf
+*.ps1  text eol=lf
+
 # Spec Kit hashes every file it installs (.specify/integrations/*.manifest.json)
 # to tell its own files from local edits. A CRLF checkout changes every hash.
 /.specify/**       text eol=lf

@@ -26,6 +26,11 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      # test/helpers/requires.ts: a capability test/capabilities.json marks
+      # "required" for this OS fails the file that asks for it instead of
+      # skipping it. Locally nothing is required.
+      REDLOG_CI_CAPABILITIES: '1'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -99,8 +104,41 @@ jobs:
         # tools/redlog-verify.py fails closed on a signed bundle when this is missing; install it so the tests exercise the authenticated path.
         run: python -m pip install --quiet cryptography
 
+      - name: Shell and runtime versions
+        # Which bash, zsh and pwsh this leg's tests ran against is otherwise
+        # unknowable from the log: the runner image decides, and it changes.
+        # After the installs, so it reports what Vitest sees. Nothing fails here;
+        # a missing tool prints its error.
+        shell: bash
+        run: |
+          for c in bash zsh pwsh python3 python node npm; do
+            printf '%-8s %-40s ' "$c" "$(command -v "$c" || echo '-')"
+            { "$c" --version 2>&1 || true; } | head -1
+          done
+
+      - name: Build (renderer + main + preload)
+        # Before Vitest: test/csp-production.test.ts and bundle-requires.test.ts
+        # read out/renderer and out/main/index.js. With the build after Vitest
+        # they skipped (csp, 3 cases) or checked only the export worker
+        # (bundle-requires) on every leg. Same steps, same total time; the
+        # build is 7–19 s. test/capabilities.json requires the build, so a
+        # missing artefact now fails those files instead of skipping them.
+        id: build
+        run: npm run build
+
       - name: Vitest
+        # Also when the build failed: those files then fail on the missing
+        # build, and every other file still reports.
+        id: vitest
+        if: success() || (failure() && steps.build.outcome == 'failure')
         run: npm test
+
+      - name: Skip accounting
+        # Compares this leg's skips with test/skip-baseline.json and the
+        # capabilities with test/capabilities.json. Runs when Vitest failed
+        # too: a failing test must not hide a test that stopped running.
+        if: ${{ !cancelled() && steps.vitest.outcome != 'skipped' }}
+        run: node scripts/verify-skip-baseline.mjs test-results/unit-junit.xml
 
       - name: Upload the unit report on failure
         # The suite has an intermittent failure that lands on a different file
@@ -117,12 +155,11 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: unit-report-${{ matrix.os }}
-          path: test-results/unit-junit.xml
+          path: |
+            test-results/unit-junit.xml
+            test-results/capabilities-*.json
           if-no-files-found: warn
           retention-days: 14
-
-      - name: Build (renderer + main + preload)
-        run: npm run build
 
   e2e:
     # No `needs: unit`. It used to wait for all three unit legs and was skipped,

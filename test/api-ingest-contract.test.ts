@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { requires } from './helpers/requires'
 import { ServerResponse } from 'node:http'
 import fs from 'fs'
 import path from 'path'
@@ -27,12 +28,12 @@ let openReadOnlyDB: typeof import('../src/core/db/index').openReadOnlyDB
 let getDB: typeof import('../src/core/db/index').getDB
 let api: typeof import('../src/core/api-server')
 let dbAvailable = false
-try {
+if (requires('better-sqlite3').ok) {
   const dbMod = await import('../src/core/db/index')
   initDB = dbMod.initDB; closeDB = dbMod.closeDB; openReadOnlyDB = dbMod.openReadOnlyDB; getDB = dbMod.getDB
   api = await import('../src/core/api-server')
   dbAvailable = true
-} catch { /* native module unavailable — skip */ }
+}
 
 const describeDB = dbAvailable ? describe : describe.skip
 
