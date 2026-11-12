@@ -52,6 +52,8 @@
 | A6 | **第一次綁定的提示與 `redlog private`** 是來源端行為，進共用向量 | DECISIONS §5 #1；Spec 076 FR-043、FR-044 | L 段 FR-086、FR-087 |
 | A7 | 擴充功能（Spec 076）的 `plugin:<id>` 憑證可另帶受 manifest `reads` 限定的 `read` 能力，供 L0 讀取 API（`/api/v1/*`）；Exporter 不寫事件，送出紀錄由核心以行程內入口寫入 | Spec 076 FR-062、FR-091 | FR-070 的指標 |
 
+> **指標（2026-11-13）**：[Spec 077](../077-personal-content-and-delivery/spec.md) 依賴本規格：操作者憑證的能力 `append(delivery_mark)`、有意遺失原因 `ignored-rule` 與 `shell-history-rule`、`target_via`（FR-010）作為「確定的目標」的依據；077 也記錄了擁有者對 `redlog private`（FR-086、FR-087）與遠端 hook（FR-130–134）的新裁定，條文的修改不在 077 內。
+
 ### 本規格自行決定的（理由與被否決的替代方案見 plan.md）
 
 1. 接收端蓋的來源資料放在新列 `data` 的**唯一保留鍵 `_ingest`**。雜湊公式不變，舊列與新列由同一條規則驗證（plan D1）。
