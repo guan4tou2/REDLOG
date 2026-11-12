@@ -24,6 +24,8 @@
 | O9 | 外掛只有 Source／Processor，沒有 UI 外掛；外掛只能從登記表的閱讀器中挑一個，不能帶自己的閱讀器 | D |
 | O10 | 不新增頁面；Timeline 維持自己的頁；介面文字最少；範圍、擷取政策、顯示篩選、匯出選取四個詞不共用控制項 | 全部 |
 
+> **指標（2026-11-13）**：O9 的「只有 Source／Processor」已改為 Source／Processor／Exporter，介面擴充見 [Spec 076](../076-extensions-and-machine-scoped-sources/spec.md) J 段；需在登記表新增的種類：`system:egress_changed`（071 FR-123）、`system:extensions_active`、`system:extension_read`、`system:export_shipped`、`system:export_failed`、`system:session_rebound`、`system:extension_config_changed`（076）；076 FR-097 提議的 `ReaderId` 附加值 `table`、`hex`、`diff`、`key-value`。
+
 ### 本規格自行決定的（理由與被否決的替代方案見 plan.md）
 
 1. 登記表放在 `src/core/kinds/`，是**純資料加純函式**的模組；它不 import 任何 Node 內建模組、Electron、資料庫或目錄外的檔案。core、main、preload、renderer 與測試都讀它（plan D1）。

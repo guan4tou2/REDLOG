@@ -143,6 +143,20 @@
   - 打包版：跑 `redlog-verify.py` 的來源報告，以及 `docs/RELEASE-SMOKE-TEST.md` 的 INSTALL、EXTERNAL SHELL、HTTP 節。
 - [ ] T092 更新 `specs/README.md` 的索引；全部完成並驗證前，Spec 071 維持 Draft。
 
+## Phase 9 — 修訂（2026-11-13）的任務
+
+每項都先 RED；不改 FR-080–084（修訂 A5）。
+
+- [ ] T100 [P] RED：`test/egress-stamp.test.ts`。對 FR-121 的六種狀態各一案例（以注入的 `IPProducerState`）：`source_ip` 與 `_ingest.egress`、`egress_at`、`egress_via`；舊列不變（T002 不變）；`_ingest` 大小仍在 FR-006 內。共用向量加「`source_ip` 非 null 的 chained 列」，兩個 verifier 結果一致。
+- [ ] T101 `event-write.ts:609,723` 改由入口傳入的出口填值（入口在蓋章階段讀一次出口讀取器的快照）；T100 翻正。
+- [ ] T102 [P] `system:egress_changed`（FR-123）：寫入時機的狀態表測試；與 072 的登記同 PR。
+- [ ] T103 [P] `Egress` 形狀進 `/api/whoami` 與 075 payload（FR-122）；075 FR-025 的「未知不顯示為安全」測試共用同一組案例。
+- [ ] T104 [P] FR-088 的 `data.term`：zsh、bash、PowerShell 的 hook 與向量；`tty` 快取、不多起行程（FR-103 的計數測試）。
+- [ ] T105 [P] FR-086、FR-087：第一次綁定的提示行、`redlog private` 的 (a)(b)；共用向量；與 Spec 073 FR-041 的停止原因清單同 PR。
+- [ ] T106 FR-07C：刪除專案層外掛啟用的接收端檢查（FR-07A 的外掛部分），改為只看憑證；FR-072 的發放時機改為機器層啟用（Spec 076 T050–T051 配對）。
+- [ ] T107 [env: Linux 跳板＋ssh 反向轉送] FR-130–134：`redlog remote add|revoke|uninstall`、遠端佇列、`--no-spool`；遠端永不存放項目的檔案掃描測試；刪除 `hooks/vps-deploy.sh`。
+- **Gate**：五道 gate；T002、T003 不變。
+
 ## Dependencies & Execution Order
 
 - 依序：Phase 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8。跨 071–075 的順序只寫在 [specs/README.md](../README.md)「071–075 的跨規格順序」。
