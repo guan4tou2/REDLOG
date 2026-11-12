@@ -246,6 +246,9 @@ function Redlog-Run {
     $Command = @($args)
     $cmdString = ($Command -join ' ')
     $startTs   = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    # Milliseconds, as the prompt path sends them: a spooled event is placed,
+    # and judged against a recorded pause, by when it happened.
+    $startMs   = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
 
     # If RedLog isn't reachable we still run the command transparently — the
     # wrapper's hook is dormant, so a wrapper that fails would just annoy
@@ -268,9 +271,10 @@ function Redlog-Run {
     # Emit command_start so the timeline shows the row entering flight.
     $commandId = _RedLogNewCommandId
     _RedLogSendEvent -Subtype 'command_start' -Command $cmdString -Extra @{
-        cwd         = (Get-Location).Path
-        captured_by = 'redlog-run'
-        command_id  = $commandId
+        cwd              = (Get-Location).Path
+        captured_by      = 'redlog-run'
+        command_id       = $commandId
+        source_timestamp = $startMs
     }
 
     # Run the command with stream splitting. PowerShell doesn't have a clean
@@ -317,6 +321,7 @@ function Redlog-Run {
     }
 
     $endTs    = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    $endMs    = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     $duration = [int]($endTs - $startTs)
 
     # Read + truncate the captured streams. UTF-8 decode with replacement
@@ -353,6 +358,10 @@ function Redlog-Run {
         stderr_truncated = $se.Truncated
         captured_by      = 'redlog-run'
         command_id       = $commandId
+        source_timestamp = $endMs
+        # The output is read only once the command has finished, so the
+        # earliest it can have begun is the command's start.
+        output_started_at = $startMs
     }
 
     try { Remove-Item -Path $stdoutFile -Force -ErrorAction SilentlyContinue } catch {}

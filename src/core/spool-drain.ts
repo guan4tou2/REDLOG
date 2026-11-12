@@ -38,7 +38,7 @@ import { ingest, committedEventOf } from './ingest'
 import { isPauseJudgedGap, queueGapAgainstPauses } from './queue-gap'
 import { sourceTimeRejection } from './db/events'
 import { getDB } from './db/index'
-import { recordedPauses, stateAt, pauseBeganIn, type RecordedPauses } from './recording-state'
+import { recordedPauses, stateAt, spanBeganIn, pausedIntervals, reachesUnknown, type RecordedPauses } from './recording-state'
 import { eventBus } from './event-bus'
 import { noteDbError } from './capture-health'
 
@@ -141,7 +141,7 @@ function lossOf(group: SpoolLoss, files: PlannedFile[]): SpoolLoss {
     reason: group.reason,
     intentional: group.intentional,
     count: files.length,
-    kept: files.filter((f) => f.action.kind === 'quarantine').length,
+    kept: files.filter((f) => f.action.kind !== 'unlink').length,
     owners: { this: files.filter((f) => f.owner !== 'unknown').length, unknown: files.filter((f) => f.owner === 'unknown').length },
     firstAt: Math.min(...times),
     lastAt: Math.max(...times),
@@ -156,15 +156,16 @@ function usableSourceTime(value: unknown, now: number): number | null {
 }
 
 /** Was this spooled item observed inside a pause the project recorded?
- *  'unknown' when the record cannot say yet. */
-function observedInRecordedPause(data: Record<string, unknown>, pauses: RecordedPauses, now: number): boolean | 'unknown' {
+ *  'paused' or 'pause-end-unknown' to refuse it, 'unknown' when the record
+ *  cannot say yet, null to write it. */
+function observedInRecordedPause(data: Record<string, unknown>, pauses: RecordedPauses, now: number): 'paused' | 'pause-end-unknown' | 'unknown' | null {
   // A producer's record of its own loss is evidence about capture, not
   // captured content: never refused as paused.
-  if (data.subtype === 'capture_gap') return false
+  if (data.subtype === 'capture_gap') return null
   const at = usableSourceTime(data.source_timestamp, now)
   const times: number[] = []
   if (at !== null) times.push(at)
-  let spanned = false
+  let spanned: ReturnType<typeof spanBeganIn> = null
   if (data.subtype === 'command_end') {
     // A command's end carries what was typed, and its output, from before its
     // own time. Its start is the output's start when the producer gave one,
@@ -174,14 +175,16 @@ function observedInRecordedPause(data: Record<string, unknown>, pauses: Recorded
     const started = outputStarted ?? (at !== null && duration !== null ? at - duration * 1000 : null)
     if (started !== null) times.push(started)
     // Output that began before a pause and ended after it: refused whole.
-    if (outputStarted !== null && at !== null && outputStarted < at && pauseBeganIn(pauses, outputStarted, at)) spanned = true
+    if (outputStarted !== null && at !== null && outputStarted < at) spanned = spanBeganIn(pauses, outputStarted, at)
   }
-  const states = times.map((t) => stateAt(pauses, t))
-  if (spanned || states.includes('paused')) return true
+  const states: string[] = times.map((t) => stateAt(pauses, t))
+  if (spanned) states.push(spanned)
+  if (states.includes('paused')) return 'paused'
   if (states.includes('unknown')) return 'unknown'
   // No usable time at all: nothing places it, unless the record is still open.
-  if (times.length === 0 && pauses.unresolvedFrom !== null) return 'unknown'
-  return false
+  if (times.length === 0 && pauses.unknownFrom !== null) return 'unknown'
+  if (states.includes('pause-end-unknown')) return 'pause-end-unknown'
+  return null
 }
 
 /** One drain of `directory` for the open project: up to `limit` files after
@@ -213,14 +216,15 @@ export function drainSpoolOnce(
     // pause the record has not closed: one that reaches into it waits.
     let data: Record<string, unknown> | null = spooled
     if (isPauseJudgedGap(spooled)) {
+      const start = Number(spooled.gap_started_at)
       const end = Number(spooled.gap_ended_at ?? spooled.gap_started_at)
-      if (pauses.unresolvedFrom !== null && Number.isFinite(end) && end >= pauses.unresolvedFrom) return false
-      data = queueGapAgainstPauses(spooled, pauses.intervals)
+      if (Number.isFinite(start) && Number.isFinite(end) && reachesUnknown(pauses, start, end)) return false
+      data = queueGapAgainstPauses(spooled, pausedIntervals(pauses))
     }
     if (!data) return true
     const inPause = observedInRecordedPause(data, pauses, clock())
     if (inPause === 'unknown') return false
-    if (inPause) return { outcome: 'rejected', reason: 'paused' }
+    if (inPause) return { outcome: 'rejected', reason: inPause }
     // Through ingest(), like every other producer. Spooling is not rare — the
     // built-in terminal sources its adapter into a fresh pty within a second of
     // the pane opening, which is exactly when the API may not be up yet — so
@@ -263,6 +267,9 @@ export function drainSpoolOnce(
 /** Words for the gap row. The row carries the numbers; this is what a reader
  *  of the Timeline or an export sees without opening it. */
 function describeLoss(loss: SpoolLoss): string {
+  if (loss.reason === 'pause-end-unknown') {
+    return `${loss.count} spooled event(s) not recorded: observed after a pause whose end was not recorded — recording may have resumed; content not kept`
+  }
   const what = loss.reason === 'paused' ? 'observed while recording was paused'
     : loss.reason === 'terminal-not-recording' ? 'from a terminal that was not recording'
     : loss.reason === 'kind-not-allowed' ? 'named a kind the spool may not write'

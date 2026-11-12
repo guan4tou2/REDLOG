@@ -31,7 +31,11 @@ let ing: typeof import('../src/core/ingest')
 let busMod: typeof import('../src/core/event-bus')
 let drain: typeof import('../src/core/spool-drain')
 let replay: typeof import('../src/core/spool-replay')
+let recordState: typeof import('../src/core/recording-state')
+let plan: typeof import('../src/core/export-plan')
 if (sqlite.ok) {
+  recordState = await import('../src/core/recording-state')
+  plan = await import('../src/core/export-plan')
   db = await import('../src/core/db/index')
   events = await import('../src/core/db/events')
   ops = await import('../src/core/db/operators')
@@ -343,6 +347,136 @@ sqlite.describe('the spool drain counts each file once (review round 3)', () => 
     drain.drainSpoolOnce(spool, id)
     expect(producerGaps()).toEqual([expect.objectContaining({ skipped_units: 4, overlaps_pause: true })])
   })
+
+  // ── Review round 4 (72fff4d0) ───────────────────────────────────────────
+
+  sqlite.it('R1: a lost resume between two pauses of this session makes the stretch unknown until the next resume; the late marker resolves it', () => {
+    pause(T0 + 1 * SEC)
+    at(T0 + 10 * SEC); bus().resume('ui') // the resume marker is not written
+    pause(T0 + 30 * SEC)
+    resume(T0 + 40 * SEC)
+    at(T0 + 50 * SEC)
+    put('0001.json', shell('command_start', 'recorded-between', { source_timestamp: T0 + 20 * SEC }))
+    put('0002.json', shell('command_start', 'in-second-pause', { source_timestamp: T0 + 35 * SEC }))
+    put('0003.json', shell('command_start', 'after', { source_timestamp: T0 + 45 * SEC }))
+    expect(drain.drainSpoolOnce(spool, id)!.outcomes).toEqual({ '0001.json': 'deferred', '0002.json': 'deferred', '0003.json': 'ingested' })
+    expect(gaps()).toEqual([])
+    // The retried resume lands at its own time; the record reads P R P R.
+    marker('recording_resumed', T0 + 10 * SEC)
+    at(T0 + 60 * SEC)
+    drain.drainSpoolOnce(spool, id)
+    expect(commands()).toEqual(['command_start:after', 'command_start:recorded-between'])
+    expect(gaps()).toEqual([expect.objectContaining({ reason: 'paused', intentional: true, files: ['0002.json'] })])
+  })
+
+  sqlite.it('R2: while a pause marker is being retried, times from its toggle on wait; once it lands they are judged', () => {
+    let fail = true
+    const queue: Array<() => void> = []
+    at(T0 + 1 * SEC)
+    bus().pause('ui')
+    writeMarkerWithRetry({
+      at: T0 + 1 * SEC,
+      write: (retry) => { if (fail) throw new Error('disk full'); marker('recording_paused', retry ? T0 + 1 * SEC : Date.now()) },
+      onError: () => undefined,
+      schedule: (retry) => { queue.push(retry) },
+      isCurrent: () => true
+    })
+    resume(T0 + 10 * SEC)
+    at(T0 + 20 * SEC)
+    put('0001.json', shell('command_end', 'secret-in-pause', { source_timestamp: T0 + 5 * SEC, stdout: 'PAUSED' }))
+    put('0002.json', shell('command_start', 'before', { source_timestamp: T0 + 500 }))
+    expect(drain.drainSpoolOnce(spool, id)!.outcomes).toEqual({ '0001.json': 'deferred', '0002.json': 'ingested' })
+    fail = false
+    queue.shift()!()
+    drain.drainSpoolOnce(spool, id)
+    expect(commands()).toEqual(['command_start:before'])
+    expect(gaps()).toEqual([expect.objectContaining({ reason: 'paused', intentional: true, files: ['0001.json'] })])
+  })
+
+  sqlite.it('R3: a pause closed only by the reopen is refused as a loss whose pause end is unknown, and shows in Known Gaps', () => {
+    pause(T0 + 1 * SEC)
+    at(T0 + 10 * SEC); bus().resume('ui') // the resume marker never lands before the quit
+    at(T0 + 20 * SEC)
+    put('0001.json', shell('command_start', 'recorded-after-resume', { source_timestamp: T0 + 15 * SEC }))
+    expect(drain.drainSpoolOnce(spool, id)!.outcomes).toEqual({ '0001.json': 'deferred' })
+    db.closeDB()
+    at(T0 + 3600 * SEC)
+    open()
+    marker('recording_resumed', T0 + 3600 * SEC + 5) // the reopen's marker
+    at(T0 + 3601 * SEC)
+    drain.drainSpoolOnce(spool, id)
+    expect(gaps()).toEqual([expect.objectContaining({ reason: 'pause-end-unknown', intentional: false, skipped_units: 1 })])
+    const all = gapRows().map((r) => ({ agentType: 'system', data: r.data })) as unknown as Parameters<typeof plan.countCaptureGaps>[0]
+    expect(plan.countCaptureGaps(all)).toEqual([{ reason: 'pause-end-unknown', gaps: 1, skippedUnits: 1, unknownAmount: 0 }])
+  })
+
+  sqlite.it('R3: a pause carried across a reopen and resumed later: before the reopen is a loss, after it a pause', () => {
+    pause(T0 + 1 * SEC)
+    db.closeDB()
+    at(T0 + 3600 * SEC)
+    open() // still paused: the record already says so, no marker
+    resume(T0 + 3700 * SEC)
+    at(T0 + 3800 * SEC)
+    put('0001.json', shell('command_start', 'before-reopen', { source_timestamp: T0 + 15 * SEC }))
+    put('0002.json', shell('command_start', 'after-reopen', { source_timestamp: T0 + 3650 * SEC }))
+    drain.drainSpoolOnce(spool, id)
+    expect(commands()).toEqual([])
+    expect(gaps().map((g) => [g.reason, g.intentional, g.files])).toEqual([
+      ['pause-end-unknown', false, ['0001.json']],
+      ['paused', true, ['0002.json']]
+    ])
+  })
+
+  sqlite.it('R1: in an earlier session, a second pause with no resume between is a loss whose pause end is unknown', () => {
+    pause(T0 + 1 * SEC)
+    at(T0 + 10 * SEC); bus().resume('ui') // lost
+    pause(T0 + 30 * SEC)
+    resume(T0 + 40 * SEC)
+    db.closeDB()
+    at(T0 + 3600 * SEC)
+    open()
+    put('0001.json', shell('command_start', 'between', { source_timestamp: T0 + 20 * SEC }))
+    put('0002.json', shell('command_start', 'second-pause', { source_timestamp: T0 + 35 * SEC }))
+    drain.drainSpoolOnce(spool, id)
+    expect(gaps().map((g) => [g.reason, g.intentional, g.files])).toEqual([
+      ['pause-end-unknown', false, ['0001.json']],
+      ['paused', true, ['0002.json']]
+    ])
+  })
+
+  sqlite.it('R6: a pause record that cannot be read leaves everything unknown, and says so', () => {
+    const reported: string[] = []
+    const pauses = recordState.recordedPauses(() => { throw new Error('database is locked') }, (source) => { reported.push(source) })
+    expect([recordState.stateAt(pauses, 0), recordState.stateAt(pauses, T0)]).toEqual(['unknown', 'unknown'])
+    expect(reported).toEqual(['recording-state'])
+  })
+
+  sqlite.it('R7: a file whose owner cannot be read and cannot be moved is counted by no project; once moved, by one', () => {
+    fs.writeFileSync(path.join(spool, 'quarantine'), 'not a directory')
+    put('0001.json', '{"agent_type":"shell","data":{"comm', T0 - 3600e3)
+    drain.drainSpoolOnce(spool, id)
+    expect(gaps()).toEqual([])
+    db.closeDB()
+    const dirB = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-once-dbB-'))
+    try {
+      db.initDB(dirB); db.bindDBEngagement(other.engagementId); ing._resetIngest()
+      ops.createOperator({ id: other.operatorId, name: 'B', token: ops.generateToken(), isPrimary: true })
+      drain.drainSpoolOnce(spool, other)
+      expect(gaps()).toEqual([])
+      fs.rmSync(path.join(spool, 'quarantine'))
+      drain.drainSpoolOnce(spool, other)
+      expect(gaps()).toEqual([expect.objectContaining({ reason: 'malformed', by_owner: { this: 0, unknown: 1 }, files: ['0001.json'] })])
+      expect(files()).toEqual(['quarantine/_unknown/malformed--0001.json'])
+      db.closeDB()
+      open()
+      drain.drainSpoolOnce(spool, id)
+      expect(gaps()).toEqual([])
+    } finally {
+      try { db.closeDB() } catch { /* closed */ }
+      open()
+      fs.rmSync(dirB, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('a pause or resume marker that fails to write', () => {
@@ -352,6 +486,7 @@ describe('a pause or resume marker that fails to write', () => {
     const errors: unknown[] = []
     const tries: boolean[] = []
     writeMarkerWithRetry({
+      at: T0,
       write: (retry) => { tries.push(retry); if (tries.length < 3) throw new Error('disk full') },
       onError: (e) => errors.push(e),
       schedule: (retry, ms) => { scheduled.push(ms); queue.push(retry) },
@@ -368,6 +503,7 @@ describe('a pause or resume marker that fails to write', () => {
     let current = true
     let tries = 0
     writeMarkerWithRetry({
+      at: T0,
       write: () => { tries++; throw new Error('disk full') },
       onError: () => undefined,
       schedule: (retry) => { queue.push(retry) },

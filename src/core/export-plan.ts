@@ -142,14 +142,16 @@ const UNSPECIFIED_GAP_REASON = 'unspecified'
  *  delivery is unknown, not loss, so it is never added into `skippedUnits`
  *  whatever count it carries. Units differ by source, so there is no total
  *  across reasons. Like pause windows this counts what the export carries.
- *  A gap marked `intentional` — what the spool drain did not write because it
- *  was observed while recording was paused, or came from a terminal that was
- *  not recording — is not a loss and is not counted here. */
+ *  A gap the receiver's spool drain marked `intentional` — what it did not
+ *  write because it was observed while recording was paused, or came from a
+ *  terminal that was not recording — is not a loss and is not counted here.
+ *  Only the receiver's own rows (`system`, `source: hook-spool`) are believed
+ *  on that: a producer's gap saying `intentional` still counts. */
 export function countCaptureGaps(events: Iterable<RedLogEvent>): CaptureGapCount[] {
   const byReason = new Map<string, CaptureGapCount>()
   for (const e of events) {
     if ((e.agentType !== 'scanner' && e.agentType !== 'system') || e.data.subtype !== 'capture_gap') continue
-    if (e.data.intentional === true) continue
+    if (e.agentType === 'system' && e.data.source === 'hook-spool' && e.data.intentional === true) continue
     const reason = typeof e.data.reason === 'string' && e.data.reason ? e.data.reason : UNSPECIFIED_GAP_REASON
     const row = byReason.get(reason) ?? { reason, gaps: 0, skippedUnits: 0, unknownAmount: 0 }
     const units = e.data.skipped_units

@@ -53,7 +53,7 @@ export type QuarantineReason = 'malformed' | 'kind-not-allowed' | 'no-project' |
  *  `true` and `false` are the older answers, `done` and "leave it in place". */
 export type SpoolOutcome =
   | { outcome: 'done' }
-  | { outcome: 'rejected'; reason: 'paused' | 'terminal-not-recording' }
+  | { outcome: 'rejected'; reason: 'paused' | 'terminal-not-recording' | 'pause-end-unknown' }
   | { outcome: 'invalid'; reason: QuarantineReason; detail: string }
   | { outcome: 'failed'; detail: string }
 
@@ -61,6 +61,8 @@ export type FileOutcome = 'ingested' | 'deferred' | 'quarantined' | 'dropped'
 
 type FileAction =
   | { kind: 'unlink' }
+  /** Already moved into `_unknown` before it was counted: see moveUnknownFirst. */
+  | { kind: 'moved' }
   | { kind: 'quarantine'; dir: string; target: string; reason: QuarantineReason; detail: string }
 
 export interface PlannedFile {
@@ -163,6 +165,9 @@ export interface SpoolReplayOptions {
 }
 
 const INTENTIONAL_REASONS = new Set(['paused', 'terminal-not-recording'])
+/** Refused, and removed once counted: the intentional reasons, and a pause
+ *  whose end the record does not show (counted as a loss, not as a pause). */
+const REFUSED_REASONS = new Set([...INTENTIONAL_REASONS, 'pause-end-unknown'])
 const QUARANTINE_REASONS = new Set<string>(['malformed', 'kind-not-allowed', 'no-project', 'legacy-bad', 'failed'])
 
 function countedOf(options: SpoolReplayOptions): (name: string) => boolean {
@@ -241,6 +246,17 @@ function moveIntoQuarantine(file: string, dir: string, target: string, reason: Q
   }
 }
 
+/** A file whose owner cannot be read is moved into `_unknown` BEFORE it is
+ *  counted, the reverse of every other file. Counted first, a file whose move
+ *  kept failing stayed in the spool for the next project that opened, which
+ *  counted it again: no project's chain records it, so none can recognise it
+ *  as counted. Moved first, a file that cannot be moved is left uncounted for
+ *  every project; one moved whose gap row then fails is kept in `_unknown` but
+ *  not counted (Spec 071 FR-066). */
+function moveUnknownFirst(file: string, dir: string, target: string, reason: QuarantineReason, detail: string, now: number): PlannedFile['action'] | null {
+  return moveIntoQuarantine(file, dir, target, reason, detail, now) ? { kind: 'moved' } : null
+}
+
 /** Groups what is to be counted by reason. */
 class LossPlan {
   private readonly groups = new Map<string, SpoolLoss>()
@@ -254,7 +270,7 @@ class LossPlan {
     const row = this.groups.get(reason) ?? { reason, intentional, count: 0, kept: 0, owners: { this: 0, unknown: 0 }, firstAt: at, lastAt: at, files: [] }
     row.count++
     row.owners[owner]++
-    if (planned.action.kind === 'quarantine') row.kept++
+    if (planned.action.kind !== 'unlink') row.kept++
     if (at < row.firstAt) row.firstAt = at
     if (at > row.lastAt) row.lastAt = at
     row.files.push(planned)
@@ -272,6 +288,8 @@ export function applySpoolActions(files: readonly PlannedFile[], now = Date.now(
   for (const { file, name, action } of files) {
     if (action.kind === 'unlink') {
       try { retryBusy(() => fs.unlinkSync(file)); out[name] = 'dropped' } catch { out[name] = 'deferred' }
+    } else if (action.kind === 'moved') {
+      out[name] = 'quarantined'
     } else {
       out[name] = moveIntoQuarantine(file, action.dir, action.target, action.reason, action.detail, now) ? 'quarantined' : 'deferred'
     }
@@ -451,7 +469,12 @@ export function migrateLegacySpoolFiles(
     }
     const dir = quarantineDirFor(directory, owner === 'this' ? active : 'unknown')
     if (!ledger.reserve(dir, size)) { result.outcomes[name] = 'deferred'; continue }
-    plan.add('legacy-bad', false, owner, at, { file, name, action: { kind: 'quarantine', dir, target: base, reason: 'legacy-bad', detail: 'set aside as .bad by an earlier version' } })
+    const detail = 'set aside as .bad by an earlier version'
+    const action = owner === 'unknown'
+      ? moveUnknownFirst(file, dir, base, 'legacy-bad', detail, now)
+      : { kind: 'quarantine' as const, dir, target: base, reason: 'legacy-bad' as const, detail }
+    if (!action) { result.outcomes[name] = 'deferred'; continue }
+    plan.add('legacy-bad', false, owner, at, { file, name, action })
     result.legacyBad++
     result.outcomes[name] = 'quarantined'
   }
@@ -487,7 +510,11 @@ export function replaySpoolDirectory(
   const setAside = (file: string, name: string, size: number, reason: QuarantineReason, detail: string, owner: 'this' | 'unknown', at: number): void => {
     const dir = quarantineDirFor(directory, owner === 'this' ? active : 'unknown')
     if (ledger.reserve(dir, size)) {
-      plan.add(reason, false, owner, at, { file, name, action: { kind: 'quarantine', dir, target: name, reason, detail } })
+      const action = owner === 'unknown'
+        ? moveUnknownFirst(file, dir, name, reason, detail, clock())
+        : { kind: 'quarantine' as const, dir, target: name, reason, detail }
+      if (!action) { defer(name); return }
+      plan.add(reason, false, owner, at, { file, name, action })
       result.outcomes[name] = 'quarantined'
     } else if (owner === 'this' && !counted(name)) {
       plan.add(reason, false, owner, at, { file, name, action: { kind: 'unlink' } })
@@ -589,8 +616,8 @@ export function replaySpoolDirectory(
     // must not also become a row — only that step is retried.
     const countedAs = options.countedAs?.(name) ?? null
     if (countedAs !== null) {
-      if (INTENTIONAL_REASONS.has(countedAs)) {
-        plan.add(countedAs, true, 'this', at, { file, name, action: { kind: 'unlink' } })
+      if (REFUSED_REASONS.has(countedAs)) {
+        plan.add(countedAs, INTENTIONAL_REASONS.has(countedAs), 'this', at, { file, name, action: { kind: 'unlink' } })
         result.outcomes[name] = 'dropped'
       } else {
         setAside(file, name, stat.size, QUARANTINE_REASONS.has(countedAs) ? countedAs as QuarantineReason : 'failed', 'counted earlier; the move did not happen then', 'this', at)
@@ -627,7 +654,7 @@ export function replaySpoolDirectory(
       continue
     }
     if (decided.outcome === 'rejected') {
-      plan.add(decided.reason, true, 'this', at, { file, name, action: { kind: 'unlink' } })
+      plan.add(decided.reason, INTENTIONAL_REASONS.has(decided.reason), 'this', at, { file, name, action: { kind: 'unlink' } })
       result.outcomes[name] = 'dropped'
       continue
     }

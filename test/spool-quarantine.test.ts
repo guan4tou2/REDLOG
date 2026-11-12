@@ -65,17 +65,28 @@ const why = (dir: string, sub: string, name: string): Record<string, unknown> =>
 describe('a spool file that can never be written (T011)', () => {
   it('is planned into quarantine under its reason, moved once counted, with a .why beside it, and not looked at again', () => {
     const d = tmp('malformed')
-    const file = put(d, '0001.json', '{"agent_type":"shell","data":', Date.now() - HOUR)
+    // Truncated, but its text still names this project.
+    const file = put(d, '0001.json', `{"agent_type":"shell","_identity":{"engagementId":"${ACTIVE.engagementId}"},"data":`, Date.now() - HOUR)
     const r = replaySpoolDirectory(d, ACTIVE, () => true)
     expect(r.invalid).toBe(1)
     // Only planned: nothing moves until the gap row that counts it is in.
     expect(fs.existsSync(file)).toBe(true)
     expect(applySpoolActions(r.losses.flatMap((l) => l.files))).toEqual({ '0001.json': 'quarantined' })
     expect(fs.existsSync(file)).toBe(false)
-    expect(quarantined(d, '_unknown')).toEqual(['malformed--0001.json', 'malformed--0001.json.why'])
-    expect(why(d, '_unknown', 'malformed--0001.json')).toMatchObject({ reason: 'malformed', receiver: expect.any(String), at: expect.any(Number) })
-    expect(typeof why(d, '_unknown', 'malformed--0001.json').detail).toBe('string')
+    const own = ACTIVE.engagementId
+    expect(quarantined(d, own)).toEqual(['malformed--0001.json', 'malformed--0001.json.why'])
+    expect(why(d, own, 'malformed--0001.json')).toMatchObject({ reason: 'malformed', receiver: expect.any(String), at: expect.any(Number) })
+    expect(typeof why(d, own, 'malformed--0001.json').detail).toBe('string')
     expect(replaySpoolDirectory(d, ACTIVE, () => true).invalid).toBe(0)
+  })
+
+  it('moves a file whose owner cannot be read into _unknown before it is counted, so no other project can count it again', () => {
+    const d = tmp('unknown-first')
+    const file = put(d, '0001.json', '{"agent_type":"shell","data":', Date.now() - HOUR)
+    const r = replaySpoolDirectory(d, ACTIVE, () => true)
+    expect(fs.existsSync(file)).toBe(false)
+    expect(quarantined(d, '_unknown')).toEqual(['malformed--0001.json', 'malformed--0001.json.why'])
+    expect(r.losses).toEqual([expect.objectContaining({ reason: 'malformed', count: 1, kept: 1, owners: { this: 0, unknown: 1 } })])
   })
 
   it('keeps a file that may still be being written', () => {

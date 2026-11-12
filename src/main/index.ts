@@ -1029,13 +1029,24 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
   insertEvent('system', { subtype: 'session_start' }, opening)
   // Pause lives in memory, not in the project: say in this record what it
   // would otherwise leave unexplained (see core/recording-state-marker).
-  try {
-    const marker = markerForOpen(eventBus.paused, lastRecordingSubtype())
-    if (marker) {
-      const ev = insertEvent('system', { subtype: marker.subtype, description: marker.description, source: marker.source }, opening)
-      if (ev) eventBus.publish(ev, { bypassPause: true })
-    }
-  } catch { /* additive: a marker that fails to write must not stop the project opening */ }
+  // A marker that fails to write must not stop the project opening; it is
+  // reported and retried like a toggle's (the spool drain reads it).
+  let openMarker: ReturnType<typeof markerForOpen> = null
+  try { openMarker = markerForOpen(eventBus.paused, lastRecordingSubtype()) } catch (error) { noteDbError('recording-marker', error) }
+  if (openMarker) {
+    const marker = openMarker
+    const at = Date.now()
+    writeMarkerWithRetry({
+      at,
+      write: (retry) => {
+        const ev = insertEvent('system', { subtype: marker.subtype, description: marker.description, source: marker.source }, retry ? { ...opening, occurredAt: at } : opening)
+        if (ev) eventBus.publish(ev, { bypassPause: true })
+      },
+      onError: (error) => noteDbError('recording-marker', error),
+      schedule: (retry, ms) => projectRuntime.setTimeout(opening, retry, ms),
+      isCurrent: () => projectRuntime.isCurrent(opening)
+    })
+  }
 
   // OPSEC air-gap: suppress every outbound request RedLog makes of its own —
   // anchoring, NTP sync, and the update check. Capture and the local API are
@@ -1952,6 +1963,7 @@ app.whenReady().then(() => {
       // reads them: one that fails is reported and retried at its own time.
       const at = Date.now()
       writeMarkerWithRetry({
+        at,
         write: (retry) => {
           const ev = insertEvent('system', {
             subtype: recording ? 'recording_resumed' : 'recording_paused',
