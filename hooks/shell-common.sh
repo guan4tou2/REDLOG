@@ -5,6 +5,10 @@
 
 _REDLOG_LAST_CMD=""
 _REDLOG_CMD_START=""
+# What the last send did with an event it could neither deliver nor spool:
+# empty while events are delivered or kept, `unreachable` or `no-project` once
+# one was dropped, `told` once the prompt has said so. See `_redlog_warn_unsaved`.
+_REDLOG_UNSAVED=""
 _REDLOG_SESSION_HELPER="${_redlog_adapter_dir:-}/redlog-session.py"
 _REDLOG_RELAY="${_redlog_adapter_dir:-}/redlog-relay.py"
 
@@ -519,17 +523,18 @@ sys.stdout.write(json.dumps(d))
   # fails, write the payload to a spool file that RedLog replays on next
   # project open. Spool cap: 5000 files (protects against a runaway loop
   # while RedLog is offline for weeks).
-  local spool_dir="$redlog_dir/pending" delivered=0
+  local spool_dir="$redlog_dir/pending" delivered=0 post_rc=0
   # Foreground POST with short deadline; if it fails — or there was nowhere to
   # send it — spool. The directory and the file's name are made only then: two
   # processes on every event that is delivered, for a spool it never touches.
   if [[ "$reachable" == 1 ]]; then
     if [[ -n "$payload_file" ]]; then
-      _redlog_post "$port" "$token" < "$payload_file" && delivered=1
+      _redlog_post "$port" "$token" < "$payload_file" && delivered=1 || post_rc=$?
     else
-      _redlog_post "$port" "$token" <<<"$payload" && delivered=1
+      _redlog_post "$port" "$token" <<<"$payload" && delivered=1 || post_rc=$?
     fi
   fi
+  [[ "$delivered" == 1 ]] && _REDLOG_UNSAVED=""
   if [[ "$delivered" != 1 ]]; then
     # Cap spool at 5000 entries — beyond that we accept loss over disk fill.
     #
@@ -545,6 +550,13 @@ sys.stdout.write(json.dumps(d))
     # reads. RedLog removes active-identity.json when the project closes, which
     # makes "no identity" the same thing as "no project to record into".
     if ! grep -qs '"engagementId"' "${_REDLOG_DIR:-${HOME:-}/.redlog}/active-identity.json" 2>/dev/null; then
+      # Dropped, and the operator has not been told. The next prompt says so
+      # (`_redlog_warn_unsaved`), from this outcome: no extra request per
+      # prompt. `curl -f` exits 22 for an HTTP error, so RedLog answered; with
+      # no identity that is the 503 it gives while no project is open.
+      if [[ "${_REDLOG_UNSAVED:-}" != told ]]; then
+        if [[ "$post_rc" == 22 ]]; then _REDLOG_UNSAVED=no-project; else _REDLOG_UNSAVED=unreachable; fi
+      fi
       [[ -z "$work" ]] || rm -rf "$work"
       return 0
     fi
@@ -552,6 +564,7 @@ sys.stdout.write(json.dumps(d))
     local count spool_file
     count=$(find "$spool_dir" -maxdepth 1 -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
     if [[ "$count" -lt 5000 ]]; then
+      _REDLOG_UNSAVED=""
       if [[ -n "$work" ]]; then
         # The work directory is already unique, including on BSD date where
         # %N is literal and several events share one second and shell PID.
@@ -694,6 +707,61 @@ redlog-run() {
 
   rm -f "$event_file" "$event_file.started"
   return $exit_code
+}
+
+# FR-009, said at the prompt by both adapters. The commands run either way —
+# that part has always worked, silently, and silence is the bug. An operator
+# whose RedLog crashed two hours ago has been working unrecorded with no way to
+# know.
+#
+# Once, though, and only on the way in. A warning on every prompt is one an
+# operator learns to read past, and then the one that matters is read past too.
+# The flags are shell variables on purpose: "have I said this in this shell" is
+# not state that should survive a subshell, unlike the stop (FR-022).
+#
+# Two ways in. Without the port and token files there is nothing to send to,
+# which is checked only after a command (`$1` is 1). With them — and RedLog
+# leaves them behind when it quits — the send itself is the evidence: an event
+# that was neither delivered nor spooled left `_REDLOG_UNSAVED` set. A
+# delivered or spooled event clears it, so the next loss is said again. A
+# terminal stopped with `redlog stop`, or not selected for recording, is not
+# losing anything it was asked to keep, and is not told it is.
+_redlog_warn_unsaved() {
+  if [[ "${1:-}" == 1 ]]; then
+    if _redlog_is_running; then
+      _REDLOG_WARNED_UNREACHABLE=""
+    else
+      if [[ -z "${_REDLOG_WARNED_UNREACHABLE:-}" ]]; then
+        _REDLOG_WARNED_UNREACHABLE=1
+        # The text of each command is still kept for replay (#315) — the sender
+        # spools it with nowhere to send it — but not what it printed, which
+        # only a live relay can hold. Saying "unrecorded" would mislead too.
+        if [[ ! -s "$(_redlog_identity_file)" ]]; then
+          printf '%s\n' "[redlog] RedLog is not reachable — no project is open; commands and output are not being saved" >&2
+        else
+          printf '%s\n' "[redlog] RedLog is not reachable — commands are running without live recording; their text is kept for replay, their output is not" >&2
+        fi
+      fi
+      # Whatever was dropped meanwhile is the loss that line describes.
+      [[ -z "${_REDLOG_UNSAVED:-}" ]] || _REDLOG_UNSAVED=told
+      return 0
+    fi
+  fi
+  case "${_REDLOG_UNSAVED:-}" in
+    unreachable|no-project) ;;
+    *) return 0 ;;
+  esac
+  if ! _redlog_is_recording; then
+    _REDLOG_UNSAVED=""
+    return 0
+  fi
+  if [[ "$_REDLOG_UNSAVED" == no-project ]]; then
+    printf '%s\n' "[redlog] no project is open in RedLog; this terminal is not being recorded" >&2
+  else
+    printf '%s\n' "[redlog] RedLog is not reachable; this terminal is not being recorded" >&2
+  fi
+  _REDLOG_UNSAVED=told
+  return 0
 }
 
 # Loading the adapter is not proof of recording or delivery. The terminal's

@@ -3,6 +3,7 @@ import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { attachContextMenu } from './context-menu'
 import { showWhenReady } from './window-show'
+import { allowNavigation } from './navigation-policy'
 import { HUD_INITIAL_H, defaultOverlayBounds } from '../core/overlay-layout'
 
 const isMac = process.platform === 'darwin'
@@ -17,9 +18,7 @@ const isWin = process.platform === 'win32'
 function hardenNavigation(win: BrowserWindow): void {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   win.webContents.on('will-navigate', (e, url) => {
-    const devUrl = process.env['ELECTRON_RENDERER_URL']
-    const ok = url.startsWith('file://') || (!!devUrl && url.startsWith(devUrl))
-    if (!ok) e.preventDefault()
+    if (!allowNavigation(url, win.webContents.getURL(), process.env['ELECTRON_RENDERER_URL'])) e.preventDefault()
   })
 }
 

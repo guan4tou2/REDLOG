@@ -1,4 +1,4 @@
-import { anchorNow as realAnchorNow, computeChainHead as realComputeChainHead, type ChainAnchor } from './chain-anchor'
+import { anchorNow as realAnchorNow, computeChainHead as realComputeChainHead, type ChainAnchor, type AnchorSkipped } from './chain-anchor'
 import { insertEvent } from './db/events'
 import { eventBus } from './event-bus'
 import { getPrimaryOperator } from './db/operators'
@@ -22,7 +22,7 @@ export interface RestartAnchorResult {
 }
 
 export interface AnchorBeforeRestartDeps {
-  anchorNow?: () => Promise<ChainAnchor | null>
+  anchorNow?: () => Promise<ChainAnchor | AnchorSkipped | null>
   computeChainHead?: () => { hash: string } | null
   /** Whether a project is open, i.e. whether there is a chain to mark. */
   projectOpen?: () => boolean
@@ -70,9 +70,15 @@ export async function anchorBeforeRestart(
     } else {
       // The calendar requests inside never throw; a throw here is the local
       // head read or the local anchor row.
-      const anchor = await anchorNow()
+      const result = await anchorNow()
+      if (result && 'skipped' in result) {
+        // Air-gap was switched on after `opts.offline` was read: same outcome.
+        external = 'skipped'
+        headHash = computeChainHead()?.hash ?? null
+      }
+      const anchor = result && 'skipped' in result ? null : result
       anchorStatus = anchor?.status ?? 'none'
-      headHash = anchor?.headHash ?? null
+      headHash = anchor?.headHash ?? headHash
       if (anchor) external = anchorStatus === 'complete' || anchorStatus === 'partial' ? 'confirmed' : 'unavailable'
     }
   } catch (e) {

@@ -1,5 +1,6 @@
+// @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
-import { resolveTimelineKey } from '../src/renderer/src/lib/timelineKeys'
+import { KEY_OWNING_CONTROLS, resolveTimelineKey } from '../src/renderer/src/lib/timelineKeys'
 import type { TimelineKeyContext } from '../src/renderer/src/lib/timelineKeys'
 
 // The Timeline shipped FOUR separate global keydown listeners, each with its own
@@ -107,6 +108,20 @@ describe('resolveTimelineKey', () => {
       for (const k of ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'Home', 'End', '+', '0', 'Enter']) {
         expect(resolveTimelineKey(key(k), CTX({ inField: true })), k).toBe('none')
       }
+    })
+    it('leaves a focused select, tab, menu item, option, slider or radio its own keys, Escape aside', () => {
+      for (const k of ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', '+', '=', '-', '0', 'Enter', 'f']) {
+        expect(resolveTimelineKey(key(k), CTX({ ownsKeys: true, hasSelection: true })), k).toBe('none')
+      }
+      expect(resolveTimelineKey(key('Escape'), CTX({ ownsKeys: true, hasDetail: true }))).toBe('close-detail')
+    })
+    it('names the controls that own their keys, by the focused element itself', () => {
+      document.body.innerHTML = '<select id="s"></select><div role="tab" id="t"></div><div role="slider" id="r"></div>'
+        + '<div role="radio" id="ra"></div><div role="menuitem" id="m"></div><div role="option" id="o"></div>'
+        + '<button id="b"></button><div role="tabpanel"><button id="inner"></button></div>'
+      for (const id of ['s', 't', 'r', 'ra', 'm', 'o']) expect(document.getElementById(id)!.matches(KEY_OWNING_CONTROLS), id).toBe(true)
+      for (const id of ['b', 'inner']) expect(document.getElementById(id)!.matches(KEY_OWNING_CONTROLS), id).toBe(false)
+      document.body.innerHTML = ''
     })
     it('yields to ⌘/Ctrl/Alt so it cannot shadow a system or app chord', () => {
       for (const mod of ['metaKey', 'ctrlKey', 'altKey'] as const) {

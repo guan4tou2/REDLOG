@@ -171,6 +171,22 @@ describe('project-manager', () => {
       expect(pm.deleteProject('no-such-id')).toBe(false)
     })
 
+    it('keeps the index entry when the directory cannot be removed', () => {
+      const project = pm.createProject('Locked')
+      const spy = vi.spyOn(fs, 'rmSync').mockImplementation(() => { throw new Error('EBUSY: resource busy or locked') })
+      try {
+        expect(() => pm.deleteProject(project.id)).toThrow(/EBUSY/)
+      } finally {
+        spy.mockRestore()
+      }
+      // Still listed, so it can be deleted again — not gone from the list
+      // while its folder stays on disk.
+      expect(pm.listProjects().find(p => p.id === project.id)).toBeDefined()
+      expect(fs.existsSync(project.path)).toBe(true)
+      expect(pm.deleteProject(project.id)).toBe(true)
+      expect(fs.existsSync(project.path)).toBe(false)
+    })
+
     it('succeeds even if the directory was already removed', () => {
       const project = pm.createProject('AlreadyGone')
       fs.rmSync(project.path, { recursive: true, force: true })

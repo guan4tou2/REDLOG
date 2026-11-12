@@ -7,9 +7,9 @@ import { homedir } from 'os'
 import { createMainWindow, createOverlayWindow } from './windows'
 import { visibleWindowBounds } from './window-bounds'
 import { loadOverlayPosition, saveOverlayPosition } from './services/overlay-position'
-import { createTray, setTrayRecording, setTrayText } from './tray'
+import { createTray, refreshTrayMenu, setTrayRecording, setTrayText } from './tray'
 import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
-import yaml from 'js-yaml'
+import { exportableProfile, writeProfileFile } from '../core/profile-export'
 import { loadConfig, saveConfig, snapshotScope, readScopeFile, mergeInitialConfig, DEFAULT_CONFIG, RedLogConfig } from '../core/config'
 import { isPackMemberOn, isPackOn } from '../core/capture-packs'
 import { debugLog, debugLogPath, isDebugLogEnabled, setDebugLogEnabled } from '../core/debug-log'
@@ -29,7 +29,7 @@ import { getActiveBrowserTab, setCdpPort, configureCdpMonitor, stopCdpMonitor, o
 import { isVerifyNonce, verifyUrl, clientLabel } from '../core/http-verify'
 import { httpVerificationState, type HttpVerificationContext, type HttpVerificationEvidence } from '../core/http-verification-evidence'
 import { HttpVerificationHistory } from './services/http-verification-history'
-import { QUICK_MARK_ACCELERATOR, HUD_PASSTHROUGH_ACCELERATOR, QUICK_SHOT_ACCELERATOR } from '../core/shortcuts'
+import { QUICK_MARK_ACCELERATOR, QUICK_SHOT_ACCELERATOR } from '../core/shortcuts'
 import fs from 'fs'
 import { eventBus } from '../core/event-bus'
 import { ScreenshotAgent } from './services/screenshot-agent'
@@ -105,8 +105,7 @@ import { registerDataExportIpc } from './ipc/data-export'
 import { RecentExportStore } from './services/recent-export'
 import {
   registerOverlayIpc, setOverlayPassThrough, bindOverlayReleaseShortcut, stopOverlayMouseTracking,
-  configureOverlayState, handleIpExposedChange, startOverlayMouseTracking,
-  applyOverlayPassThrough, applyOverlayOpacity, isOverlayPassThrough
+  handleIpExposedChange, isOverlayPassThrough, applyHudPrefs, openHudPrefs, syncReleaseShortcut
 } from './ipc/overlay'
 import { registerTerminalIpc } from './ipc/terminal'
 import { registerPluginsIpc } from './ipc/plugins'
@@ -600,9 +599,10 @@ function broadcastIPStatus(status: IPStatusShape): void {
   send(overlayWindow, 'ip:status', s)
 
   // §8: an exposed IP is the one condition allowed to override the operator's
-  // own HUD preferences. Pass-through comes off and the window goes fully
-  // opaque, because the failure being prevented is an operator working through
-  // a HUD they had ghosted and never seeing that their real address is out.
+  // own HUD preferences. A hidden HUD is shown, pass-through comes off and the
+  // window goes fully opaque, because the failure being prevented is an
+  // operator working through a HUD they had ghosted or closed and never seeing
+  // that their real address is out.
   handleIpExposedChange(status.ipSafety === 'exposed')
 }
 
@@ -727,8 +727,10 @@ function startProject(project: ProjectMeta): void {
 }
 
 function startProjectResources(project: ProjectMeta, projectDir: string, config: RedLogConfig, opening: ProjectContext): void {
-  keepDockIcon = config.overlay?.showInDock !== false
-  applyDock()
+  // The HUD's settings are the operator's, not this project's: an `overlay:`
+  // block in its config.yaml seeds them if there are none yet, and is
+  // otherwise ignored. Applied below, once the HUD window exists.
+  const hud = openHudPrefs((config as { overlay?: unknown }).overlay)
   showWifiName = config.network?.showWifiName === true
   screenshotAgent.configure({
     identity: opening,
@@ -1121,10 +1123,17 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
     } catch { /* transient sqlite errors already surface through DB error path */ }
   }, 5 * 60 * 1000)
 
+  // Every open honours autoShow, not only the first: closing a project hides
+  // the HUD (stopProject), so this is what brings it back.
+  const showHud = hud.autoShow && !(process.env.REDLOG_E2E === '1' && process.env.REDLOG_E2E_HIDE_HUD === '1')
   if (!overlayWindow) {
-    const hideHudForTest = process.env.REDLOG_E2E === '1' && process.env.REDLOG_E2E_HIDE_HUD === '1'
-    overlayWindow = createOverlayWindow(loadOverlayPosition(), { show: config.overlay?.autoShow !== false && !hideHudForTest })
+    overlayWindow = createOverlayWindow(loadOverlayPosition(), { show: showHud })
     bindOverlayReleaseShortcut(overlayWindow.webContents)
+    // Every way the HUD is shown or hidden (tray, HUD button, project close)
+    // ends in one of these, and the release chord follows its visibility.
+    overlayWindow.on('show', syncReleaseShortcut)
+    overlayWindow.on('hide', syncReleaseShortcut)
+    overlayWindow.on('closed', syncReleaseShortcut)
     // §8: remember where the operator put it, per display. `moved` fires
     // throughout a drag, so debounce to the end of it.
     let moveTimer: ReturnType<typeof setTimeout> | null = null
@@ -1137,19 +1146,15 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
     // Dock preference whenever the overlay appears so it isn't silently changed.
     if (process.platform === 'darwin') {
       overlayWindow.on('show', applyDock)
-      applyDock()
       setTimeout(applyDock, 250)
     }
-    configureOverlayState({
-      passThrough: !!config.overlay?.passThrough,
-      opacity: config.overlay?.passThroughOpacity ?? 0.4
-    })
-    if (tray) {
-      tray.destroy()
-      tray = createTray(mainWindow!, overlayWindow, toggleRecording, triggerBookmark, () => setOverlayPassThrough(false))
-      setTrayRecording(tray, !eventBus.paused)
-    }
+  } else if (showHud && !overlayWindow.isDestroyed() && !overlayWindow.isVisible()) {
+    overlayWindow.showInactive()
+    send(mainWindow, 'overlay:visibilityChanged', true)
   }
+  // Dock, tray menu, and the HUD's own settings and pass-through.
+  applyHudPrefs()
+  if (tray) setTrayRecording(tray, !eventBus.paused)
 
   // Capture starts with the project.
   //
@@ -1238,6 +1243,19 @@ function stopProject(): void {
   clean(resetBodiesDirCache)
   clean(resetCausesResolver)
   clean(() => configureIngest({ activeTarget: null }))
+  // With no project nothing is recorded, so nothing may say it is: the HUD's
+  // REC and its frozen IP verdict go away (the next open shows it again per
+  // autoShow) and the tray goes to its idle icon. The exposure is forgotten
+  // with the verdict, so the next project's first exposed tick is a change.
+  clean(() => handleIpExposedChange(false))
+  clean(() => {
+    if (overlayWindow && !overlayWindow.isDestroyed() && overlayWindow.isVisible()) {
+      overlayWindow.hide()
+      syncReleaseShortcut()
+      send(mainWindow, 'overlay:visibilityChanged', false)
+    }
+  })
+  clean(() => { if (tray) setTrayRecording(tray, null) })
   if (failed) throw firstError
 }
 
@@ -1418,7 +1436,7 @@ app.whenReady().then(() => {
     }
   })
 
-  tray = createTray(mainWindow, null, toggleRecording, triggerBookmark, () => setOverlayPassThrough(false))
+  tray = createTray(mainWindow, () => overlayWindow, toggleRecording, triggerBookmark, () => setOverlayPassThrough(false), isOverlayPassThrough)
 
   // Renderer-requested native menus (the terminal's right-click — xterm owns
   // its own selection, so Chromium's context-menu event sees nothing there).
@@ -1438,7 +1456,16 @@ app.whenReady().then(() => {
     hudMarkerBinding: () => (projectRuntime.project() ? projectRuntime.current()?.engagementId ?? null : null),
     onPluginsChanged: () => { const dir = openProjectDir(); if (dir) applyCapturePacks(loadConfig(dir)) }
   }
-  registerOverlayIpc(ipcMain, ipcCtx)
+  registerOverlayIpc(ipcMain, ipcCtx, {
+    prefsDir: path.join(homedir(), '.redlog'),
+    onPrefsApplied: (p) => {
+      keepDockIcon = p.showInDock
+      applyDock()
+      refreshTrayMenu(tray)
+    }
+  })
+  // The tray was built before the stored prefs were read.
+  refreshTrayMenu(tray)
   registerDataExportIpc(ipcMain, ipcCtx, { recentExports: new RecentExportStore(path.join(app.getPath('userData'), 'recent-exports')) })
   registerTerminalIpc(ipcMain, ipcCtx)
   registerPluginsIpc(ipcMain, ipcCtx)
@@ -1550,9 +1577,6 @@ app.whenReady().then(() => {
     // latest stored value prevents that stale form from silently reverting
     // attribution context on its next auto-save.
     newConfig.engagement.activeTarget = oldConfig.engagement.activeTarget ?? null
-    // Same for HUD pass-through: overlay:setPassThrough stores it, and a form
-    // loaded before a ⌘⇧P or HUD toggle must not write the old value back.
-    if (newConfig.overlay) newConfig.overlay.passThrough = oldConfig.overlay?.passThrough === true
     // Captured BEFORE the save so the recompute can say what the boundary was.
     const beforeScope = snapshotScope(oldConfig)
     // Before the save, so what is saved is the operator actually in effect (a
@@ -1568,14 +1592,12 @@ app.whenReady().then(() => {
     // when scope loosened or the IP blacklist changed. Only diffs the fields
     // that affect enforcement or attribution; cosmetic changes stay silent.
     const configChangedId = logConfigDiff(oldConfig, newConfig)
-    keepDockIcon = newConfig.overlay?.showInDock !== false
     // docs/TESTING.md §5.6: turning the SSID off applies now, not at the next poll.
     if (showWifiName !== (newConfig.network?.showWifiName === true)) {
       showWifiName = newConfig.network?.showWifiName === true
       publishLink()
       broadcastIPStatus(alertRuntime.ipStatus())
     }
-    applyDock()
     const targets = snapshotScope(newConfig).targets
     alertRuntime.configure(newConfig, open, targets)
     screenshotAgent.configure({
@@ -1625,18 +1647,6 @@ app.whenReady().then(() => {
     applyCapturePacks(newConfig)
     if (newConfig.redaction) configureRedaction(newConfig.redaction)
     setVpnAdapters(newConfig.network.vpnAdapters)
-    // The HUD reads its config once at mount — push overlay settings so toggling
-    // "show Mark button" takes effect live instead of only after a restart.
-    send(overlayWindow, 'overlay:showMark', newConfig.overlay?.showMarkButton !== false)
-    send(overlayWindow, 'overlay:flashExposed', newConfig.overlay?.flashOnExposed !== false)
-    send(overlayWindow, 'overlay:scale', newConfig.overlay?.scale ?? 1.0)
-    send(overlayWindow, 'overlay:emphasizeIp', newConfig.overlay?.emphasizeExternalIp === true)
-    // A save changes the opacity only. Pass-through keeps its runtime state, so
-    // an unrelated autosave cannot re-ghost a HUD an exposure alarm just woke.
-    configureOverlayState({
-      passThrough: isOverlayPassThrough(),
-      opacity: newConfig.overlay?.passThroughOpacity ?? 0.4
-    })
     return true
   }
   ipcMain.handle('config:save', (_e, newConfig: RedLogConfig, opts?: { expectProjectId?: string }) =>
@@ -1852,8 +1862,7 @@ app.whenReady().then(() => {
     const project = projectRuntime.project()
     if (!project) return null
     const projectDir = getProjectPath(project)
-    const config = loadConfig(projectDir)
-    const profile = { version: 1, ...config }
+    const profile = exportableProfile(loadConfig(projectDir))
     const result = await dialog.showSaveDialog(mainWindow!, {
       defaultPath: `redlog-profile-${project.name.replace(/[^a-z0-9]/gi, '-')}.yaml`,
       filters: [
@@ -1862,12 +1871,7 @@ app.whenReady().then(() => {
       ]
     })
     if (result.canceled || !result.filePath) return null
-    const ext = path.extname(result.filePath).toLowerCase()
-    if (ext === '.json') {
-      fs.writeFileSync(result.filePath, JSON.stringify(profile, null, 2))
-    } else {
-      fs.writeFileSync(result.filePath, `# REDLOG Profile — share with your team\n${yaml.dump(profile, { lineWidth: 120 })}`)
-    }
+    writeProfileFile(result.filePath, profile)
     return result.filePath
   })
 
@@ -2035,11 +2039,9 @@ app.whenReady().then(() => {
 
   // --- Quick mark (global shortcut + tray + overlay all route here) ---
   globalShortcut.register(QUICK_MARK_ACCELERATOR, triggerBookmark)
-  // §8: the way back out of click-through. Without it, turning pass-through on
-  // makes the control that turns it off unclickable — the HUD is ghosted, so
-  // the button is behind it — and the only escape is Settings, which the
-  // operator has to know exists.
-  globalShortcut.register(HUD_PASSTHROUGH_ACCELERATOR, () => setOverlayPassThrough(false))
+  // §8's way back out of click-through (⌘⇧P) is registered by ipc/overlay.ts,
+  // and only while pass-through is on: a global chord is taken from every
+  // other application for as long as it is held.
   // Screenshot now, from whatever tool the operator is in. RedLog's own
   // windows (the HUD included) are taken off screen for the grab. A chord
   // another app already owns is not an error worth refusing to start over;

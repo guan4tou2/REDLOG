@@ -120,7 +120,12 @@ function ConfirmDialogInner({ state, close, t }: {
       // Enter only confirms once armed, and never from inside the typed field
       // while it is still wrong — otherwise the gate is one keystroke of
       // muscle memory away from not existing.
-      if (e.key === 'Enter' && armed) { e.preventDefault(); close(true) }
+      // Nor from a focused button: Enter there is that button's own click.
+      // This listener is on the window, so it used to confirm with focus on
+      // Cancel, and its preventDefault suppressed the click that cancels.
+      if (e.key !== 'Enter' || !armed || e.isComposing || e.keyCode === 229) return
+      if ((e.target as HTMLElement | null)?.closest?.('button')) return
+      e.preventDefault(); close(true)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

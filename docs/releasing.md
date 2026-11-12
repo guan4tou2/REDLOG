@@ -18,16 +18,18 @@ Before either phase, a `gate` job refuses the tag unless its commit is reachable
 
 The workflow has two phases:
 
-**build** (matrix macOS + Windows, in parallel):
+**build** (matrix macOS + Windows + Linux, in parallel):
 1. Run tests on each runner (against Node ABI — the default `npm ci` install)
 2. Build renderer + main via `electron-vite build`
 3. Package with `electron-builder --publish never` — it rebuilds native modules (better-sqlite3, node-pty) against the target Electron ABI automatically during packaging, using prebuilt binaries where available:
    - **macOS**: `dmg` and `zip` for arm64 only — `electron-builder.yml` has said Apple Silicon only since v0.9.4, and says why in its own comment
-   - **Windows**: `nsis` installer + `portable` .exe for x64
-4. Upload the installers as workflow artifacts
+   - **Windows**: `nsis` installer for x64 (no portable build)
+   - **Linux**: `deb` for x64
+4. Run `npm run verify:package-resources` against the packaged output
+5. Upload the installers as workflow artifacts
 
-**release** (single job, after both builds):
-5. Download every platform's artifacts and create **one** GitHub Release with all of them via `softprops/action-gh-release`
+**release** (single job, after all builds):
+6. Download every platform's artifacts and create **one** GitHub Release with all of them via `softprops/action-gh-release`
 
 > The build jobs deliberately do NOT publish. Two concurrent `electron-builder --publish always` jobs race to create the release and produce two release objects for one tag — which is how v0.2.1 first shipped mac-only. Collecting artifacts and releasing once avoids the race entirely.
 
@@ -55,7 +57,10 @@ To enable signing, add these secrets and remove `CSC_IDENTITY_AUTO_DISCOVERY: fa
 npm run build && npx electron-builder --mac --publish never
 
 # Windows (on Windows)
-npm run build && npx electron-builder --win --publish never
+npm run build && npx electron-builder --win nsis --x64 --publish never
+
+# Linux (on Linux)
+npm run build && npx electron-builder --linux deb --x64 --publish never
 ```
 
 Output ends up in `dist/`. electron-builder rebuilds native modules for the target Electron ABI internally — you do NOT need to run `npm run rebuild` first (that script is only useful when running `electron-vite dev` locally so better-sqlite3 loads inside the dev-mode Electron process).

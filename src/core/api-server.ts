@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { restrictToOwner } from './fs-acl'
+import { isExternalEventAllowed } from './external-event-policy'
 import { mkdirPrivate } from './private-fs'
 import { queryEvents, queryEventById, queryBuiltinTerminalSessionStart, getEventCount, executeEventQuery, PAUSE_EXEMPT_AGENT_TYPES } from './db/events'
 import { parseQuery } from './query/contract'
@@ -302,24 +303,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         return
       }
       const agentType = String(body.agent_type || body.agentType || 'external')
-      // Types an outside tool may report. The ones deliberately absent are
-      // derived — `system`, `pivot`, `cleanup`, `loot`, `scope_violation` are
-      // written by RedLog's own analysis, and letting a caller forge them
-      // means forging RedLog's conclusions about the engagement.
-      //
-      // `terminal` is here because it is the type in redlog-cli's own help
-      // text (`redlog-cli log terminal --data ...`). Leaving it out 403'd the
-      // documented path; e2e/cli-smoke.spec.ts caught it.
-      const EXTERNAL_ALLOWED_AGENT_TYPES = new Set([
-        'scanner', 'shell', 'terminal', 'dns', 'external', 'agent', 'marker',
-        'process', 'credential_use', 'file_transfer', 'clipboard', 'screenshot',
-        'browser', 'http_navigation',
-        // v0.15: out-of-process pcap producer (hooks/pcap-agent.py) — connection
-        // attempts / SYN scans / non-proxied flow metadata the app-layer proxy
-        // and the established-only connection monitor can't see.
-        'pcap'
-      ])
-      if (!e2eSeed && !EXTERNAL_ALLOWED_AGENT_TYPES.has(agentType)) {
+      // Which types an outside tool may report lives in external-event-policy.ts;
+      // `system` is refused except for the producer heartbeat capture-health reads.
+      if (!e2eSeed && !isExternalEventAllowed(agentType, body.data)) {
         // A 403 an integration ignores is capture silently stopping, which is
         // the one failure §1 does not allow. Record it so a tool posting a
         // blocked type shows up as a capture problem rather than as nothing.
@@ -707,6 +693,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
     if (route === '/api/anchors' && req.method === 'POST') {
       const anchor = await anchorNow()
+      if (anchor && 'skipped' in anchor) { json(res, 409, { skipped: anchor.skipped }); return }
       json(res, anchor ? 201 : 400, { anchor })
       return
     }
@@ -785,6 +772,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     const upgradeMatch = route.match(/^\/api\/anchors\/([^/]+)\/upgrade$/)
     if (upgradeMatch && req.method === 'POST') {
       const result = await upgradeAnchor(decodeURIComponent(upgradeMatch[1]))
+      if (result && 'skipped' in result) { json(res, 200, { skipped: result.skipped }); return }
       json(res, result ? 200 : 404, { anchor: result })
       return
     }

@@ -3,7 +3,8 @@ import { insertEvent } from './db/events'
 import { getPrimaryOperator } from './db/operators'
 import https from 'https'
 import { URL } from 'url'
-import { getDB, openReadOnlyDB, dbGeneration } from './db/index'
+import { getDB, openReadOnlyDB, dbGeneration, getProjectDir } from './db/index'
+import { loadConfig } from './config'
 import { canonicalStringify } from './db/events'
 import { verifyEventSignature } from './signing'
 
@@ -38,6 +39,17 @@ const DEFAULT_CALENDARS = [
 ]
 
 const HTTP_TIMEOUT_MS = 15000
+
+/** Returned instead of a result when `network.offline` (air-gap) is on: no
+ *  request was made and nothing was written. */
+export interface AnchorSkipped { skipped: 'offline' }
+
+// Read from the open project's config on every call, so the periodic loop,
+// the settings button, the local API and the CLI all obey one switch and a
+// change in Settings applies without a restart.
+function airgapped(): boolean {
+  try { return loadConfig(getProjectDir()).network?.offline === true } catch { return false }
+}
 
 interface AnchorRow {
   id: string
@@ -190,7 +202,8 @@ function insertAnchor(a: Omit<ChainAnchor, 'id'>): ChainAnchor {
   return { ...a, id }
 }
 
-export async function anchorNow(calendars: string[] = DEFAULT_CALENDARS): Promise<ChainAnchor | null> {
+export async function anchorNow(calendars: string[] = DEFAULT_CALENDARS): Promise<ChainAnchor | AnchorSkipped | null> {
+  if (airgapped()) return { skipped: 'offline' }
   const head = computeChainHead()
   if (!head) return null
   const opened = dbGeneration()
@@ -342,7 +355,8 @@ function getTimestamp(calendarUrl: string, headHashHex: string): Promise<{ ok: b
   })
 }
 
-export async function upgradeAnchor(id: string): Promise<ChainAnchor | null> {
+export async function upgradeAnchor(id: string): Promise<ChainAnchor | AnchorSkipped | null> {
+  if (airgapped()) return { skipped: 'offline' }
   const existing = getAnchorById(id)
   if (!existing) return null
   const opened = dbGeneration()
@@ -381,7 +395,8 @@ export async function upgradeAnchor(id: string): Promise<ChainAnchor | null> {
   return getAnchorById(id)
 }
 
-export async function upgradeAllPending(): Promise<{ upgraded: number; scanned: number }> {
+export async function upgradeAllPending(): Promise<{ upgraded: number; scanned: number } | AnchorSkipped> {
+  if (airgapped()) return { skipped: 'offline' }
   const anchors = listAnchors(1000).filter((a) => a.calendarReceipts.some((r) => r.ok && !r.upgraded))
   const opened = dbGeneration()
   let upgraded = 0
@@ -389,7 +404,7 @@ export async function upgradeAllPending(): Promise<{ upgraded: number; scanned: 
     // The list is the opening project's: the next project's ids are not in it.
     if (dbGeneration() !== opened) break
     const result = await upgradeAnchor(a.id)
-    if (result && result.calendarReceipts.some((r) => r.upgraded)) upgraded++
+    if (result && 'calendarReceipts' in result && result.calendarReceipts.some((r) => r.upgraded)) upgraded++
   }
   return { upgraded, scanned: anchors.length }
 }

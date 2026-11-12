@@ -80,9 +80,12 @@ describePy('the verifier and paths past MAX_PATH (#258)', () => {
     fs.writeFileSync(path.join(make, 'manifest.sha256'), crypto.createHash('sha256').update(fs.readFileSync(path.join(make, 'manifest.json'))).digest('hex'))
 
     expect(deep.length).toBeGreaterThan(260)
-    const r = spawnSync(python!, [verifier, deep], { encoding: 'utf-8', timeout: SPAWN_MS })
+    // The fixture is about path length, not signing: it has no signed events,
+    // so it can only verify as hash-only, with the unauthenticated verdict.
+    const r = spawnSync(python!, [verifier, '--hash-only', deep], { encoding: 'utf-8', timeout: SPAWN_MS })
     expect(r.error, String(r.error)).toBeUndefined()
     expect(r.status, r.stdout + r.stderr).toBe(0)
+    expect(r.stdout).toContain('NOT AUTHENTICATED')
     expect(r.stdout).toMatch(/Manifest files\s+:\s+1 verified/)
   }, 30_000)
 })

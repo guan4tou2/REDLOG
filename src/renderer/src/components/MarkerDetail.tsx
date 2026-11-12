@@ -81,6 +81,7 @@ export function MarkerDetail(props: MarkerDetailProps): JSX.Element {
   // inputs — so a severity chip with focus would otherwise close the panel
   // mid-edit.
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return
     if (e.key === 'Escape') {
       e.preventDefault(); e.stopPropagation()
       setEditing(false)
@@ -102,7 +103,7 @@ export function MarkerDetail(props: MarkerDetailProps): JSX.Element {
             data-testid="marker-amend-title"
             value={draft.title}
             onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) { e.preventDefault(); e.stopPropagation(); commit() } }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.nativeEvent.isComposing && e.keyCode !== 229) { e.preventDefault(); e.stopPropagation(); commit() } }}
             className="w-full px-2 py-1.5 bg-redlog-bg border border-redlog-border rounded text-sm text-redlog-text focus:outline-none focus:border-redlog-accent"
             aria-label={t('marker.field.title')}
           />

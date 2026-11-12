@@ -5,6 +5,7 @@ import { computeCaptureReadiness, primaryCaptureAction, type CaptureAction } fro
 import { httpCaptureState, type HttpCaptureState } from '../lib/httpCaptureState'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
+import { runMutation } from '../lib/mutation'
 import { useTick } from '../lib/useTick'
 import { clientLabel } from '../../../core/http-verify'
 import { settingsTarget } from '../lib/navigation'
@@ -297,8 +298,18 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
       // Turning one OFF never touches the pack: the other members are not the
       // operator's to lose.
       if (on && s.packPath) writeFlag(s.packPath, true)
-      await window.redlog.config.save(next)
-      onRefresh()
+      // The write is for the project this config was read from; main refuses
+      // it (false) when another is open by now. A refusal or a throw leaves
+      // the row as it was: no refresh, so the switch does not flip.
+      const engagement = cfg.engagement as { id?: string } | undefined
+      const res = await runMutation(
+        () => window.redlog.config.save(next, { expectProjectId: engagement?.id }),
+        { failed: t('capture.actionFailed'), isFailure: (ok) => ok !== true }
+      )
+      if (res.ok) onRefresh()
+    } catch (e) {
+      // The config could not even be read.
+      toast(t('capture.actionFailed'), { type: 'error', detail: e instanceof Error ? e.message : String(e) })
     } finally { setBusy(null) }
   }
 

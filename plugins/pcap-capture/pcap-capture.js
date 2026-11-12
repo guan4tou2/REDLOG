@@ -16,14 +16,16 @@
 
 const { spawn } = require('child_process')
 const fs = require('fs')
-const os = require('os')
 const path = require('path')
 const { parseTcpdumpLine, parseTsharkLine, FlowAggregator } = require('./pcap-parse.js')
 const { pcapSegmentEvent } = require('./pcap-sidecar.js')
+const { resolveRedlogDir } = require('./redlog-dir.js')
 
 const FLUSH_MS = 3000
-const portFile = path.join(os.homedir(), '.redlog', 'api-port')
-const tokenFile = path.join(os.homedir(), '.redlog', 'api-token')
+// Under sudo, os.homedir() is root's home; resolve the invoking operator's.
+const redlogDir = resolveRedlogDir()
+const portFile = path.join(redlogDir, 'api-port')
+const tokenFile = path.join(redlogDir, 'api-token')
 
 function conn() {
   try {

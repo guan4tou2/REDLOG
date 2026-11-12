@@ -20,6 +20,12 @@
 #   REDLOG_REMOTE_PORT=6660   local RedLog API port (default: read from ~/.redlog/api-port)
 #   REDLOG_REMOTE_TOKEN=...   API token (default: read from ~/.redlog/api-token)
 
+# NOT CURRENTLY SUPPORTED. It copies fewer files than the shell hook install
+# plan (hooks-manager getHookInstallPlan): redlog-relay.py and command-class.json
+# are missing from the list below, so a VPS set up by it would not record.
+echo "vps-deploy.sh is not currently supported (it does not copy every file the shell hook needs)." >&2
+exit 1
+
 set -euo pipefail
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"

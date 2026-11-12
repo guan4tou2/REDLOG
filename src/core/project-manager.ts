@@ -135,12 +135,14 @@ export function deleteProject(id: string): boolean {
   const project = index.recent.find((p) => p.id === id)
   if (!project) return false
 
-  index.recent = index.recent.filter((p) => p.id !== id)
-  saveIndex(index)
-
+  // Directory first. If rmSync throws (a locked file, permissions) the index
+  // entry stays, so the project is still listed and can be deleted again,
+  // rather than vanishing from the list while its folder stays on disk.
   if (fs.existsSync(project.path)) {
     fs.rmSync(project.path, { recursive: true, force: true })
   }
+  index.recent = index.recent.filter((p) => p.id !== id)
+  saveIndex(index)
   return true
 }
 

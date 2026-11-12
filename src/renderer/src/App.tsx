@@ -1,5 +1,6 @@
 import type { ContentAnchor } from '../../core/content-contract'
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
+import { flushSync } from 'react-dom'
 import { Button, TITLEBAR_CONTROL, TITLEBAR_ICON } from './components/Button'
 import { useNarrowViewport } from './hooks/useNarrowViewport'
 import { ControlBoundary } from './components/ControlBoundary'
@@ -42,7 +43,7 @@ import type { SettingsPage } from './components/Settings'
 import { isMac } from './lib/platform'
 import { FilterProvider } from './lib/FilterContext'
 import { onRunInTerminal } from './lib/terminalRunner'
-import { closeProjectAfterSaves } from './lib/pendingSaves'
+import { leaveProject } from './lib/pendingSaves'
 import { confirmLeaveProject } from './lib/leaveProject'
 import { addArtifactsWithFeedback, addDroppedWithFeedback } from './lib/addArtifacts'
 import { captureScreenshotWithFeedback } from './lib/captureScreenshot'
@@ -342,11 +343,7 @@ export default function App(): JSX.Element {
               // Closing first let the flush arrive with no project open, where
               // it was refused and nothing said so. A failed save keeps the
               // project open, with the change still on screen to retry.
-              if (!(await closeProjectAfterSaves())) {
-                toast(t('app.closeSaveFailed'), 'error')
-                return
-              }
-              setProject(null)
+              await leaveProject(t, () => flushSync(() => setProject(null)))
             }}
             title={t('app.closeProject')}
           >
@@ -456,8 +453,8 @@ export default function App(): JSX.Element {
             {view === 'timeline' && <TimelinePanel key={project?.id ?? 'no-project'} onOpenInActivity={openInActivity} onOpenActivity={openActivity} focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} tierChip={visibility.tierChip} onDropMarker={(ts) => { setMarkerAtTs(ts); setShowMarker(true) }} />}
             {view === 'screenshots' && <ScreenshotsView onNavigate={navigate} />}
             {(view === 'search' || workspaceProject === project.id) && <div hidden={view !== 'search'} className={view === 'search' ? 'h-full min-h-0' : undefined}><RecordingWorkspace key={project.id} externalQuery={activityQuery} requestedReading={readingRequest} active={view === 'search'} onOpenInTimeline={openInTimeline} onOpenTimeline={openTimeline} /></div>}
-            {view === 'targets' && <TargetView onOpenInTimeline={(ts) => openInTimeline('', ts)} />}
-            {view === 'scope' && <ScopeStatus onOpenInTimeline={(ts) => openInTimeline('', ts)} onOpenSettings={(candidate) => navigate(settingsTarget('scope', { candidate }))} />}
+            {view === 'targets' && <TargetView onOpenInTimeline={(ts, id?: string) => openInTimeline(id ?? '', ts)} />}
+            {view === 'scope' && <ScopeStatus onOpenInTimeline={openInTimeline} onOpenSettings={(candidate) => navigate(settingsTarget('scope', { candidate }))} />}
             {view === 'loot' && <LootPanel onOpenInTimeline={openInTimeline} />}
             {view === 'bookmarks' && <BookmarksView onOpenInTimeline={(ts) => openInTimeline('', ts)} />}
             {view === 'http_history' && <Suspense fallback={<PaneLoading />}><HttpHistoryPanel onOpenInTimeline={openInTimeline} onOpenSettings={() => navigate(settingsTarget('browser'))} /></Suspense>}

@@ -94,7 +94,7 @@ export function setTrayText(tray: Tray | null, raw: unknown): void {
   const ok = TRAY_TEXT_KEYS.every((k) => typeof r[k] === 'string' && (r[k] as string).trim() !== '' && (r[k] as string).length <= 100)
   if (!ok) return
   trayText = Object.fromEntries(TRAY_TEXT_KEYS.map((k) => [k, r[k]])) as unknown as TrayText
-  if (tray) menuBuilders.get(tray)?.(lastRecording.get(tray))
+  refreshTrayMenu(tray)
 }
 
 export function setTrayRecording(tray: Tray, recording: boolean | null): void {
@@ -120,12 +120,19 @@ export function setTrayRecording(tray: Tray, recording: boolean | null): void {
   }
 }
 
+/** Rebuild the menu after something it shows changed: the HUD window came
+ *  into being, or pass-through went on or off. */
+export function refreshTrayMenu(tray: Tray | null): void {
+  if (tray) menuBuilders.get(tray)?.(lastRecording.get(tray))
+}
+
 export function createTray(
   mainWindow: BrowserWindow,
-  overlayWindow: BrowserWindow | null,
+  getOverlayWindow: (() => BrowserWindow | null) | null,
   onToggleRecording?: () => boolean,
   onBookmark?: () => void,
-  onReleasePassThrough?: () => void
+  onReleasePassThrough?: () => void,
+  isPassThroughOn?: () => boolean
 ): Tray {
   const tray = new Tray(getTemplateIcon())
 
@@ -155,14 +162,20 @@ export function createTray(
     if (onToggleRecording) {
       items.push({
         label: recording ? trayText.pause : trayText.resume,
+        // `undefined` is "no project open": nothing is being recorded to pause.
+        enabled: recording !== undefined,
         click: () => setTrayRecording(tray, onToggleRecording())
       })
     }
 
+    // There is no HUD before the first project opens; an item that does
+    // nothing when chosen says so by being disabled.
+    const overlayWindow = getOverlayWindow?.() ?? null
     items.push({
       label: trayText.toggleHud,
+      enabled: !!overlayWindow && !overlayWindow.isDestroyed(),
       click: () => {
-        if (!overlayWindow) return
+        if (!overlayWindow || overlayWindow.isDestroyed()) return
         if (overlayWindow.isVisible()) {
           overlayWindow.hide()
         } else {
@@ -180,6 +193,7 @@ export function createTray(
       items.push({
         label: trayText.releaseHud,
         accelerator: HUD_PASSTHROUGH_ACCELERATOR,
+        enabled: isPassThroughOn?.() ?? true,
         click: () => onReleasePassThrough()
       })
     }

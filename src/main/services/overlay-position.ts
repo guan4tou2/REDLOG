@@ -17,7 +17,10 @@ import path from 'path'
 
 const FILE = path.join(homedir(), '.redlog', 'overlay-position.json')
 
-type Positions = Record<string, { x: number; y: number }>
+/** `at` is when it was saved; entries written before it existed have none. */
+type Saved = { x: number; y: number; at?: number }
+type Positions = Record<string, Saved>
+type Display = { id: number; workArea: { x: number; y: number; width: number; height: number } }
 
 function read(): Positions {
   try {
@@ -29,19 +32,32 @@ function read(): Positions {
   }
 }
 
-/** The remembered position for the display the point is on, if any. */
+/** Of the displays still attached, the one the HUD was most recently put on,
+ *  and where on it. A display that is gone is skipped, and so is a saved
+ *  point that has fallen off its display — it can change resolution, or the
+ *  entry can predate a rearrangement — rather than put the HUD where the
+ *  operator cannot reach it. Ties (old entries with no time) go to the
+ *  primary display. */
+function pickOverlayPosition(saved: Positions, displays: Display[], primaryId: number): { x: number; y: number } | null {
+  let best: { x: number; y: number; at: number; primary: boolean } | null = null
+  for (const d of displays) {
+    const s = saved[String(d.id)]
+    if (!s || typeof s.x !== 'number' || typeof s.y !== 'number') continue
+    const { workArea } = d
+    const inside = s.x >= workArea.x - 8 && s.y >= workArea.y - 8
+      && s.x < workArea.x + workArea.width && s.y < workArea.y + workArea.height
+    if (!inside) continue
+    const at = typeof s.at === 'number' && Number.isFinite(s.at) ? s.at : 0
+    const primary = d.id === primaryId
+    if (!best || at > best.at || (at === best.at && primary && !best.primary)) best = { x: s.x, y: s.y, at, primary }
+  }
+  return best ? { x: best.x, y: best.y } : null
+}
+
+/** The remembered position to open the HUD at, if any still fits a screen. */
 export function loadOverlayPosition(): { x: number; y: number } | null {
   try {
-    const display = screen.getPrimaryDisplay()
-    const saved = read()[String(display.id)]
-    if (!saved || typeof saved.x !== 'number' || typeof saved.y !== 'number') return null
-    // A display can change resolution, or the saved entry can predate a
-    // rearrangement. Anything now off-screen falls back to the default rather
-    // than putting the HUD somewhere the operator cannot reach it.
-    const { workArea } = display
-    const inside = saved.x >= workArea.x - 8 && saved.y >= workArea.y - 8
-      && saved.x < workArea.x + workArea.width && saved.y < workArea.y + workArea.height
-    return inside ? saved : null
+    return pickOverlayPosition(read(), screen.getAllDisplays(), screen.getPrimaryDisplay().id)
   } catch {
     return null
   }
@@ -54,7 +70,7 @@ export function saveOverlayPosition(win: BrowserWindow): void {
     const b = win.getBounds()
     const display = screen.getDisplayNearestPoint({ x: b.x, y: b.y })
     const all = read()
-    all[String(display.id)] = { x: b.x, y: b.y }
+    all[String(display.id)] = { x: b.x, y: b.y, at: Date.now() }
     fs.mkdirSync(path.dirname(FILE), { recursive: true })
     fs.writeFileSync(FILE, JSON.stringify(all, null, 2))
   } catch {

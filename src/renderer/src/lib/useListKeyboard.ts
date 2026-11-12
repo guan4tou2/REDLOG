@@ -97,6 +97,9 @@ export function useListKeyboard(opts: ListKeyboardOptions): ListKeyboard {
       case 'End': return move(count - 1)
       case 'Enter': {
         if (index < 0) return
+        // A button, link or field inside the row owns its own Enter.
+        const inner = (e.target as HTMLElement | null)?.closest?.('button, a, input, select, textarea, [role="button"]') as HTMLElement | null
+        if (inner && inner !== e.currentTarget && !rows.current.includes(inner)) return
         e.preventDefault()
         if (e.metaKey || e.ctrlKey) onJumpToTimeline?.(index)
         else onActivate?.(index)

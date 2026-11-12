@@ -110,7 +110,7 @@ describe('project summary', () => {
     const state = await screen.findByTestId('dashboard-scope-state')
     expect(state.textContent).toBe('Not set')
     fireEvent.click(screen.getByTestId('dashboard-view-scope'))
-    expect(go).toHaveBeenCalledWith('targets')
+    expect(go).toHaveBeenCalledWith('scope')
   })
 
   it('shows the rule count once a scope exists, and the project id and operator', async () => {

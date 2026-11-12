@@ -75,3 +75,9 @@ export function issueUrl(repo: string, title: string, diagnostics: string): stri
   const body = ['<!-- What were you doing when this happened? -->', '', '```', diagnostics, '```'].join('\n')
   return `https://github.com/${repo}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`
 }
+
+/** The issue title, scrubbed like the body: an error message can carry a path or the project name. */
+export function crashTitle(label: string | undefined, error: { message: string }, project?: string): string {
+  const message = scrubPath(scrubNames(error.message, { project })).slice(0, 80)
+  return `${label ?? 'View'} crashed: ${message}`
+}

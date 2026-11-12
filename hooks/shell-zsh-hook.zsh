@@ -493,31 +493,6 @@ _redlog_preexec() {
     "{\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"class\":\"$_REDLOG_CMD_CLASS\",\"source\":\"$_REDLOG_EVENT_SOURCE\"$_REDLOG_CMD_CAPTURE}"
 }
 
-# FR-009. The commands run either way — that part has always worked, silently,
-# and silence is the bug. An operator whose RedLog crashed two hours ago has
-# been working unrecorded with no way to know.
-#
-# Once, though, and only on the way in. A warning on every prompt is one an
-# operator learns to read past, and then the one that matters is read past too.
-# The flag is a shell variable on purpose: "have I said this in this shell" is
-# not state that should survive a subshell, unlike the stop (FR-022).
-_redlog_warn_unreachable() {
-  if _redlog_is_running; then
-    _REDLOG_WARNED_UNREACHABLE=""
-    return
-  fi
-  [[ -n "${_REDLOG_WARNED_UNREACHABLE:-}" ]] && return
-  _REDLOG_WARNED_UNREACHABLE=1
-  # The text of each command is still kept for replay (#315) — `_redlog_send_event`
-  # spools it with nowhere to send it — but not what it printed, which only a
-  # live relay can hold. Saying "unrecorded" would be the other way to mislead.
-  if [[ ! -s "$(_redlog_identity_file)" ]]; then
-    print -u2 -- "[redlog] RedLog is not reachable — no project is open; commands and output are not being saved"
-  else
-    print -u2 -- "[redlog] RedLog is not reachable — commands are running without live recording; their text is kept for replay, their output is not"
-  fi
-}
-
 _redlog_precmd() {
   local exit_code=$?
   # Once per shell, at the first prompt and ahead of the early return below,
@@ -526,9 +501,9 @@ _redlog_precmd() {
   # down, or this shell stopped) each prompt runs the same recording check that
   # preexec already pays per command, so a stopped shell costs nothing new.
   if [[ -z "${_REDLOG_TOOLS_REPORTED:-}" ]]; then _redlog_report_tools; fi
-  [[ -n "$_REDLOG_LAST_CMD" ]] || return
-
-  _redlog_warn_unreachable
+  # No command, but a send may still have dropped something (a project-switch
+  # row, `redlog stop` itself): said here, or at the end below.
+  [[ -n "$_REDLOG_LAST_CMD" ]] || { _redlog_warn_unsaved; return 1; }
 
   local duration=0
   [[ -n "$_REDLOG_CMD_START" ]] && duration=$(( EPOCHSECONDS - _REDLOG_CMD_START ))
@@ -582,6 +557,9 @@ _redlog_precmd() {
   _REDLOG_CMD_ID=""
   _REDLOG_CMD_CLASS=""
   _REDLOG_CMD_CAPTURE=""
+  # After the descriptors are back, so the line reaches the terminal rather
+  # than the relay, and after command_end, whose outcome it includes.
+  _redlog_warn_unsaved 1
   return $exit_code
 }
 

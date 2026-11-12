@@ -14,7 +14,7 @@
 // curl, the two commands the POSIX adapter needs and win32 never uses, so on
 // Windows the "what is missing" list was empty by construction.
 
-import { execFile } from 'child_process'
+import { execFile, execFileSync } from 'child_process'
 
 export interface PowerShellPolicy {
   /** The shell that was asked — 5.1 and 7 can have different policies. */
@@ -76,4 +76,34 @@ export function readExecutionPolicy(
       }
     )
   })
+}
+
+/** Where PowerShell really reads its profile from. The conventional
+ *  `%USERPROFILE%\Documents\…` is wrong whenever Documents is redirected
+ *  (OneDrive Known Folder Move is the common case): the hook would be written
+ *  where PowerShell never looks while the UI said "installed".
+ *
+ *  Synchronous, because install, detect and uninstall are. Same probe shape as
+ *  `readExecutionPolicy` — `-NoProfile -NonInteractive`, the same timeout,
+ *  windowsHide — and the same contract: null means "not asked" (not Windows,
+ *  shell missing, timeout, output that is not one absolute .ps1 path), and the
+ *  caller falls back to the conventional path. */
+export function readProfilePath(
+  shell: string,
+  opts: { platform?: NodeJS.Platform } = {}
+): string | null {
+  const platform = opts.platform ?? process.platform
+  if (platform !== 'win32') return null
+  if (shell !== 'pwsh' && shell !== 'powershell') return null
+  try {
+    const out = String(execFileSync(
+      shell,
+      ['-NoProfile', '-NonInteractive', '-Command', '$PROFILE.CurrentUserCurrentHost'],
+      { timeout: PROBE_TIMEOUT_MS, windowsHide: true, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
+    )).trim()
+    if (!out || /[\r\n]/.test(out) || !/^[A-Za-z]:[\\/]|^\\\\/.test(out) || !/\.ps1$/i.test(out)) return null
+    return out
+  } catch {
+    return null
+  }
 }

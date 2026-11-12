@@ -22,7 +22,7 @@ function install(getActive: () => Promise<Pivot[]>): void {
       autosize: vi.fn(), hide: vi.fn(), mouseEnter: vi.fn(), mouseLeave: vi.fn(), setPassThrough: vi.fn(),
       releaseFocus: vi.fn(), addMarker: vi.fn(), quickMark: vi.fn(), onInteractive: vi.fn(() => unsub)
     },
-    config: { get: async () => ({ overlay: {} }) },
+    config: { getPrefs: async () => ({}) },
     ip: { getStatus: async () => ({ externalIP: '203.0.113.18', internalIP: '10.0.2.15', ipSafety: 'unknown', lastCheck: NOW }), onStatus: () => unsub },
     recording: { get: async () => null, onChange: () => unsub },
     pivots: { getActive, onChange: () => unsub }

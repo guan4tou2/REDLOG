@@ -164,9 +164,7 @@ test.describe.serial('HUD size stability', () => {
 
     const setScale = async (sc: number): Promise<void> => {
       await main2.evaluate(async (s2) => {
-        const api = (window as unknown as { redlog: { config: { get: () => Promise<Record<string, unknown>>; save: (c: unknown) => Promise<unknown> } } }).redlog.config
-        const cfg = await api.get()
-        await api.save({ ...cfg, overlay: { ...(cfg.overlay as Record<string, unknown> ?? {}), scale: s2 } })
+        await window.redlog.hudPrefs.set({ scale: s2 })
       }, sc)
       await hud2.waitForTimeout(500)
     }
@@ -250,7 +248,7 @@ test('the release chord works in main and HUD windows without enabling it again'
     const hud = app.windows().find(w => w.url().includes('overlay'))!
     for (const target of [page, hud]) {
       await page.evaluate(() => window.redlog.overlay.setPassThrough(true))
-      await expect.poll(() => page.evaluate(async () => (await window.redlog.config.get())?.overlay?.passThrough)).toBe(true)
+      await expect.poll(() => page.evaluate(async () => (await window.redlog.hudPrefs.get()).passThrough)).toBe(true)
       const window = await app.browserWindow(target)
       await window.evaluate(w => { w.setFocusable(true); w.show(); w.focus() })
       await target.bringToFront()
@@ -260,9 +258,9 @@ test('the release chord works in main and HUD windows without enabling it again'
         w.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'P', modifiers })
       })
       await release()
-      await expect.poll(() => page.evaluate(async () => (await window.redlog.config.get())?.overlay?.passThrough)).toBe(false)
+      await expect.poll(() => page.evaluate(async () => (await window.redlog.hudPrefs.get()).passThrough)).toBe(false)
       await release()
-      expect((await page.evaluate(() => window.redlog.config.get()))?.overlay?.passThrough).toBe(false)
+      expect((await page.evaluate(() => window.redlog.hudPrefs.get())).passThrough).toBe(false)
     }
   } finally { await app.close() }
 })

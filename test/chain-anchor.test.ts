@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -166,5 +166,38 @@ describeDB('chain-anchor', () => {
       await anchor.anchorNow([])
       expect(anchor.listAnchors(0)).toEqual([])
     })
+  })
+})
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+
+describeDB('chain-anchor air-gap', () => {
+  let tmpDir: string
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-anchor-air-'))
+    initDB(tmpDir)
+    insertEvent('shell', { command: 'ls' })
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+    closeDB()
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  it('anchorNow, upgradeAnchor and upgradeAllPending make no request when network.offline is on', async () => {
+    fs.writeFileSync(path.join(tmpDir, 'config.yaml'), 'network:\n  offline: true\n')
+    const https = (await import('https')).default
+    const spy = vi.spyOn(https, 'request').mockImplementation((() => { throw new Error('network call while offline') }) as never)
+    expect(await anchor.anchorNow()).toEqual({ skipped: 'offline' })
+    expect(await anchor.upgradeAnchor('any-id')).toEqual({ skipped: 'offline' })
+    expect(await anchor.upgradeAllPending()).toEqual({ skipped: 'offline' })
+    expect(spy).not.toHaveBeenCalled()
+    expect(anchor.listAnchors().length).toBe(0)
+  })
+
+  it('still attempts the network when offline is off', async () => {
+    const https = (await import('https')).default
+    const spy = vi.spyOn(https, 'request').mockImplementation((() => { throw new Error('reached network') }) as never)
+    await expect(anchor.anchorNow(['https://cal.invalid'])).rejects.toThrow('reached network')
+    expect(spy).toHaveBeenCalled()
   })
 })

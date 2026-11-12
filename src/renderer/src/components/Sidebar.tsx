@@ -87,7 +87,9 @@ export default function Sidebar({ active, onNavigate, projectId }: SidebarProps)
     return () => window.removeEventListener(SIDEBAR_COLLAPSED_EVENT, onChange)
   }, [])
 
-  const onItemClick = useCallback((id: string) => onNavigate(id), [onNavigate])
+  // With violations standing, the Targets & Scope row lands on the scope tab,
+  // where they are listed, instead of on the target list.
+  const onItemClick = useCallback((id: string) => onNavigate(id === 'targets' && scopeObservations > 0 ? 'scope' : id), [onNavigate, scopeObservations])
 
   // Both widths are arithmetic, not round numbers.
   //

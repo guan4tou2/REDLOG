@@ -1,43 +1,46 @@
-import { useEffect } from 'react'
-import { FieldGroup, isMacOS, type ConfigState } from './SettingsShared'
+import { useEffect, useState } from 'react'
+import { FieldGroup, isMacOS } from './SettingsShared'
 import { CheckRow } from './CheckRow'
+import type { HudPrefs } from '../../../../core/hud-prefs'
 
-export default function HudPage({
-  config, setConfig, t
-}: {
-  config: ConfigState
-  setConfig: (c: ConfigState) => void
+export default function HudPage({ t }: {
   t: (key: string, vars?: Record<string, string | number>) => string
-}): JSX.Element {
-  // Pass-through is stored by overlay:setPassThrough whichever control changed
-  // it — this box, the HUD button, ⌘⇧P, the menu bar — so mirror the change.
-  useEffect(() => window.redlog?.overlay?.onPassThroughChanged?.((on) => {
-    setConfig({ ...config, overlay: { ...config.overlay, passThrough: on } })
-  }), [config, setConfig])
-  const setPassThrough = (on: boolean): void => {
-    setConfig({ ...config, overlay: { ...config.overlay, passThrough: on } })
-    window.redlog.overlay.setPassThrough(on)
+}): JSX.Element | null {
+  // Machine-wide, so read and written through their own IPC rather than the
+  // project autosave. Every control that changes them — this page, the HUD
+  // button, ⌘⇧P, the menu bar — announces the result, and this mirrors it.
+  const [prefs, setPrefs] = useState<HudPrefs | null>(null)
+  useEffect(() => {
+    let live = true
+    window.redlog.hudPrefs.get().then((p) => { if (live) setPrefs(p) }).catch(() => {})
+    const off = window.redlog.hudPrefs.onChanged((p) => setPrefs(p))
+    return () => { live = false; off() }
+  }, [])
+  if (!prefs) return null
+  const set = (partial: Partial<HudPrefs>): void => {
+    setPrefs({ ...prefs, ...partial })
+    window.redlog.hudPrefs.set(partial).then(setPrefs).catch(() => {})
   }
   return (
     <>
       <FieldGroup title={t('settings.overlayGroup')}>
         <CheckRow
           inputTestId="settings-overlay-autoshow"
-          checked={config.overlay?.autoShow !== false}
-          onChange={(on) => setConfig({ ...config, overlay: { ...config.overlay, autoShow: on } })}
+          checked={prefs.autoShow}
+          onChange={(on) => set({ autoShow: on })}
           label={t('settings.overlayAutoShow')}
         />
         <p className="text-xs text-redlog-text-faint mb-2">
           {isMacOS ? t('settings.overlayAutoShowHint') : t('settings.overlayAutoShowHintTray')}
         </p>
         <CheckRow
-          checked={config.overlay?.showMarkButton !== false}
-          onChange={(on) => setConfig({ ...config, overlay: { ...config.overlay, showMarkButton: on } })}
+          checked={prefs.showMarkButton}
+          onChange={(on) => set({ showMarkButton: on })}
           label={t('settings.overlayShowMark')}
         />
         <CheckRow
-          checked={config.overlay?.flashOnExposed !== false}
-          onChange={(on) => setConfig({ ...config, overlay: { ...config.overlay, flashOnExposed: on } })}
+          checked={prefs.flashOnExposed}
+          onChange={(on) => set({ flashOnExposed: on })}
           label={t('settings.overlayFlashExposed')}
         />
 
@@ -52,7 +55,7 @@ export default function HudPage({
               { v: 1.5, k: 'settings.overlayScale.xlarge' },
               { v: 1.75, k: 'settings.overlayScale.xxl' }
             ]
-            const cur = config.overlay?.scale ?? 1.0
+            const cur = prefs.scale
             const nearest = stops.reduce((a, b) => Math.abs(cur - a.v) < Math.abs(cur - b.v) ? a : b)
             const index = stops.indexOf(nearest)
             return (
@@ -66,7 +69,7 @@ export default function HudPage({
                   value={index}
                   onChange={(e) => {
                     const v = stops[Number(e.target.value)].v
-                    setConfig({ ...config, overlay: { ...config.overlay, scale: v } })
+                    set({ scale: v })
                   }}
                   className="accent-red-600 w-full h-8"
                   list="hud-scale-stops"
@@ -84,7 +87,7 @@ export default function HudPage({
                       aria-pressed={index === i}
                       style={{ left: `${i / (stops.length - 1) * 100}%` }}
                       className={`absolute -translate-x-1/2 whitespace-nowrap min-h-8 min-w-8 text-xs ${index === i ? 'text-red-400' : 'text-redlog-text-faint hover:text-redlog-text-dim'}`}
-                      onClick={() => setConfig({ ...config, overlay: { ...config.overlay, scale: s.v } })}
+                      onClick={() => set({ scale: s.v })}
                     >{t(s.k)}</button>
                   ))}
                 </div>
@@ -94,20 +97,20 @@ export default function HudPage({
         </div>
 
         <CheckRow
-          checked={config.overlay?.emphasizeExternalIp === true}
-          onChange={(on) => setConfig({ ...config, overlay: { ...config.overlay, emphasizeExternalIp: on } })}
+          checked={prefs.emphasizeExternalIp}
+          onChange={(on) => set({ emphasizeExternalIp: on })}
           label={t('settings.overlayEmphasizeIp')}
         />
 
         <CheckRow
-          checked={config.overlay?.passThrough === true}
-          onChange={setPassThrough}
+          checked={prefs.passThrough}
+          onChange={(on) => set({ passThrough: on })}
           label={t('settings.overlayPassThrough')}
         />
         <p className="text-xs text-redlog-text-faint">
           {isMacOS ? t('settings.overlayPassThroughHint') : t('settings.overlayPassThroughHintTray')}
         </p>
-        {config.overlay?.passThrough === true && (
+        {prefs.passThrough && (
           <div className="mt-2 flex items-center gap-3 pl-6">
             <span className="text-xs text-redlog-text-dim">{t('settings.overlayPassThroughOpacity')}</span>
             <input
@@ -115,19 +118,19 @@ export default function HudPage({
               min="0.1"
               max="0.9"
               step="0.05"
-              value={config.overlay?.passThroughOpacity ?? 0.4}
-              onChange={(e) => setConfig({ ...config, overlay: { ...config.overlay, passThroughOpacity: parseFloat(e.target.value) } })}
+              value={prefs.passThroughOpacity}
+              onChange={(e) => set({ passThroughOpacity: parseFloat(e.target.value) })}
               className="accent-red-600 w-40 h-8"
             />
-            <span className="text-xs text-redlog-text-dim font-mono tabular-nums w-10">{Math.round((config.overlay?.passThroughOpacity ?? 0.4) * 100)}%</span>
+            <span className="text-xs text-redlog-text-dim font-mono tabular-nums w-10">{Math.round(prefs.passThroughOpacity * 100)}%</span>
           </div>
         )}
 
         {isMacOS && (
           <>
             <CheckRow
-              checked={config.overlay?.showInDock !== false}
-              onChange={(on) => setConfig({ ...config, overlay: { ...config.overlay, showInDock: on } })}
+              checked={prefs.showInDock}
+              onChange={(on) => set({ showInDock: on })}
               label={t('settings.overlayShowInDock')}
             />
             <p className="text-xs text-redlog-text-faint">{t('settings.overlayShowInDockHint')}</p>

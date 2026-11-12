@@ -3,6 +3,8 @@ import type { ReactNode } from 'react'
 import type { EventFilter } from '../../../core/db/events'
 import { formatTime, formatDate, formatDateTime } from './time'
 import { agentTypeLabel } from './timelineDomain'
+import { mergeKnownAgentTypes, mergeKnownTargets, type KnownTarget } from './knownLists'
+import { useRevalidateOnFocus } from '../hooks/useRevalidateOnFocus'
 
 export interface TimeRange {
   since?: number
@@ -149,7 +151,7 @@ const FilterContext = createContext<FilterContextValue>({
 
 export function FilterProvider({ children }: { children: ReactNode }): JSX.Element {
   const [filter, setFilter] = useState<SharedFilter>(EMPTY)
-  const [knownTargets, setKnownTargets] = useState<Array<{ target: string; eventCount: number }>>([])
+  const [knownTargets, setKnownTargets] = useState<KnownTarget[]>([])
   const [knownAgentTypes, setKnownAgentTypes] = useState<string[]>([])
   const [scopeTargets, setScopeTargets] = useState<string[]>([])
   const [scopeExcludeTargets, setScopeExcludeTargets] = useState<string[]>([])
@@ -158,7 +160,6 @@ export function FilterProvider({ children }: { children: ReactNode }): JSX.Eleme
   const [listsStatus, setListsStatus] = useState<ListsStatus>('loading')
   const [scopeStatus, setScopeStatus] = useState<ListsStatus>('loading')
 
-  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // A late reply must not write into a provider that has gone away — the
   // provider unmounts when the project closes, so a reply in flight then
   // belongs to a project that is no longer open.
@@ -172,22 +173,41 @@ export function FilterProvider({ children }: { children: ReactNode }): JSX.Eleme
     return () => { live.current = false }
   }, [])
 
-  const refreshLists = useCallback(() => {
+  // Batches that arrived while a full read was in flight. The read may have
+  // been taken before they were written, so its reply is topped up with any
+  // target or type they add — presence only, since it may have counted them.
+  // Null while no read is in flight.
+  const sinceRead = useRef<RedLogEvent[] | null>(null)
+  // Only the newest full read is applied: a retry starts one even while another
+  // is in flight, and the older reply is then dropped.
+  const readGen = useRef(0)
+
+  const refreshLists = useCallback((opts: { ifIdle?: boolean } = {}) => {
+    if (opts.ifIdle && sinceRead.current) return
+    const gen = ++readGen.current
+    const buffered: RedLogEvent[] = []
+    sinceRead.current = buffered
+    const current = (): boolean => live.current && gen === readGen.current
     // A failure keeps whatever loaded before rather than blanking the menus:
     // stale-and-labelled beats empty-and-silent, which reads as "no data".
     const targets = window.redlog.events.aggregateTargets()
       .then((rows) => {
-        if (live.current) setKnownTargets(rows.map((r) => ({ target: r.target, eventCount: r.eventCount })))
+        if (!current()) return
+        const read = rows.map((r) => ({ target: r.target, eventCount: r.eventCount, lastSeen: r.lastSeen }))
+        setKnownTargets(mergeKnownTargets(read, buffered, 'presence'))
       })
     const types = (window.redlog.events as { distinctAgentTypes?: () => Promise<string[]> })
       .distinctAgentTypes?.()
-      .then((list) => { if (live.current) setKnownAgentTypes(list ?? []) })
+      .then((list) => { if (current()) setKnownAgentTypes(mergeKnownAgentTypes(list ?? [], buffered)) })
       ?? Promise.resolve()
     void Promise.allSettled([targets, types]).then((results) => {
+      if (gen !== readGen.current) return
+      sinceRead.current = null
       if (!live.current) return
       setListsStatus(results.some((r) => r.status === 'rejected') ? 'error' : 'ready')
     })
   }, [])
+  const refreshListsOnFocus = useCallback(() => refreshLists({ ifIdle: true }), [refreshLists])
 
   const refreshScope = useCallback((): void => {
     window.redlog.config.get().then((c) => {
@@ -206,20 +226,19 @@ export function FilterProvider({ children }: { children: ReactNode }): JSX.Eleme
     return () => window.removeEventListener('redlog:config-saved', refreshScope)
   }, [refreshScope])
 
+  // Read in full on mount — the provider mounts with each open project — and
+  // when the operator comes back to the window. In between, each live batch
+  // adds what it carries: the full read used to follow every batch by two
+  // seconds for as long as anything was recording, on every view.
   useEffect(() => {
     refreshLists()
-    const unsub = window.redlog.events.onNewBatch(() => {
-      if (refreshTimer.current) return
-      refreshTimer.current = setTimeout(() => {
-        refreshTimer.current = null
-        refreshLists()
-      }, 2000)
+    return window.redlog.events.onNewBatch((events) => {
+      sinceRead.current?.push(...events)
+      setKnownTargets((prev) => mergeKnownTargets(prev, events))
+      setKnownAgentTypes((prev) => mergeKnownAgentTypes(prev, events))
     })
-    return () => {
-      unsub()
-      if (refreshTimer.current) clearTimeout(refreshTimer.current)
-    }
   }, [refreshLists])
+  useRevalidateOnFocus(refreshListsOnFocus, { minIntervalMs: 5_000 })
 
   const setTargetId = useCallback((id: string | null) => {
     setFilter((prev) => ({ ...prev, targetId: id }))

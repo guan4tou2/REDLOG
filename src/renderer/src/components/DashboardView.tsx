@@ -311,7 +311,7 @@ export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v
                     ? t('dashboard.scopeNotSet')
                     : t(excludeCount > 0 ? 'dashboard.targetsExcluding' : 'dashboard.targets', { count: scopeCount, excluded: excludeCount })}
                 </span>
-                <Button size="compact" className="ml-3" data-testid="dashboard-view-scope" onClick={() => onNavigate('targets')}>{t('dashboard.viewScope')}</Button>
+                <Button size="compact" className="ml-3" data-testid="dashboard-view-scope" onClick={() => onNavigate('scope')}>{t('dashboard.viewScope')}</Button>
               </SummaryRow>
             </dl>
           </div>

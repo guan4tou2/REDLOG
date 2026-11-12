@@ -10,11 +10,26 @@ directory (or a .zip file) and validates:
      Projections: counts/identities and unchanged row hashes/signatures;
      omitted source rows and transformed source payloads cannot be verified.
 
-Ed25519 checks require optional `cryptography`; without it signature checks
-are explicitly skipped. File checksums are not authenticated source identities.
+Ed25519 checks require the optional `cryptography` module. Hashes alone prove
+only that a bundle is self-consistent: anyone holding it can rewrite events,
+re-hash them and strip the signatures. So once a bundle shows signing was in
+use (any event carries a signature, or any operator in operators.json has a
+signerPubKey), every event must be signed and every signature checkable;
+otherwise verification FAILS. A bundle with no signatures at all gets a
+distinct "NOT AUTHENTICATED" verdict. File checksums are not authenticated
+source identities.
 Exit code 0 = declared verification scope passed; inspect the report's limits.
-Exit code 1 = integrity or signature verification failed.
+Exit code 1 = integrity or signature verification failed (this includes an
+              unsigned event, or a signature that could not be checked, in a
+              bundle where signing was in use).
 Exit code 2 = bundle malformed / files missing / usage error.
+Exit code 3 = hash chain consistent but NOT AUTHENTICATED (nothing signed).
+              Pass --hash-only to accept that and exit 0, with the same verdict.
+              --hash-only also downgrades "unsigned events" and "signature
+              cannot be checked" to that verdict; a signature that fails to
+              verify, a broken chain or a file mismatch still exit 1.
+The SHA-256 fingerprint of each signer public key is printed so it can be
+compared out of band; OpenTimestamps receipts are not verified here.
 
 No third-party dependencies required for SHA-256 verification.
 Python 3.8+.
@@ -170,6 +185,16 @@ def _load_operators(bundle_dir: Path) -> Dict[str, Optional[str]]:
         return {}
 
 
+def _pubkey_fingerprint(pub_b64: str) -> str:
+    """SHA-256 of the raw public key bytes, for out-of-band comparison."""
+    import base64
+    try:
+        raw = base64.b64decode(pub_b64)
+    except Exception:
+        raw = pub_b64.encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
 def _iter_events(events_path: Path):
     with events_path.open("r", encoding="utf-8") as fh:
         for lineno, line in enumerate(fh, start=1):
@@ -182,7 +207,7 @@ def _iter_events(events_path: Path):
                 raise SystemExit(f"malformed events.jsonl at line {lineno}: {e}")
 
 
-def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
+def verify_bundle(bundle_dir: Path, verbose: bool = False, hash_only: bool = False) -> int:
     manifest_path = bundle_dir / "manifest.json"
     events_path = bundle_dir / "events.jsonl"
 
@@ -253,6 +278,9 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
     signed_skipped_no_dep = 0
     unsigned = 0
     bad_sig_at: Optional[str] = None
+    any_signature = False
+    first_unsigned: Optional[str] = None
+    signers: Dict[str, str] = {}
     last_hash: Optional[str] = None
     bundle_engagement = manifest.get("engagementId")
 
@@ -278,6 +306,9 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
             print(f"CHAIN BROKEN at event {rid}: row has no stored hash",
                   file=sys.stderr)
             return 1
+
+        if row.get("signature"):
+            any_signature = True
 
         # Transformed projections prove the delivered bytes via file digests,
         # not their original payload hash/signature. Never call that a chain.
@@ -322,6 +353,7 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
                     msg = canonical.encode("utf-8")
                     if ed_verify(pub_b64, msg, sig_bytes):
                         signed_ok += 1
+                        signers[op_id] = _pubkey_fingerprint(pub_b64)
                     else:
                         bad_sig_at = rid
                         print(
@@ -332,6 +364,8 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
                         return 1
         else:
             unsigned += 1
+            if first_unsigned is None:
+                first_unsigned = rid
 
         expected_prev = stored_hash
         last_hash = stored_hash
@@ -426,6 +460,40 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
     files_ok = not files_bad and not files_missing
 
     # ---------------------------------------------------------------------
+    # Authentication. The chain is made of hashes anyone can recompute, so on
+    # its own it cannot tell an untouched bundle from a rewritten one. If the
+    # bundle shows signing was in use, a missing or uncheckable signature is
+    # therefore a failure, not a counter.
+    # ---------------------------------------------------------------------
+    signing_declared = any(bool(v) for v in operators.values())
+    signing_in_use = any_signature or signing_declared
+    auth_failures: List[str] = []
+    if signing_in_use:
+        why = "an event carries a signature" if any_signature else "operators.json lists a signer public key"
+        if unsigned:
+            auth_failures.append(
+                f"{unsigned} event(s) carry no signature although signing was in use "
+                f"({why}); first: {first_unsigned}. This is not a bad signature: "
+                f"--hash-only reports the chain without authentication")
+        if signed_no_pubkey:
+            auth_failures.append(
+                f"{signed_no_pubkey} signed event(s) cannot be checked: their operator has "
+                f"no signerPubKey in operators.json")
+        if signed_skipped_no_dep:
+            auth_failures.append(
+                f"{signed_skipped_no_dep} signed event(s) cannot be checked: the "
+                f"`cryptography` module is not installed")
+    unauthenticated = not signing_in_use
+    if hash_only and auth_failures:
+        # Explicitly accepted: the chain is reported, nothing is authenticated.
+        # A signature that FAILED to verify never reaches here (exit 1 above).
+        unauthenticated = True
+        auth_failures_shown = [f"NOT AUTHENTICATED (--hash-only): {m}" for m in auth_failures]
+        auth_failures = []
+    else:
+        auth_failures_shown = [f"AUTHENTICATION FAILED: {m}" for m in auth_failures]
+
+    # ---------------------------------------------------------------------
     # Report
     # ---------------------------------------------------------------------
     print("")
@@ -442,6 +510,10 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
         print(f"Omitted chained  : {source_chain['eventCount'] - walked}")
         print(f"Transformed rows : {len(transformed)} (source payload/signature not verified)")
         print("Projection limits: policy/transformation metadata is exporter-declared")
+    elif auth_failures:
+        print("Chain            : hashes consistent, but AUTHENTICATION FAILED (see below)")
+    elif unauthenticated:
+        print("Chain            : hash chain consistent, NOT AUTHENTICATED")
     else:
         print("Chain            : INTACT")
     if head_ok is True:
@@ -461,6 +533,17 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
             print(f"  no pubkey       : {signed_no_pubkey} (operator missing signerPubKey)")
     if unsigned:
         print(f"Unsigned events  : {unsigned}")
+    for op_id, fp in sorted(signers.items()):
+        print(f"Signer           : {op_id}  sha256:{fp}")
+    if signers:
+        print("  compare these fingerprints with the operator out of band;")
+        print("  a key taken from this bundle only proves the bundle agrees with itself")
+    for line in auth_failures_shown:
+        print(line)
+    if unauthenticated:
+        print("Authentication   : NONE — the events cannot be tied to a signer.")
+        print("                   Anyone holding this bundle could have rewritten its events")
+        print("                   and re-hashed them; the hashes cannot tell.")
     if bad_sig_at:
         print(f"BAD SIGNATURE    : {bad_sig_at}")
     if logged_rows is not None:
@@ -481,8 +564,11 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False) -> int:
             for rel in files_bad:
                 print(f"  sha256 differs  : {rel}")
 
-    if head_ok is False or not files_ok:
+    if head_ok is False or not files_ok or auth_failures:
         return 1
+    if unauthenticated and not hash_only:
+        print("Exit 3: not authenticated. Re-run with --hash-only to accept a hash-chain-only check.")
+        return 3
     return 0
 
 
@@ -502,6 +588,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     p.add_argument("-v", "--verbose", action="store_true",
                    help="Print progress every 500 events")
+    p.add_argument("--hash-only", action="store_true",
+                   help="Report the hash chain without authentication: exit 0 with "
+                        "the 'NOT AUTHENTICATED' verdict instead of exit 3 (no "
+                        "signatures) or 1 (unsigned/uncheckable events). A signature "
+                        "that fails to verify is still a failure")
     args = p.parse_args(argv)
 
     target = Path(_extended_length(str(Path(args.bundle).resolve())))
@@ -519,10 +610,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             root = Path(tmp)
             if len(entries) == 1 and entries[0].is_dir():
                 root = entries[0]
-            return verify_bundle(root, verbose=args.verbose)
+            return verify_bundle(root, verbose=args.verbose, hash_only=args.hash_only)
 
     if target.is_dir():
-        return verify_bundle(target, verbose=args.verbose)
+        return verify_bundle(target, verbose=args.verbose, hash_only=args.hash_only)
 
     print(f"ERROR: {target} is neither a directory nor a .zip", file=sys.stderr)
     return 2

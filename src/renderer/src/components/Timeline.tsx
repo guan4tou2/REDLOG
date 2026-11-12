@@ -25,7 +25,7 @@ import { TimelineLanesHeader, countByLane, laneCountText } from './timeline/Time
 import { TypeLegend } from './timeline/TypeLegend'
 import { TimelineEventInspector } from './timeline/TimelineEventInspector'
 import { TimelineDetailBar } from './timeline/TimelineDetailBar'
-import { resolveTimelineKey } from '../lib/timelineKeys'
+import { KEY_OWNING_CONTROLS, resolveTimelineKey } from '../lib/timelineKeys'
 import { Rows3 } from 'lucide-react'
 import { formatTime } from '../lib/time'
 import { usePersistentState } from '../lib/usePersistentState'
@@ -302,6 +302,23 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // swim-lane track above it. Selection, zoom and hidden lanes live above this
   // switch, so changing mode never discards them. Remembered per project.
   const [timelineMode, setTimelineMode] = useState<TimelineMode>('standard')
+  // v0.6.91 W1: the `/` box. Persisted per project; empty string means "no
+  // filter". Declared here because the load effect below restores it.
+  const [filterQuery, setFilterQuery] = useState('')
+  // How this mount was opened, decided once: later prop changes in the same
+  // mount are navigation inside the panel, not a new arrival.
+  const arrivalRef = useRef<{ kind: 'plain' | 'focus-id' | 'focus-ts'; id?: string }>(
+    focusEventId ? { kind: 'focus-id', id: focusEventId } : { kind: focusTs ? 'focus-ts' : 'plain' }
+  )
+  // A stored query held back on a focus arrival (it may dim the event the
+  // operator jumped to). While set, the box is untouched and an empty box does
+  // not erase the stored value; the operator's first non-empty input clears it.
+  const heldQueryRef = useRef<string | null>(null)
+  const aliveRef = useRef(true)
+  useEffect(() => {
+    aliveRef.current = true
+    return () => { aliveRef.current = false }
+  }, [])
   const settingsLoadedFor = useRef<string | null>(null)
   useEffect(() => {
     // v0.6.100 F5: fall back to `__global__` sentinel when there's no active
@@ -324,7 +341,25 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
     }
     load('redlog-timeline-mode', parseTimelineMode, setTimelineMode)
     load('redlog-timeline-focus-anchor', (s) => s, setFocusAnchorId)
-    load('redlog-timeline-filter-query', (s) => s, setFilterQuery)
+    load('redlog-timeline-filter-query', (s) => s, (stored) => {
+      const { kind, id: focusId } = arrivalRef.current
+      if (!stored || kind === 'plain') { setFilterQuery(stored); return }
+      heldQueryRef.current = stored
+      if (kind !== 'focus-id' || !focusId) return
+      // A return visit (goBack) arrives with the id too: keep the query when
+      // the event it focuses is one the query matches. Same parse and request
+      // shape as the box itself; unparsable or a failed check is "no match".
+      const outcome = stored.trim() ? parseQuery(stored) : null
+      if (!outcome?.ok) return
+      window.redlog.events.matchIds({
+        ids: [focusId], parsed: outcome.parsed, filter: eventFilterRef.current, excludeHousekeeping: true
+      }).then((hit) => {
+        if (!aliveRef.current || heldQueryRef.current !== stored) return
+        if (!hit.includes(focusId)) return
+        heldQueryRef.current = null
+        setFilterQuery(stored)
+      }).catch(() => { /* stays held: box empty, stored value kept */ })
+    })
     load('redlog-timeline-hidden-lanes', (s) => {
       try {
         const arr = JSON.parse(s)
@@ -358,9 +393,12 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
   // filter's target_id, set by the FilterBar or by the Targets page, and the
   // pages above never return a row outside it.
 
-  const [filterQuery, setFilterQuery] = useState('')
   useEffect(() => {
     if (!projectIdForKeys) return
+    if (heldQueryRef.current !== null) {
+      if (!filterQuery) return
+      heldQueryRef.current = null
+    }
     try {
       const scoped = `redlog-timeline-filter-query:${projectIdForKeys}`
       if (filterQuery) localStorage.setItem(scoped, filterQuery)
@@ -467,8 +505,13 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
     setShowJson(false)
     setDneFlag(false)
     if (detailPanelRef.current) detailPanelRef.current.scrollTop = 0
-    if (selectedEvent?.id) {
-      void window.redlog.events.isDoNotExport(selectedEvent.id).then(setDneFlag)
+    const id = selectedEvent?.id
+    if (id) {
+      // A late reply belongs to the event it was asked for, not the one
+      // selected by the time it lands.
+      window.redlog.events.isDoNotExport(id)
+        .then((v) => { if (selectedRef.current?.id === id) setDneFlag(v) })
+        .catch(() => { /* the switch stays off: unknown is not excluded */ })
     }
   }, [selectedEvent?.id])
 
@@ -1342,6 +1385,7 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
       const inField = tag === 'input' || tag === 'textarea' || !!el?.isContentEditable
       const action = resolveTimelineKey(e, {
         inField,
+        ownsKeys: !!el?.matches?.(KEY_OWNING_CONTROLS),
         hasDetail: detailOpen && !!selectedEvent,
         helpOpen: showHelp,
         focusActive: focusAnchorId !== null,
@@ -2703,9 +2747,15 @@ export default function TimelinePanel({ focusEventId, focusTs, onDropMarker, onO
             tierChip={tierChip}
             doNotExport={dneFlag}
             onToggleDoNotExport={() => {
-              void window.redlog.events.toggleDoNotExport(selectedEvent.id).then((v) => {
-                if (v !== null) setDneFlag(v)
-              })
+              const id = selectedEvent.id
+              // The switch moves only on the written value; null is a refusal.
+              const failed = (detail?: string): void => { toast(t('timeline.doNotExportFailed'), { type: 'error', detail }) }
+              window.redlog.events.toggleDoNotExport(id)
+                .then((v) => {
+                  if (v === null) { failed(); return }
+                  if (selectedRef.current?.id === id) setDneFlag(v)
+                })
+                .catch((err: unknown) => failed(err instanceof Error ? err.message : String(err)))
             }}
             onAround={() => setSharedTimeRange(windowAround(selectedEvent.timestamp))}
             operatorLabel={operatorLabel}
