@@ -18,10 +18,10 @@
 | 打包版 CSP | 以回應標頭送出，於未簽章 macOS app 實測在 `file://` 上生效（行內腳本與 `new Function` 被擋）；Windows、Linux 未實測 |
 | HUD 設定 | 全域偏好（`~/.redlog/hud-prefs.json`），不隨專案變動 |
 | AI session 選取 | 依 engagement 保存於記憶體，專案關閉時清除；設定儲存不再清掉（#686） |
-| 搜尋索引 | `http-body-index.db` `user_version` 8（v7 原地遷移，不重讀 body）；驗證狀態、走訪水位、prune 後待重連的事件與 coverage 計數器（觸發器維護）都隨索引保存，啟動後第一次搜尋與 coverage 只做變動部分；每次搜尋仍對每個已驗證檔案 lstat 一次。放寬條件見收尾紀錄 §3 |
-| 戰利品單筆上限 | 一筆 loot 事件最多存 500 個 match，超過時加 `matches_truncated`／`matches_total`，其餘值留給下次出現時記錄（#695） |
+| 搜尋索引 | `http-body-index.db` `user_version` 9（v7、v8 原地遷移，不重讀 body）。驗證狀態、走訪水位、prune 後待重連的事件、抽取規則指紋與 coverage 計數器（觸發器維護）都隨索引保存，水位讀取與寫入在同一個寫入鎖內。**增量**（不逐列走訪）：啟動後第一次搜尋、新列附加、prune 後重連、在較舊快照邊界翻頁、coverage 計算。**仍會全量走訪一次**：第一次建立索引、logged 層 retention 刪掉水位以下的列（或水位那一列被換掉）、較舊的逐字稿快照重新成為最新、`http-bodies`／`artifacts`／`agent-transcripts` 目錄被換掉、抽取規則（指紋）改變、coverage 安全網發現專案與索引列數不一致後的修復。匯出 worker 以較舊的專案視圖寫同一個索引：它只連結、不刪列、不動水位。每次搜尋仍對每個已驗證檔案 lstat 一次，並跑幾個與專案大小同級的索引 COUNT（前綴檢查、安全網、coverage 分桶核對）。放寬條件見收尾紀錄 §3 |
+| 戰利品單筆上限 | 一筆 loot 事件最多存 500 個 match，超過時加 `matches_truncated`／`matches_total`，其餘值留給下次出現時記錄；戰利品頁、逐字稿與側欄徽章（「至少 N」）都標示為部分（#695） |
 | API 上限 | `/api/loot/scan` 文字 128 KiB；查詢 1000 字元；JSON body 必須是物件且深度 ≤ 64（`src/core/api-request.ts`、`src/core/query/contract.ts`） |
-| 已知未完成 | 開啟後第一次搜尋的主行程停頓、8 MiB 相異雜湊輸出的擷取時間、時間軸刻度重疊等，見收尾紀錄 §4；排程在 [工作計畫](WORK-PLAN.md) |
+| 已知未完成 | 搜尋仍在主行程執行（上列全量走訪的情況仍是秒級停頓；首次建立 25 萬參照約 36 s）、8 MiB 相異雜湊輸出的遮蔽 denylist 時間、時間軸刻度重疊等，見收尾紀錄 §4；排程在 [工作計畫](WORK-PLAN.md) |
 | 未驗證的環境 | Windows PowerShell 與 Git Bash、WSL、Linux 非 UTF-8 目錄、真實輸入法、多螢幕、簽章與公證 |
 
 ## 2026-11-11 核對（`main@9f60882d`）

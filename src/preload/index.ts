@@ -235,6 +235,7 @@ const api: RedLogAPI = {
   },
   loot: {
     getCount: () => ipcRenderer.invoke('loot:getCount'),
+    countIsPartial: () => ipcRenderer.invoke('loot:countIsPartial'),
     rules: () => ipcRenderer.invoke('loot:rules')
   },
   bookmarks: {

@@ -1478,6 +1478,7 @@
   "marker.readonly.urlWhy": "這是標記指向的位置；改它就是改指向",
   "sidebar.observationsBadge": "{{count}} 筆範圍外觀測",
   "sidebar.lootBadge": "{{count}} 筆戰利品",
+  "sidebar.lootBadgeAtLeast": "至少 {{count}} 筆戰利品",
   "loot.noMatchesReason": "目前的類型篩選或去重把所有命中都藏起來了。紀錄本身沒有少任何一筆。",
   "loot.clearFilter": "清除篩選",
   "settings.hookDesc.shell-zsh": "擷取 zsh 的每一道指令，含結束碼與耗時",

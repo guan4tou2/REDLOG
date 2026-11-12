@@ -15,8 +15,16 @@ const INDEX_CHUNK_BYTES = 1024 * 1024
 const INDEX_OVERLAP_CHARS = 65536
 /** v8: each ref row knows its source row and carries its own coverage
  *  contribution; `body_coverage` holds the per (project, kind, status) sums,
- *  kept by triggers in the same statement as the row they describe. */
-const INDEX_VERSION = 8
+ *  kept by triggers in the same statement as the row they describe.
+ *  v9: the bucket index the coverage sums are checked against. */
+const INDEX_VERSION = 9
+/** How long one attempt waits for another writer of the index (the export
+ *  worker), and how many attempts a sync makes before answering from the
+ *  index as it stands. */
+const BUSY_TIMEOUT_MS = 500
+const BUSY_ATTEMPTS = 3
+/** The sha256 column of the row a walked Event with no body gets. */
+const NO_BODY = '-'
 /** The two revision lanes are sums of 48-bit row hashes modulo 2^52, which
  *  keeps every intermediate value an exact JavaScript and SQLite integer. */
 const LANE = 4503599627370496
@@ -40,6 +48,7 @@ const V8_SCHEMA = `CREATE INDEX IF NOT EXISTS body_event_refs_position ON body_e
   CREATE INDEX IF NOT EXISTS body_event_refs_unverified ON body_event_refs(event_id) WHERE verified_desc IS NULL;
   CREATE INDEX IF NOT EXISTS body_event_refs_unplaced ON body_event_refs(event_id) WHERE "row" IS NULL;
   CREATE INDEX IF NOT EXISTS body_event_refs_ai_raw ON body_event_refs(kind) WHERE kind='ai-raw';
+  CREATE INDEX IF NOT EXISTS body_event_refs_bucket ON body_event_refs(engagement_id,kind,status,refs,ref_bytes,c_idx,c_gn,c_gb);
   CREATE TABLE IF NOT EXISTS body_relink (event_id TEXT PRIMARY KEY,tier TEXT);
   CREATE TABLE IF NOT EXISTS body_coverage (engagement_id TEXT NOT NULL,kind TEXT NOT NULL,status TEXT NOT NULL,
    rows INTEGER NOT NULL,n INTEGER NOT NULL,src INTEGER NOT NULL,idx INTEGER NOT NULL,gn INTEGER NOT NULL,gb INTEGER NOT NULL,
@@ -63,7 +72,7 @@ function getIndex(projectDir = getProjectDir()): Database.Database {
   if (index && indexDir === projectDir)
     return index
   closeHttpBodyIndex()
-  const db = new Database(path.join(projectDir, 'http-body-index.db'))
+  const db = new Database(path.join(projectDir, 'http-body-index.db'), { timeout: BUSY_TIMEOUT_MS })
   db.pragma('journal_mode = WAL')
   // The coverage triggers make every ref write a two-table statement, which
   // SQLite backs with a statement journal: a temp file by default, written
@@ -75,9 +84,9 @@ function getIndex(projectDir = getProjectDir()): Database.Database {
   // commit is a flush, which is what a reopen costs on Windows.
   const version = db.pragma('user_version', { simple: true })
   if (version !== INDEX_VERSION) db.transaction(() => {
-    if (version === 7 && db.prepare("SELECT 1 FROM sqlite_master WHERE name='body_event_refs'").get()) {
-      for (const column of V8_COLUMNS) db.exec(`ALTER TABLE body_event_refs ADD COLUMN ${column}`)
-      // Where every row was walked to belongs to the v7 process that walked it.
+    if ((version === 7 || version === 8) && db.prepare("SELECT 1 FROM sqlite_master WHERE name='body_event_refs'").get()) {
+      if (version === 7) for (const column of V8_COLUMNS) db.exec(`ALTER TABLE body_event_refs ADD COLUMN ${column}`)
+      // Where every row was walked to belongs to the process that walked it.
       db.exec("DELETE FROM body_index_meta WHERE key<>'directories'")
     } else {
       db.exec(V7_DROP)
@@ -214,13 +223,23 @@ type PriorRow = { status: string; indexed_bytes: number; reason: string; availab
   tier: Tier | null; row: number | null; engagement_id: string | null; refs: number; ref_bytes: number; h1: number | null
   verified_desc: string | null; verified_file: string | null; verified_sig: string | null }
 /** Link every body an Event names; returns the sha256 of each. */
-function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}, projectDir: string, position: Position | null): string[] {
+function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}, projectDir: string, position: Position | null, walked = false): string[] {
   const db = getIndex(projectDir)
   // One row per (Event, body): refs naming the same bytes share it.
   const groups = new Map<string, { ref: IndexedRef; sizes: number[] }>()
   for (const ref of refsOf(event)) {
     const group = groups.get(ref.sha256)
     if (group) group.sizes.push(refBytes(ref)); else groups.set(ref.sha256, { ref, sizes: [refBytes(ref)] })
+  }
+  // A walked row the source predicate selects but whose data names no body
+  // (a malformed ref) still gets one row, of kind 'none', so the count of
+  // walked positions can be checked against the project (`gap`). Coverage
+  // has no group for it. Ingest links any scanner row, so only a walk does this.
+  if (groups.size === 0) {
+    if (walked && position) stmt(db, `INSERT INTO body_event_refs(event_id,sha256,file,size,encoding,status,indexed_bytes,reason,kind,available_bytes,tier,verified_desc,engagement_id,"row",refs,ref_bytes,h1,h2)
+      VALUES(?,'${NO_BODY}','',0,'','none',0,'','none',0,?,'[]',?,?,0,0,0,0) ON CONFLICT(event_id,sha256) DO UPDATE SET tier=excluded.tier,engagement_id=excluded.engagement_id,"row"=excluded."row"`)
+      .run(event.id, position.tier, position.engagement, position.row)
+    return walked ? [NO_BODY] : []
   }
   // Inside a walk's transaction a savepoint per event buys nothing: any error
   // aborts the whole walk anyway.
@@ -338,6 +357,18 @@ function latestSnapshotIds(snapshot?: Pick<ExportSnapshot, 'chainedMaxRowId' | '
     ), ranked AS (SELECT id,row_number() OVER(PARTITION BY engagement_id,file ORDER BY created_at DESC,r DESC,tier DESC,id) AS n FROM versions)
     SELECT id FROM ranked WHERE n=1`).all(snapshot?.chainedMaxRowId??Number.MAX_SAFE_INTEGER,snapshot?.loggedMaxRowId??Number.MAX_SAFE_INTEGER) as {id:string}[]).map(row=>row.id).sort()
 }
+/** Transcript snapshots inside the boundary that a newer version of the same
+ *  file supersedes: content-ref rows a walk deliberately leaves out. One per
+ *  version beyond the latest of each (project, file), as `latestSnapshotIds`
+ *  partitions them. */
+function supersededSnapshots(snapshot?: ExportSnapshot): number {
+  return (getDB().prepare(`WITH versions AS (
+    SELECT id,engagement_id,created_at,rowid AS r,1 AS tier,json_extract(data,'$.snapshot_path') AS file FROM events
+      WHERE rowid<=? AND agent_type='agent' AND subtype='transcript_snapshot'
+    UNION ALL SELECT id,engagement_id,created_at,rowid,0,json_extract(data,'$.snapshot_path') FROM events_logged
+      WHERE rowid<=? AND agent_type='agent' AND subtype='transcript_snapshot'
+    ) SELECT count(*)-count(DISTINCT engagement_id||char(0)||coalesce(file,'')) AS n FROM versions`).get(bound(snapshot, 0), bound(snapshot, 1)) as { n: number }).n
+}
 type SourceRow = { id: string; data: string; agent_type: string; engagement_id: string; r: number }
 /** Content-ref rows of both tiers with `after < rowid <= upTo`. */
 function rows(latest: string[], range: Array<{ after: number; upTo: number }>): Array<IterableIterator<SourceRow>> {
@@ -346,17 +377,59 @@ function rows(latest: string[], range: Array<{ after: number; upTo: number }>): 
       AND (agent_type<>'agent' OR coalesce(subtype,'')<>'transcript_snapshot' OR id IN (SELECT value FROM json_each(?))) ORDER BY rowid`).iterate(range[i].upTo, range[i].after, JSON.stringify(latest)) as IterableIterator<SourceRow>)
 }
 const linkRow = (row: SourceRow, projectDir: string, tier: Tier): string[] =>
-  linkEvent({ id: row.id, data: JSON.parse(row.data) as Record<string, unknown>, agentType: row.agent_type }, projectDir, { tier, row: row.r, engagement: row.engagement_id })
+  linkEvent({ id: row.id, data: JSON.parse(row.data) as Record<string, unknown>, agentType: row.agent_type }, projectDir, { tier, row: row.r, engagement: row.engagement_id }, true)
 /** One stored Event by tier and id, for a re-link. */
 function sourceRow(tier: Tier, id: string): SourceRow | undefined {
   return getDB().prepare(`SELECT id,data,agent_type,engagement_id,rowid AS r FROM ${tier} WHERE id=?`).get(id) as SourceRow | undefined
 }
+/** False while a sync runs on a connection whose view of the project may be
+ *  older than the index (the export worker reads inside BEGIN): that sync
+ *  links what it sees and removes nothing, because a row it cannot see may be
+ *  one the main process linked after its snapshot was taken. */
+let pruning = true
 function deleteEventRefs(db: Database.Database, eventId: string): void {
+  if (!pruning) return
   stmt(db, 'DELETE FROM body_fts WHERE event_id=?').run(eventId)
   stmt(db, 'DELETE FROM body_event_refs WHERE event_id=?').run(eventId)
 }
 const bound = (snapshot: ExportSnapshot | undefined, i: number): number =>
   snapshot ? (i === 0 ? snapshot.chainedMaxRowId : snapshot.loggedMaxRowId) : Number.MAX_SAFE_INTEGER
+const isBusy = (error: unknown): boolean => error instanceof Database.SqliteError && error.code.startsWith('SQLITE_BUSY')
+/** Run `work` holding the index's write lock from its first read (BEGIN
+ *  IMMEDIATE), so nothing another connection commits can fall between what it
+ *  reads and what it writes. Another writer holding the lock is waited for
+ *  (BUSY_TIMEOUT_MS per attempt); after BUSY_ATTEMPTS the caller answers from
+ *  the index as it stands and coverage reports what that leaves out (`gap`).
+ *  False in that case; a busy error is never a failed search. */
+function locked(db: Database.Database, work: () => void): boolean {
+  for (let attempt = 1; ; attempt++) {
+    try { db.transaction(work).immediate(); return true }
+    catch (error) { if (!isBusy(error)) throw error; if (attempt >= BUSY_ATTEMPTS) return false }
+  }
+}
+/** The safety net under everything the index trusts: content-ref rows the
+ *  project holds inside the boundary (less the transcript snapshots a walk
+ *  leaves out), minus the positions the index holds there. Every walked row
+ *  has at least one index row (one of kind 'none' when it names no body), so
+ *  anything but zero means the index is missing rows or holds rows the
+ *  project does not. One indexed count per tier on each side, plus the
+ *  snapshot-version count. */
+function gapOf(db: Database.Database, snapshot?: ExportSnapshot): number {
+  let gap = -supersededSnapshots(snapshot)
+  for (const [i, table] of TIERS.entries()) {
+    gap += (getDB().prepare(`SELECT count(*) AS n FROM ${table} INDEXED BY idx_${table}_content_refs WHERE rowid<=? AND (${BODY_SOURCE_PREDICATE})`).get(bound(snapshot, i)) as { n: number }).n
+    gap -= (stmt(db, 'SELECT count(*) AS n FROM (SELECT DISTINCT "row" FROM body_event_refs WHERE tier=? AND "row"<=?)').get(table, bound(snapshot, i)) as { n: number }).n
+  }
+  return gap
+}
+let fingerprint: string | undefined
+/** What decides which rows a walk links and what it records for each: the
+ *  source predicate, the ref fields, and the code that turns an Event into
+ *  refs and rows. An index built under different rules is walked again. */
+export function extractionFingerprint(): string {
+  return fingerprint ??= createHash('sha256').update(JSON.stringify([INDEX_VERSION, BODY_SOURCE_PREDICATE, BODY_REF_FIELDS, inlineBodyFields(),
+    String(savedFileRefs), String(refsOf), String(linkEvent), String(contribution)])).digest('hex')
+}
 /** Bring the index up to what a full walk of the rows inside `snapshot` would
  *  answer, doing work for what changed since the persisted watermark rather
  *  than for every ref:
@@ -380,22 +453,68 @@ const bound = (snapshot: ExportSnapshot | undefined, i: number): number =>
  *  already there while the highest one survives, and source rows are never
  *  updated, so "the row at the old watermark still has its id, and the count
  *  at or below it is unchanged" means the walked prefix is untouched. */
-function sync(projectDir: string, snapshot?: ExportSnapshot, verify = true): void {
+type SyncResult = {
+  /** False when another writer held the index for every attempt: the answer
+   *  comes from the index as it stands. */
+  current: boolean
+  /** Only when asked for (`check`): see `gapOf`. */
+  gap: number
+}
+function sync(projectDir: string, snapshot?: ExportSnapshot, options: { verify?: boolean; check?: boolean } = {}): SyncResult {
   const db = getIndex(projectDir), source = getDB()
+  // The export worker reads the project inside BEGIN: a view that may be
+  // older than what the index already holds.
+  const older = source.readonly && source.inTransaction
+  let gap = 0
+  const current = locked(db, () => {
+    pruning = !older
+    try {
+      syncLocked(db, source, projectDir, snapshot, options.verify ?? true, older)
+      if (options.check) gap = checkGap(db, snapshot, older)
+    } finally { pruning = true }
+  })
+  if (!current && options.check) gap = gapOf(db, snapshot)
+  return { current, gap }
+}
+const getMeta = (db: Database.Database, key: string): string | undefined =>
+  (stmt(db, 'SELECT value FROM body_index_meta WHERE key=?').get(key) as { value: string } | undefined)?.value
+const setMeta = (db: Database.Database, key: string, value: string): void =>
+  void stmt(db, 'INSERT INTO body_index_meta VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key, value)
+/** The gap, and on a connection that sees the latest project, a repair walk
+ *  scheduled for the next sync, unless one already ran at this very watermark
+ *  and left the same state (then the gap is reported, not walked again). */
+function checkGap(db: Database.Database, snapshot: ExportSnapshot | undefined, older: boolean): number {
+  const gap = gapOf(db, snapshot)
+  if (gap !== 0 && !older && getMeta(db, 'repaired') !== getMeta(db, 'walk')) setMeta(db, 'repair', String(gap))
+  return gap
+}
+// Invariant: the watermark is monotonic, except for a full walk decided under
+// the write lock by a connection that sees the latest project. Everything
+// below reads the watermark and writes the index inside that one lock
+// (`locked`), so no other connection's commit can fall between the two; and a
+// connection with an older view (the export worker) never lowers the
+// watermark and never removes a row, so it cannot undo what a newer view
+// linked. A bounded read below the watermark filters by position.
+function syncLocked(db: Database.Database, source: Database.Database, projectDir: string, snapshot: ExportSnapshot | undefined, verify: boolean, older: boolean): void {
   // Persisted with the verifications it vouches for, so a directory replaced
   // while the app was closed is noticed at the next search too.
   const dirs = directorySignature(projectDir)
-  const directoriesChanged = (stmt(db, "SELECT value FROM body_index_meta WHERE key='directories'").get() as { value: string } | undefined)?.value !== dirs
-  const stored = stmt(db, "SELECT value FROM body_index_meta WHERE key='walk'").get() as { value: string } | undefined
-  const previous = directoriesChanged || !stored ? null : JSON.parse(stored.value) as Walk
+  const directoriesChanged = getMeta(db, 'directories') !== dirs
+  const stored = getMeta(db, 'walk')
+  const previous = directoriesChanged || !stored ? null : JSON.parse(stored) as Walk
+  const rulesChanged = getMeta(db, 'extraction') !== extractionFingerprint()
+  const repairDue = getMeta(db, 'repair') !== undefined
   const idAt = (table: Tier, rowid: number): string | null => rowid > 0 ? (source.prepare(`SELECT id FROM ${table} WHERE rowid=?`).get(rowid) as { id: string } | undefined)?.id ?? null : null
   const tiers = TIERS.map((table, i) => {
     const before = previous?.tiers[i] ?? { n: 0, max: 0, idAtMax: null }, upTo = bound(snapshot, i)
     const row = source.prepare(`SELECT count(*) FILTER (WHERE rowid<=?) AS below,count(*) FILTER (WHERE rowid<=?) AS n,coalesce(max(rowid) FILTER (WHERE rowid<=?),0) AS max
       FROM ${table} INDEXED BY idx_${table}_content_refs WHERE rowid<=? AND (${BODY_SOURCE_PREDICATE})`).get(before.max, upTo, upTo, Math.max(before.max, upTo)) as { below: number; n: number; max: number }
-    const intact = !!previous && row.below === before.n && idAt(table, before.max) === before.idAtMax
+    // An older view cannot see the rows a newer one walked to: it can neither
+    // vouch for the prefix nor find it broken.
+    const beyond = older && before.max > (source.prepare(`SELECT coalesce(max(rowid),0) AS m FROM ${table}`).get() as { m: number }).m
+    const intact = !!previous && (beyond || (row.below === before.n && idAt(table, before.max) === before.idAtMax))
     // The watermark only rises: a bounded read below it filters by position.
-    const grows = row.max > before.max
+    const grows = !beyond && row.max > before.max
     // Read again unless the prefix is intact at the same row: a full walk after
     // a broken prefix must not persist the stale id and walk every time after.
     const inside = { n: row.n, max: row.max, idAtMax: intact && row.max === before.max ? before.idAtMax : idAt(table, row.max) }
@@ -405,13 +524,23 @@ function sync(projectDir: string, snapshot?: ExportSnapshot, verify = true): voi
   const below = tiers.some((t, i) => t.next.max > bound(snapshot, i))
   // The transcript snapshots the whole watermark admits; a bounded read sees
   // the ones at or below its own boundary.
-  const latest = below ? latestSnapshotIds({ chainedMaxRowId: tiers[0].next.max, loggedMaxRowId: tiers[1].next.max }) : latestInside
-  db.transaction(() => {
+  const latest = below && !older ? latestSnapshotIds({ chainedMaxRowId: tiers[0].next.max, loggedMaxRowId: tiers[1].next.max }) : latestInside
+  {
     if (directoriesChanged) {
       stmt(db, 'UPDATE body_event_refs SET verified_desc=NULL,verified_file=NULL,verified_sig=NULL').run()
-      stmt(db, "INSERT INTO body_index_meta VALUES('directories',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(dirs)
+      setMeta(db, 'directories', dirs)
     }
-    let full = !previous || tiers.some(t => !t.intact)
+    let full = !previous || rulesChanged || (repairDue && !older) || tiers.some(t => !t.intact)
+    if (older) {
+      // Link what this view sees inside its boundary; remove nothing, and
+      // leave the watermark to the connection that sees the latest project.
+      if (full) walkAll(db, projectDir, latestInside, tiers.map(t => ({ after: 0, upTo: t.inside.max })))
+      else {
+        for (const [i, tier] of rows(latestInside, tiers.map(t => ({ after: t.after, upTo: t.next.max }))).entries()) for (const row of tier) linkRow(row, projectDir, TIERS[i])
+        if (verify) recheck(db, projectDir)
+      }
+      return
+    }
     if (!full) {
       const before = new Set(previous!.latest), now = new Set(latest)
       const added = latest.filter(id => !before.has(id))
@@ -454,10 +583,19 @@ function sync(projectDir: string, snapshot?: ExportSnapshot, verify = true): voi
     if (full) {
       walkAll(db, projectDir, latestInside, tiers.map(t => ({ after: 0, upTo: t.inside.max })))
       walk = { tiers: tiers.map(t => t.inside), latest: latestInside }
+      setMeta(db, 'extraction', extractionFingerprint())
+      if (repairDue) { stmt(db, "DELETE FROM body_index_meta WHERE key='repair'").run(); setMeta(db, 'repaired', JSON.stringify(walk)) }
     } else walk = { tiers: tiers.map(t => t.next), latest }
+    // Above the watermark only ingest links rows, and any of them can have
+    // lost its source row since (a rolled-back project transaction, a row
+    // deleted before the next search). Each is checked by its position: the
+    // work is the size of that tail, not of the project.
+    for (const [i, t] of tiers.entries())
+      for (const { event_id, r } of stmt(db, 'SELECT DISTINCT event_id,"row" AS r FROM body_event_refs WHERE tier=? AND "row">?').all(t.table, walk.tiers[i].max) as Array<{ event_id: string; r: number }>)
+        if (idAt(t.table, r) !== event_id) deleteEventRefs(db, event_id)
     const value = JSON.stringify(walk)
-    if (stored?.value !== value) stmt(db, "INSERT INTO body_index_meta VALUES('walk',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(value)
-  })()
+    if (stored !== value) setMeta(db, 'walk', value)
+  }
 }
 /** Rows ingest linked before their Event's position was known. */
 function place(db: Database.Database): void {
@@ -488,8 +626,12 @@ function walkAll(db: Database.Database, projectDir: string, latest: string[], ra
   const seen = stmt(db, 'INSERT OR IGNORE INTO body_seen VALUES(?,?)')
   for (const [i, tier] of rows(latest, range).entries())
     for (const row of tier) for (const sha256 of linkRow(row, projectDir, TIERS[i])) seen.run(row.id, sha256)
+  if (!pruning) return
+  // Prune inside the walked range only (and rows never placed): rows above it
+  // are another boundary's, filtered by position and checked by `syncLocked`.
   // The verification lives in the row, so a pruned ref takes it along.
-  stmt(db, 'DELETE FROM body_event_refs WHERE NOT EXISTS(SELECT 1 FROM body_seen s WHERE s.event_id=body_event_refs.event_id AND s.sha256=body_event_refs.sha256)').run()
+  stmt(db, `DELETE FROM body_event_refs WHERE ("row" IS NULL OR (tier='events' AND "row"<=?) OR (tier='events_logged' AND "row"<=?))
+    AND NOT EXISTS(SELECT 1 FROM body_seen s WHERE s.event_id=body_event_refs.event_id AND s.sha256=body_event_refs.sha256)`).run(range[0].upTo, range[1].upTo)
   stmt(db, "DELETE FROM body_fts WHERE NOT EXISTS(SELECT 1 FROM body_event_refs r WHERE r.event_id=body_fts.event_id AND r.sha256=body_fts.sha256 AND r.status='indexed')").run()
   stmt(db, 'DELETE FROM body_relink').run()
 }
@@ -617,13 +759,20 @@ function recount(db: Database.Database): void {
   const insert = db.prepare('INSERT INTO body_coverage VALUES(?,?,?,?,?,?,?,?,?,?,?)')
   for (const [key, s] of sums) insert.run(...(JSON.parse(key) as string[]), s.rows, s.n, s.src, s.idx, s.gn, s.gb, s.h1, s.h2)
 }
-/** The persisted sums, after a cheap check that they still describe the
- *  rows: the row counts must agree and nothing may be negative. A sum that
- *  fails it is recounted from the rows, never used. */
+/** The persisted sums, after a check that every number coverage shows still
+ *  describes the rows: per (project, kind, status) bucket, the row count and
+ *  the sums of refs, bytes and growth, read from the covering bucket index (an
+ *  index-only GROUP BY: no table row is decoded). A bucket that disagrees
+ *  gets everything recounted from the rows, never used. The revision lanes
+ *  are not checked here; a recount rebuilds them with the rest. */
 function coverageSums(db: Database.Database, projectId?: string): Map<string, Sums> {
-  const check = stmt(db, 'SELECT (SELECT count(*) FROM body_event_refs) AS refs,(SELECT coalesce(sum(rows),0) FROM body_coverage) AS counted,(SELECT count(*) FROM body_coverage WHERE rows<0 OR n<0 OR src<0 OR idx<0 OR gn<0 OR gb<0) AS negative')
-  const verdict = check.get() as { refs: number; counted: number; negative: number }
-  if (verdict.refs !== verdict.counted || verdict.negative) db.transaction(() => recount(db))()
+  const key = (r: { e: string | null; kind: string; status: string; rows: number; n: number; src: number; idx: number; gn: number; gb: number }): string =>
+    JSON.stringify([r.e ?? '', r.kind, r.status, r.rows, r.n, r.src, r.idx, r.gn, r.gb])
+  type Bucket = Parameters<typeof key>[0]
+  const kept = (stmt(db, 'SELECT engagement_id AS e,kind,status,rows,n,src,idx,gn,gb FROM body_coverage WHERE rows<>0 OR n<>0 OR src<>0 OR idx<>0 OR gn<>0 OR gb<>0').all() as Bucket[]).map(key).sort()
+  const actual = (stmt(db, `SELECT engagement_id AS e,kind,status,count(*) AS rows,sum(refs) AS n,sum(ref_bytes) AS src,sum(c_idx) AS idx,sum(c_gn) AS gn,sum(c_gb) AS gb
+    FROM body_event_refs INDEXED BY body_event_refs_bucket GROUP BY engagement_id,kind,status`).all() as Bucket[]).map(key).sort()
+  if (JSON.stringify(kept) !== JSON.stringify(actual)) db.transaction(() => recount(db))()
   const sums = new Map<string, Sums>()
   for (const row of stmt(db, `SELECT kind,status,sum(rows) AS rows,sum(n) AS n,sum(src) AS src,sum(idx) AS idx,sum(gn) AS gn,sum(gb) AS gb,sum(h1)%${LANE} AS h1,sum(h2)%${LANE} AS h2
     FROM body_coverage WHERE (? IS NULL OR engagement_id=?) GROUP BY kind,status`).all(projectId ?? null, projectId ?? null) as Array<Sums & { kind: string; status: string }>)
@@ -636,8 +785,10 @@ export function bodySearchCoverage(snapshot?: ExportSnapshot, projectId?: string
   // The sums describe the index, so the index is brought to this boundary
   // first; that costs what changed since the last search. The files behind it
   // are re-checked by the search, not again here: coverage reports the
-  // verification the search just answered from.
-  sync(projectDir, snapshot, false)
+  // verification the search just answered from. The gap check runs on every
+  // read: whatever the index missed or kept by mistake, coverage does not say
+  // `covered` while the counts disagree.
+  const { gap } = sync(projectDir, snapshot, { verify: false, check: true })
   const db = getIndex(projectDir)
   const coverage: BodySearchCoverage = {projectId:projectId??null,boundary:snapshot,revision:'',indexed:0,missing:0,binary:0,limited:0,pending:0,failed:0,indexedBytes:0,sourceBytes:0,unsupported:0,sources:[]}
   const applied = [...(options?.parsed?.conditions.map(c=>c.field)??[]),
@@ -684,9 +835,14 @@ export function bodySearchCoverage(snapshot?: ExportSnapshot, projectId?: string
     if (!excluded) { group.indexedBytes += s.idx; group.pending += s.gn; group.sourceBytes += s.gb }
     hashes.get(kind)!.update(JSON.stringify([status, s.rows, s.n, s.src, s.idx, s.gn, s.gb, s.h1, s.h2]))
   }
-  const hash=createHash('sha256')
+  const hash=createHash('sha256').update(JSON.stringify(['gap', gap]))
+  // Rows the index does not account for are not attributed to a kind (it
+  // cannot know theirs); every saved kind reads as not complete, and they are
+  // counted once, as pending.
+  coverage.pending += Math.abs(gap)
   for(const group of groups.values()){
     group.status=group.failed?'failed':group.missing?'unavailable':group.pending?(group.indexed?'partial':'pending'):group.unsupported||group.binary||group.limited?(group.indexed?'partial':'unsupported'):'covered'
+    if (gap !== 0 && group.kind !== 'events' && group.status === 'covered') group.status = group.indexed ? 'partial' : 'pending'
     group.revision=hashes.get(group.kind)!.digest('hex')
     hash.update(group.revision)
     if(group.kind!=='events') {

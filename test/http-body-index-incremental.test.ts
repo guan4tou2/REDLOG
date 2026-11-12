@@ -55,6 +55,10 @@ function dump(snapshot?: ExportSnapshot): unknown {
   const within = `((r.tier='events' AND r."row"<=@c) OR (r.tier='events_logged' AND r."row"<=@l))`
   const bound = { c: snapshot?.chainedMaxRowId ?? Number.MAX_SAFE_INTEGER, l: snapshot?.loggedMaxRowId ?? Number.MAX_SAFE_INTEGER }
   try {
+    // Every row has a position once a search has run: an unplaced row would be
+    // counted by an unbounded search and by coverage yet filtered out of the
+    // comparison below, so it is asserted away here rather than ignored.
+    expect(db.prepare(`SELECT event_id,sha256,status FROM body_event_refs WHERE tier IS NULL OR "row" IS NULL`).all(), 'unplaced index rows').toEqual([])
     return {
       // The verification columns hold inode and mtime signatures, which differ
       // between two runs by construction; everything else must agree.
@@ -79,16 +83,34 @@ function observe(mode: Mode, snapshot?: ExportSnapshot): unknown {
   // searches after the first must leave the rebuilt index exactly as it was.
   if (mode !== 'incremental') closeHttpBodyIndex()
   if (mode === 'rebuild') for (const suffix of ['', '-wal', '-shm']) fs.rmSync(path.join(dir, `http-body-index.db${suffix}`), { force: true })
-  let built: unknown
+  let built: unknown, firstCoverage: unknown
   const searches = QUERIES.flatMap(q => [false, true].map(excludeAiRaw => {
     if (mode === 'restart') closeHttpBodyIndex()
     const ids = searchHttpBodyEventIds(q, dir, excludeAiRaw, snapshot).sort()
-    if (mode === 'rebuild' && built === undefined) built = dump(snapshot)
+    // Before any later search can bring the index back in line.
+    if (firstCoverage === undefined) { firstCoverage = bodySearchCoverage(snapshot); built = dump(snapshot) }
     return [q, excludeAiRaw, ids]
   }))
-  const observed = { searches, coverage: bodySearchCoverage(snapshot), index: dump(snapshot) }
+  const observed = { searches, firstCoverage, coverage: bodySearchCoverage(snapshot), index: dump(snapshot) }
   if (mode === 'rebuild') expect(observed.index, 'the searches after the rebuild changed the rebuilt index').toEqual(built)
+  // The rebuild reference above is from zero only for its first search. Each
+  // step of every mode is also held to an index built from zero in another
+  // place, which no incremental sync ever touches.
+  else expect(fromZero(snapshot), `${mode}: a from-zero build`).toEqual({ alpha: searches[0][2], coverage: observed.coverage, index: observed.index })
   return observed
+}
+/** One search, the coverage and the dump from an index built from nothing, in
+ *  a separate file; the project's own index is put back untouched after. */
+function fromZero(snapshot?: ExportSnapshot): unknown {
+  closeHttpBodyIndex()
+  const live = path.join(dir, 'http-body-index.db'), aside = `${live}.aside`
+  for (const suffix of ['', '-wal', '-shm']) if (fs.existsSync(live + suffix)) fs.renameSync(live + suffix, aside + suffix)
+  try {
+    return { alpha: searchHttpBodyEventIds('alpha', dir, false, snapshot).sort(), coverage: bodySearchCoverage(snapshot), index: dump(snapshot) }
+  } finally {
+    closeHttpBodyIndex()
+    for (const suffix of ['', '-wal', '-shm']) { fs.rmSync(live + suffix, { force: true }); if (fs.existsSync(aside + suffix)) fs.renameSync(aside + suffix, live + suffix) }
+  }
 }
 
 /** What a step leaves behind for the steps after it. */
@@ -343,8 +365,8 @@ describe('incremental body-search backfill', () => {
     try {
       db.exec(`DROP TRIGGER body_coverage_insert; DROP TRIGGER body_coverage_delete; DROP TRIGGER body_coverage_update;
         DROP INDEX body_event_refs_position; DROP INDEX body_event_refs_verified; DROP INDEX body_event_refs_unverified;
-        DROP INDEX body_event_refs_unplaced; DROP INDEX body_event_refs_ai_raw; DROP TABLE body_coverage; DROP TABLE body_relink;
-        DELETE FROM body_index_meta WHERE key='walk'`)
+        DROP INDEX body_event_refs_unplaced; DROP INDEX body_event_refs_ai_raw; DROP INDEX body_event_refs_bucket; DROP TABLE body_coverage; DROP TABLE body_relink;
+        DELETE FROM body_index_meta WHERE key<>'directories'`)
       for (const column of ['engagement_id', 'row', 'refs', 'ref_bytes', 'c_idx', 'c_gn', 'c_gb', 'h1', 'h2']) db.exec(`ALTER TABLE body_event_refs DROP COLUMN "${column}"`)
       db.pragma('user_version=7')
       expect((db.prepare('PRAGMA table_info(body_event_refs)').all() as Array<{ name: string }>).map(c => c.name)).toEqual([
@@ -357,7 +379,7 @@ describe('incremental body-search backfill', () => {
     expect(bodySearchCoverage()).toEqual(before)
     expect(work(() => searchHttpBodyEventIds('work4', dir))).toEqual({ opens: 0, rows: 0 })
     const after = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
-    try { expect(after.pragma('user_version', { simple: true })).toBe(8) } finally { after.close() }
+    try { expect(after.pragma('user_version', { simple: true })).toBe(9) } finally { after.close() }
   })
 
   /** Commit records appended to the index's WAL: each is a flush. */

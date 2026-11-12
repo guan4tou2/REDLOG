@@ -55,6 +55,19 @@ describe('Transcript completeness UI', () => {
     expect(screen.getAllByTestId('transcript-toggle').every(button => button.getAttribute('data-expanded') === 'false')).toBe(true)
   })
 
+  // #695: a loot event stores at most 500 matches. Its row must not read as
+  // "500 matches" when it found more.
+  it('shows a capped loot event as part of what it found', async () => {
+    const rows = [
+      { ...event, id: 'capped', agentType: 'loot', data: { matches_truncated: true, matches_total: 1200, matches: [{ type: 'password' }, { type: 'password' }] } },
+      { ...event, id: 'whole', timestamp: 2, agentType: 'loot', data: { matches: [{ type: 'jwt' }] } }
+    ]
+    installBridge(vi.fn().mockImplementation((opts: { agentType: string }) => Promise.resolve({ ...emptyPage, items: rows.filter(row => row.agentType === opts.agentType) })))
+    render(<TranscriptView />)
+    expect(await screen.findByText('loot.itemsOfTotal')).toBeTruthy()
+    expect(screen.getByText('1 match')).toBeTruthy()
+  })
+
   it('renders an initial query rejection as a retryable failure, not empty', async () => {
     installBridge(vi.fn().mockRejectedValue(new Error('database unavailable')))
     render(<TranscriptView />)

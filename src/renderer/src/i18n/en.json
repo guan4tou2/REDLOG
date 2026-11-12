@@ -1478,6 +1478,7 @@
   "marker.readonly.urlWhy": "where the mark points; changing it changes what it points at",
   "sidebar.observationsBadge": "{{count}} out-of-scope observations",
   "sidebar.lootBadge": "{{count}} loot hits",
+  "sidebar.lootBadgeAtLeast": "At least {{count}} loot hits",
   "loot.noMatchesReason": "The type filter or de-duplication is hiding every hit. Nothing was removed from the record.",
   "loot.clearFilter": "Clear filter",
   "settings.hookDesc.shell-zsh": "Captures every command, with exit code and duration, from zsh",
