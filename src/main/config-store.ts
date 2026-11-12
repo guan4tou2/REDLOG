@@ -5,7 +5,9 @@
 // fixtures, and a new project's seed — goes through here: read the file as it
 // is now, change only what the caller changed, validate, write, then apply
 // through main/config-apply.ts. The file is the baseline, never the caller's
-// copy of it (src/core/config-patch.ts says why).
+// copy of it (src/core/config-patch.ts says why). A file that is there but
+// cannot be read is no baseline: `loadConfig` throws, and nothing is written
+// over it (Settings reports the save as failed and keeps the draft).
 
 import { loadConfig, readConfigRevision, saveConfig, type RedLogConfig } from '../core/config'
 import { applyConfigPatch, diffConfig, sameConfigValue, validateConfigPatch, type ConfigSaveResult } from '../core/config-patch'

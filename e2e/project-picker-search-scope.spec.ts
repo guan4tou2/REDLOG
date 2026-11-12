@@ -46,15 +46,25 @@ test('picker: search box at six projects, scope badges by project, Enter opens t
     const lastOpenedAfter = await page.evaluate(async () => Object.fromEntries((await window.redlog.project.list()).map(p => [p.id, p.lastOpened])))
     expect(lastOpenedAfter).toEqual(lastOpenedBefore)
 
-    // filtering to one project keeps its own badge, and Enter opens exactly that one
+    // filtering to one project keeps its own badge, and Enter opens exactly that
+    // one. Broken Lab's config.yaml cannot be read, so the open is refused and
+    // the file is left as it was, not replaced by the defaults.
+    const brokenBytes = fs.readFileSync(path.join(dir('Broken Lab'), 'config.yaml'))
     const search = page.getByRole('searchbox', { name: 'Search projects' })
     await search.fill('broken')
     await expect(page.getByRole('button', { name: 'Scoped Lab', exact: true })).toHaveCount(0)
     await expect(badge('Broken Lab')).toHaveText('Scope unknown')
     await search.press('Enter')
+    await expect(page.getByText('Could not open the project', { exact: true })).toBeVisible()
+    await expect(page.getByTestId('project-picker')).toBeVisible()
+    expect(await page.evaluate(() => window.redlog.project.active())).toBeNull()
+    expect(fs.readFileSync(path.join(dir('Broken Lab'), 'config.yaml'))).toEqual(brokenBytes)
+
+    await search.fill('scoped')
+    await search.press('Enter')
     await expect(page.getByTestId('view-root')).toHaveAttribute('data-view', 'dashboard')
     const active = await page.evaluate(() => window.redlog.project.active())
-    expect(active?.id).toBe(projects.find(p => p.name === 'Broken Lab')!.id)
+    expect(active?.id).toBe(projects.find(p => p.name === 'Scoped Lab')!.id)
   } finally {
     await app.close()
   }

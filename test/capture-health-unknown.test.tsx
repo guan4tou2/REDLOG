@@ -67,7 +67,7 @@ beforeEach(() => {
   installBridge()
   vi.spyOn(globalThis, 'setInterval')
 })
-afterEach(() => { cleanup(); vi.restoreAllMocks(); _resetCaptureHealth(); _resetIssues() })
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); _resetCaptureHealth(); _resetIssues() })
 
 describe('StatusBar capture dot', () => {
   it('after a failed read it stops showing the old verdict and says when it was last confirmed', async () => {
@@ -165,10 +165,14 @@ describe('Dashboard capture card', () => {
     await screen.findByText('Capture is working')
     await act(async () => { batch() })
     await waitFor(() => card())
+    // Live batches are paced to one read a second, so the read that recovers
+    // starts a second after the failed one. Waiting that second out in real
+    // time raced the runner's load; the pacing clock is driven instead.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
     await act(async () => { batch() })
-    // Live batches are paced to one read a second, so this read starts a full
-    // second after the failed one — the default 1 s wait ends where it begins.
-    await screen.findByText('Capture is working', undefined, { timeout: 4000 })
+    expect(card()).toBeTruthy()
+    await act(async () => { vi.advanceTimersByTime(1000) })
+    expect(screen.getByText('Capture is working')).toBeTruthy()
     expect(screen.queryByTestId('capture-unknown')).toBeNull()
   })
 })

@@ -52,6 +52,69 @@ export function restrictFile(file: string): void {
   chmodBestEffort(file, FILE_MODE)
 }
 
+// Atomics.wait is allowed on the main thread of a Node process, which is what
+// the Electron main process and the vitest worker both are (it is only the
+// browser's main thread and a renderer that refuse it). So the wait is a real
+// sleep, with no busy loop; if some host did refuse it, it would throw out of
+// retryBusy into the callers' catch, and the write is reported as not done.
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
+/** Run a file operation, trying it again a few times when Windows says the file
+ *  is busy. A rename or an unlink onto a file another process holds open (the
+ *  relay under WSL, an antivirus scan) fails with EPERM, EBUSY or EACCES for a
+ *  moment. Any other error, and the last of these, is thrown. */
+export function retryBusy(op: () => void): void {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      op()
+      return
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code
+      if (attempt >= 3 || (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES')) throw e
+      sleepSync(25 * (attempt + 1))
+    }
+  }
+}
+
+/** Replace `target` with `text`, owner-only, so that a reader — or the next
+ *  start after a crash — finds the old bytes or the new ones and never a mix.
+ *
+ *  The text goes to a temp file in the same directory (a rename is atomic only
+ *  within one filesystem), is flushed to disk, then renamed over the target.
+ *  On any failure the temp file is removed and the target is untouched. On
+ *  Windows the rename is a replace that a reader holding the target open
+ *  without delete sharing refuses; that is retried briefly and then thrown,
+ *  leaving the old file. */
+export function writePrivateFileAtomic(target: string, text: string): void {
+  const tmp = path.join(path.dirname(target), `.${path.basename(target)}.${process.pid}.${Date.now().toString(36)}.tmp`)
+  // A rename needs only the directory to be writable. A target the owner made
+  // read-only refused the old in-place write, and still refuses this one.
+  try { fs.accessSync(target, fs.constants.W_OK) } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e
+  }
+  let fd: number | null = null
+  try {
+    fd = fs.openSync(tmp, 'wx', FILE_MODE)
+    fs.writeFileSync(fd, text, 'utf-8')
+    fs.fsyncSync(fd)
+    fs.closeSync(fd)
+    fd = null
+    retryBusy(() => fs.renameSync(tmp, target))
+  } catch (e) {
+    if (fd !== null) { try { fs.closeSync(fd) } catch { /* already reported by the throw below */ } }
+    try { fs.rmSync(tmp, { force: true }) } catch { /* a leftover temp file is harmless */ }
+    throw e
+  }
+  // The rename itself is durable once the directory entry is. Windows cannot
+  // open a directory for this, and NTFS journals the rename anyway.
+  if (process.platform !== 'win32') {
+    try { const dirFd = fs.openSync(path.dirname(target), 'r'); try { fs.fsyncSync(dirFd) } finally { fs.closeSync(dirFd) } } catch { /* best effort */ }
+  }
+  chmodBestEffort(target, FILE_MODE)
+}
+
 /** Restrict a directory and everything under it: directories 0700, files 0600,
  *  keeping the owner's execute bit on a file that has one. Symlinks are skipped. */
 export function restrictTree(root: string): void {

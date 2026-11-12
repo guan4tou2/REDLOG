@@ -84,6 +84,8 @@
 | [根因審查與落地計畫](2026-11-12/ROOT-CAUSE-REVIEW.md) | 七份根因審查的整合、抽查結果、落地階段與當日決定（`main@a087c16c`） |
 | 根因審查原文：[01 擷取完整性](2026-11-12/root-cause/01-capture-integrity.md)、[02 主行程回應性](2026-11-12/root-cause/02-main-thread.md)、[03 介面狀態與資料流](2026-11-12/root-cause/03-renderer-state.md)、[04 來源生命週期](2026-11-12/root-cause/04-source-lifecycle.md)、[05 信任邊界](2026-11-12/root-cause/05-trust-boundaries.md)、[06 驗證](2026-11-12/root-cause/06-verification.md)、[07 架構](2026-11-12/root-cause/07-architecture.md) | 唯讀審查者依程式碼推得的原始報告；未經逐項確認，抽查結果見整合頁 §2 |
 | [08 外掛系統](2026-11-12/root-cause/08-plugin-system.md)、[09 設定時的選擇與多重性](2026-11-12/root-cause/09-setup-choices-and-multiplicity.md) | 後續兩份唯讀審查：外掛的契約、信任與生命週期；shell 安裝等「猜一個當事實」的設定（`main@a5e90877`）。抽查了四項主張成立（同 id 覆蓋 bundled、rc 檔固定路徑、移除找不到外掛、以說明文字比對依賴），其餘未逐項確認，各有未實跑清單 |
+| [12 功能刪減審查](2026-11-12/root-cause/12-feature-reduction-audit.md) | 依 UI 標準 §26 逐頁盤點控制項、字串與概念數，各頁唯一的主要意圖，刪除／合併／收合的建議與連帶可移除的程式量，以及與先前決定的衝突（`main@e6d22684`）。唯讀；數量為原始碼宣告數與估計，未在真實 app 驗證；建議待擁有者裁定 |
+| [11 隱私與資料保護](2026-11-12/root-cause/11-privacy-and-data-protection.md) | 各儲存處的敏感資料盤點、18 條遮蔽路徑與 12 處不一致、對外請求清單、擷取邊界與歸屬、刪除語意（`main@56c9fe6c`）。唯讀審查，未實跑；部分結論出自其子審查，未逐項確認 |
 | [10 擷取種類與呈現](2026-11-12/root-cause/10-capture-kinds-and-presentation.md) | 每一種可寫入事件的產生者、層級、讀取處；有擷取但只以原始字串呈現的 29 種、呈現與性質矛盾的 13 處；對「四種角色」模型的修正（`main@a5e90877`）。抽查三項成立（閱讀器不讀 `output_disposition`、狀態帶取自已載入的列、個人網域在 bundle 中直接丟棄）；其餘未逐項確認，十項需實跑 |
 | [操作摩擦盤點](2026-11-12/FLOW-FRICTION-AUDIT.md) | 三條流程的操作步數與概念數（依程式路徑計數，非真人操作）；十項排名中兩項經查不成立，見整合頁 §2 |
 

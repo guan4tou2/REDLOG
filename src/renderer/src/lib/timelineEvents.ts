@@ -82,16 +82,33 @@ export function formatGap(ms: number): string {
   return rem ? `${h}h${rem}m` : `${h}h`
 }
 
-/** Sources the Timeline inspector has a reader of its own for. Everything else
- *  goes to the generic reader, so a new source needs no change to the core. */
-export function hasSpecificEventDetail(e: Pick<RedLogEvent, 'agentType' | 'data'>): boolean {
+/** Which reader the Timeline inspector opens an event in. */
+export type EventReader = 'command' | 'session' | 'agent-turn' | 'http' | 'console' | 'marker' | 'image' | 'artifact' | 'generic'
+
+/** The scanner subtypes that are an HTTP, WebSocket or proxied TCP exchange.
+ *  The rest of `scanner` (connections, C2, pcap flows, capture gaps, cookie
+ *  changes) has no request or body to show (report 10, A.4 #8). */
+const HTTP_SUBTYPES = new Set(['http_request_start', 'http_response', 'http_response_chunk', 'http_error',
+  'http_request_dropped', 'ws_message', 'websocket_end', 'tcp_message', 'tcp_end'])
+
+/** By kind, not by source: a source's other kinds go to the generic reader
+ *  (its recorded fields) rather than to a reader for something else. Anything
+ *  without a reader of its own is `generic`, so a new source needs no change to
+ *  the core. */
+export function eventReader(e: Pick<RedLogEvent, 'agentType' | 'data'>): EventReader {
+  const sub = String(e.data?.subtype ?? '')
   switch (e.agentType) {
-    case 'shell': case 'agent': case 'scanner': case 'browser': case 'marker': case 'screenshot':
-      return true
-    case 'file_transfer':
-      return e.data?.subtype === 'artifact_added'
-    default:
-      return false
+    case 'shell':
+      if (sub === 'command_end' || sub === 'command_start') return 'command'
+      return (sub === 'session_start' || sub === 'session_end') && e.data?.source === 'builtin-terminal' ? 'session' : 'generic'
+    // The turns of a conversation; transcript bookkeeping and errors are not.
+    case 'agent': return COLLAPSIBLE_AGENT_SUBTYPES.has(sub) ? 'agent-turn' : 'generic'
+    case 'scanner': return HTTP_SUBTYPES.has(sub) ? 'http' : 'generic'
+    case 'browser': return 'console'
+    case 'marker': return 'marker'
+    case 'screenshot': return 'image'
+    case 'file_transfer': return sub === 'artifact_added' ? 'artifact' : 'generic'
+    default: return 'generic'
   }
 }
 
@@ -116,7 +133,9 @@ export function hasContentReader(e: Pick<RedLogEvent, 'agentType' | 'data'>): bo
   const d = (e.data ?? {}) as Record<string, unknown>
   if (e.agentType === 'shell' && d.subtype === 'command_end') return hasFileRef(d.stdout_ref) || hasFileRef(d.stderr_ref)
   if (e.agentType === 'agent') return ['user_message', 'assistant_message', 'thinking', 'tool_call', 'tool_result'].includes(String(d.subtype))
-  if (e.agentType !== 'scanner') return !hasSpecificEventDetail(e) && Object.keys(d).length > 0
+  // A scanner row's saved content is a body; a connection, C2 or pcap row has
+  // none, and its fields are already in the generic reader.
+  if (e.agentType !== 'scanner') return eventReader(e) === 'generic' && Object.keys(d).length > 0
   return hasSavedBody(d.request_body as InlineBody, d.request_body_ref)
     || hasSavedBody(d.response_body as InlineBody, d.response_body_ref)
     || hasSavedBody(d.ws_body as InlineBody, d.ws_body_ref)

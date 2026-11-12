@@ -94,19 +94,31 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
   // one, on the screen whose whole job is to tell the operator whether RedLog
   // can record.
   const [preflightFailed, setPreflightFailed] = useState(false)
+  // Only the latest check may answer, and it alone decides whether the
+  // preparation panel has anything left to show. This used to be an effect on
+  // [preflight, preparationSource], which judged a newly opened panel by
+  // whatever preflight the page held — older than the click, sometimes older
+  // than the HTTP card's own check that offered the button — and closed it.
+  // An effect still pending from the previous answer did the same, carrying the
+  // source from before the click. Either way the fresh answer arrived to a
+  // closed panel and nothing reopened it.
+  const preflightRequest = useRef(0)
+  const preparationSourceNow = useRef<'commands' | 'web'>('commands')
   const checkRuntime = (): void => {
+    const request = ++preflightRequest.current
     setPreflightFailed(false)
     window.redlog.runtime.preflight()
-      .then((p) => { setPreflight(p); setPreflightFailed(false) })
-      .catch(() => setPreflightFailed(true))
+      .then((p) => {
+        if (request !== preflightRequest.current) return
+        setPreflight(p); setPreflightFailed(false)
+        if (preparationChecks(p, preparationSourceNow.current).length === 0 || (!preparationRequested.current && commandCaptureBlockers(p).length === 0)) setPreparing(false)
+      })
+      .catch(() => { if (request === preflightRequest.current) setPreflightFailed(true) })
   }
   useEffect(checkRuntime, [])
   // Coming back to the window is the re-check. The operator left to install
   // something; there is nothing for them to press on the way back.
   useRevalidateOnFocus(() => { if (activeDependencyInstalls.current.size === 0) checkRuntime() })
-  useEffect(() => {
-    if (preflight && !preflightFailed && (preparationChecks(preflight, preparationSource).length === 0 || (!preparationRequested.current && commandCaptureBlockers(preflight).length === 0))) setPreparing(false)
-  }, [preflight, preflightFailed, preparationSource])
   // Opened from this page, the page stays mounted behind the preparation panel
   // so coming back finds it as it was. Only the proof the preparation can
   // invalidate is thrown away: reinstalling HTTP tools resets the HTTP check,
@@ -114,7 +126,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
   // the built-in terminal and what is open on the page are untouched.
   const [keepPage, setKeepPage] = useState(false)
   const openPreparation = (source: 'commands' | 'web'): void => {
-    setPreparationSource(source); preparationRequested.current = true
+    setPreparationSource(source); preparationSourceNow.current = source; preparationRequested.current = true
     if (source === 'web') setHttpVerified(false)
     setKeepPage(true); setPreparing(true); checkRuntime()
   }

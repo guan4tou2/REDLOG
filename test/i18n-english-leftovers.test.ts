@@ -19,7 +19,7 @@ const ROOT = path.join(__dirname, '..')
 /** Identical in both locales on purpose: identifiers, protocol and tool
  *  names, formats, and three still awaiting a wording decision (marked). */
 const SAME_IN_BOTH = new Set([
-  'timeline.shell', 'timeline.dns', 'timeline.http', 'statusBar.overlay', 'settings.displayZoneUtc',
+  'timeline.shell', 'timeline.dns', 'statusBar.overlay', 'settings.displayZoneUtc',
   'settings.ipMode.dns', 'settings.ipMode.http', 'settings.overlayGroup', 'settings.fileWatcherIgnorePlaceholder',
   'settings.processMonitorIgnorePlaceholder', 'settings.cdp', 'toast.repeat', 'timeline.detail.stdout',
   'timeline.detail.stderr', 'toolCard.env.shell', 'toolCard.env.shellUnknown', 'toolCard.mode.pty',

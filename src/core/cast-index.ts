@@ -112,6 +112,9 @@ export function getCastIndex(projectDir?: string): Database.Database {
   ensurePrivateFile(indexPath(dir))
   const db = new Database(indexPath(dir))
   db.pragma('journal_mode = WAL')
+  // `synchronous` stays at the WAL default (NORMAL), unlike timeline.db: a
+  // row lost to an OS crash here is re-read from its .cast file by the
+  // backfill on the next project open (backfillCastIndex).
   if(db.pragma('user_version',{simple:true})!==2)db.exec('DROP TABLE IF EXISTS cast_fts; DROP TABLE IF EXISTS cast_files;')
   db.exec(`
     CREATE VIRTUAL TABLE IF NOT EXISTS cast_fts USING fts5(

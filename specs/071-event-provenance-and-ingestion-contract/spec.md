@@ -34,7 +34,7 @@
 
 > 本檔與 plan、tasks 中仍寫作「開放問題 Q1–Q5」之處，分別對應 O13–O17，已決定。O18 是起草後才做的決定，FR 與 tasks 尚未為它展開，動工前需補上（Spec 074 Phase 5 的 `cause_counts` 依賴它，見 [specs/README.md](../README.md)「071–075 的跨規格順序」）。新的未決事項見文末「開放問題（需要擁有者）」。
 >
-> **2026-11-12 跨規格對帳（071–075）**：本規格依同批起草的 072–075 做了下列增補，均為新增、不改既有列的形狀：`_ingest.rules`／`rules_partial`（FR-005、FR-006，Spec 075 的 Processor 規則紀錄）；`/api/whoami` 回傳呼叫者來源的狀態（FR-07B，Spec 075）；`CommitReceipt`（FR-096，Spec 074）；`terminal_targets` 的回填歸屬（FR-010，Spec 074）；種類的 tier 改由 Spec 072 的登記表回答（FR-113）；每個來源在本專案的第一次與最近一次接受（FR-056，Spec 075）。另依 Phase 1 實作（#716）更正三處事實：直接呼叫 `insertEvent(` 為 31 處；`PRAGMA synchronous` 實為 NORMAL；relay 不重試 5xx。
+> **2026-11-12 跨規格對帳（071–075）**：本規格依同批起草的 072–075 做了下列增補，均為新增、不改既有列的形狀：`_ingest.rules`／`rules_partial`（FR-005、FR-006，Spec 075 的 Processor 規則紀錄）；`/api/whoami` 回傳呼叫者來源的狀態（FR-07B，Spec 075）；`CommitReceipt`（FR-096，Spec 074）；`terminal_targets` 的回填歸屬（FR-010，Spec 074）；種類的 tier 改由 Spec 072 的登記表回答（FR-113）；每個來源在本專案的第一次與最近一次接受（FR-056，Spec 075）。另依 Phase 1 實作（#716）更正三處事實：直接呼叫 `insertEvent(` 為 31 處；`PRAGMA synchronous` 實為 NORMAL（其後依 Q6 改為 FULL）；relay 不重試 5xx。
 
 ### 本規格自行決定的（理由與被否決的替代方案見 plan.md）
 
@@ -319,7 +319,7 @@
 
 - **FR-060** 結構為 `~/.redlog/handoff/<project>/{tmp,new,quarantine}`。`new/` 中的檔名為 `<觀察毫秒>-<instance>-<seq>.rli`，依觀察時間排序。
 - **FR-061** 來源只在 `tmp/` 以獨占方式建檔，寫完後以同一檔案系統內的 rename 移入 `new/`。接收端從不讀 `tmp/`。`new/` 中永遠沒有寫一半的檔。
-- **FR-062** Python、Node、PowerShell 在 rename 前對檔案 fsync。shell 不 fsync，斷電時可能留下損毀檔，由 MAC 檢出並隔離。接收端只在 commit 之後刪檔。資料庫的耐久度依今天的事實：WAL 下 `PRAGMA synchronous = NORMAL`（見 Assumptions），commit 對行程當掉是耐久的，對斷電或作業系統當掉**不保證**，最近的幾筆 commit 可能遺失，而其交接檔已刪。是否改為 FULL 見開放問題 Q6；在答覆前，本規格不宣稱 `accepted` 對斷電耐久。
+- **FR-062** Python、Node、PowerShell 在 rename 前對檔案 fsync。shell 不 fsync，斷電時可能留下損毀檔，由 MAC 檢出並隔離。接收端只在 commit 之後刪檔。資料庫的耐久度：寫入連線為 WAL + `PRAGMA synchronous = FULL`（見 Assumptions），每次 commit 之後對 WAL 做一次 sync，`accepted` 與刪檔都在那次 sync 之後。因此 commit 對行程當掉與作業系統當掉耐久。斷電：Linux 與 Windows 上，sync 是 `fsync()`／`FlushFileBuffers()`，在儲存裝置如實執行 flush 的前提下耐久；macOS 上 `fsync()` 不清磁碟的寫入快取，而 `fullfsync` 未開（Q6），所以斷電時最近幾筆已回 `accepted` 的 commit 仍可能遺失。資料庫在任何情況下都不會因此損毀。
 - **FR-063** 每個專案的 `new/` 合計（所有來源）最多 5000 檔；能廉價量測大小的來源另限 512 MiB；單檔不超過 20 MiB。滿了就丟最新的並計 `handoff-full`，絕不阻塞操作者。
 - **FR-064** 交接檔第一行宣告憑證 id、世代與 HMAC，其後是項目的確切位元組。MAC 以憑證衍生的金鑰、對加上領域前綴的項目位元組計算。接收端先驗 MAC 再解析。金鑰不出現在 argv 或環境變數中。
 - **FR-065** 交接檔走與 API 相同的整條管線，包括依憑證的種類政策。任何檔都不能產生該憑證不得寫入的種類：`system`、衍生種類、`amended` 都不行；`marker` 只有種類範圍明列它的憑證可以（目前只有 O13 的 `agent-tools`）。種類範圍的資料取自 Spec 072 登記表的 `writers`（072 FR-005），本規格負責強制。
@@ -438,7 +438,7 @@
 - 單一使用者、單機。**威脅模型**：防的是瀏覽器或網頁、敵意的錄製內容、只有檔案讀寫工具（不能執行程式碼）的代理、bundle 的持有者；**不防**能執行任意程式碼的同使用者程序（05-F6）。憑證與 MAC 防的是誤歸屬與越權，不防惡意的本機程序。
 - 來源與接收端在同一台機器、同一時鐘。跨 VM、SSH 或遠端主機的來源可帶 `sent_at`，但本規格不據此校正時間。
 - 本機已有 POSIX shell 擷取的地方就有 python3：adapter 每個指令會呼叫 relay（`shell-zsh-hook.zsh:116,161`）。沒有 python3 的情形見 O15。
-- SQLite 維持 WAL（`db/index.ts:140`）。**`PRAGMA synchronous` 在每條專案連線第一次寫入 WAL 之後是 NORMAL（1），不是 FULL**：better-sqlite3 以 `SQLITE_DEFAULT_WAL_SYNCHRONOUS=1` 建置，app 從不設定這個 pragma（#716 的 T005 量得）。WAL + NORMAL 下，commit 對行程當掉耐久，斷電或作業系統當掉時最近的 commit 可能遺失。FR-032 的 `accepted` 與 FR-062 的「commit 後刪交接檔」因此只對行程當掉成立；是否改為 FULL 見開放問題 Q6。
+- SQLite 維持 WAL。**專案的寫入連線設 `PRAGMA synchronous = FULL`**（`db/index.ts` 的 `initDB`，在第一次寫入之前；每次開專案、重開與切換專案都經過它）。必須明設：better-sqlite3 以 `SQLITE_DEFAULT_WAL_SYNCHRONOUS=1` 建置，沒有明設的連線在第一次讀到 WAL 檔時就降為 NORMAL（1）。唯讀連線（`getReadonlyDB`、`openReadOnlyDB`、匯出 worker 的 `openReadonlyProjectDB`）從不 commit，維持預設 NORMAL；衍生索引 `http-body-index.db` 與 cast index 可由證據重建，也維持 NORMAL。WAL + FULL 下 commit 對行程當掉與作業系統當掉耐久；斷電的界線依平台，見 FR-062。`test/hash-input-pin.test.ts` 釘住這些值。
 - relay 只對網路錯誤（沒有回應、連線被拒、逾時）重試，不對 5xx 重試；01 報告 F1 表中「relay 重試 5xx」一格在 #716 未能重現（T004 依實測釘住）。
 - 操作者身分讀自機器層級設定（O12）；搬遷本身是另一項變更。
 - 依賴：階段 0 的略過記帳（#706 已合併）；#708 的事件排序修正與本規格無衝突；#711 的 bundle 第 4 版與本規格無格式衝突。
@@ -458,7 +458,9 @@
 
 ## 開放問題（需要擁有者）
 
-> **2026-11-12 擁有者答覆**：Q6 照建議——寫入連線改為 `synchronous=FULL`，改之前先量測寫入成本；量測結果若顯示影響明顯，回報後再議折衷。這是決定，尚未實作；FR-062 與 T005 於實作時一併改回「FULL」。
+> **2026-11-12 擁有者答覆**：Q6 照建議——寫入連線改為 `synchronous=FULL`，改之前先量測寫入成本；量測結果若顯示影響明顯，回報後再議折衷。
+
+> **2026-11-12 已實作**：寫入連線設 `synchronous = FULL`；`fullfsync` 不開。量測（MacBook Pro M2 Pro、內建 Apple SSD AP1024Z／APFS，經 `insertEvent` 的真實寫入路徑，每列一次 commit，單一行程、1 分鐘負載低於 8）：FULL 與 NORMAL 在雜訊範圍內沒有差別（100 筆 shell 突發 35→42 ms；2,000 筆 HTTP flow 事件 0.79→0.60 s；20k 積壓 9.0→8.8 s；FULL 每次 commit p50 約 0.2–0.3 ms、p99 低於 3 ms），macOS 上不清磁碟快取的 `fsync()` 很便宜。`fullfsync = ON` 每次 commit 約 4–5 ms，100 筆突發 0.66 s、2,000 筆 HTTP 事件 10.6 s、20k 積壓 112 s（今天的 12–19 倍），且主執行緒同步等待，所以不開；代價是 macOS 上斷電時最近幾筆 commit 仍可能遺失（FR-062）。Q6 關閉。
 
 O13–O17（原 Q1–Q5）已決定。以下是 2026-11-12 Phase 1 實作後新出現、尚未答覆的事項；本規格不替擁有者決定。
 

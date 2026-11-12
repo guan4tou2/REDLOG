@@ -12,6 +12,7 @@ import { captureScreenshotWithFeedback } from '../lib/captureScreenshot'
 import { Modal } from './Modal'
 import { Button } from './Button'
 import { useLivePagedQuery } from '../hooks/useLivePagedQuery'
+import { screenshotSrc } from '../lib/screenshotSrc'
 
 const PAGE_SIZE = 100
 const shotKey = (shot: RedLogEvent): string => shot.id
@@ -230,11 +231,9 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
   useEffect(() => {
     screenshots.forEach((s) => {
       if (thumbs[s.id]) return
-      const filePath = s.data.filePath as string | undefined
-      if (!filePath) return
-      const basename = filePath.split(/[\\/]/).pop() || ''
-      if (!basename) return
-      setThumbs((prev) => ({ ...prev, [s.id]: `redlog-screenshot://local/${encodeURIComponent(basename)}` }))
+      const src = screenshotSrc(s.data)
+      if (!src) return
+      setThumbs((prev) => ({ ...prev, [s.id]: src }))
     })
   }, [screenshots, thumbs])
 
