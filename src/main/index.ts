@@ -18,7 +18,7 @@ import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir, bindDBEngagement } from '../core/db/index'
 import { mkdirPrivate, restrictRedlogHome } from '../core/private-fs'
 import { restrictProjectDirs } from './project-dir-modes'
-import { insertEvent, queryEvents, queryEventById, getLootCount, lastRecordingSubtype, recordingStateRows, type RedLogEvent } from '../core/db/events'
+import { insertEvent, queryEvents, queryEventById, getLootCount, lootCountIsPartial, lastRecordingSubtype, recordingStateRows, type RedLogEvent } from '../core/db/events'
 import { pivotsMayChange, type LastPivotAnswer } from './pivot-refresh'
 import { readActivePivots, type ActivePivot } from './active-pivots'
 import { isPauseJudgedGap, pauseIntervals, queueGapAgainstPauses } from '../core/queue-gap'
@@ -1684,6 +1684,7 @@ app.whenReady().then(() => {
 
   // --- Loot ---
   ipcMain.handle('loot:getCount', () => projectRuntime.project() ? getLootCount() : 0)
+  ipcMain.handle('loot:countIsPartial', () => projectRuntime.project() ? lootCountIsPartial() : false)
   ipcMain.handle('loot:rules', () => listLootRules())
 
   // --- Bookmarks ---

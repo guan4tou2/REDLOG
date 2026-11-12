@@ -1140,6 +1140,14 @@ export function getLootCount(): number {
   return row.count
 }
 
+/** Whether `getLootCount` is a lower bound: some detection found more secrets
+ *  than one loot event stores (#695), and counts only the ones it kept. */
+export function lootCountIsPartial(): boolean {
+  return (getReadonlyDB().prepare(
+    "SELECT EXISTS(SELECT 1 FROM events WHERE agent_type = 'loot' AND json_extract(data, '$.matches_truncated') = 1) AS partial"
+  ).get() as { partial: number }).partial === 1
+}
+
 export interface EventQueryRequest {
   snapshot?: ExportSnapshot
   parsed: ParsedQuery

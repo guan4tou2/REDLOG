@@ -18,9 +18,10 @@
 | 打包版 CSP | 以回應標頭送出，於未簽章 macOS app 實測在 `file://` 上生效（行內腳本與 `new Function` 被擋）；Windows、Linux 未實測 |
 | HUD 設定 | 全域偏好（`~/.redlog/hud-prefs.json`），不隨專案變動 |
 | AI session 選取 | 依 engagement 保存於記憶體，專案關閉時清除；設定儲存不再清掉（#686） |
-| 搜尋索引 | `http-body-index.db` `user_version` 7；驗證狀態隨索引列保存，回填為增量。放寬條件見收尾紀錄 §3 |
+| 搜尋索引 | `http-body-index.db` `user_version` 7；驗證狀態隨索引列保存，回填為增量。新索引以一次 commit 建立，已是 v7 的索引開啟時不寫入；另一個連線（匯出 worker）佔住索引超過 busy timeout 時，搜尋以索引現況回答，不再失敗。啟動後第一次搜尋仍在主行程走訪全部 content-ref 列，留給 Spec 074（#695 未關）。放寬條件見收尾紀錄 §3 |
+| 戰利品單筆上限 | 一筆 loot 事件最多存 500 個新 match，超過時該列加 `matches_truncated`／`matches_total`，未存的值留給下次出現時記錄；戰利品頁、逐字稿與側欄徽章（「N+」）標示為部分（#695） |
 | API 上限 | `/api/loot/scan` 文字 128 KiB；查詢 1000 字元；JSON body 必須是物件且深度 ≤ 64（`src/core/api-request.ts`、`src/core/query/contract.ts`） |
-| 已知未完成 | 開啟後第一次搜尋的主行程停頓、8 MiB 相異雜湊輸出的擷取時間、時間軸刻度重疊等，見收尾紀錄 §4；排程在 [工作計畫](WORK-PLAN.md) |
+| 已知未完成 | 開啟後第一次搜尋的主行程停頓（Spec 074）、8 MiB 相異雜湊輸出的遮蔽 denylist 時間（loot 列已有上限）、時間軸刻度重疊等，見收尾紀錄 §4；排程在 [工作計畫](WORK-PLAN.md) |
 | 未驗證的環境 | Windows PowerShell 與 Git Bash、WSL、Linux 非 UTF-8 目錄、真實輸入法、多螢幕、簽章與公證 |
 
 ## 2026-11-11 核對（`main@9f60882d`）
