@@ -46,7 +46,10 @@ const dropLegacyWoff = {
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin(), writeBuildVariant],
-    define: { __APP_VERSION__: JSON.stringify(pkgVersion), __REDLOG_SMOKE_BUILD__: JSON.stringify(buildVariant === 'smoke') }
+    define: { __APP_VERSION__: JSON.stringify(pkgVersion), __REDLOG_SMOKE_BUILD__: JSON.stringify(buildVariant === 'smoke') },
+    // Rolldown (Vite 8) only emits "use strict" in CommonJS output when the
+    // source has it, and the TypeScript sources do not; Rollup always did.
+    build: { rollupOptions: { output: { strict: true } } }
   },
   preload: {
     plugins: [externalizeDepsPlugin()],
@@ -55,7 +58,8 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, 'src/preload/index.ts'),
           overlay: resolve(__dirname, 'src/preload/overlay.ts')
-        }
+        },
+        output: { strict: true }
       }
     }
   },

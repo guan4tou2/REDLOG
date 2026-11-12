@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { posix } from 'node:path'
 import { spawnSync } from 'node:child_process'
-import yaml from 'js-yaml'
+import * as yaml from 'js-yaml'
 
 for (const platform of ['windows','linux']) describe(`${platform} installed smoke triggers`,()=>{
   const workflow=yaml.load(readFileSync(`.github/workflows/${platform}-install-smoke.yml`,'utf8')) as {on:{workflow_dispatch:unknown;pull_request:{paths:string[]}}}
