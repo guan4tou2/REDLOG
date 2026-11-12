@@ -51,6 +51,8 @@ export interface AppCounts {
    *  number the word 證據鏈 actually means. */
   chainLen: number
   lootCount: number
+  /** `lootCount` is a lower bound (#695: a loot event stores at most 500). */
+  lootPartial: boolean
   scopeObservations: number
   scopeConfigured: boolean
   /** The violation count or the scope configuration could not be read. */
@@ -60,12 +62,12 @@ export interface AppCounts {
 }
 
 interface State {
-  eventCount: number; loggedCount: number; chainLen: number; lootCount: number
+  eventCount: number; loggedCount: number; chainLen: number; lootCount: number; lootPartial: boolean
   scopeObservations: number; scopeConfigured: boolean
   observationsFailed: boolean; configuredFailed: boolean; loading: boolean
 }
 const INITIAL: State = {
-  eventCount: 0, loggedCount: 0, chainLen: 0, lootCount: 0, scopeObservations: 0, scopeConfigured: false,
+  eventCount: 0, loggedCount: 0, chainLen: 0, lootCount: 0, lootPartial: false, scopeObservations: 0, scopeConfigured: false,
   observationsFailed: false, configuredFailed: false, loading: true
 }
 /** What a round reads. `live`: what a batch can change. `configured`: whether
@@ -100,6 +102,8 @@ async function round(): Promise<void> {
       r.events.getCount('logged').then((n) => apply({ loggedCount: n })).catch(() => {}),
       r.chain.length().then((n) => apply({ chainLen: n })).catch(() => {}),
       r.loot.getCount().then((n) => apply({ lootCount: n })).catch(() => {}),
+      // Read like the count beside it: a failed read keeps the last answer.
+      Promise.resolve().then(() => r.loot.countIsPartial()).then((partial) => apply({ lootPartial: partial === true })).catch(() => {}),
       r.scope.getObservationCount()
         .then((n) => apply({ scopeObservations: n, observationsFailed: false }))
         .catch(() => apply({ observationsFailed: true }))
@@ -176,7 +180,7 @@ export function useAppCounts(): AppCounts {
     }
   }, [])
   return {
-    eventCount: s.eventCount, loggedCount: s.loggedCount, chainLen: s.chainLen, lootCount: s.lootCount,
+    eventCount: s.eventCount, loggedCount: s.loggedCount, chainLen: s.chainLen, lootCount: s.lootCount, lootPartial: s.lootPartial,
     scopeObservations: s.scopeObservations, scopeConfigured: s.scopeConfigured,
     scopeUnknown: s.observationsFailed || s.configuredFailed,
     loading: s.loading, retry: recountAll

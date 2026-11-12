@@ -114,6 +114,19 @@ describe('Loot completeness UI', () => {
 
   // #691: the page had a pre-redesign "Loot (N)" heading above the Stitch 03
   // section heading, under the Evidence header. One heading, carrying the count.
+  // #695: an event keeps at most 500 matches and records how many it found.
+  // Its row must read as part of a larger set, and the page must not call
+  // itself complete while it shows one.
+  it('shows a capped event as N of M and does not call the page complete', async () => {
+    const capped = { ...lootEvent('cap', 'first kept', 2), data: { source: 'cat', count: 1, matches_truncated: true, matches_total: 1200,
+      matches: [{ type: 'password_hash', confidence: 'high', preview: 'first kept' }] } }
+    installBridge(vi.fn().mockResolvedValue({ items: [capped, lootEvent('whole', 'whole one', 1)], hasMore: false, nextCursor: null }))
+    render(<LootPanel />)
+    await screen.findByText('first kept')
+    expect(screen.getAllByTestId('loot-items').map((el) => el.textContent)).toEqual([' · loot.itemsOfTotal', ' · loot.items'])
+    expect(screen.getByTestId('loot-completeness').textContent).toBe('loot.partialEvents')
+  })
+
   it('has one heading, with the match count beside it', async () => {
     const queryPage = vi.fn().mockResolvedValueOnce({ items: [lootEvent('a', 'one', 2), lootEvent('b', 'two', 1)], hasMore: false, nextCursor: null })
     installBridge(queryPage)

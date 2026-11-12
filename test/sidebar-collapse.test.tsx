@@ -38,6 +38,25 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup(); localStorage.clear() })
 
+describe('the loot badge', () => {
+  // #695: a loot event stores at most 500 matches, so when one was capped the
+  // stored count is a lower bound and the badge says so.
+  it('reads as a lower bound when a loot event was capped', async () => {
+    const bridge = (window as unknown as { redlog: { loot: unknown } }).redlog
+    bridge.loot = { getCount: vi.fn(async () => 7), countIsPartial: vi.fn(async () => true) }
+    draw(ALL)
+    const badge = await screen.findByLabelText('至少 7 筆戰利品')
+    expect(badge.textContent).toBe('7+')
+  })
+
+  it('is a plain count otherwise', async () => {
+    const bridge = (window as unknown as { redlog: { loot: unknown } }).redlog
+    bridge.loot = { getCount: vi.fn(async () => 7), countIsPartial: vi.fn(async () => false) }
+    draw(ALL)
+    expect((await screen.findByLabelText('7 筆戰利品')).textContent).toBe('7')
+  })
+})
+
 describe('the sidebar rail', () => {
   it('starts expanded, because a rail has to be learned first', () => {
     draw()

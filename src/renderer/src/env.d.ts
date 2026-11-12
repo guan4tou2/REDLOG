@@ -349,6 +349,9 @@ interface RedLogAPI {
   }
   loot: {
     getCount: () => Promise<number>
+    /** True when the count is a lower bound: a capped loot event stored only
+     *  part of what it found (#695). */
+    countIsPartial: () => Promise<boolean>
     /** Every loot rule, for the Settings switches (Spec 032). */
     rules: () => Promise<Array<{ id: string; type: string; confidence: 'high' | 'medium' | 'low'; pluginId: string | null; description?: string; stopped?: 'time_limit' }>>
   }
