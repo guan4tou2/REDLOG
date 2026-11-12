@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import { useI18n } from '../i18n'
 import { useReadState } from '../lib/readState'
 import { useAppCounts } from '../lib/useAppCounts'
+import { scopeConfigured } from '../lib/scope'
 import { Button } from './Button'
 
 type Page = 'targets' | 'scope'
@@ -10,9 +11,9 @@ const PAGES: Page[] = ['targets', 'scope']
 
 /** What the page can say about the declared rules, and nothing it cannot: a
  *  failed read is its own state, never "not set" and never "in scope". */
-async function loadRules(): Promise<{ allow: number; exclude: number }> {
+async function loadRules(): Promise<{ allow: number; exclude: number; configured: boolean }> {
   const c = await window.redlog.config.get() as { scope?: { targets?: string[]; excludeTargets?: string[] } } | null
-  return { allow: c?.scope?.targets?.length ?? 0, exclude: c?.scope?.excludeTargets?.length ?? 0 }
+  return { allow: c?.scope?.targets?.length ?? 0, exclude: c?.scope?.excludeTargets?.length ?? 0, configured: scopeConfigured(c?.scope) }
 }
 
 function Dot({ tone }: { tone: 'good' | 'warn' }): JSX.Element {
@@ -47,7 +48,9 @@ export function TargetsScopeHeader({ page, onNavigate, onOpenSettings }: {
 
   const value = rules.state.value
   const failed = rules.state.phase === 'failed' && !value
-  const configured = !!value && (value.allow > 0 || value.exclude > 0)
+  // Core's rule: exclusions alone are not a scope. Their count is still shown,
+  // as a fact, beside "not set".
+  const configured = !!value && value.configured
 
   return <div data-testid="targets-scope-header" className="shrink-0 px-4 pt-4"><div className={`${PAGE_COLUMN} space-y-3`}>
     <div className="flex items-start justify-between gap-4">
@@ -88,10 +91,8 @@ export function TargetsScopeHeader({ page, onNavigate, onOpenSettings }: {
           {failed ? t('targetsScope.failedBody') : configured ? t('targetsScope.configuredBody') : t('targetsScope.unsetBody')}
         </p>
       </div>
-      {configured && value && <>
-        <span className="rounded border border-redlog-border bg-redlog-elevated px-2 py-1 text-xs text-redlog-text-dim">{t('targetsScope.allow')} <b className="font-mono text-redlog-text">{value.allow}</b></span>
-        <span className="rounded border border-redlog-border bg-redlog-elevated px-2 py-1 text-xs text-redlog-text-dim">{t('targetsScope.exclude')} <b className="font-mono text-redlog-text">{value.exclude}</b></span>
-      </>}
+      {configured && value && <span className="rounded border border-redlog-border bg-redlog-elevated px-2 py-1 text-xs text-redlog-text-dim">{t('targetsScope.allow')} <b className="font-mono text-redlog-text">{value.allow}</b></span>}
+      {value && (configured || value.exclude > 0) && <span data-testid="scope-context-exclude" className="rounded border border-redlog-border bg-redlog-elevated px-2 py-1 text-xs text-redlog-text-dim">{t('targetsScope.exclude')} <b className="font-mono text-redlog-text">{value.exclude}</b></span>}
       {failed && <Button size="compact" data-testid="scope-context-retry" onClick={retryRules}>{t('common.retry')}</Button>}
       {!failed && !configured && value && <Button size="compact" onClick={onOpenSettings}>{t('targetsScope.goSettings')}</Button>}
     </section>

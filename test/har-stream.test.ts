@@ -1,8 +1,8 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, expect, it } from 'vitest'
-import { initDB, closeDB, getDB } from '../src/core/db/index'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { initDB, closeDB, getDB, getReadonlyDB } from '../src/core/db/index'
 import { addExportEvent } from './helpers/export-fixtures'
 import { takeExportSnapshot } from '../src/core/export-plan'
 import { exportHar } from '../src/core/har-export'
@@ -38,6 +38,35 @@ it('streams the exact approved HAR bytes across page boundaries, duplicate reque
   writeApprovedHar(file, options)
   expect(fs.readFileSync(file, 'utf8')).toBe(exportHar(options))
   expect(() => writeApprovedHar(file, options)).toThrow(/exist/i)
+})
+
+// #695: the per-flow lookup named no subtype, so neither partial flow_id index
+// applied and every flow scanned every scanner row — a whole-project HAR of
+// 3 000 flows beside 30 000 other scanner rows took 43 s against 0.15 s for
+// exportHar. Asserted on the query plan, which does not depend on the machine.
+it('looks each flow up through the flow_id indexes, not a scan of the scanner rows', () => {
+  for (let i = 0; i < 3; i++) {
+    event(`req-${i}`, 1000 + i, { subtype: 'http_request_start', flow_id: `f-${i}`, method: 'GET', url: `https://example.test/${i}` })
+    event(`chunk-${i}`, 1500 + i, { subtype: 'http_response_chunk', flow_id: `f-${i}`, seq: 1, response_body: { encoding: 'text', data: 'x', size: 1 } })
+  }
+  const snapshot = takeExportSnapshot()
+  const includeEventIds = new Set([...iterateSnapshotEvents(snapshot)].map(event => event.id))
+  const db = getReadonlyDB()
+  const prepare = vi.spyOn(db, 'prepare')
+  let prepared: string[] = []
+  try {
+    writeApprovedHar(path.join(dir, 'plan.har'), { snapshot, includeEventIds })
+    prepared = prepare.mock.calls.map(([sql]) => String(sql))
+  } finally { prepare.mockRestore() }
+  const flowSql = prepared.filter(sql => sql.includes("'$.flow_id'"))
+  expect(flowSql.length).toBeGreaterThan(0)
+  for (const sql of flowSql) {
+    const params = Array.from({ length: (sql.match(/\?/g) ?? []).length }, (_, i) => i % 2 === 0 ? 'f-0' : snapshot.loggedMaxRowId)
+    const plan = (db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...params) as { detail: string }[]).map(row => row.detail)
+    const reads = plan.filter(detail => /\b(SCAN|SEARCH) events_logged\b/.test(detail))
+    expect(reads.length, plan.join(' | ')).toBeGreaterThan(0)
+    for (const detail of reads) expect(detail).toMatch(/idx_events_logged_(http_flow|stream_flows) \(<expr>=\?/)
+  }
 })
 
 it('writes the same empty HAR without inventing an exchange or a partial flow', () => {

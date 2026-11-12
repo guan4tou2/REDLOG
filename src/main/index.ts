@@ -7,9 +7,9 @@ import { homedir } from 'os'
 import { createMainWindow, createOverlayWindow } from './windows'
 import { visibleWindowBounds } from './window-bounds'
 import { loadOverlayPosition, saveOverlayPosition } from './services/overlay-position'
-import { createTray, setTrayRecording, setTrayText } from './tray'
+import { createTray, refreshTrayMenu, setTrayRecording, setTrayText } from './tray'
 import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
-import yaml from 'js-yaml'
+import { exportableProfile, writeProfileFile } from '../core/profile-export'
 import { loadConfig, saveConfig, snapshotScope, readScopeFile, mergeInitialConfig, DEFAULT_CONFIG, RedLogConfig } from '../core/config'
 import { isPackMemberOn, isPackOn } from '../core/capture-packs'
 import { debugLog, debugLogPath, isDebugLogEnabled, setDebugLogEnabled } from '../core/debug-log'
@@ -17,6 +17,7 @@ import { unsavedGapForProject } from '../core/unsaved-gap'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir, bindDBEngagement } from '../core/db/index'
 import { mkdirPrivate, restrictRedlogHome } from '../core/private-fs'
+import { restrictProjectDirs } from './project-dir-modes'
 import { insertEvent, queryEvents, queryEventById, getLootCount, lastRecordingSubtype, recordingStateRows, type RedLogEvent } from '../core/db/events'
 import { pivotsMayChange, type LastPivotAnswer } from './pivot-refresh'
 import { readActivePivots, type ActivePivot } from './active-pivots'
@@ -29,10 +30,13 @@ import { getActiveBrowserTab, setCdpPort, configureCdpMonitor, stopCdpMonitor, o
 import { isVerifyNonce, verifyUrl, clientLabel } from '../core/http-verify'
 import { httpVerificationState, type HttpVerificationContext, type HttpVerificationEvidence } from '../core/http-verification-evidence'
 import { HttpVerificationHistory } from './services/http-verification-history'
-import { QUICK_MARK_ACCELERATOR, HUD_PASSTHROUGH_ACCELERATOR, QUICK_SHOT_ACCELERATOR } from '../core/shortcuts'
+import { QUICK_MARK_ACCELERATOR, QUICK_SHOT_ACCELERATOR } from '../core/shortcuts'
 import fs from 'fs'
 import { eventBus } from '../core/event-bus'
 import { ScreenshotAgent } from './services/screenshot-agent'
+import { installCapturePrerequisites } from './services/capture-prerequisites'
+import { screenshotRequestFile } from './screenshot-protocol'
+import { externalUrlAllowed } from '../core/external-url'
 import { LootDetector, listLootRules } from '../core/loot-detector'
 import { startAnchorLoop, stopAnchorLoop, verifyRandomSample } from '../core/chain-anchor'
 import { startNtpLoop, stopNtpLoop } from '../core/clock'
@@ -51,6 +55,8 @@ import {
   getProjectDir as getProjectPath, ProjectMeta
 } from '../core/project-manager'
 import { startApiServer, stopApiServer, configureApi, setPrimaryOperator, getApiToken, setAppVersion, getApiPort, setCastProbe, onApiProjectOpen, onApiProjectClose } from '../core/api-server'
+import { createDirectBundleExporter } from '../core/export-direct-bundle'
+import { runExportTask } from './services/export-runner'
 import {
   killAllTerminals, detachTerminalRecordings, resumeTerminalRecordings, setTerminalWindow, configureTerminal, configureTerminalProxy, recoverOrphanSessions, discoverShells,
   getCastPosition, listTerminals, countProxiedTerminals
@@ -92,7 +98,6 @@ import { detectLink, linkForDisplay, type NetworkLink } from './services/network
 import { checkForUpdates, setUpdaterAirgap, setUpdateImpactProvider, getUpdateStatus, onUpdateStatus, cancelUpdateDownload, installReadyUpdate, setUpdateOutcome, takeUpdateOutcome, autoCheckEnabled, setAutoCheck, restoreUnfinishedUpdate } from './services/updater'
 import { readUpdateMarker, clearUpdateMarker, judgeUpdateOutcome } from './services/update-marker'
 import { recordUpdateOutcome } from '../core/update-anchor'
-import { isInsideDir } from '../core/paths'
 import { contentSecurityPolicy } from '../core/csp'
 import { backfillCastIndex, closeCastIndex } from '../core/cast-index'
 import { ProjectRuntime, type ProjectContext } from '../core/project-runtime'
@@ -105,8 +110,7 @@ import { registerDataExportIpc } from './ipc/data-export'
 import { RecentExportStore } from './services/recent-export'
 import {
   registerOverlayIpc, setOverlayPassThrough, bindOverlayReleaseShortcut, stopOverlayMouseTracking,
-  configureOverlayState, handleIpExposedChange, startOverlayMouseTracking,
-  applyOverlayPassThrough, applyOverlayOpacity, isOverlayPassThrough
+  handleIpExposedChange, isOverlayPassThrough, applyHudPrefs, openHudPrefs, syncReleaseShortcut
 } from './ipc/overlay'
 import { registerTerminalIpc } from './ipc/terminal'
 import { registerPluginsIpc } from './ipc/plugins'
@@ -117,6 +121,28 @@ import { registerMarkersIpc, MARKER_TEXT_FIELDS, hudMarkerFields, hudDraftBelong
 import { registerTargetContextIpc } from './ipc/target-context'
 import { registerArtifactsIpc } from './ipc/artifacts'
 import type { IpcContext } from './ipc/types'
+import { launchPolicy } from './launch-policy'
+import { SMOKE_BUILD, resolveTestHooks } from './test-hooks'
+
+// First statement after the imports: before ready, before any switch is read.
+{
+  if (SMOKE_BUILD) process.stderr.write('RedLog SMOKE BUILD: test hooks enabled (e2e switches, Node inspector, remote debugging). Not for release.\n')
+  const policy = launchPolicy(process.argv, process.env, app.isPackaged, SMOKE_BUILD)
+  for (const name of policy.removeSwitches) app.commandLine.removeSwitch(name)
+  // Fail closed: a debugging switch that survived would open a port once the
+  // browser starts. Removal is effective today (launch-policy.ts); this is
+  // what stops a future Electron from quietly changing that.
+  const kept = policy.removeSwitches.filter((name) => app.commandLine.hasSwitch(name))
+  if (kept.length) {
+    process.stderr.write(`RedLog: refusing to start: could not remove --${kept.join(', --')} from this launch.\n`)
+    process.exit(1)
+  }
+  for (const key of policy.clearEnv) delete process.env[key]
+  if (policy.dropped.length) debugLog('app', 'launch switches ignored', policy.dropped.join(','))
+}
+
+// Resolved once, here; nothing else reads REDLOG_E2E* (test/test-hooks-scan.test.ts).
+const testHooks = resolveTestHooks(process.env, app.isPackaged, SMOKE_BUILD)
 
 // macOS routes ⌘C/⌘V/⌘Q through the application menu, so the default menu has
 // to stay there. Windows and Linux don't — and RedLog draws its own title bar
@@ -147,6 +173,8 @@ const dependencyInstalls = new Map<PreflightCommand, AbortController>()
 // nothing here writes. And it is which project is open: `project()`, where a
 // module variable of its own used to be set and cleared at moments of its own.
 const projectRuntime = new ProjectRuntime()
+// One for the process, so concurrent API bundle requests queue across opens.
+const apiBundleExporter = createDirectBundleExporter(runExportTask, () => projectRuntime.project())
 
 /** The open project's directory, or null when none is open. */
 function openProjectDir(): string | null {
@@ -264,7 +292,7 @@ async function startManagedHttpCaptureNow(): Promise<ManagedProxyStatus> {
     if (holder) {
       // The event was already written here; what was missing is the status.
       // An operator reading "stopped" has no reason to look for an event.
-      const status = managedHttpProxy.noteStartFailure(holder)
+      const status = managedHttpProxy.noteStartFailure(holder.message, holder.reason)
       publishManagedProxyEvent('http_proxy_failed', status)
       return status
     }
@@ -324,6 +352,7 @@ function httpCaptureStatus(): ManagedProxyStatus {
 }
 
 configureManagedProxyHealth(httpCaptureStatus)
+installCapturePrerequisites()
 managedHttpProxy.onStatusChange((next, previous) => {
   if (previous.state === 'running' && next.state === 'failed') {
     publishManagedProxyEvent('http_proxy_failed', next)
@@ -472,7 +501,7 @@ function saveWindowState(win: BrowserWindow): void {
   try {
     const isMaximized = win.isMaximized()
     const bounds = isMaximized ? undefined : win.getBounds()
-    fs.mkdirSync(path.dirname(WINDOW_STATE_PATH), { recursive: true })
+    fs.mkdirSync(path.dirname(WINDOW_STATE_PATH), { recursive: true, mode: 0o700 })
     fs.writeFileSync(WINDOW_STATE_PATH, JSON.stringify({ bounds, isMaximized }))
   } catch {}
 }
@@ -600,9 +629,10 @@ function broadcastIPStatus(status: IPStatusShape): void {
   send(overlayWindow, 'ip:status', s)
 
   // §8: an exposed IP is the one condition allowed to override the operator's
-  // own HUD preferences. Pass-through comes off and the window goes fully
-  // opaque, because the failure being prevented is an operator working through
-  // a HUD they had ghosted and never seeing that their real address is out.
+  // own HUD preferences. A hidden HUD is shown, pass-through comes off and the
+  // window goes fully opaque, because the failure being prevented is an
+  // operator working through a HUD they had ghosted or closed and never seeing
+  // that their real address is out.
   handleIpExposedChange(status.ipSafety === 'exposed')
 }
 
@@ -712,6 +742,7 @@ function startProject(project: ProjectMeta): void {
   const opening = projectRuntime.begin(project, { engagementId: config.engagement.id, operatorId: config.operator.id })
   try {
     initDB(projectDir)
+    restrictProjectDirs(projectDir)
     bindDBEngagement(config.engagement.id)
     startProjectResources(project, projectDir, config, opening)
     // Publish the shell identity only after synchronous initialization succeeds.
@@ -727,8 +758,10 @@ function startProject(project: ProjectMeta): void {
 }
 
 function startProjectResources(project: ProjectMeta, projectDir: string, config: RedLogConfig, opening: ProjectContext): void {
-  keepDockIcon = config.overlay?.showInDock !== false
-  applyDock()
+  // The HUD's settings are the operator's, not this project's: an `overlay:`
+  // block in its config.yaml seeds them if there are none yet, and is
+  // otherwise ignored. Applied below, once the HUD window exists.
+  const hud = openHudPrefs((config as { overlay?: unknown }).overlay)
   showWifiName = config.network?.showWifiName === true
   screenshotAgent.configure({
     identity: opening,
@@ -984,6 +1017,7 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
     engagementId: opening.engagementId,
     operatorId: opening.operatorId,
     operatorName: config.operator.name,
+    testHooks: testHooks.e2e,
     configLoader: {
       getConfig: () => loadConfig(projectDir),
       getTargets: () => loadConfig(projectDir).scope.targets,
@@ -991,6 +1025,7 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
     },
     lootDetector: lootDetector,
     screenshotAgent: screenshotAgent,
+    bundleExporter: apiBundleExporter,
     alertRuntime,
     sessionRegistry: {
       register: registerSessionId,
@@ -1121,10 +1156,17 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
     } catch { /* transient sqlite errors already surface through DB error path */ }
   }, 5 * 60 * 1000)
 
+  // Every open honours autoShow, not only the first: closing a project hides
+  // the HUD (stopProject), so this is what brings it back.
+  const showHud = hud.autoShow && !testHooks.hideHud
   if (!overlayWindow) {
-    const hideHudForTest = process.env.REDLOG_E2E === '1' && process.env.REDLOG_E2E_HIDE_HUD === '1'
-    overlayWindow = createOverlayWindow(loadOverlayPosition(), { show: config.overlay?.autoShow !== false && !hideHudForTest })
+    overlayWindow = createOverlayWindow(loadOverlayPosition(), { show: showHud })
     bindOverlayReleaseShortcut(overlayWindow.webContents)
+    // Every way the HUD is shown or hidden (tray, HUD button, project close)
+    // ends in one of these, and the release chord follows its visibility.
+    overlayWindow.on('show', syncReleaseShortcut)
+    overlayWindow.on('hide', syncReleaseShortcut)
+    overlayWindow.on('closed', syncReleaseShortcut)
     // §8: remember where the operator put it, per display. `moved` fires
     // throughout a drag, so debounce to the end of it.
     let moveTimer: ReturnType<typeof setTimeout> | null = null
@@ -1137,19 +1179,15 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
     // Dock preference whenever the overlay appears so it isn't silently changed.
     if (process.platform === 'darwin') {
       overlayWindow.on('show', applyDock)
-      applyDock()
       setTimeout(applyDock, 250)
     }
-    configureOverlayState({
-      passThrough: !!config.overlay?.passThrough,
-      opacity: config.overlay?.passThroughOpacity ?? 0.4
-    })
-    if (tray) {
-      tray.destroy()
-      tray = createTray(mainWindow!, overlayWindow, toggleRecording, triggerBookmark, () => setOverlayPassThrough(false))
-      setTrayRecording(tray, !eventBus.paused)
-    }
+  } else if (showHud && !overlayWindow.isDestroyed() && !overlayWindow.isVisible()) {
+    overlayWindow.showInactive()
+    send(mainWindow, 'overlay:visibilityChanged', true)
   }
+  // Dock, tray menu, and the HUD's own settings and pass-through.
+  applyHudPrefs()
+  if (tray) setTrayRecording(tray, !eventBus.paused)
 
   // Capture starts with the project.
   //
@@ -1238,6 +1276,19 @@ function stopProject(): void {
   clean(resetBodiesDirCache)
   clean(resetCausesResolver)
   clean(() => configureIngest({ activeTarget: null }))
+  // With no project nothing is recorded, so nothing may say it is: the HUD's
+  // REC and its frozen IP verdict go away (the next open shows it again per
+  // autoShow) and the tray goes to its idle icon. The exposure is forgotten
+  // with the verdict, so the next project's first exposed tick is a change.
+  clean(() => handleIpExposedChange(false))
+  clean(() => {
+    if (overlayWindow && !overlayWindow.isDestroyed() && overlayWindow.isVisible()) {
+      overlayWindow.hide()
+      syncReleaseShortcut()
+      send(mainWindow, 'overlay:visibilityChanged', false)
+    }
+  })
+  clean(() => { if (tray) setTrayRecording(tray, null) })
   if (failed) throw firstError
 }
 
@@ -1249,7 +1300,7 @@ function stopProject(): void {
 // layout's narrow breakpoint, where the Settings sidebar is a <select> and
 // `[data-settings-page]` does not exist. Linux CI honours HOME and never saw it.
 // Must run before the single-instance lock, which also lives in userData.
-if (process.env.REDLOG_E2E === '1') {
+if (testHooks.e2e) {
   app.setPath('userData', path.join(homedir(), '.electron-user-data'))
 }
 
@@ -1332,23 +1383,15 @@ app.whenReady().then(() => {
   // v0.6.97 B: serve screenshots via a custom protocol instead of piping
   // 33%-inflated base64 data URIs through IPC. Renderer uses
   // `<img src="redlog-screenshot://<filename>">` and Chromium streams the
-  // bytes directly from disk. Path guarded by `isInsideDir(<project>/screenshots)`
-  // so a request for `redlog-screenshot://../../.ssh/id_ed25519` 404s.
+  // bytes directly from disk. Only a regular file in <project>/screenshots is
+  // served, so `redlog-screenshot://../../.ssh/id_ed25519` and a link planted
+  // in that folder are both refused.
   protocol.handle('redlog-screenshot', async (req) => {
     try {
-      const url = new URL(req.url)
-      // Only take the trailing path segment so `redlog-screenshot://local/foo.jpg`
-      // and `redlog-screenshot://foo.jpg` both resolve to <projectDir>/screenshots/foo.jpg.
-      // Callers pass basename only; the hostname/segment ordering depends on how
-      // Chromium normalises the URL (differs between platforms).
-      const segments = decodeURIComponent(url.pathname).split('/').filter(Boolean)
-      const basename = segments[segments.length - 1] || decodeURIComponent(url.hostname || '')
-      if (!basename || basename.includes('..') || basename.includes('/') || basename.includes('\\')) {
-        return new Response('', { status: 400 })
-      }
-      const screenshotDir = path.join(getProjectDir(), 'screenshots')
-      const resolved = path.resolve(screenshotDir, basename)
-      if (!isInsideDir(screenshotDir, resolved)) return new Response('', { status: 403 })
+      // Name checks and real-path containment (no links): screenshot-protocol.ts.
+      const target = screenshotRequestFile(req.url, getProjectDir())
+      if ('status' in target) return new Response('', { status: target.status })
+      const resolved = target.file
       // v0.6.100 F4: async read. With v0.6.98 A lazy-loading, 500 thumbs
       // burst-fire requests as ScreenshotsView scrolls — each 800KB-1.5MB
       // JPEG readFileSync blocked the main thread 5-15ms (same reason
@@ -1418,7 +1461,7 @@ app.whenReady().then(() => {
     }
   })
 
-  tray = createTray(mainWindow, null, toggleRecording, triggerBookmark, () => setOverlayPassThrough(false))
+  tray = createTray(mainWindow, () => overlayWindow, toggleRecording, triggerBookmark, () => setOverlayPassThrough(false), isOverlayPassThrough)
 
   // Renderer-requested native menus (the terminal's right-click — xterm owns
   // its own selection, so Chromium's context-menu event sees nothing there).
@@ -1438,7 +1481,16 @@ app.whenReady().then(() => {
     hudMarkerBinding: () => (projectRuntime.project() ? projectRuntime.current()?.engagementId ?? null : null),
     onPluginsChanged: () => { const dir = openProjectDir(); if (dir) applyCapturePacks(loadConfig(dir)) }
   }
-  registerOverlayIpc(ipcMain, ipcCtx)
+  registerOverlayIpc(ipcMain, ipcCtx, {
+    prefsDir: path.join(homedir(), '.redlog'),
+    onPrefsApplied: (p) => {
+      keepDockIcon = p.showInDock
+      applyDock()
+      refreshTrayMenu(tray)
+    }
+  })
+  // The tray was built before the stored prefs were read.
+  refreshTrayMenu(tray)
   registerDataExportIpc(ipcMain, ipcCtx, { recentExports: new RecentExportStore(path.join(app.getPath('userData'), 'recent-exports')) })
   registerTerminalIpc(ipcMain, ipcCtx)
   registerPluginsIpc(ipcMain, ipcCtx)
@@ -1472,7 +1524,10 @@ app.whenReady().then(() => {
     startProject(project)
     return project
   })
-  ipcMain.handle('project:delete', (_e, id: string) => deleteProject(id))
+  // Never the open project: its database, casts and API token are in use, and
+  // the API answered 401 once the folder went. The picker deletes from the
+  // closed state; `false` is the refusal it already reports.
+  ipcMain.handle('project:delete', (_e, id: string) => deleteProject(id, projectRuntime.project()?.id))
   ipcMain.handle('project:rename', (_e, id: string, name: string) => {
     const updated = renameProject(id, name)
     // Keep the open project's name in sync if it is the one renamed — the
@@ -1550,9 +1605,6 @@ app.whenReady().then(() => {
     // latest stored value prevents that stale form from silently reverting
     // attribution context on its next auto-save.
     newConfig.engagement.activeTarget = oldConfig.engagement.activeTarget ?? null
-    // Same for HUD pass-through: overlay:setPassThrough stores it, and a form
-    // loaded before a ⌘⇧P or HUD toggle must not write the old value back.
-    if (newConfig.overlay) newConfig.overlay.passThrough = oldConfig.overlay?.passThrough === true
     // Captured BEFORE the save so the recompute can say what the boundary was.
     const beforeScope = snapshotScope(oldConfig)
     // Before the save, so what is saved is the operator actually in effect (a
@@ -1568,14 +1620,12 @@ app.whenReady().then(() => {
     // when scope loosened or the IP blacklist changed. Only diffs the fields
     // that affect enforcement or attribution; cosmetic changes stay silent.
     const configChangedId = logConfigDiff(oldConfig, newConfig)
-    keepDockIcon = newConfig.overlay?.showInDock !== false
     // docs/TESTING.md §5.6: turning the SSID off applies now, not at the next poll.
     if (showWifiName !== (newConfig.network?.showWifiName === true)) {
       showWifiName = newConfig.network?.showWifiName === true
       publishLink()
       broadcastIPStatus(alertRuntime.ipStatus())
     }
-    applyDock()
     const targets = snapshotScope(newConfig).targets
     alertRuntime.configure(newConfig, open, targets)
     screenshotAgent.configure({
@@ -1625,18 +1675,6 @@ app.whenReady().then(() => {
     applyCapturePacks(newConfig)
     if (newConfig.redaction) configureRedaction(newConfig.redaction)
     setVpnAdapters(newConfig.network.vpnAdapters)
-    // The HUD reads its config once at mount — push overlay settings so toggling
-    // "show Mark button" takes effect live instead of only after a restart.
-    send(overlayWindow, 'overlay:showMark', newConfig.overlay?.showMarkButton !== false)
-    send(overlayWindow, 'overlay:flashExposed', newConfig.overlay?.flashOnExposed !== false)
-    send(overlayWindow, 'overlay:scale', newConfig.overlay?.scale ?? 1.0)
-    send(overlayWindow, 'overlay:emphasizeIp', newConfig.overlay?.emphasizeExternalIp === true)
-    // A save changes the opacity only. Pass-through keeps its runtime state, so
-    // an unrelated autosave cannot re-ghost a HUD an exposure alarm just woke.
-    configureOverlayState({
-      passThrough: isOverlayPassThrough(),
-      opacity: newConfig.overlay?.passThroughOpacity ?? 0.4
-    })
     return true
   }
   ipcMain.handle('config:save', (_e, newConfig: RedLogConfig, opts?: { expectProjectId?: string }) =>
@@ -1852,8 +1890,7 @@ app.whenReady().then(() => {
     const project = projectRuntime.project()
     if (!project) return null
     const projectDir = getProjectPath(project)
-    const config = loadConfig(projectDir)
-    const profile = { version: 1, ...config }
+    const profile = exportableProfile(loadConfig(projectDir))
     const result = await dialog.showSaveDialog(mainWindow!, {
       defaultPath: `redlog-profile-${project.name.replace(/[^a-z0-9]/gi, '-')}.yaml`,
       filters: [
@@ -1862,12 +1899,7 @@ app.whenReady().then(() => {
       ]
     })
     if (result.canceled || !result.filePath) return null
-    const ext = path.extname(result.filePath).toLowerCase()
-    if (ext === '.json') {
-      fs.writeFileSync(result.filePath, JSON.stringify(profile, null, 2))
-    } else {
-      fs.writeFileSync(result.filePath, `# REDLOG Profile — share with your team\n${yaml.dump(profile, { lineWidth: 120 })}`)
-    }
+    writeProfileFile(result.filePath, profile)
     return result.filePath
   })
 
@@ -2035,11 +2067,9 @@ app.whenReady().then(() => {
 
   // --- Quick mark (global shortcut + tray + overlay all route here) ---
   globalShortcut.register(QUICK_MARK_ACCELERATOR, triggerBookmark)
-  // §8: the way back out of click-through. Without it, turning pass-through on
-  // makes the control that turns it off unclickable — the HUD is ghosted, so
-  // the button is behind it — and the only escape is Settings, which the
-  // operator has to know exists.
-  globalShortcut.register(HUD_PASSTHROUGH_ACCELERATOR, () => setOverlayPassThrough(false))
+  // §8's way back out of click-through (⌘⇧P) is registered by ipc/overlay.ts,
+  // and only while pass-through is on: a global chord is taken from every
+  // other application for as long as it is held.
   // Screenshot now, from whatever tool the operator is in. RedLog's own
   // windows (the HUD included) are taken off screen for the grab. A chord
   // another app already owns is not an error worth refusing to start over;
@@ -2081,8 +2111,9 @@ app.whenReady().then(() => {
   // effects, and untrusted plugin content might reach this handler.
   ipcMain.handle('app:openExternal', async (_e, url: string) => {
     try {
-      const u = new URL(url)
-      if (u.protocol !== 'http:' && u.protocol !== 'https:') return { ok: false, error: 'scheme not allowed' }
+      // http(s) only, and no `user:pass@` — credentials in a link are handed
+      // to the OS and the browser along with it (external-url.ts).
+      if (!externalUrlAllowed(url)) return { ok: false, error: 'url not allowed' }
       await shell.openExternal(url)
       return { ok: true }
     } catch (e) {
@@ -2137,7 +2168,7 @@ setUpdateImpactProvider(currentQuitImpact)
 function holdQuitForConfirmation(): boolean {
   if (forceQuit || isQuitAllowed()) return false
   // The e2e harness closes the app with live terminals; nothing is there to ask.
-  if (process.env.REDLOG_E2E === '1') return false
+  if (testHooks.e2e) return false
   const impact = currentQuitImpact()
   if (!impact) return false
   if (!quitPrompt) {

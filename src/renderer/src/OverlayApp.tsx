@@ -40,6 +40,8 @@ export default function OverlayApp(): JSX.Element {
   const pivotRead = usePivotRead()
   useTick()   // keeps "last seen" current
   const pivots = pivotRead.status === 'ready' ? pivotRead.pivots : []
+  // The last list read, current or not; the expanded panel marks which.
+  const listedPivots = pivotRead.pivots
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Inline confirmation for the instant mark. Without it the button gives no
   // sign anything happened — there is no dialog and no window change, which is
@@ -72,15 +74,17 @@ export default function OverlayApp(): JSX.Element {
 
   useEffect(() => {
     const cfg = window.redlog.config as {
-      get?: () => Promise<unknown>
+      getPrefs?: () => Promise<unknown>
       onShowMark?: (cb: (show: boolean) => void) => () => void
       onFlashExposed?: (cb: (on: boolean) => void) => () => void
       onScale?: (cb: (s: number) => void) => () => void
       onEmphasizeIp?: (cb: (on: boolean) => void) => () => void
       onPassThrough?: (cb: (on: boolean, opacity: number) => void) => () => void
     } | undefined
-    cfg?.get?.().then((c) => {
-      const ov = (c as { overlay?: { showMarkButton?: boolean; flashOnExposed?: boolean; scale?: number; emphasizeExternalIp?: boolean; passThrough?: boolean; passThroughOpacity?: number } } | null)?.overlay
+    // The HUD's settings are machine-wide (main/ipc/overlay.ts), not the
+    // project's: read once here, then kept current by the channels below.
+    cfg?.getPrefs?.().then((p) => {
+      const ov = p as { showMarkButton?: boolean; flashOnExposed?: boolean; scale?: number; emphasizeExternalIp?: boolean; passThrough?: boolean; passThroughOpacity?: number } | null
       setShowMark(ov?.showMarkButton !== false)
       setFlashExposed(ov?.flashOnExposed !== false)
       if (typeof ov?.scale === 'number' && ov.scale > 0) setScale(ov.scale)
@@ -88,7 +92,7 @@ export default function OverlayApp(): JSX.Element {
       setPassThrough(ov?.passThrough === true)
       if (typeof ov?.passThroughOpacity === 'number' && ov.passThroughOpacity > 0) setPassThroughOpacity(ov.passThroughOpacity)
     }).catch(() => {})
-    // live-update when the settings are toggled in Settings
+    // live-update on every change, from Settings or the HUD's own controls
     const off1 = cfg?.onShowMark?.(setShowMark)
     const off2 = cfg?.onFlashExposed?.(setFlashExposed)
     const off3 = cfg?.onScale?.(setScale)
@@ -379,17 +383,23 @@ export default function OverlayApp(): JSX.Element {
                   that its channel is up, so no arrows and no health. A failed
                   read says so instead of looking like "none". */}
               {pivotRead.status === 'error' && (
-                <p data-testid="hud-pivot-error" style={{ color: '#ffcc44', fontSize: fs(9), marginTop: 8 }}>⚠ {pivotRead.pivots.length ? t('pivot.readFailedStale', { count: pivotRead.pivots.length }) : t('pivot.readFailed')}</p>
+                <p data-testid="hud-pivot-error" style={{ color: '#ffcc44', fontSize: fs(9), marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span>⚠ {pivotRead.pivots.length ? t('pivot.readFailedStale', { count: pivotRead.pivots.length }) : t('pivot.readFailed')}</span>
+                  <button type="button" className="hudBtn" data-testid="hud-pivot-retry" onClick={pivotRead.retry} aria-label={t('common.retry')} title={t('common.retry')} style={{ ...noDrag, ...iconBtn, flex: 'none' }}>↻</button>
+                </p>
               )}
-              {pivots.length > 0 && (
-                <div data-testid="hud-pivot-nodes">
+              {/* The expanded list keeps the last list read through a failed
+                  re-read, dimmed under the warning; the collapsed capsule above
+                  shows current nodes only. */}
+              {listedPivots.length > 0 && (
+                <div data-testid="hud-pivot-nodes" data-stale={pivotRead.status === 'error' || undefined} style={pivotRead.status === 'error' ? { opacity: 0.55 } : undefined}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '9px 0 6px' }}>
                     <span style={{ color: CYAN, fontSize: fs(10), textShadow: `0 0 6px ${CYAN}` }}>⇄</span>
-                    <span style={{ color: '#7fe6f7', fontSize: fs(8.5), fontWeight: 700, letterSpacing: '0.14em' }}>{t('pivot.detected', { count: pivots.length }).toUpperCase()}</span>
+                    <span style={{ color: '#7fe6f7', fontSize: fs(8.5), fontWeight: 700, letterSpacing: '0.14em' }}>{t('pivot.detected', { count: listedPivots.length }).toUpperCase()}</span>
                     <span style={{ flex: 1, height: 1, background: `linear-gradient(90deg, ${CYAN}44, transparent)` }} />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {pivots.map((p) => (
+                    {listedPivots.map((p) => (
                       <div key={p.via + p.tool + p.ts} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '2px 8px', padding: '3px 8px', background: hexA(CYAN, 0.14), border: `1px solid ${hexA(CYAN, 0.45)}`, fontSize: fs(10) }}>
                         <span style={{ color: MUTED, letterSpacing: '0.06em' }}>{p.tool}</span>
                         <span style={{ color: '#d6f7fd', fontWeight: 600, overflowWrap: 'anywhere' }}>{p.via}</span>

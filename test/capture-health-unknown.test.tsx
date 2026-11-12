@@ -166,7 +166,9 @@ describe('Dashboard capture card', () => {
     await act(async () => { batch() })
     await waitFor(() => card())
     await act(async () => { batch() })
-    await screen.findByText('Capture is working')
+    // Live batches are paced to one read a second, so this read starts a full
+    // second after the failed one — the default 1 s wait ends where it begins.
+    await screen.findByText('Capture is working', undefined, { timeout: 4000 })
     expect(screen.queryByTestId('capture-unknown')).toBeNull()
   })
 })

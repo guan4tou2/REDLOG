@@ -197,7 +197,7 @@ export function launchBrowser(cfg: BrowserConfig, projectDir: string, opts: { tr
   }
 
   const profileDir = path.join(projectDir, 'browser-profile')
-  if (cfg.isolateProfile) mkdirSync(profileDir, { recursive: true })
+  if (cfg.isolateProfile) mkdirSync(profileDir, { recursive: true, mode: 0o700 })
 
   const args = buildArgs(cfg, profileDir, opts)
 

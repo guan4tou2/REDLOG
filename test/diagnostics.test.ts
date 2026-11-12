@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { scrubPath, scrubNames, buildDiagnostics, issueUrl } from '../src/renderer/src/lib/diagnostics'
+import { scrubPath, scrubNames, buildDiagnostics, issueUrl, crashTitle } from '../src/renderer/src/lib/diagnostics'
 
 // §9. A crash report's useful part is the stack, and a stack is full of
 // absolute paths. On a red-team engagement those paths carry the operator's
@@ -94,5 +94,18 @@ describe('issue url', () => {
     const body = decodeURIComponent(new URL(url).searchParams.get('body') ?? '')
     expect(body).toContain('line 1\nline 2 & more')
     expect(new URL(url).searchParams.get('title')).toBe('crash: a&b')
+  })
+})
+
+describe('crash issue title', () => {
+  it('scrubs paths and the project name from the message', () => {
+    const t = crashTitle('Timeline', { message: "ENOENT: open '/Users/jclark/ClientCorp/x.db'" }, 'ClientCorp')
+    expect(t).not.toContain('jclark')
+    expect(t).not.toContain('ClientCorp')
+    expect(t.startsWith('Timeline crashed: ')).toBe(true)
+  })
+
+  it('caps the scrubbed message at 80 characters', () => {
+    expect(crashTitle(undefined, { message: 'x'.repeat(200) }).length).toBe('View crashed: '.length + 80)
   })
 })

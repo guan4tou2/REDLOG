@@ -593,13 +593,14 @@ describe('a failure that never reached start()', () => {
     const proxy = createProxy({
       spawn: vi.fn(() => child as never), exists: () => true, readinessTimeoutMs: 100
     })
-    proxy.noteStartFailure('127.0.0.1:6661 is already in use.')
-    expect(proxy.status()).toMatchObject({ state: 'failed' })
+    proxy.noteStartFailure('127.0.0.1:6661 is already in use.', { code: 'port-in-use', address: '127.0.0.1:6661', holder: null })
+    expect(proxy.status()).toMatchObject({ state: 'failed', errorReason: { code: 'port-in-use', address: '127.0.0.1:6661' } })
 
     const started = proxy.start({ addonPath: '/addon.py', port: 8081 })
     child.stderr.emit('data', Buffer.from('proxy server listening'))
     await started
     expect(proxy.status()).toMatchObject({ state: 'running' })
     expect(proxy.status().error, 'the old reason outlived the attempt it describes').toBeUndefined()
+    expect(proxy.status().errorReason).toBeUndefined()
   })
 })

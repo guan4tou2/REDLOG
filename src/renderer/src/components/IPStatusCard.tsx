@@ -28,16 +28,18 @@ function PivotNodes({ read }: { read: ReturnType<typeof usePivotRead> }): JSX.El
   // time is when a command last mentioned it, which is a different fact.
   const [readAt, setReadAt] = useState<number | null>(null)
   useEffect(() => { if (read.status === 'ready') setReadAt(Date.now()) }, [read.status, read.pivots])
-  if (read.status === 'loading') return <p role="status" className="text-xs text-redlog-text-dim">{t('pivot.loading')}</p>
-  if (read.status === 'error') {
-    return <div data-testid="pivot-error" className="pt-3 border-t border-redlog-border-subtle flex items-center gap-3 text-xs text-redlog-warn">
-      <span>{read.pivots.length ? t('pivot.readFailedStale', { count: read.pivots.length }) : t('pivot.readFailed')}</span>
-      <Button size="compact" onClick={read.retry}>{t('common.retry')}</Button>
-    </div>
-  }
-  if (read.pivots.length === 0) return null
+  if (read.status === 'loading' && read.pivots.length === 0) return <p role="status" className="text-xs text-redlog-text-dim">{t('pivot.loading')}</p>
+  // A failed re-read keeps the last list on screen, marked as the last list
+  // read; with nothing read before, the failure stands alone.
+  const stale = read.status === 'error'
+  const error = stale && <div data-testid="pivot-error" className="flex items-center gap-3 text-xs text-redlog-warn">
+    <span>{read.pivots.length ? t('pivot.readFailedStale', { count: read.pivots.length }) : t('pivot.readFailed')}</span>
+    <Button size="compact" onClick={read.retry}>{t('common.retry')}</Button>
+  </div>
+  if (read.pivots.length === 0) return error ? <div className="pt-3 border-t border-redlog-border-subtle">{error}</div> : null
   const nodes: ActivePivot[] = read.pivots
-  return <div data-testid="pivot-nodes" className="pt-3 border-t border-redlog-border-subtle space-y-2">
+  return <div data-testid="pivot-nodes" data-stale={stale || undefined} className="pt-3 border-t border-redlog-border-subtle space-y-2">
+    {error}
     <div className="flex flex-wrap items-center justify-between gap-2">
       <p className="flex flex-wrap items-center gap-1.5 text-xs text-redlog-text-dim">
         <span>{t('pivot.activeTitle', { count: nodes.length })}</span>
@@ -45,7 +47,7 @@ function PivotNodes({ read }: { read: ReturnType<typeof usePivotRead> }): JSX.El
       </p>
       {readAt !== null && <span className="font-mono text-xs text-redlog-text-faint">{t('ip.updatedAt', { time: formatTime(readAt, { seconds: true }) })}</span>}
     </div>
-    <ul className="space-y-1.5">
+    <ul className={`space-y-1.5 ${stale ? 'opacity-60' : ''}`}>
       {nodes.map((p) => <li key={p.via + p.tool + p.ts} data-testid="pivot-node" className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded border border-redlog-border bg-redlog-elevated px-2.5 py-1.5 text-xs">
         <span className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="rounded border border-cyan-700/50 bg-cyan-900/20 px-1 font-mono text-xs text-cyan-300">{p.tool}</span>

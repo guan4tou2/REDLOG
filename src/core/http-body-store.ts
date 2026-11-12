@@ -1,6 +1,6 @@
 import fs from 'fs'
 import path from 'path'
-import { isInsideDir } from './paths'
+import { resolveContainedFile } from './contained-file'
 import crypto from 'crypto'
 import { getProjectDir } from './db/index'
 
@@ -93,12 +93,11 @@ export function storeBody(body: {
 function readStoredBytes(ref: BodyRef): Buffer | null {
   try {
     const dir = bodiesDir()
-    const filePath = path.join(dir, ref.file)
-    // isInsideDir, not startsWith: a bare prefix check passes a sibling dir that
-    // shares the prefix (…/http-bodies-evil/x). ref.file comes from the renderer
-    // via httpBody:read.
-    if (!isInsideDir(dir, filePath)) return null
-    if (!fs.existsSync(filePath)) return null
+    // ref.file comes from the renderer via httpBody:read and from event data.
+    // Containment is judged on the real file, not the name: a symlink planted
+    // in http-bodies/ used to read back whatever it pointed at.
+    const filePath = resolveContainedFile(dir, ref.file)
+    if (!filePath) return null
     return fs.readFileSync(filePath)
   } catch {
     return null

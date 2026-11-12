@@ -20,6 +20,20 @@ export function viewForShortcut(num: number): View | null {
   return num >= 1 && num <= order.length ? order[num - 1] : null
 }
 
+/**
+ * xterm's hidden helper textarea is focused whenever the Terminal is, so as a
+ * "text field" it would swallow ⌘K for as long as that view is open. It is not
+ * one for a modifier chord: every chord xterm turns into terminal input (Ctrl+K
+ * is kill-line) it cancels and stops before the window sees it, and the ones
+ * the Terminal binds itself — ⌘C/⌘V/⌘F in its key handler, ⌘T/⌘W/⌘=/⌘-/⌘0/⌘⇧[ ]
+ * on the window — overlap the app table only at ⌘F, which stays the
+ * Terminal's search. A chord already handled (defaultPrevented) is left alone.
+ */
+function terminalPassesChord(el: HTMLElement | null, e: KeyboardEvent, id: string): boolean {
+  return !!el?.classList?.contains('xterm-helper-textarea') &&
+    (e.metaKey || e.ctrlKey) && !e.defaultPrevented && id !== 'app:findInPage'
+}
+
 // ---- Hook ---- //
 
 export function useAppShortcuts(
@@ -53,9 +67,10 @@ export function useAppShortcuts(
       // guard here is what broke Cmd+1..9 while the Terminal was open — xterm
       // keeps a hidden textarea focused for as long as that view is mounted.
       if (hit.guardTyping) {
-        const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase()
-        const typing = tag === 'input' || tag === 'textarea' || (e.target as HTMLElement | null)?.isContentEditable
-        if (typing) return
+        const el = e.target as HTMLElement | null
+        const tag = el?.tagName?.toLowerCase()
+        const typing = tag === 'input' || tag === 'textarea' || el?.isContentEditable
+        if (typing && !terminalPassesChord(el, e, hit.id)) return
       }
 
       if (hit.scope === 'nav') {

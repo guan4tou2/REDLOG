@@ -51,7 +51,9 @@ if [ -n "$raw_out" ]; then
 fi
 
 # Summary mode: don't capture our own loopback POSTs to the API (feedback loop).
-api_port="$(cat "$HOME/.redlog/api-port" 2>/dev/null || echo '')"
+# Under sudo $HOME may be root's; the reader resolves the invoking user's dir.
+redlog_dir="$(node "$here/redlog-dir.js" 2>/dev/null || echo "$HOME/.redlog")"
+api_port="$(cat "$redlog_dir/api-port" 2>/dev/null || echo '')"
 filter=()
 if [ -n "$api_port" ]; then
   filter=(not '(' host 127.0.0.1 and port "$api_port" ')')

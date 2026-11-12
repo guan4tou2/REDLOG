@@ -62,12 +62,17 @@ jobs:
           mitmdump --version
       - name: Install dependencies
         run: npm install --no-audit --no-fund
-      - name: Build
+      # The SMOKE variant (docs/releasing.md): Playwright drives the installed
+      # app through the Node inspector, remote debugging and REDLOG_E2E, which a
+      # release build refuses. Never shipped; release.yml builds the release one.
+      - name: Build (smoke variant)
+        env:
+          REDLOG_SMOKE_BUILD: '1'
         run: npm run build
-      - name: Build DEB x64 candidate
-        run: npx electron-builder --linux deb --x64 --publish never
+      - name: Build DEB x64 candidate (smoke variant)
+        run: npx electron-builder --linux deb --x64 --publish never '--config.electronFuses.enableNodeCliInspectArguments=true'
       - name: Verify packaged capture resources
-        run: npm run verify:package-resources
+        run: npm run verify:package-resources:smoke
       - name: Clean precondition and actual DEB installation
         run: |
           if dpkg-query -W redlog 2>/dev/null; then

@@ -20,7 +20,15 @@ export interface TimelineKeyContext {
   focusActive: boolean
   /** an event is selected (the selection ring is drawn) */
   hasSelection?: boolean
+  /** focus is on a control that operates on these keys natively — a select,
+   *  tab, menu item, option, slider or radio: only Escape reaches the Timeline */
+  ownsKeys?: boolean
 }
+
+/** The focused controls that `ownsKeys` describes. Matched on the focused
+ *  element itself, not an ancestor: a panel inside a tab panel is not a tab. */
+export const KEY_OWNING_CONTROLS =
+  'select, [role="tab"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="option"], [role="slider"], [role="radio"], [role="spinbutton"]'
 
 export type TimelineKeyAction =
   | 'none'
@@ -81,6 +89,9 @@ export function resolveTimelineKey(e: KeyLike, ctx: TimelineKeyContext): Timelin
   //   ⇧← ⇧→ skip to the next event that carries state — a non-zero exit, a
   //        scope violation, loot. The dense middle of a run is mostly noise.
   if (e.metaKey || e.ctrlKey || e.altKey) return 'none'
+  // This handler is on the window: the arrows on a focused select used to move
+  // the Timeline's selection, and +/−/0 to zoom it, instead of choosing an option.
+  if (ctx.ownsKeys) return 'none'
   // Bare arrows follow time; the modified ones narrow it. ⇧ skips to what
   // changed, ⌥ stays with one producer — both are questions about a subset,
   // and the unmodified key answers the one everybody has first.

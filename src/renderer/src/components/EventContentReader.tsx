@@ -8,6 +8,7 @@ import { useReadState } from '../lib/readState'
 import { Button } from './Button'
 import { CopyButton } from './CopyButton'
 import { toast } from './Toast'
+import { isComposing } from '../lib/ime'
 
 /** The field owns its byte position; switching sources cannot reuse a cursor. */
 function ContentFieldReader({ descriptor, onReload, initialOffset = 0, expanded = false, onMark, fragment }: { descriptor: ContentDescriptor; onReload: () => void; initialOffset?: number; expanded?: boolean; onMark: () => void; fragment?: ContentAnchor }): JSX.Element {
@@ -122,7 +123,7 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, expanded 
     <div className="flex flex-wrap items-center gap-2">
       <input type="search" aria-label={t('content.find')} value={needle} disabled={descriptor.format === 'binary'}
         onChange={e => { input.current = e.target.value; setNeedle(e.target.value); setFindCursor(undefined); setNotFound(false); generation.current++; setBusy(false) }}
-        onKeyDown={e => { if (e.key === 'Enter' && !busy) void find() }}
+        onKeyDown={e => { if (e.key === 'Enter' && !busy && !isComposing(e)) void find() }}
         className="min-w-0 flex-1 rounded border border-redlog-border bg-redlog-elevated px-2 py-1 text-sm" />
       <Button disabled={busy || !needle || descriptor.format === 'binary'} onClick={() => void find()}>{t('content.find')}</Button>
       {busy && <Button onClick={() => { generation.current++; setBusy(false) }}>{t('content.cancel')}</Button>}

@@ -285,34 +285,47 @@ describeDB('ingest characterization (R2-0a)', () => {
     const start = (command: string, extra: Record<string, unknown> = {}): Record<string, unknown> =>
       ({ subtype: 'command_start', command, ...extra })
 
-    it('drops the second of the same subtype + command + terminal id within 2 s', () => {
-      const first = shell(start('id', { terminal_id: 'd-t1' }))
-      const second = shell(start('id', { terminal_id: 'd-t1' }))
+    // Hooks send `terminalId` (hooks/shell-common.sh, hooks/shell-hook.ps1).
+    // Until #685 the window read only `terminal_id`, so both sides read as ''
+    // and the same command in two terminals collapsed into one row.
+    it('drops the second of the same subtype + command + terminalId within 2 s', () => {
+      const first = shell(start('id', { terminalId: 'd-t1' }))
+      const second = shell(start('id', { terminalId: 'd-t1' }))
       expect(first.event).not.toBeNull()
       expect(second).toEqual({ event: null, skipped: 'dedup', companions: [] })
       expect(n('events')).toBe(1)
     })
 
     it('lets a start and an end with the same command both land', () => {
-      expect(shell(start('id', { terminal_id: 'd-t1' })).event).not.toBeNull()
-      expect(shell({ subtype: 'command_end', command: 'id', terminal_id: 'd-t1', exit_code: 0, duration_sec: 0 }).event).not.toBeNull()
+      expect(shell(start('id', { terminalId: 'd-t1' })).event).not.toBeNull()
+      expect(shell({ subtype: 'command_end', command: 'id', terminalId: 'd-t1', exit_code: 0, duration_sec: 0 }).event).not.toBeNull()
       expect(n('events')).toBe(2)
     })
 
-    it('lets the same command in a different terminal land', () => {
-      expect(shell(start('id', { terminal_id: 'd-t1' })).event).not.toBeNull()
-      expect(shell(start('id', { terminal_id: 'd-t2' })).event).not.toBeNull()
+    it('lets the same command in a different terminal land (#685)', () => {
+      expect(shell(start('id', { terminalId: 'd-t1' })).event).not.toBeNull()
+      expect(shell(start('id', { terminalId: 'd-t2' })).event).not.toBeNull()
+      expect(shell({ subtype: 'command_end', command: 'id', terminalId: 'd-t1', exit_code: 0, duration_sec: 0 }).event).not.toBeNull()
+      expect(shell({ subtype: 'command_end', command: 'id', terminalId: 'd-t2', exit_code: 0, duration_sec: 0 }).event).not.toBeNull()
+      expect(n('events')).toBe(4)
+    })
+
+    it('still reads the legacy terminal_id key, on either side of the comparison', () => {
+      expect(shell(start('id', { terminal_id: 'l-t1' })).event).not.toBeNull()
+      expect(shell(start('id', { terminal_id: 'l-t2' })).event).not.toBeNull()
+      // A legacy row and a current one naming the same terminal are one terminal.
+      expect(shell(start('id', { terminalId: 'l-t1' })).skipped).toBe('dedup')
       expect(n('events')).toBe(2)
     })
 
     it('drops a shell↔agent duplicate only when a terminal id or pid links them', () => {
-      expect(shell(start('whoami', { terminal_id: 'x-t1', pid: 700 })).event).not.toBeNull()
+      expect(shell(start('whoami', { terminalId: 'x-t1', pid: 700 })).event).not.toBeNull()
       // Same pid: the second is dropped, in either direction of type.
       expect(ingest('agent', start('whoami', { pid: 700 })).skipped).toBe('dedup')
       // Same terminal id, no pid on the second: dropped.
-      expect(ingest('agent', start('whoami', { terminal_id: 'x-t1' })).skipped).toBe('dedup')
+      expect(ingest('agent', start('whoami', { terminalId: 'x-t1' })).skipped).toBe('dedup')
       // A different pid and a different terminal id: nothing links them.
-      expect(ingest('agent', start('whoami', { terminal_id: 'x-other', pid: 701 })).event).not.toBeNull()
+      expect(ingest('agent', start('whoami', { terminalId: 'x-other', pid: 701 })).event).not.toBeNull()
       // No linking field on either side: both land.
       expect(shell(start('hostname')).event).not.toBeNull()
       expect(ingest('agent', start('hostname')).event).not.toBeNull()

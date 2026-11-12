@@ -2,6 +2,7 @@ import { useId, useState } from 'react'
 import { SectionLabel } from '../SectionLabel'
 import { useI18n } from '../../i18n'
 import { IconButton } from '../IconButton'
+import { isComposing } from '../../lib/ime'
 
 // The Wi-Fi-name toggle only means anything on macOS (where the SSID is gated
 // behind Location Services). Windows/Linux read the SSID directly, so the
@@ -15,7 +16,6 @@ export interface ConfigState {
   network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto'; showWifiName?: boolean; vpnAdapters?: Array<{ name: string; pattern: string; enabled: boolean }> }
   scope: { warnOnViolation?: boolean; targets: string[]; excludeTargets: string[]; scopeFile: string; personalDomains?: string[] }
   screenshot: { quality: number; intervalSec?: number; diffThreshold?: number; captureOnCommand?: boolean }
-  overlay?: { autoShow?: boolean; showMarkButton?: boolean; showInDock?: boolean; flashOnExposed?: boolean; scale?: number; emphasizeExternalIp?: boolean; passThrough?: boolean; passThroughOpacity?: number }
   clipboard?: { pollMs?: number; storePreview?: boolean }
   fileWatcher?: { watchPaths?: string[]; ignorePatterns?: string[] }
   processMonitor?: { pollMs?: number; ignoreCommands?: string[] }
@@ -214,7 +214,7 @@ export function ListField({ label, items, onChange, placeholder, parse, initialD
             rows={2}
             value={input}
             onChange={(e) => { setInput(e.target.value); setRejected([]) }}
-            onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); addItem() } }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !isComposing(e)) { e.preventDefault(); addItem() } }}
             placeholder={placeholder}
             className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono resize-y focus:outline-none focus:border-red-500"
           />
@@ -225,7 +225,7 @@ export function ListField({ label, items, onChange, placeholder, parse, initialD
             aria-describedby={describedBy}
             value={input}
             onChange={(e) => { setInput(e.target.value); setRejected([]) }}
-            onKeyDown={(e) => e.key === 'Enter' && addItem()}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !isComposing(e)) addItem() }}
             placeholder={placeholder}
             className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500"
           />

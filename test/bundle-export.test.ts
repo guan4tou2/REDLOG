@@ -404,14 +404,16 @@ describeDB('private bookmarks stay out of the bundle', () => {
     const python = findPython(child)
     if (!python) return // no usable Python on this runner — skip, as before
 
-    const clean = child.spawnSync(python, [verifier, outDir], { encoding: 'utf-8', timeout: SPAWN_MS })
+    // About file digests, and the fixture's events are unsigned: hash-only.
+    const clean = child.spawnSync(python, [verifier, '--hash-only', outDir], { encoding: 'utf-8', timeout: SPAWN_MS })
     expect(clean.error, String(clean.error)).toBeUndefined()
     expect(clean.status, clean.stdout + clean.stderr).toBe(0)
+    expect(clean.stdout).toContain('NOT AUTHENTICATED')
     expect(clean.stdout).toMatch(/Manifest files\s+:\s+\d+ verified/)
 
     // Swap the bytes of a listed evidence file without touching the manifest.
     fs.writeFileSync(path.join(outDir, 'screenshots', 'shot.jpg'), 'SWAPPED-IMAGE')
-    const tampered = child.spawnSync(python, [verifier, outDir], { encoding: 'utf-8', timeout: SPAWN_MS })
+    const tampered = child.spawnSync(python, [verifier, '--hash-only', outDir], { encoding: 'utf-8', timeout: SPAWN_MS })
     expect(tampered.error, String(tampered.error)).toBeUndefined()
     expect(tampered.status).toBe(1)
     expect(tampered.stdout + tampered.stderr).toMatch(/MISMATCH|sha256 differs/)
@@ -460,8 +462,10 @@ describeDB('the chain head a recipient verifies', () => {
       const { outDir } = exportBundle('eng', opts)
       const verifier = path.join(outDir, 'redlog-verify.py')
       if (!fs.existsSync(verifier)) return // verifier not embedded in this build shape
-      const run = child.spawnSync(python, [verifier, outDir], { encoding: 'utf-8', timeout: SPAWN_MS })
+      // About the chain head; the fixture's events are unsigned: hash-only.
+      const run = child.spawnSync(python, [verifier, '--hash-only', outDir], { encoding: 'utf-8', timeout: SPAWN_MS })
       expect(run.error, String(run.error)).toBeUndefined()
+      expect(run.stdout, label).toContain('NOT AUTHENTICATED')
       expect(run.stdout, label).toMatch(/Events walked\s+:\s+3/)
       expect(run.stdout, label).toMatch(/Chain-head match\s+:\s+yes/)
       expect(run.status, `${label}: ${run.stdout}${run.stderr}`).toBe(0)

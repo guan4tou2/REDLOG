@@ -5,8 +5,28 @@
 
 _REDLOG_LAST_CMD=""
 _REDLOG_CMD_START=""
+# What the last send did with an event it could neither deliver nor spool:
+# empty while events are delivered or kept, `unreachable` or `no-project` once
+# one was dropped, `told` once the prompt has said so. See `_redlog_warn_unsaved`.
+_REDLOG_UNSAVED=""
+# Set when a terminal that loaded with no project open first sees one; cleared
+# once the prompt has said so. See `_redlog_announce_adoption`.
+_REDLOG_ADOPTED=""
+# Results that helpers on the per-command path leave in a variable instead of
+# printing, because capturing output is a fork. Made here, at load, so zsh's
+# WARN_CREATE_GLOBAL has nothing to say when a function first assigns them.
+_redlog_id="" _redlog_ns="" _redlog_text="" _redlog_path="" _redlog_count=0 _redlog_json=""
 _REDLOG_SESSION_HELPER="${_redlog_adapter_dir:-}/redlog-session.py"
 _REDLOG_RELAY="${_redlog_adapter_dir:-}/redlog-relay.py"
+# Resolved here because the adapters unset `_redlog_adapter_dir` as soon as
+# this file is sourced; reading it later asked for `/terminal_app.py`, which
+# failed, so a restricted terminal-app setting refused every terminal.
+_REDLOG_TERMINAL_APP="${_redlog_adapter_dir:-}/terminal_app.py"
+# Which restricted selections this terminal satisfies, attested once per shell
+# (`_redlog_terminal_allowed`). Unset first so a value inherited from the
+# environment is neither trusted nor exported to children.
+unset _REDLOG_TERMINAL_ALLOWS _REDLOG_TERMINAL_ATTESTED
+_REDLOG_TERMINAL_ALLOWS="" _REDLOG_TERMINAL_ATTESTED=""
 
 redlog-session() {
   python3 "$_REDLOG_SESSION_HELPER" "$@"
@@ -69,18 +89,46 @@ _redlog_resolve_dir() {
 
 # Application selection is independent of Bash/Zsh. Re-read before each command
 # and send so narrowing the preference also stops already loaded adapters.
+#
+# The selection is a file read by `read`; the origin is not re-observed. Only
+# the OS-origin resolver can attest a restricted source — no inherited
+# TERM_PROGRAM / WT_SESSION / REDLOG_TERMINAL flag is a proof of ownership —
+# and it costs a python3 and a `ps`. A shell does not change terminals, so it
+# is asked once, the first time a restricted selection is in force (normally
+# as the hook loads), and its answer kept for the life of the shell. A failed
+# attestation is kept too: it fails closed, and asking again at every command
+# would put the python3 back on the prompt.
 _redlog_terminal_allowed() {
   if [[ -z "${_REDLOG_DIR:-}" && -n "${WSL_DISTRO_NAME:-}" ]]; then
     _REDLOG_DIR=$(_redlog_resolve_dir) || return 1
     export _REDLOG_DIR
   fi
-  local dir="${_REDLOG_DIR:-$HOME/.redlog}" wanted
+  local dir="${_REDLOG_DIR:-$HOME/.redlog}" wanted=""
   [[ -e "$dir/terminal-app" ]] || return 0
-  { wanted=$(<"$dir/terminal-app"); } 2>/dev/null || return 1
+  [[ -r "$dir/terminal-app" ]] || return 1
+  # Ends at EOF, which is `read`'s status 1; what it read is the answer. Not
+  # `$(<file)`, which bash runs in a fork.
+  { IFS= read -r -d '' wanted <"$dir/terminal-app"; } 2>/dev/null
+  # Surrounding whitespace dropped, as terminal_app.py's `strip()` does.
+  wanted=${wanted#"${wanted%%[![:space:]]*}"}
+  wanted=${wanted%"${wanted##*[![:space:]]}"}
   [[ "$wanted" == all ]] && return 0
-  # Only the OS-origin resolver can attest a restricted source. No inherited
-  # TERM_PROGRAM / WT_SESSION / REDLOG_TERMINAL flag is a proof of ownership.
-  python3 "${_redlog_adapter_dir:-}/terminal_app.py" "$dir" >/dev/null 2>&1
+  [[ -n "$wanted" && "$wanted" != *[[:space:]]* ]] || return 1
+  if [[ -z "$_REDLOG_TERMINAL_ATTESTED" ]]; then
+    _REDLOG_TERMINAL_ALLOWS=" $(python3 "$_REDLOG_TERMINAL_APP" --allows 2>/dev/null) "
+    _REDLOG_TERMINAL_ATTESTED=1
+  fi
+  [[ "$_REDLOG_TERMINAL_ALLOWS" == *" $wanted "* ]]
+}
+
+# Said once, by an adapter that is not loading because of the selection above.
+# Without it a terminal outside the chosen app looked like a broken install.
+_redlog_announce_terminal_refused() {
+  local dir="${_REDLOG_DIR:-$HOME/.redlog}" wanted=""
+  { IFS= read -r -d '' wanted <"$dir/terminal-app"; } 2>/dev/null
+  wanted=${wanted#"${wanted%%[![:space:]]*}"}
+  wanted=${wanted%"${wanted##*[![:space:]]}"}
+  printf '%s\n' "[redlog] this terminal is not recorded — RedLog is set to record only in ${wanted:-another terminal app}" >&2
 }
 
 # --- Resolve reachable host ---
@@ -118,12 +166,63 @@ _redlog_resolve_host() {
 # uuidgen, which is not everywhere. `date +%s%N` prints a literal N where it is
 # not GNU date, so that case falls back rather than minting a shared id.
 _redlog_new_command_id() {
-  local stamp
-  stamp=$(date +%s%N 2>/dev/null)
+  _redlog_mint_command_id
+  printf '%s' "$_redlog_id"
+}
+
+# The same id, left in `_redlog_id` instead of printed: `$(…)` around the
+# function above is a fork, and with `date` inside it a second process, on
+# every command. A shell with EPOCHREALTIME (zsh with zsh/datetime, bash 5)
+# has the clock itself and starts nothing; its fraction is padded or cut to the
+# nine digits `date +%s%N` prints, so the id keeps one shape whichever clock
+# minted it. A locale that writes the fraction with a comma is not that shape
+# and goes to `date`, as every shell did before.
+_redlog_mint_command_id() {
+  _redlog_ns_stamp
+  local stamp=$_redlog_ns
   case "$stamp" in
     ''|*N*) stamp="$(date +%s)${RANDOM:-0}" ;;
   esac
-  printf '%s-%s-%s' "$stamp" "$$" "${RANDOM:-0}"
+  _redlog_id="$stamp-$$-${RANDOM:-0}"
+}
+
+# What `date +%s%N` prints, in `_redlog_ns`, without the process where the
+# shell has the clock (see above). Where it does not, it is `date`'s answer as
+# it was, a literal N included.
+_redlog_ns_stamp() {
+  local now="${EPOCHREALTIME:-}" frac
+  if [[ "$now" == [0-9]*.[0-9]* && "$now" != *[!0-9.]* ]]; then
+    frac="${now#*.}000000000"
+    _redlog_ns="${now%%.*}${frac:0:9}"
+  else
+    _redlog_ns=$(date +%s%N 2>/dev/null)
+  fi
+}
+
+# How many `*.json` files wait in the spool, in `_redlog_count`: the number
+# `find DIR -maxdepth 1 -name '*.json' | wc -l` gave, which was three
+# processes on every spooled event. Dot files count, as they did for find, and
+# case matters, whatever the operator's glob options say. zsh counts in this
+# shell with its options reset for the function alone; bash counts in a
+# subshell, so nothing it sets can outlive the count.
+_redlog_count_waiting() {
+  if [[ -n "${ZSH_VERSION:-}" ]]; then
+    # -R: every option, not only the emulation's own — `emulate -L zsh`
+    # alone leaves an operator's NO_CASE_GLOB in force.
+    emulate -LR zsh
+    setopt nullglob globdots
+    local -a waiting
+    # `oN`: unsorted. Sorting thousands of names in a UTF-8 locale cost more
+    # than the processes this replaced (measured: ~140 ms at 5000). In `eval`
+    # because bash reads this file too, and a glob qualifier does not parse.
+    eval 'waiting=( "$1"/*.json(oN) )'
+    _redlog_count=${#waiting[@]}
+  else
+    # LC_ALL=C for the same reason: bash always sorts a glob, and collating
+    # is what made it slow. Byte order matches `*.json` exactly as find did.
+    _redlog_count=$(LC_ALL=C; unset GLOBIGNORE; shopt -s nullglob dotglob; shopt -u nocaseglob failglob 2>/dev/null
+      set +f; waiting=( "$1"/*.json ); printf '%s' "${#waiting[@]}")
+  fi
 }
 
 # A relayed command's working directory, `redlog-relay.<shell pid>.<random>` in
@@ -169,12 +268,123 @@ _redlog_sweep_relay_dirs() {
 # holds that line, and it is the reason every POSIX adapter emits the same
 # contract instead of each one knowing its own layout.
 _redlog_identity_file() {
-  printf '%s/active-identity.json' "${_REDLOG_DIR:-$HOME/.redlog}"
+  _redlog_identity_path
+  printf '%s' "$_redlog_path"
+}
+
+# The same path in `_redlog_path`, for a caller on the per-command path, where
+# `$(_redlog_identity_file)` would be a fork for a string.
+_redlog_identity_path() {
+  _redlog_path="${_REDLOG_DIR:-$HOME/.redlog}/active-identity.json"
 }
 
 _redlog_is_running() {
   [[ -n "${_REDLOG_DIR:-}" ]] || { _REDLOG_DIR=$(_redlog_resolve_dir) || return 1; export _REDLOG_DIR; }
   [[ -f "$_REDLOG_DIR/api-port" ]] && [[ -f "$_REDLOG_DIR/api-token" ]]
+}
+
+# A whole file into `_redlog_text`, with its trailing newlines removed — what
+# `$(<file)` gives — by the `read` builtin. bash forks for `$(<file)` (zsh does
+# not), and this runs twice an event. Fails, leaving it empty, when the file
+# cannot be read.
+_redlog_read_text() {
+  _redlog_text=""
+  { IFS= read -r -d '' _redlog_text <"$1"; } 2>/dev/null
+  [[ -r "$1" ]] || return 1
+  while [[ "$_redlog_text" == *$'\n' ]]; do _redlog_text=${_redlog_text%$'\n'}; done
+  return 0
+}
+
+# Whether a terminal state file says this terminal records: what
+# `grep -q '"recording"[[:space:]]*:[[:space:]]*true' FILE` answered, without
+# starting grep, which both adapters did at every command. grep reads lines,
+# so a newline is not space to it; here it becomes `|`, which the pattern
+# cannot match either, so a match cannot cross a line.
+# zsh's `=~` sets MATCH and match; they are made local so it creates nothing.
+_redlog_state_records() {
+  local re='"recording"[[:space:]]*:[[:space:]]*true' MATCH MBEGIN MEND
+  local -a match mbegin mend
+  _redlog_read_text "$1" || return 1
+  _redlog_text=${_redlog_text//$'\n'/|}
+  [[ "$_redlog_text" =~ $re ]]
+}
+
+# FR-010, for both adapters. The dangerous outcome is not a missing command —
+# it is a command from engagement A filed under engagement B, which is a lie in
+# a document a client reads, written by the tool whose whole job is to be
+# believable. Every event carries whatever identity the file holds when it is
+# sent, and RedLog accepts any event that names the project it has open, so a
+# terminal left open across a switch would write into the new project unless
+# it stops itself first.
+#
+# RedLog rewrites the identity file when the operator opens another project.
+# The adapter calls this before each command line; it compares a stamp of the
+# file with the one it saw last, and only a changed stamp pays for the relay
+# call that compares the pinned engagement with the current one. The relay
+# then marks this terminal stopped, `project-switched`, and nothing — not
+# `redlog start` — undoes that (redlog-relay.py, `apply_terminal_action`).
+#
+# The stamp is `_redlog_identity_stamp`'s, left in `_redlog_stamp`: the file's
+# contents, read by the `read` builtin, so the common case costs an open and
+# no process. Contents rather than an mtime because bash 3.2 has no builtin
+# that reads one, and `stat` is a process with two incompatible spellings
+# (BSD, GNU). The zsh adapter replaces the stamp with `zstat`'s mtime, which
+# is also a builtin there. An empty read is a file being rewritten (RedLog
+# truncates, then writes) and is not a stamp.
+_redlog_identity_stamp() {
+  local file="${_REDLOG_DIR:-$HOME/.redlog}/active-identity.json"
+  _redlog_stamp=""
+  [[ -f "$file" ]] || return 1
+  # Ends at EOF, which is `read`'s status 1; what it read is the answer.
+  { IFS= read -r -d '' _redlog_stamp <"$file"; } 2>/dev/null
+  [[ -n "$_redlog_stamp" ]]
+}
+
+_redlog_check_project() {
+  # RedLog owns and rotates its built-in panes' enrollment. External shells
+  # keep the stop-on-switch pin; they must never be silently rebound.
+  [[ "${REDLOG_TERMINAL:-}" == "1" ]] && return 0
+  _redlog_identity_stamp || return 0
+  [[ "$_redlog_stamp" == "${_REDLOG_IDENTITY_SEEN:-}" ]] && return 0
+  # The first sight of the file is the pin itself, not a switch. The adapter
+  # seeds the stamp as it loads, so arriving here means this terminal loaded
+  # with no project open and is adopted by the one RedLog opened since: said
+  # at the next prompt (`_redlog_announce_adoption`). The state written at load
+  # names no project, so the adoption is written into it here — the pin that
+  # `redlog status` reports and a later switch is measured against. Once per
+  # shell: the stamp is never empty again.
+  if [[ -z "${_REDLOG_IDENTITY_SEEN:-}" ]]; then
+    _REDLOG_IDENTITY_SEEN=$_redlog_stamp
+    _REDLOG_ADOPTED=1
+    _redlog_state --action adopt >/dev/null
+    return 0
+  fi
+  _REDLOG_IDENTITY_SEEN=$_redlog_stamp
+
+  local after pinned
+  after=$(_redlog_state --action project)
+  [[ "$after" == *project-switched* ]] || return 0
+  [[ -n "${_REDLOG_ANNOUNCED_SWITCH:-}" ]] && return 0
+  _REDLOG_ANNOUNCED_SWITCH=1
+
+  # The pin is never updated, so the state still names the project whose work
+  # just stopped. The row lands in whichever project RedLog has open now —
+  # that is where someone wondering why this terminal went quiet will be
+  # looking — and it names the old one explicitly rather than letting the
+  # attribution speak for it. Cut out by expansion, not `=~`: the capture
+  # lands in BASH_REMATCH in bash and in `match` in zsh, depending on options.
+  pinned=${after#*\"engagementId\":}
+  pinned=${pinned#"${pinned%%[![:space:]]*}"}
+  case "$pinned" in
+    \"*) pinned=${pinned#\"}; pinned=${pinned%%\"*} ;;
+    *) pinned="" ;;
+  esac
+  # `pinned` is cut from the relay's JSON, so it is already escaped.
+  local sid
+  _redlog_json_escape "$_REDLOG_SESSION_ID"; sid=$_redlog_json
+  _redlog_send_event "session_end" "" \
+    "{\"session_id\":\"$sid\",\"reason\":\"project-switched\",\"engagement_id\":\"$pinned\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
+  printf '%s\n' "[redlog] the project changed — this terminal stopped recording; open a new terminal for the new project" >&2
 }
 
 # A JSON string's body, for input already known to be printable ASCII, where a
@@ -186,6 +396,61 @@ _redlog_json_quote() {
   s=${s//\\/\\\\}
   s=${s//\"/\\\"}
   _redlog_json=$s
+}
+
+# The same, for any string the operator controls — a working directory, a
+# terminal id — which the adapters splice into an event's `extra` by hand. A
+# directory named with a tab put a raw tab inside a JSON string, the python
+# builder's `json.loads` refused it, and both events of every command run
+# there were dropped without a word. Control characters are written as JSON
+# escapes; everything else, UTF-8 or not, is left as bytes for the builders,
+# which decide what an invalid sequence becomes (`_redlog_build_payload_fast`).
+#
+# No process: a string without a control character, the usual case, is the two
+# substitutions above; one with them is walked a control character at a time.
+_redlog_json_escape() {
+  local LC_ALL=C
+  local s="$1" out="" head c n
+  s=${s//\\/\\\\}
+  s=${s//\"/\\\"}
+  while [[ "$s" == *[[:cntrl:]]* ]]; do
+    head=${s%%[[:cntrl:]]*}
+    s=${s#"$head"}
+    c=${s%"${s#?}"}
+    s=${s#?}
+    case "$c" in
+      $'\t') c='\t' ;;
+      $'\n') c='\n' ;;
+      $'\r') c='\r' ;;
+      *) printf -v n '%d' "'$c"; printf -v c '\\u%04x' "$n" ;;
+    esac
+    out+="$head$c"
+  done
+  _redlog_json=$out$s
+}
+
+# Whether a string is well-formed UTF-8, without a process. Each well-formed
+# sequence (the table in Unicode §3.9: no overlongs, no surrogates, nothing past
+# U+10FFFF) is replaced by an ASCII byte, which cannot start or finish another
+# match; any byte above 0x7F left over was not part of one.
+_REDLOG_U8_SEQS=(
+  $'\xf0[\x90-\xbf][\x80-\xbf][\x80-\xbf]'
+  $'[\xf1-\xf3][\x80-\xbf][\x80-\xbf][\x80-\xbf]'
+  $'\xf4[\x80-\x8f][\x80-\xbf][\x80-\xbf]'
+  $'\xe0[\xa0-\xbf][\x80-\xbf]'
+  $'[\xe1-\xec\xee\xef][\x80-\xbf][\x80-\xbf]'
+  $'\xed[\x80-\x9f][\x80-\xbf]'
+  $'[\xc2-\xdf][\x80-\xbf]'
+)
+_redlog_utf8_ok() {
+  local LC_ALL=C
+  # zsh treats an expanded variable as a pattern only under GLOB_SUBST.
+  [[ -n "${ZSH_VERSION:-}" ]] && setopt localoptions globsubst
+  local s="$1" seq
+  for seq in "${_REDLOG_U8_SEQS[@]}"; do
+    s=${s//$seq/x}
+  done
+  [[ "$s" != *[^\ -~]* ]]
 }
 
 # Adapter identity is process-local; $SHELL describes the login shell.
@@ -262,14 +527,32 @@ _redlog_build_payload_fast() {
   [[ "$subtype$command$shell_name$tid$wsl" == *[^\ -~]* ]] && return 1
   (( ${#command} + ${#extra} > 32768 )) && return 1
   [[ "$extra" == *[[:cntrl:]]* ]] && return 1
+  # Bytes that are not UTF-8 (a directory named in another encoding) go to
+  # python, which writes U+FFFD for each bad sequence. Copied as they are, the
+  # body would not be text, and what became of them would be the receiver's
+  # choice.
+  if [[ "$extra" == *[^\ -~]* ]]; then
+    _redlog_utf8_ok "$extra" || return 1
+  fi
 
   # WHEN the command ran, not when someone next looked (Domain Invariant #8):
   # the same millisecond epoch the python builder takes with time.time().
-  local now="${EPOCHREALTIME:-}"
-  [[ "$now" == [0-9]*.[0-9]* ]] || return 1
-  local frac="${now#*.}"
-  (( ${#frac} >= 3 )) || return 1
-  local ms="${now%.*}${frac:0:3}"
+  local now="${EPOCHREALTIME:-}" ms
+  if [[ "$now" == [0-9]*.[0-9]* ]]; then
+    local frac="${now#*.}"
+    (( ${#frac} >= 3 )) || return 1
+    ms="${now%.*}${frac:0:3}"
+  else
+    # No clock in the shell: bash before 5, which is what macOS ships. One
+    # `date` is a fraction of the python3 this would otherwise hand over to,
+    # with a temporary directory made and removed around it — three
+    # processes and ~45 ms, twice a command. Only a `date` that prints
+    # nanoseconds will do; one that prints a literal N (older BSD date) is
+    # still the python builder's.
+    now=$(date +%s%N 2>/dev/null)
+    [[ -n "$now" && "$now" != *[!0-9]* && ${#now} -ge 16 ]] || return 1
+    ms=${now:0:${#now}-6}
+  fi
 
   local inner=""
   if [[ -n "$extra" ]]; then
@@ -372,11 +655,20 @@ _redlog_curl_authed() {
 # The bearer token does not travel in argv either: a process listing shows the
 # argument vector of every process to every user on the host (#489). stdin is
 # the body, so the token reaches curl as a config file (`_redlog_curl_authed`).
+#
+# The send is synchronous, on purpose: the notice at the next prompt reports
+# what happened to the command that just ended (`_REDLOG_UNSAVED`), and a send
+# in the background could only report it a prompt late. So what bounds the
+# prompt is the deadline. A refused connection — RedLog not running — fails at
+# once; a RedLog that accepts and never answers costs the whole deadline, on
+# each of a command's two events. `$3` is that deadline: an event the shell
+# built itself is at most a few KB, and gets 1 s; a body the python builder
+# wrote, up to megabytes, keeps 2 s.
 _redlog_post() {
   _redlog_curl_authed "$2" --noproxy '*' -sf -X POST "http://${_REDLOG_HOST}:$1/api/events" \
     -H "Content-Type: application/json" \
     --data-binary @- \
-    --connect-timeout 1 --max-time 2 >/dev/null 2>&1
+    --connect-timeout 1 --max-time "${3:-2}" >/dev/null 2>&1
 }
 
 _redlog_send_event() {
@@ -394,8 +686,9 @@ _redlog_send_event() {
   local reachable=0 port="" token=""
   if _redlog_is_running; then
     reachable=1
-    port=$(<"$_REDLOG_DIR/api-port")
-    token=$(<"$_REDLOG_DIR/api-token")
+    _redlog_read_text "$_REDLOG_DIR/api-port"; port=$_redlog_text
+    _redlog_read_text "$_REDLOG_DIR/api-token"; token=$_redlog_text
+    _redlog_text=""
     if [[ -z "${_REDLOG_HOST:-}" ]]; then
       # Outside WSL the answer is 127.0.0.1 whatever the probe says, so the
       # probe — a curl, and the subshell around it — is only paid where there
@@ -455,19 +748,28 @@ _redlog_send_event() {
      && _redlog_build_payload_fast "$subtype" "$command" "$extra" "" "$shell_name"; then
     payload=$_redlog_payload
   else
-  work=$(mktemp -d -t redlog-send.XXXXXX 2>/dev/null) || return 0
+  # A full template in $TMPDIR, not `-t`: BSD mktemp's `-t` ignores $TMPDIR,
+  # and where the per-user default is not writable every event this builder
+  # handles was dropped.
+  local tmp="${TMPDIR:-/tmp}"
+  work=$(mktemp -d "${tmp%/}/redlog-send.XXXXXX" 2>/dev/null) || return 0
   payload_file="$work/payload.json"
   printf '%s' "$extra" > "$work/extra.json" 2>/dev/null || { rm -rf "$work"; return 0; }
 
   python3 -c "
 import json, sys, os, pathlib, time
+# Arguments and the environment arrive as bytes. A sequence that is not UTF-8
+# becomes U+FFFD, as it does in extra.json below, rather than a lone surrogate
+# escape that is not text.
+def text(value):
+    return os.fsencode(value).decode('utf-8', 'replace')
 d = {
     'agent_type': 'shell',
     'data': {
-        'subtype': sys.argv[1],
-        'command': sys.argv[2],
+        'subtype': text(sys.argv[1]),
+        'command': text(sys.argv[2]),
         # Runtime identity is an argument, not interpolated login metadata.
-        'shell': sys.argv[4],
+        'shell': text(sys.argv[4]),
         'pid': $$,
         # WHEN, not when someone next looked.
         #
@@ -493,10 +795,10 @@ if os.environ.get('REDLOG_TERMINAL') == '1':
     d['data']['source'] = 'builtin-terminal'
 tid = os.environ.get('REDLOG_TERMINAL_ID') or os.environ.get('_REDLOG_SESSION_ID')
 if tid:
-    d['data']['terminalId'] = tid
+    d['data']['terminalId'] = text(tid)
 wsl = os.environ.get('WSL_DISTRO_NAME')
 if wsl:
-    d['data']['wsl_distro'] = wsl
+    d['data']['wsl_distro'] = text(wsl)
 extra = pathlib.Path(sys.argv[3]).read_text(encoding='utf-8', errors='replace')
 if extra.strip():
     d['data'].update(json.loads(extra))
@@ -519,43 +821,58 @@ sys.stdout.write(json.dumps(d))
   # fails, write the payload to a spool file that RedLog replays on next
   # project open. Spool cap: 5000 files (protects against a runaway loop
   # while RedLog is offline for weeks).
-  local spool_dir="$redlog_dir/pending" delivered=0
+  local spool_dir="$redlog_dir/pending" delivered=0 post_rc=0
   # Foreground POST with short deadline; if it fails — or there was nowhere to
   # send it — spool. The directory and the file's name are made only then: two
   # processes on every event that is delivered, for a spool it never touches.
   if [[ "$reachable" == 1 ]]; then
     if [[ -n "$payload_file" ]]; then
-      _redlog_post "$port" "$token" < "$payload_file" && delivered=1
+      _redlog_post "$port" "$token" < "$payload_file" && delivered=1 || post_rc=$?
     else
-      _redlog_post "$port" "$token" <<<"$payload" && delivered=1
+      _redlog_post "$port" "$token" 1 <<<"$payload" && delivered=1 || post_rc=$?
     fi
   fi
+  [[ "$delivered" == 1 ]] && _REDLOG_UNSAVED=""
   if [[ "$delivered" != 1 ]]; then
     # Cap spool at 5000 entries — beyond that we accept loss over disk fill.
     #
     # Only the files still waiting for replay. Replay renames what it cannot
     # attribute to `*.json.unattributed` and keeps it (#255), so counting the
     # whole directory let a pile of those fill the cap and silently stop every
-    # new event from being spooled. `find`, not a glob: an unmatched glob is an
-    # error zsh prints itself, whatever the command's own stderr is sent to.
+    # new event from being spooled. Counted by `_redlog_count_waiting`.
     #
     # And only while a project identity exists. Replay never claims a file that
     # carries no engagementId — it sets it aside as `*.unattributed` and keeps
     # it forever (#255) — so spooling without one only builds a pile nothing
     # reads. RedLog removes active-identity.json when the project closes, which
     # makes "no identity" the same thing as "no project to record into".
-    if ! grep -qs '"engagementId"' "${_REDLOG_DIR:-${HOME:-}/.redlog}/active-identity.json" 2>/dev/null; then
+    # The test is grep's, `grep -qs '"engagementId"'`, made by `read` rather
+    # than a process.
+    if ! { _redlog_read_text "${_REDLOG_DIR:-${HOME:-}/.redlog}/active-identity.json" \
+           && [[ "$_redlog_text" == *'"engagementId"'* ]]; }; then
+      # Dropped, and the operator has not been told. The next prompt says so
+      # (`_redlog_warn_unsaved`), from this outcome: no extra request per
+      # prompt. `curl -f` exits 22 for an HTTP error, so RedLog answered; with
+      # no identity that is the 503 it gives while no project is open.
+      if [[ "${_REDLOG_UNSAVED:-}" != told ]]; then
+        if [[ "$post_rc" == 22 ]]; then _REDLOG_UNSAVED=no-project; else _REDLOG_UNSAVED=unreachable; fi
+      fi
       [[ -z "$work" ]] || rm -rf "$work"
       return 0
     fi
-    mkdir -m 700 -p "$spool_dir" 2>/dev/null
-    local count spool_file
-    count=$(find "$spool_dir" -maxdepth 1 -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
-    if [[ "$count" -lt 5000 ]]; then
+    _redlog_text=""
+    # `mkdir -p` leaves an existing directory and its mode alone, so only a
+    # missing one needs the process.
+    [[ -d "$spool_dir" ]] || mkdir -m 700 -p "$spool_dir" 2>/dev/null
+    local spool_file
+    _redlog_count_waiting "$spool_dir"
+    if [[ "$_redlog_count" -lt 5000 ]]; then
+      _REDLOG_UNSAVED=""
       if [[ -n "$work" ]]; then
         # The work directory is already unique, including on BSD date where
         # %N is literal and several events share one second and shell PID.
-        spool_file="$spool_dir/$(date +%s%N).$$.${work##*/}.json"
+        _redlog_ns_stamp
+        spool_file="$spool_dir/$_redlog_ns.$$.${work##*/}.json"
         chmod 600 "$payload_file" 2>/dev/null
         mv "$payload_file" "$spool_file" 2>/dev/null
       else
@@ -565,7 +882,8 @@ sys.stdout.write(json.dumps(d))
         # renamed in whole: replay never sees half a file.
         local try
         for try in 1 2 3 4 5; do
-          spool_file="$spool_dir/$(date +%s%N).$$.redlog-send.${RANDOM}${RANDOM}.json"
+          _redlog_ns_stamp
+          spool_file="$spool_dir/$_redlog_ns.$$.redlog-send.${RANDOM}${RANDOM}.json"
           if ( umask 077; set -C; printf '%s' "$payload" > "$spool_file.tmp" ) 2>/dev/null; then
             mv "$spool_file.tmp" "$spool_file" 2>/dev/null
             break
@@ -637,8 +955,9 @@ redlog-run() {
   command_id=$(_redlog_new_command_id)
 
   # Emit command_start so the timeline shows the row entering flight.
+  _redlog_json_escape "$PWD"
   _redlog_send_event "command_start" "$cmd_string" \
-    "{\"cwd\":\"${PWD//\"/\\\"}\",\"captured_by\":\"redlog-run\",\"command_id\":\"$command_id\"}"
+    "{\"cwd\":\"$_redlog_json\",\"captured_by\":\"redlog-run\",\"command_id\":\"$command_id\"}"
 
   # A builtin, function or keyword has to run in THIS shell or it does
   # nothing: `redlog-run cd /tmp` through a relay would change a directory
@@ -650,8 +969,9 @@ redlog-run() {
     command "$@"
     local builtin_code=$?
     local builtin_duration=$(( ${EPOCHSECONDS:-$(date +%s)} - start_ts ))
+    _redlog_json_escape "$PWD"
     _redlog_send_event "command_end" "$cmd_string" \
-      "{\"exit_code\":$builtin_code,\"duration_sec\":$builtin_duration,\"cwd\":\"${PWD//\"/\\\"}\",\"captured_by\":\"redlog-run\",\"command_id\":\"$command_id\",\"completeness\":\"metadata-only\",\"output_disposition\":\"not-captured\"}"
+      "{\"exit_code\":$builtin_code,\"duration_sec\":$builtin_duration,\"cwd\":\"$_redlog_json\",\"captured_by\":\"redlog-run\",\"command_id\":\"$command_id\",\"completeness\":\"metadata-only\",\"output_disposition\":\"not-captured\"}"
     return $builtin_code
   fi
 
@@ -687,13 +1007,123 @@ redlog-run() {
     # The relay ran the command but could not write the event — fall back to
     # bare metadata so the row still lands with the right exit code.
     local duration=$(( ${EPOCHSECONDS:-$(date +%s)} - start_ts ))
-    extra="{\"exit_code\":$exit_code,\"duration_sec\":$duration,\"cwd\":\"${PWD//\"/\\\"}\",\"captured_by\":\"redlog-run\",\"command_id\":\"$command_id\",\"completeness\":\"metadata-only\",\"output_disposition\":\"not-captured\"}"
+    _redlog_json_escape "$PWD"
+    extra="{\"exit_code\":$exit_code,\"duration_sec\":$duration,\"cwd\":\"$_redlog_json\",\"captured_by\":\"redlog-run\",\"command_id\":\"$command_id\",\"completeness\":\"metadata-only\",\"output_disposition\":\"not-captured\"}"
   fi
 
   _redlog_send_event "command_end" "$cmd_string" "$extra"
 
   rm -f "$event_file" "$event_file.started"
   return $exit_code
+}
+
+# FR-009, said at the prompt by both adapters. The commands run either way —
+# that part has always worked, silently, and silence is the bug. An operator
+# whose RedLog crashed two hours ago has been working unrecorded with no way to
+# know.
+#
+# Once, though, and only on the way in. A warning on every prompt is one an
+# operator learns to read past, and then the one that matters is read past too.
+# The flags are shell variables on purpose: "have I said this in this shell" is
+# not state that should survive a subshell, unlike the stop (FR-022).
+#
+# Two ways in. Without the port and token files there is nothing to send to,
+# which is checked only after a command (`$1` is 1). With them — and RedLog
+# leaves them behind when it quits — the send itself is the evidence: an event
+# that was neither delivered nor spooled left `_REDLOG_UNSAVED` set. A
+# delivered or spooled event clears it, so the next loss is said again. A
+# terminal stopped with `redlog stop`, or not selected for recording, is not
+# losing anything it was asked to keep, and is not told it is.
+#
+# Called once per prompt by both adapters, and the adoption notice goes with
+# it, last: a drop said here happened before the project opened.
+_redlog_warn_unsaved() {
+  _redlog_warn_dropped "$@"
+  _redlog_announce_adoption
+  return 0
+}
+
+# The other half of "no project is open … not being recorded": a terminal that
+# loaded with no project open records into the first one RedLog opens after
+# it, and says so once, with the project's name. The identity file carries
+# only ids; the name is in RedLog's local project index, read once here rather
+# than asked of RedLog. A shell that loaded with a project open, a built-in
+# pane (RedLog enrolls those itself) and a stopped terminal say nothing.
+_redlog_announce_adoption() {
+  [[ "${REDLOG_TERMINAL:-}" == "1" ]] && return 0
+  # A project opened while a command ran is first seen here; one opened while
+  # the prompt waited, by the check before the next command.
+  [[ -n "${_REDLOG_IDENTITY_SEEN:-}" ]] || _redlog_check_project
+  [[ -n "${_REDLOG_ADOPTED:-}" ]] || return 0
+  _REDLOG_ADOPTED=""
+  _redlog_is_recording || return 0
+  local ident label
+  ident=$(_redlog_identity_file)
+  label=$(python3 -c '
+import json, sys
+try:
+    eid = str(json.load(open(sys.argv[1])).get("engagementId") or "")
+except Exception:
+    sys.exit(0)
+name = ""
+try:
+    for p in json.load(open(sys.argv[2])).get("recent") or []:
+        if isinstance(p, dict) and p.get("id") == eid:
+            name = str(p.get("name") or "")
+            break
+except Exception:
+    pass
+name = " ".join("".join(c if c.isprintable() else " " for c in name).split())
+sys.stdout.write(name or eid)
+' "$ident" "${ident%/*}/projects.json" 2>/dev/null)
+  if [[ -z "$label" ]]; then
+    { label=$(<"$ident"); } 2>/dev/null
+    label=${label#*\"engagementId\":}
+    label=${label#"${label%%[![:space:]]*}"}
+    case "$label" in
+      \"*) label=${label#\"}; label=${label%%\"*} ;;
+      *) return 0 ;;
+    esac
+  fi
+  printf '%s\n' "[redlog] project \"$label\" is open in RedLog; this terminal is now being recorded into it" >&2
+}
+
+_redlog_warn_dropped() {
+  if [[ "${1:-}" == 1 ]]; then
+    if _redlog_is_running; then
+      _REDLOG_WARNED_UNREACHABLE=""
+    else
+      if [[ -z "${_REDLOG_WARNED_UNREACHABLE:-}" ]]; then
+        _REDLOG_WARNED_UNREACHABLE=1
+        # The text of each command is still kept for replay (#315) — the sender
+        # spools it with nowhere to send it — but not what it printed, which
+        # only a live relay can hold. Saying "unrecorded" would mislead too.
+        if [[ ! -s "$(_redlog_identity_file)" ]]; then
+          printf '%s\n' "[redlog] RedLog is not reachable — no project is open; commands and output are not being saved" >&2
+        else
+          printf '%s\n' "[redlog] RedLog is not reachable — commands are running without live recording; their text is kept for replay, their output is not" >&2
+        fi
+      fi
+      # Whatever was dropped meanwhile is the loss that line describes.
+      [[ -z "${_REDLOG_UNSAVED:-}" ]] || _REDLOG_UNSAVED=told
+      return 0
+    fi
+  fi
+  case "${_REDLOG_UNSAVED:-}" in
+    unreachable|no-project) ;;
+    *) return 0 ;;
+  esac
+  if ! _redlog_is_recording; then
+    _REDLOG_UNSAVED=""
+    return 0
+  fi
+  if [[ "$_REDLOG_UNSAVED" == no-project ]]; then
+    printf '%s\n' "[redlog] no project is open in RedLog; this terminal is not being recorded" >&2
+  else
+    printf '%s\n' "[redlog] RedLog is not reachable; this terminal is not being recorded" >&2
+  fi
+  _REDLOG_UNSAVED=told
+  return 0
 }
 
 # Loading the adapter is not proof of recording or delivery. The terminal's

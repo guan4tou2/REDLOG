@@ -180,7 +180,7 @@ do the tagging with richer context. RedLog ships **no** commandTags out of the
 box — install one (or write your own, or leave the shell events raw and tag
 them downstream).
 
-### `eventTypes` — give a new `agent_type` a timeline identity
+### `eventTypes` — label and colour an `agent_type` on the timeline
 
 ```jsonc
 "eventTypes": [
@@ -188,7 +188,7 @@ them downstream).
 ]
 ```
 
-Pure rendering metadata — it never changes how events are recorded or chained.
+Pure rendering metadata — it never changes how events are recorded or chained. It does **not** make a new `agent_type` postable: `POST /api/events` accepts only a fixed set of types (for example `external`, `scanner`, `agent`, `shell`), and answers 403 to anything else, including an `acme_scan` declared here. An external producer sends an allowed `agent_type` with its own `subtype` (e.g. `{"agent_type": "scanner", "data": {"subtype": "acme_scan", …}}`); `eventTypes` only styles rows whose `agent_type` is already being recorded.
 
 ### `terminalProfiles` — tell the terminal adapter how to treat a tool
 

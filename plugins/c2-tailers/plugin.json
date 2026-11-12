@@ -38,7 +38,8 @@
         "agentType": "scanner",
         "emits": [
           "c2_checkin",
-          "c2_task"
+          "c2_task",
+          "c2_pivot"
         ],
         "requires": [
           "node"

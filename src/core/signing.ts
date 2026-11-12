@@ -69,12 +69,31 @@ function ensureKeysDir(): string {
   return dir
 }
 
+// The id becomes a file name under keys/. Ids were historically only trimmed,
+// so Unicode letters and inner spaces stay valid; only what is unsafe as ONE
+// path segment is refused.
+export function isSafeOperatorId(id: string): boolean {
+  if (typeof id !== 'string' || id.length === 0 || id.length > 128) return false
+  if (id === '.' || id === '..') return false
+  // eslint-disable-next-line no-control-regex
+  if (/[\/\\\u0000-\u001f\u007f]/.test(id)) return false
+  // Invalid in a Windows file name; refused everywhere so a project opened on
+  // another OS keeps the same key file.
+  if (/[<>:"|?*]/.test(id) || /[. ]$/.test(id)) return false
+  return true
+}
+
+function keyFile(operatorId: string, ext: 'key' | 'pub'): string {
+  if (!isSafeOperatorId(operatorId)) throw new Error('Operator id is not a plain file name')
+  return path.join(keysDir(), `${operatorId}.${ext}`)
+}
+
 function privateKeyPath(operatorId: string): string {
-  return path.join(keysDir(), `${operatorId}.key`)
+  return keyFile(operatorId, 'key')
 }
 
 function publicKeyPath(operatorId: string): string {
-  return path.join(keysDir(), `${operatorId}.pub`)
+  return keyFile(operatorId, 'pub')
 }
 
 // Wrap 32-byte raw public key into a KeyObject via JWK. The Ed25519 SPKI DER
@@ -157,10 +176,21 @@ export function generateOperatorKeyPair(operatorId: string): OperatorKeyPair {
 // re-stat on every write.
 type CacheEntry = { key: crypto.KeyObject } | { key: null }
 const keyCache = new Map<string, CacheEntry>()
+const warnedUnsafeIds = new Set<string>()
 
 function loadKeyObject(operatorId: string): crypto.KeyObject | null {
   const cached = keyCache.get(operatorId)
   if (cached !== undefined) return cached.key
+  // An id that cannot be a file name has no key; its rows are written unsigned.
+  if (!isSafeOperatorId(operatorId)) {
+    // No other channel reports a signing failure (createOperator swallows its
+    // own), so say it once per id on the main-process log.
+    if (!warnedUnsafeIds.has(operatorId)) {
+      warnedUnsafeIds.add(operatorId)
+      console.error(`[signing] operator id ${JSON.stringify(operatorId)} cannot name a key file; its events are written unsigned`)
+    }
+    return null
+  }
   const privPath = privateKeyPath(operatorId)
   const pubPath = publicKeyPath(operatorId)
   if (!fs.existsSync(privPath) || !fs.existsSync(pubPath)) {

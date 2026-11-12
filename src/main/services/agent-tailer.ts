@@ -3,7 +3,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import chokidar from 'chokidar'
-import { configureHost, registerAdapter, unregisterAdapter, type TailerHostConfig, type TailerAdapter } from './tailer-host'
+import { configureHost, registerAdapter, unregisterAdapter, clearSessionRegistry, type TailerHostConfig, type TailerAdapter } from './tailer-host'
 import { agentTranscriptRoot, type AgentCaptureConfig } from '../../core/agent-capture-policy'
 import { createOfficialAgentPluginManager } from '../../core/plugins/official-agents'
 import path from 'node:path'
@@ -38,7 +38,10 @@ export function configureAgentTailer(next: Partial<AgentTailerConfig>): void {
   }
   configureHost(hostCfg)
 }
+/** Project close/switch only (`stopProject`). Ends the project's AI session
+ *  selection (#686); a settings save goes through `configureAgentTailer`. */
 export function stopAgentTailer(): void {
+  clearSessionRegistry()
   configureHost({ enabled: false, enabledAgents: [] })
   unload()
 }

@@ -54,7 +54,11 @@ export function tightestLaneGap(laneTimestamps: readonly (readonly number[])[], 
 
 export interface MaxZoomParams {
   /** Per-lane ascending display timestamps. */
-  laneTimestamps: readonly (readonly number[])[]
+  laneTimestamps?: readonly (readonly number[])[]
+  /** The smallest positive same-lane gap, when the caller keeps it itself
+   *  (lib/timelineIncremental). Gives the same ceiling as `laneTimestamps`:
+   *  the early exit below only ever stops at a gap that already caps it. */
+  tightestGap?: number
   /** Span of the visible time domain, ms. */
   timeSpan: number
   clusterPx: number
@@ -76,7 +80,7 @@ export function computeMaxZoom(p: MaxZoomParams): number {
   const base = Math.max(1, p.baseTrackW)
   if (timeSpan <= 0) return 6
   const ceilingGap = (timeSpan * clusterPx) / maxTrackW
-  const tightest = tightestLaneGap(laneTimestamps, ceilingGap)
+  const tightest = p.tightestGap ?? tightestLaneGap(laneTimestamps ?? [], ceilingGap)
   if (!Number.isFinite(tightest)) return 6
   const neededTrackW = (timeSpan / tightest) * clusterPx
   return Math.max(6, Math.min(maxTrackW / base, neededTrackW / base))

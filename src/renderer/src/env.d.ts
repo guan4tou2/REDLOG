@@ -32,6 +32,7 @@ type ExportFormat = 'json' | 'ndjson' | 'bundle' | 'har' | 'timeline'
 type ExportSubset = import('../../core/export-plan').ExportSubset
 type ExportRequest = import('../../core/export-plan').ExportRequest
 type ExportAttachmentRow = import('../../core/export-attachments').ExportAttachment
+type HudPrefs = import('../../core/hud-prefs').HudPrefs
 /** One picked file's outcome from `artifacts:add` (core/artifacts.ts). */
 type ArtifactAddOutcome =
   | { ok: true; stored: string; sha256: string; bytes: number; originalPath: string; mtime: number; duplicate: boolean; eventId: string | null; relatedCommands: number }
@@ -338,9 +339,9 @@ interface RedLogAPI {
   chain: {
     length: () => Promise<number>
     anchors: () => Promise<ChainAnchorInfo[]>
-    anchorNow: () => Promise<ChainAnchorInfo | null>
+    anchorNow: () => Promise<ChainAnchorInfo | ChainSkipped | null>
     verify: () => Promise<{ ok: boolean; anchor: ChainAnchorInfo | null; currentHead: string | null; walked?: number; brokenAtEventId?: string | null; brokenReason?: string | null; clockAnomalies?: Array<{ eventId: string; reason: string }>; anchorMatchesWalkedHead?: boolean }>
-    upgrade: (id?: string) => Promise<ChainAnchorInfo | { upgraded: number; scanned: number } | null>
+    upgrade: (id?: string) => Promise<ChainAnchorInfo | { upgraded: number; scanned: number } | ChainSkipped | null>
   }
   loot: {
     getCount: () => Promise<number>
@@ -412,6 +413,8 @@ interface RedLogAPI {
     shells: () => Promise<Array<{ id: string; label: string; flavour: 'powershell' | 'posix' | 'none' }>>
     write: (id: string, data: string) => void
     resize: (id: string, cols: number, rows: number) => void
+    /** Characters of this pane's output xterm has parsed (flow control). */
+    ack: (id: string, chars: number) => void
     kill: (id: string) => void
     list: () => Promise<Array<{
       id: string; pid: number; lastActivity: number
@@ -443,7 +446,6 @@ interface RedLogAPI {
     onVisibilityChanged: (cb: (visible: boolean) => void) => () => void
     moveToCorner: (corner: 'tl' | 'tr' | 'bl' | 'br') => void
     setPassThrough: (on: boolean) => void
-    onPassThroughChanged: (cb: (on: boolean) => void) => () => void
     autosize?: (height: number, width?: number) => void
     quickMark?: () => void
     /** The project a marker draft belongs to; hand it back as `bind` on save. */
@@ -454,6 +456,12 @@ interface RedLogAPI {
     setPassThrough?: (on: boolean) => void
     mouseEnter?: () => void
     mouseLeave?: () => void
+  }
+  /** The HUD's settings: machine-wide, not part of the project config. */
+  hudPrefs: {
+    get: () => Promise<HudPrefs>
+    set: (partial: Partial<HudPrefs>) => Promise<HudPrefs>
+    onChanged: (cb: (prefs: HudPrefs) => void) => () => void
   }
   operators: {
     list: () => Promise<OperatorInfo[]>
@@ -519,6 +527,7 @@ interface RedLogAPI {
     /** Delete the commands set aside with no project (#255) — only those
      *  written no later than `upTo`, the newest the card was showing. */
     clearUnattributedSpool: (upTo: number) => Promise<{ removed: number; failed: number }>
+    openPrerequisiteFix: (url: string) => Promise<{ ok: boolean; error?: string }>
   }
   wsl: {
     listDistros: () => Promise<WslDistro[]>
@@ -589,6 +598,8 @@ interface CaptureSourceInfo {
   disabled?: boolean
   /** E3: this plugin producer is heartbeating — the operator has it running. */
   running?: boolean
+  /** #688: core/capture-health.ts CapturePrerequisite. */
+  prerequisites?: Array<import('../../core/capture-health').CapturePrerequisite>
 }
 
 interface EventNote {
@@ -633,6 +644,7 @@ interface ManagedProxyStatus {
   url: string | null
   pid?: number
   error?: string
+  errorReason?: import('../../core/capture-health').ProxyFailureReason
   caPath?: string
   /** The CA file exists. Not a claim that anything trusts it. */
   certReady?: boolean
@@ -667,6 +679,9 @@ interface CalendarReceiptInfo {
   url?: string
 }
 
+/** Air-gapped project: the network step was not attempted. */
+interface ChainSkipped { skipped: 'offline' }
+
 interface ChainAnchorInfo {
   id: string
   headEventId: string | null
@@ -684,16 +699,6 @@ interface RedLogConfigPartial {
   network?: { whitelist?: string[]; blacklist?: string[]; checkInterval?: number; ipMode?: 'dns' | 'http' | 'auto' }
   scope?: { warnOnViolation?: boolean; targets?: string[]; excludeTargets?: string[]; scopeFile?: string | null; personalDomains?: string[] }
   screenshot?: { quality?: number; intervalSec?: number }
-  overlay?: {
-    autoShow?: boolean
-    showMarkButton?: boolean
-    showInDock?: boolean
-    flashOnExposed?: boolean
-    scale?: number
-    emphasizeExternalIp?: boolean
-    passThrough?: boolean
-    passThroughOpacity?: number
-  }
 }
 
 /** A plugin-registered event type, as `plugins:eventTypes` returns it. */

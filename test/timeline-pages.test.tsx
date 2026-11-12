@@ -59,3 +59,20 @@ it('keeps the loaded page on failure and retries from that same cursor', async (
   expect(query.mock.calls.slice(1).map(call => call[0].cursor)).toEqual(['c1', 'c1'])
   expect(hook.callbacks.rows.mock.calls.flatMap(call => call[0].map((event: any) => event.id))).toEqual(['first', 'second'])
 })
+
+it('grows each further page of a generation, and starts over at 200 with a new filter', async () => {
+  let n = 0
+  const query = vi.fn(async () => page(`p${n++}`, `c${n}`))
+  const hook = mount(query)
+  await waitFor(() => expect(hook.result.current.pageCursor).toBe('c1'))
+  for (let i = 0; i < 6; i++) {
+    act(() => hook.result.current.loadMore())
+    await waitFor(() => expect(hook.result.current.loading).toBe(false))
+  }
+  expect(query.mock.calls.map(call => call[0].limit)).toEqual([200, 400, 800, 1600, 2000, 2000, 2000])
+  hook.rerender({ targetId: 'second' })
+  await waitFor(() => expect(query).toHaveBeenCalledTimes(8))
+  act(() => hook.result.current.loadMore())
+  await waitFor(() => expect(query).toHaveBeenCalledTimes(9))
+  expect(query.mock.calls.slice(7).map(call => call[0].limit)).toEqual([200, 400])
+})

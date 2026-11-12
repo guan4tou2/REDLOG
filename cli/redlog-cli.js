@@ -133,7 +133,7 @@ Examples:
   redlog-cli loot "root:x:0:0:root:/root:/bin/bash"
   redlog-cli whoami
   redlog-cli chain anchor
-  curl -s -H "Authorization: Bearer $(redlog-cli token)" http://127.0.0.1:6660/api/events
+  printf 'header = "Authorization: Bearer %s"\n' "$(redlog-cli token)" | curl -s -K - http://127.0.0.1:6660/api/events
 `)
     return
   }
@@ -449,7 +449,9 @@ Examples:
         } else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
       } else if (sub === 'anchor') {
         const res = await request('POST', '/api/anchors')
-        if (res.status === 201 && res.data.anchor) {
+        if (res.data && res.data.skipped) {
+          console.log(`skipped: ${res.data.skipped}`)
+        } else if (res.status === 201 && res.data.anchor) {
           const a = res.data.anchor
           const ok = a.calendarReceipts.filter((r) => r.ok).length
           console.log(`Anchor ${a.status}: ${ok}/${a.calendarReceipts.length} calendars`)
@@ -506,14 +508,18 @@ Examples:
       } else if (sub === 'upgrade') {
         if (flags.all || positional[1] === '--all') {
           const res = await request('POST', '/api/anchors/upgrade-all')
-          if (res.status === 200) {
+          if (res.data && res.data.skipped) {
+            console.log(`skipped: ${res.data.skipped}`)
+          } else if (res.status === 200) {
             console.log(`Upgraded ${res.data.upgraded}/${res.data.scanned} pending anchors`)
           } else { console.error(`Error ${res.status}:`, res.data); process.exit(1) }
         } else {
           const id = positional[1]
           if (!id) { console.error('Usage: redlog-cli chain upgrade <anchor-id> | --all'); process.exit(1) }
           const res = await request('POST', `/api/anchors/${encodeURIComponent(id)}/upgrade`)
-          if (res.status === 200 && res.data.anchor) {
+          if (res.data && res.data.skipped) {
+            console.log(`skipped: ${res.data.skipped}`)
+          } else if (res.status === 200 && res.data.anchor) {
             const a = res.data.anchor
             const up = a.calendarReceipts.filter((r) => r.upgraded).length
             console.log(`Anchor ${a.id}: ${up}/${a.calendarReceipts.length} calendars upgraded (status=${a.status})`)

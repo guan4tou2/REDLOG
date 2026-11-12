@@ -6,22 +6,29 @@
 // should emit scanner/pivot events — so the faithful, safer vehicle is a
 // standalone follower that talks to the authenticated local API, like scan-parsers.
 //
-//   node c2-tail.js <framework> <logfile>
+//   node c2-tail.js [--from-start] <framework> <logfile>
 //     framework = generic | sliver     (see parse.js for the shapes)
 //
-// Follows appends (poll every 1s), survives truncation/rotation (re-reads from 0
-// when the file shrinks), and records only while RedLog is open.
+// Starts at the end of an existing log (pass --from-start to import what is
+// already there), follows appends (poll every 1s), and re-reads from 0 when
+// the file is truncated or rotated. A line is consumed only once RedLog has
+// taken it: while RedLog is closed or a post fails, the follower stays on that
+// line and retries it next tick. The offset rules live in follow.js.
 'use strict'
 
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { parseC2Line } = require('./parse.js')
+const { initialOffset, resyncOffset, drainLines, postOutcome } = require('./follow.js')
 
-const framework = process.argv[2] || 'generic'
-const logFile = process.argv[3]
+const args = process.argv.slice(2)
+const fromStart = args.includes('--from-start')
+const positional = args.filter((a) => a !== '--from-start')
+const framework = positional[0] || 'generic'
+const logFile = positional[1]
 if (!logFile) {
-  process.stderr.write('usage: c2-tail.js <generic|sliver> <logfile>\n')
+  process.stderr.write('usage: c2-tail.js [--from-start] <generic|sliver> <logfile>\n')
   process.exit(2)
 }
 
@@ -37,46 +44,58 @@ function redlogConn() {
 
 async function post(ev) {
   const conn = redlogConn()
-  if (!conn) return false   // RedLog closed → capture nothing
+  if (!conn) return 'retry'   // RedLog closed → keep the line for later
   try {
     const r = await fetch(`http://127.0.0.1:${conn.port}/api/events`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${conn.token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(ev)
     })
-    return r.ok
-  } catch { return false }
+    const outcome = postOutcome(r.status)
+    if (outcome === 'drop') process.stderr.write(`\n[redlog c2-tailers] RedLog refused a ${ev.agent_type} event (HTTP ${r.status}); skipped\n`)
+    return outcome
+  } catch { return 'retry' }
 }
 
-let offset = 0
-let carry = ''
+let offset = null      // set on the first stat; null until the file exists
+let ino = null
 let posted = 0
+let running = false
+
+function start() {
+  let stat = null
+  try { stat = fs.statSync(logFile) } catch { /* not created yet */ }
+  offset = initialOffset(stat ? stat.size : null, fromStart)
+  ino = stat ? stat.ino : null
+}
 
 async function drain() {
-  let stat
-  try { stat = fs.statSync(logFile) } catch { return }   // not created yet
-  if (stat.size < offset) { offset = 0; carry = '' }      // truncated / rotated → restart
-  if (stat.size === offset) return
-  let chunk = ''
+  if (running) return     // a slow post must not let two drains read the same lines
+  running = true
   try {
-    const fd = fs.openSync(logFile, 'r')
-    const buf = Buffer.alloc(stat.size - offset)
-    fs.readSync(fd, buf, 0, buf.length, offset)
-    fs.closeSync(fd)
-    chunk = buf.toString('utf8')
-  } catch { return }
-  offset = stat.size
-  const lines = (carry + chunk).split('\n')
-  carry = lines.pop() || ''   // last partial line waits for the rest
-  for (const line of lines) {
-    const ev = parseC2Line(line, framework)
-    if (ev && await post(ev)) {
-      posted++
+    let stat
+    try { stat = fs.statSync(logFile) } catch { return }   // not created yet
+    offset = resyncOffset(offset, stat, ino)
+    ino = stat.ino
+    if (stat.size === offset) return
+    let buf
+    try {
+      const fd = fs.openSync(logFile, 'r')
+      try {
+        buf = Buffer.alloc(stat.size - offset)
+        fs.readSync(fd, buf, 0, buf.length, offset)
+      } finally { fs.closeSync(fd) }
+    } catch { return }
+    const r = await drainLines(buf, offset, (line) => parseC2Line(line, framework), post)
+    offset = r.offset
+    if (r.posted > 0) {
+      posted += r.posted
       process.stderr.write(`[redlog c2-tailers] posted ${framework} event (${posted} total)\r`)
     }
-  }
+  } finally { running = false }
 }
 
-process.stderr.write(`[redlog c2-tailers] following ${logFile} (${framework})\n`)
+start()
+process.stderr.write(`[redlog c2-tailers] following ${logFile} (${framework}) from ${offset === 0 ? 'the start' : `byte ${offset}`}\n`)
 setInterval(() => { void drain() }, 1000)
 void drain()

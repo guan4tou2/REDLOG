@@ -111,4 +111,18 @@ describe('Loot completeness UI', () => {
     expect(screen.queryByText('loot.empty')).toBeNull()
     expect(queryPage).not.toHaveBeenCalled()
   })
+
+  // #691: the page had a pre-redesign "Loot (N)" heading above the Stitch 03
+  // section heading, under the Evidence header. One heading, carrying the count.
+  it('has one heading, with the match count beside it', async () => {
+    const queryPage = vi.fn().mockResolvedValueOnce({ items: [lootEvent('a', 'one', 2), lootEvent('b', 'two', 1)], hasMore: false, nextCursor: null })
+    installBridge(queryPage)
+    render(<LootPanel />)
+    await screen.findByText('one')
+    const headings = screen.getAllByRole('heading')
+    expect(headings).toHaveLength(1)
+    // The section title, then the count span inside the same heading.
+    expect(headings[0].textContent).toBe('loot.sectionTitle' + '2')
+    expect(screen.getByTestId('loot-count').textContent).toBe('2')
+  })
 })

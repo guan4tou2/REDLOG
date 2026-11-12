@@ -87,6 +87,9 @@ export default function Sidebar({ active, onNavigate, projectId }: SidebarProps)
     return () => window.removeEventListener(SIDEBAR_COLLAPSED_EVENT, onChange)
   }, [])
 
+  // The Targets & Scope row always lands on Targets. Observations persist, so
+  // landing on Scope while any stood left Targets unreachable in one click;
+  // the Scope tab carries its own count in the tab strip.
   const onItemClick = useCallback((id: string) => onNavigate(id), [onNavigate])
 
   // Both widths are arithmetic, not round numbers.

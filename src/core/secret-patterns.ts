@@ -21,6 +21,23 @@
 //   private_key_block vs private_key_header
 // and `named_secret_assignment` (redaction, masks name and value) differs from
 // `named_secret_value` (loot, captures the value) for the same reason.
+//
+// Every shape runs on the main thread over captured output (up to 8 MiB), so
+// each one must take time linear in its input. Two rewrites keep that true
+// without changing a single match (test/secret-patterns-linear.test.ts holds
+// the old sources and proves both the equivalence and the bound):
+//
+// - `X{n}X*`, never `X{n,}`. They match the same strings in the same order,
+//   but V8 keeps backtracking state on its stack for every character a
+//   counted `{n,}` loop takes: a multi-MiB run of `sk-sk-…` or `password=…`
+//   threw "Maximum call stack size exceeded" out of the scan.
+// - A start guard, where a match could begin at many places inside one run.
+//   A JWT's first segment, a URI scheme and a PEM block are each a run of one
+//   character class whose match is decided only at the run's end; started
+//   from every `eyJ` / letter / header in the run, each start re-read the rest
+//   of it — quadratic (128 KiB of `eyJeyJ…` took 5.2 s). The guard admits
+//   only the first possible start in a run. If that one fails, every later
+//   start fails for the same reason, so nothing that used to match is lost.
 
 /** A recognised secret shape. The literal is copied verbatim from the
  *  consumer it came from; `compileShape` hands each caller its own instance,
@@ -44,15 +61,21 @@ export const SECRET_SHAPES = {
     description: 'AWS access key id'
   },
   prefixed_api_key: {
-    pattern: /(?:sk-|sk_live_|sk_test_)[A-Za-z0-9_-]{20,}/gi,
+    pattern: /(?:sk-|sk_live_|sk_test_)[A-Za-z0-9_-]{20}[A-Za-z0-9_-]*/gi,
     description: '`sk-` / `sk_live_` / `sk_test_` prefixed API key'
   },
   private_key_block: {
-    pattern: /-----BEGIN[A-Z ]*PRIVATE KEY-----[\s\S]*?-----END[A-Z ]*PRIVATE KEY-----/g,
+    // Header to the first footer after it. The lookbehind skips a header when
+    // an earlier header has no footer between the two: the earlier one's
+    // block, if it has one, already reaches past this header, and if it has
+    // none, neither has this one. An earlier header that begins inside a
+    // footer's closing dashes does not count — the scan never starts there.
+    pattern: /-----BEGIN[A-Z ]*PRIVATE KEY-----(?<!(?<!-----END[A-Z ]*PRIVATE KEY-{0,4})-----BEGIN[A-Z ]*PRIVATE KEY(?=-----)(?:(?!-----END[A-Z ]*PRIVATE KEY-----)[\s\S])*?-----BEGIN[A-Z ]*PRIVATE KEY-----)[\s\S]*?-----END[A-Z ]*PRIVATE KEY-----/g,
     description: 'a whole PEM private key block, header to footer'
   },
   jwt_three_segment: {
-    pattern: /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g,
+    // The lookbehind: no earlier `eyJ` in the same base64url run.
+    pattern: /eyJ(?<!eyJ[A-Za-z0-9_-]*?eyJ)[A-Za-z0-9_-]{10}[A-Za-z0-9_-]*\.[A-Za-z0-9_-]{10}[A-Za-z0-9_-]*\.[A-Za-z0-9_-]{10}[A-Za-z0-9_-]*/g,
     description: 'any three dot-separated base64url segments starting `eyJ`'
   },
   github_pat: {
@@ -64,15 +87,15 @@ export const SECRET_SHAPES = {
     description: 'GitLab personal access token'
   },
   slack_token: {
-    pattern: /xox[bpsa]-[A-Za-z0-9-]{10,}/g,
+    pattern: /xox[bpsa]-[A-Za-z0-9-]{10}[A-Za-z0-9-]*/g,
     description: 'Slack token'
   },
   npm_token: {
-    pattern: /npm_[A-Za-z0-9]{36,}/g,
+    pattern: /npm_[A-Za-z0-9]{36}[A-Za-z0-9]*/g,
     description: 'npm token'
   },
   huggingface_token: {
-    pattern: /hf_[A-Za-z0-9]{20,}/g,
+    pattern: /hf_[A-Za-z0-9]{20}[A-Za-z0-9]*/g,
     description: 'Hugging Face token'
   },
   google_oauth_client_secret: {
@@ -80,11 +103,12 @@ export const SECRET_SHAPES = {
     description: 'Google OAuth client secret'
   },
   uri_userinfo_credentials: {
-    pattern: /[a-z+]+:\/\/[^/:@\s]+:[^/@\s]+@[^\s]+/gi,
+    // The lookbehind: the scheme starts where its run of letters does.
+    pattern: /(?<![a-z+])[a-z+]+:\/\/[^/:@\s]+:[^/@\s]+@[^\s]+/gi,
     description: '`scheme://user:pass@host` credentials in a URI'
   },
   der_base64_key: {
-    pattern: /MII[A-Za-z0-9+/]{100,}={0,2}/g,
+    pattern: /MII[A-Za-z0-9+/]{100}[A-Za-z0-9+/]*={0,2}/g,
     description: 'DER key material in base64 (`MII…`)'
   },
   crypt_password_hash: {
@@ -99,15 +123,16 @@ export const SECRET_SHAPES = {
     // The first line of key material is part of the match so two keys with
     // the same header are two values (Spec 031); the header alone is not the
     // secret. The algorithm is a non-capturing group — it is not the value.
-    pattern: /-----BEGIN\s+(?:RSA\s+|EC\s+|DSA\s+|OPENSSH\s+)?PRIVATE KEY-----(?:\s*[A-Za-z0-9+/=]{16,})?/g,
+    pattern: /-----BEGIN\s+(?:RSA\s+|EC\s+|DSA\s+|OPENSSH\s+)?PRIVATE KEY-----(?:\s*[A-Za-z0-9+/=]{16}[A-Za-z0-9+/=]*)?/g,
     description: 'a PEM private key header, with its first line of key material when present'
   },
   jwt_with_json_payload: {
-    pattern: /eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,
+    // The lookbehind: no earlier `eyJ` in the same base64url run.
+    pattern: /eyJ(?<!eyJ[A-Za-z0-9_-]*?eyJ)[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,
     description: 'a JWT whose payload segment also starts `eyJ`'
   },
   named_secret_value: {
-    pattern: /(?:api[_-]?key|apikey|token|secret|password)\s*[=:]\s*['"]?([^\s'"]{8,})/gi,
+    pattern: /(?:api[_-]?key|apikey|token|secret|password)\s*[=:]\s*['"]?([^\s'"]{8}[^\s'"]*)/gi,
     description: '`api_key=` / `token:` style assignment, capturing the value (8+ chars)'
   },
   database_url: {
@@ -119,7 +144,7 @@ export const SECRET_SHAPES = {
     description: 'an /etc/shadow line with a hash'
   },
   basic_auth_header: {
-    pattern: /(?:Authorization|auth):\s*Basic\s+[A-Za-z0-9+/=]{10,}/gi,
+    pattern: /(?:Authorization|auth):\s*Basic\s+[A-Za-z0-9+/=]{10}[A-Za-z0-9+/=]*/gi,
     description: '`Authorization: Basic <base64>`'
   }
 } satisfies Record<string, SecretShape>

@@ -4,7 +4,8 @@ import path from 'path'
 import fs from 'fs'
 import { ingestEvent } from '../../core/ingest'
 import { eventBus } from '../../core/event-bus'
-import { noteCaptureError, clearCaptureError } from '../../core/capture-health'
+import { noteCaptureError, clearCaptureError, type CapturePrerequisite } from '../../core/capture-health'
+import { currentScreenRecording } from './capture-prerequisites'
 import { getProjectDir, dbGeneration } from '../../core/db/index'
 import { dHashFromBgra, hammingDistance } from '../../core/dhash'
 import type { ProjectIdentity } from '../../core/project-runtime'
@@ -69,6 +70,8 @@ export class ScreenshotAgent {
   private held: { token: string; frame: Frame } | null = null
   private hider: WindowHider | null = null
 
+  constructor(private readonly screenAccess: () => CapturePrerequisite = currentScreenRecording) {}
+
   setWindowHider(hider: WindowHider | null): void { this.hider = hider }
 
   /** Grab the current screen now, keep it in memory only, and return a token a
@@ -92,6 +95,13 @@ export class ScreenshotAgent {
   /** One frame of the display the operator is working on — the one under the
    *  cursor — rather than always the primary display. */
   private async grabFrame(): Promise<Frame | null> {
+    // Without Screen Recording permission macOS still hands back a frame: the
+    // wallpaper, with every window missing. It is not a picture of the screen
+    // and must not be stored as one (#688).
+    if (this.screenAccess().state === 'missing') {
+      noteCaptureError('screenshot', new Error('Screen Recording permission is not granted; nothing was recorded'))
+      return null
+    }
     const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
     const { width, height } = display.size
     const sources = await desktopCapturer.getSources({
@@ -236,7 +246,7 @@ export class ScreenshotAgent {
       this.lastHash = dedupKey
 
       const dir = path.join(getProjectDir(), 'screenshots')
-      fs.mkdirSync(dir, { recursive: true })
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
       const ts = new Date().toISOString().replace(/[:.]/g, '-')
       // The name carries milliseconds, which is not enough: two deliberate
       // captures inside the same millisecond produced the same name and the

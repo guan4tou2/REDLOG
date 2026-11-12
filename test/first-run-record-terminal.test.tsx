@@ -460,7 +460,10 @@ describe('first run: HTTP(S) card', () => {
     bridge.proxyStatus.mockResolvedValue({ state: 'unavailable', url: null })
     act(() => { window.dispatchEvent(new Event('focus')) })
     fireEvent.click(await screen.findByTestId('first-run-http-prepare'))
-    await screen.findByTestId('capture-prepare')
+    // The focus re-probe and the click both settle through several awaited
+    // bridge calls; on a loaded runner that has taken longer than the default
+    // 1 s twice (ubuntu, macOS), on a branch that touches none of this.
+    await screen.findByTestId('capture-prepare', undefined, { timeout: 4000 })
     bridge.runtimeInstall.mockImplementationOnce(async () => {
       bridge.preflight.mockResolvedValue(preflight())
       bridge.proxyStatus.mockResolvedValue(RUNNING)

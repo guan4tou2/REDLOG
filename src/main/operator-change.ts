@@ -1,3 +1,4 @@
+import { isSafeOperatorId } from '../core/signing'
 import type { ProjectContext, ProjectRuntime } from '../core/project-runtime'
 
 interface Operator { id: string; name: string }
@@ -23,6 +24,8 @@ export interface OperatorSinks {
 export function applyOperatorChange(runtime: ProjectRuntime, context: ProjectContext,
   before: Operator, after: Operator, sinks: OperatorSinks): Operator {
   const next = after.id.trim() ? { id: after.id.trim(), name: after.name } : { id: before.id, name: after.name }
+  // The id names a key file. Refused like an id the API refuses: nothing moves.
+  if (next.id !== before.id && !isSafeOperatorId(next.id)) return before
   if (!runtime.isCurrent(context)) return next
   if (next.id === before.id && next.name === before.name) return next
   if (!sinks.setPrimaryOperator(next.id, next.name)) return before

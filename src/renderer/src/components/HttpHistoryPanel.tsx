@@ -10,11 +10,13 @@ import { useI18n } from '../i18n'
 import { formatTime, formatSize } from '../lib/time'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { usePanelHeight } from '../hooks/usePanelHeight'
+import { useKeepScroll } from '../lib/useKeepScroll'
 import { DETAIL_LAYOUT_EVENT, setDetailLayout, storedDetailLayout, type DetailLayout } from '../lib/detailLayout'
 import { HttpDetail } from './HttpDetail'
 import { useContributeExport } from '../lib/exportScope'
 import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
 import { UnappliedFilterNotice, EmptyByConstructionNotice } from './FilterNotice'
+import { Button } from './Button'
 
 /** HTTP flows are recorded by the proxy, which publishes as `scanner`. */
 const HTTP_FLOW_AGENT_TYPE = 'scanner'
@@ -60,6 +62,19 @@ const STATUS_COLORS: Record<string, string> = {
   '5': 'text-redlog-danger'
 }
 
+function hostOf(url: string): string {
+  try { return new URL(url).hostname } catch { return '' }
+}
+
+/** Which columns fit the table's width (CSS px; null = not measured yet).
+ *  Time, method, status, host and path always show; type, size and duration
+ *  go first, and below that host and path share one cell. */
+function httpColumnsFor(width: number | null): { tier: 'wide' | 'medium' | 'narrow'; detail: boolean; hostApart: boolean; count: number } {
+  if (width === null || width >= 1000) return { tier: 'wide', detail: true, hostApart: true, count: 8 }
+  if (width >= 640) return { tier: 'medium', detail: false, hostApart: true, count: 5 }
+  return { tier: 'narrow', detail: false, hostApart: false, count: 4 }
+}
+
 function eventsToFlows(events: RedLogEvent[]): HttpFlow[] {
   const flowMap = new Map<string, { request: RedLogEvent | null; response: RedLogEvent | null }>()
   for (const evt of events) {
@@ -74,11 +89,13 @@ function eventsToFlows(events: RedLogEvent[]): HttpFlow[] {
   return [...flowMap.entries()].map(([flowId, { request, response }]) => {
     const req = request?.data
     const resp = response?.data
+    const url = String(req?.url ?? resp?.url ?? '')
     return {
       flowId,
       method: String(req?.method ?? resp?.method ?? ''),
-      url: String(req?.url ?? resp?.url ?? ''),
-      host: String(req?.host ?? resp?.host ?? ''),
+      url,
+      // An event without a `host` field still has one in its URL.
+      host: String(req?.host ?? resp?.host ?? hostOf(url)),
       status: typeof resp?.status === 'number' ? resp.status : null,
       contentType: String(resp?.content_type ?? ''),
       size: typeof resp?.content_length === 'number' ? resp.content_length : null,
@@ -100,9 +117,12 @@ function eventsToFlows(events: RedLogEvent[]): HttpFlow[] {
 // this panel only presents the HTTP record.
 // ---------------------------------------------------------------------------
 
-export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
+export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = true }: {
   onOpenInTimeline?: (eventId: string, ts: number) => void
   onOpenSettings?: () => void
+  /** False while kept mounted but hidden (as SearchPanel): no export scope,
+   *  no list keys, and the scroll offset is kept for the return. */
+  active?: boolean
 }): JSX.Element {
   const { t } = useI18n()
   const { filter: sharedFilter } = useSharedFilter()
@@ -124,6 +144,10 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
   const [sortAsc, setSortAsc] = useState(false)
   const [detailEvent, setDetailEvent] = useState<{ id: string; projectId: string; data: Record<string, unknown> } | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  // The request the pane was asked for and could not show: a read that failed
+  // (retryable) or an event that is no longer there. Never a silent close.
+  const [detailFault, setDetailFault] = useState<{ id: string; kind: 'failed' | 'missing' } | null>(null)
+  const detailSeq = useRef(0)
 
   // The detail pane docks under the table or beside it — the SAME choice the
   // Timeline's inspector uses (shared via detailLayout), so switching it in
@@ -143,17 +167,30 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
     layout === 'right' ? { axis: 'x', min: 280, maxRatio: 0.6 } : {}
   )
 
-  const openDetail = useCallback((eventId: string | null) => {
-    if (!eventId) return
-    if (detailEvent?.id === eventId) { setDetailEvent(null); return }
+  const closeDetail = useCallback(() => { detailSeq.current++; setDetailEvent(null); setDetailFault(null); setDetailLoading(false) }, [])
+  const readDetail = useCallback((eventId: string) => {
+    const mine = ++detailSeq.current
     setDetailLoading(true)
+    setDetailFault(null)
     window.redlog.events.getById([eventId]).then(evts => {
+      if (mine !== detailSeq.current) return
       const evt = evts?.[0]
       if (evt) setDetailEvent({ id: evt.id, projectId: evt.engagementId, data: evt.data })
-      else setDetailEvent(null)
+      else { setDetailEvent(null); setDetailFault({ id: eventId, kind: 'missing' }) }
       setDetailLoading(false)
-    }).catch(() => { setDetailLoading(false) })
-  }, [detailEvent?.id])
+    }).catch(() => {
+      if (mine !== detailSeq.current) return
+      setDetailEvent(null)
+      setDetailFault({ id: eventId, kind: 'failed' })
+      setDetailLoading(false)
+    })
+  }, [])
+  const openDetailId = detailEvent?.id ?? detailFault?.id ?? null
+  const openDetail = useCallback((eventId: string | null) => {
+    if (!eventId) return
+    if (openDetailId === eventId) { closeDetail(); return }
+    readDetail(eventId)
+  }, [openDetailId, closeDetail, readDetail])
 
   // Debounce the filter text: `filtered` (a sort), `activities` (groupFlows) and
   // `sitemapTree` (buildSitemapTree) all derive from it, so recomputing them on
@@ -167,8 +204,19 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
   }, [filterText])
 
   const loadSeqRef = useRef(0)
+  const [loadedOnce, setLoadedOnce] = useState(false)
+  const flowsRef = useRef(flows)
+  flowsRef.current = flows
+  const loadFlowsRef = useRef<(mode?: 'reset' | 'append' | 'refresh') => Promise<void>>(async () => {})
   const nextCursorRef = useRef<string | null>(null)
-  const loadFlows = useCallback(async (append = false) => {
+  // `reset` is a new question (first load, a changed filter); `append` is the
+  // next page of the same one; `refresh` is the same question asked again
+  // because traffic arrived. Only the first load shows the full-pane spinner:
+  // it replaces the toolbar, so on every later load it unmounted the filter box
+  // under the cursor and, with a proxy running, blinked the table and the open
+  // request several times a second.
+  const loadFlows = useCallback(async (mode: 'reset' | 'append' | 'refresh' = 'reset') => {
+    const append = mode === 'append'
     // A type chip this view cannot serve empties it rather than answering
     // with the wrong source type. UnappliedFilterNotice says so on screen;
     // without it the empty list read as "no HTTP traffic was recorded".
@@ -180,15 +228,15 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
       setLoading(false)
       return
     }
-    const seq = append ? loadSeqRef.current : ++loadSeqRef.current
+    const seq = mode === 'reset' ? ++loadSeqRef.current : loadSeqRef.current
     if (append) setLoadingMore(true)
-    else {
+    else if (mode === 'reset') {
+      // The rows on screen stay until the answer replaces them.
       setLoading(true)
-      setFlows([])
       setHasMore(false)
       nextCursorRef.current = null
     }
-    setLoadError(null)
+    if (mode !== 'refresh') setLoadError(null)
     try {
       const page = await window.redlog.events.queryHttpFlowPage({
         ...toEventFilter(sharedFilter),
@@ -201,22 +249,39 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
       })
       if (seq !== loadSeqRef.current) return
       const result = eventsToFlows(page.items)
+      if (mode === 'refresh') {
+        // The newest page laid over what is loaded: new flows join, a flow
+        // whose response just landed is replaced, the pages already followed
+        // stay. A page that shares nothing with what is loaded means more
+        // arrived than one page holds and the gap is unknown: ask again.
+        const known = new Set(flowsRef.current.map((flow) => flow.flowId))
+        if (known.size === 0 || (page.hasMore && !result.some((flow) => known.has(flow.flowId)))) {
+          void loadFlowsRef.current('reset')
+          return
+        }
+        setFlows((current) => [...new Map([...current, ...result].map((flow) => [flow.flowId, flow])).values()])
+        return
+      }
       setFlows((current) => append
         ? [...new Map([...current, ...result].map((flow) => [flow.flowId, flow])).values()]
         : result)
       setHasMore(page.hasMore)
       nextCursorRef.current = page.nextCursor
     } catch (error: unknown) {
-      if (seq === loadSeqRef.current) setLoadError(error instanceof Error ? error.message : String(error))
+      if (seq !== loadSeqRef.current) return
+      // A failed new question does not leave the old answer looking like its answer.
+      if (mode === 'reset') setFlows([])
+      setLoadError(error instanceof Error ? error.message : String(error))
     } finally {
-      if (seq === loadSeqRef.current) { setLoading(false); setLoadingMore(false) }
+      if (seq === loadSeqRef.current && mode !== 'refresh') { setLoading(false); setLoadingMore(false); setLoadedOnce(true) }
     }
   }, [sharedFilter.agentType, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier, methodFilter, statusFilter, hostFilter, filterTextDebounced])
+  loadFlowsRef.current = loadFlows
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const debouncedLoadFlows = useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => { debounceRef.current = null; loadFlows() }, 300)
+    debounceRef.current = setTimeout(() => { debounceRef.current = null; void loadFlows('refresh') }, 300)
   }, [loadFlows])
 
   // Auto-follow the cursor to completion. Each append grows `flows` and
@@ -228,12 +293,12 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
   // One page in flight, or the gap between pages before the next dispatch. The
   // completeness strip reads this as "loading", so the resting subset marker
   // and Load More button only appear once the cap is actually reached.
-  const busy = loadingMore || autoFollowPending
+  const busy = loading || loadingMore || autoFollowPending
 
   useEffect(() => {
     if (loading || loadingMore || loadError) return
     if (!hasMore || flows.length >= AUTO_LOAD_MAX_FLOWS) return
-    void loadFlows(true)
+    void loadFlows('append')
   }, [hasMore, loading, loadingMore, loadError, flows.length, loadFlows])
 
   useEffect(() => {
@@ -265,6 +330,10 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
       .sort((a, b) => b[1] - a[1])
       .map(([h]) => h)
   }, [flows])
+  // The host menu is built from the flows already narrowed by it, so with a
+  // host chosen it held one entry and was not drawn: the filter could only be
+  // cleared with "All". It stays while a host is chosen, holding that host.
+  const hostOptions = hostFilter && !hosts.includes(hostFilter) ? [hostFilter, ...hosts] : hosts
 
   const filtered = useMemo(() => {
     let list = flows
@@ -281,6 +350,11 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
   // needs no per-row measurement. Infinite-scroll (which kept every loaded row
   // mounted) is replaced by this.
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  useKeepScroll(scrollRef, active)
+  // The table's own width, not the window's or the panel's: docked beside the
+  // detail pane, or beside the Timeline, the table gets a fraction of either.
+  const [tableBoxRef, tableWidth] = useContainerWidth<HTMLDivElement>()
+  const columns = httpColumnsFor(tableWidth)
   const rowVirtualizer = useVirtualizer({
     count: filtered.length,
     getScrollElement: () => scrollRef.current,
@@ -295,6 +369,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
   // row the virtualizer hasn't mounted yet.
   const rowNav = useListKeyboard({
     count: filtered.length,
+    enabled: active,
     onActivate: (i) => {
       const f = filtered[i]
       const id = f?.responseEventId ?? f?.requestEventId
@@ -305,7 +380,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
       const id = f?.responseEventId ?? f?.requestEventId
       if (id) onOpenInTimeline?.(id, f.timestamp)
     },
-    onEscape: () => { if (detailEvent) setDetailEvent(null); else { setMethodFilter(null); setStatusFilter(null) } },
+    onEscape: () => { if (openDetailId) closeDetail(); else { setMethodFilter(null); setStatusFilter(null) } },
     onScrollToIndex: (i) => rowVirtualizer.scrollToIndex(i)
   })
 
@@ -314,8 +389,8 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
   // without going back to the table. The row is scrolled into view so a step
   // past the virtualised window still lands somewhere visible.
   const detailIndex = useMemo(
-    () => (detailEvent ? filtered.findIndex((f) => (f.responseEventId ?? f.requestEventId) === detailEvent.id) : -1),
-    [filtered, detailEvent]
+    () => (openDetailId ? filtered.findIndex((f) => (f.responseEventId ?? f.requestEventId) === openDetailId) : -1),
+    [filtered, openDetailId]
   )
   const stepDetail = useCallback((delta: -1 | 1) => {
     if (detailIndex < 0) return
@@ -340,15 +415,17 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
 
   const sortArrow = (col: typeof sortCol) =>
     sortCol === col ? (sortAsc ? ' ▲' : ' ▼') : ''
+  const ariaSort = (col: typeof sortCol): 'ascending' | 'descending' | 'none' =>
+    sortCol === col ? (sortAsc ? 'ascending' : 'descending') : 'none'
 
   const harExportRequest = useMemo<ExportRequest>(() => ({
     format: 'har',
     subset: { kind: 'selection', projection: 'http', filter: toEventFilter(sharedFilter),
       http: { ...(methodFilter ? { method: methodFilter } : {}), ...(statusFilter ? { statusPrefix: statusFilter } : {}), ...(hostFilter ? { host: hostFilter } : {}), text: filterText } }
   }), [sharedFilter, methodFilter, statusFilter, hostFilter, filterText])
-  useContributeExport({ label: t('httpHistory.exportHar'), request: harExportRequest })
+  useContributeExport(active ? { label: t('httpHistory.exportHar'), request: harExportRequest } : null)
 
-  if (loading) {
+  if (loading && !loadedOnce) {
     return (
       <LoadingSpinner label={t('common.loading')} />
     )
@@ -400,7 +477,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
             className={`text-xs font-mono px-1.5 py-0.5 rounded ${statusFilter === s ? 'bg-redlog-elevated border border-redlog-border text-redlog-text' : 'border border-transparent text-redlog-text-dim hover:text-redlog-text'}`}
           >{s}xx</button>
         ))}
-        {hosts.length > 1 && (
+        {(hosts.length > 1 || hostFilter) && (
           <>
             <span className="w-px h-3 bg-redlog-elevated-hover/60 mx-1" />
             <select
@@ -409,7 +486,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
               className="text-xs font-mono bg-redlog-surface border border-redlog-border/60 rounded px-1.5 py-0.5 text-redlog-text-dim focus:outline-none focus:border-redlog-accent/50 max-w-[200px]"
             >
               <option value="">{t('httpHistory.allHosts')}</option>
-              {hosts.map(h => (
+              {hostOptions.map(h => (
                 <option key={h} value={h}>{h}</option>
               ))}
             </select>
@@ -445,39 +522,54 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
           </span>
         ) : null}
         {hasMore && !busy && (
-          <button type="button" onClick={() => void loadFlows(true)} className="text-redlog-cyan underline">
+          <button type="button" onClick={() => void loadFlows('append')} className="text-redlog-cyan underline">
             {t('httpHistory.loadMore')}
           </button>
         )}
         {loadError && (
           <span data-testid="http-load-error" role="alert" className="min-w-0 break-words text-red-300">
             {t('httpHistory.loadFailed')}{' '}
-            <button type="button" onClick={() => void loadFlows(flows.length > 0)} className="underline">{t('common.retry')}</button>
+            <button type="button" onClick={() => void loadFlows(hasMore && flows.length > 0 ? 'append' : 'reset')} className="underline">{t('common.retry')}</button>
           </span>
         )}
       </div>
 
       <div data-testid="http-workspace-split" data-layout={layout} className={`flex-1 min-h-48 flex ${layout === 'right' ? 'flex-row' : 'flex-col'}`}>
-        <div ref={scrollRef} className="flex-1 min-w-0 min-h-0 overflow-auto">
-          <table className="w-full text-xs font-mono">
+        <div
+          ref={(el) => { scrollRef.current = el; tableBoxRef(el) }}
+          data-testid="http-table-scroll"
+          data-columns={columns.tier}
+          className="flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden"
+        >
+          {/* Fixed layout: an auto table ignores a cell's max-width, so long
+              hosts and paths pushed the columns into each other instead of
+              truncating. Narrower, the table drops the low-priority columns
+              rather than scrolling sideways. */}
+          <table className="w-full table-fixed text-xs font-mono">
             <thead className="sticky top-0 whitespace-nowrap bg-redlog-surface/95 z-10">
               <tr className="text-redlog-text-dim uppercase tracking-wider text-left">
-                <th className="px-2 py-1.5 font-medium cursor-pointer select-none w-20" onClick={() => toggleSort('timestamp')}>
-                  When{sortArrow('timestamp')}
+                <th className="px-2 py-1.5 font-medium w-24" aria-sort={ariaSort('timestamp')}>
+                  <Button level="quiet" size="compact" onClick={() => toggleSort('timestamp')}>{t('httpHistory.colWhen')}{sortArrow('timestamp')}</Button>
                 </th>
-                <th className="px-2 py-1.5 font-medium w-16">{t('httpHistory.colMethod')}</th>
-                <th className="px-2 py-1.5 font-medium cursor-pointer select-none w-14" onClick={() => toggleSort('status')}>
-                  Status{sortArrow('status')}
+                <th className="px-2 py-1.5 font-medium w-20">{t('httpHistory.colMethod')}</th>
+                <th className="px-2 py-1.5 font-medium w-24" aria-sort={ariaSort('status')}>
+                  <Button level="quiet" size="compact" onClick={() => toggleSort('status')}>{t('httpHistory.colStatus')}{sortArrow('status')}</Button>
                 </th>
-                <th className="px-2 py-1.5 font-medium">{t('httpHistory.colHost')}</th>
-                <th className="px-2 py-1.5 font-medium">{t('httpHistory.colUrl')}</th>
-                <th className="px-2 py-1.5 font-medium w-28">{t('httpHistory.colType')}</th>
-                <th className="px-2 py-1.5 font-medium cursor-pointer select-none w-20 text-right" onClick={() => toggleSort('size')}>
-                  Size{sortArrow('size')}
-                </th>
-                <th className="px-2 py-1.5 font-medium cursor-pointer select-none w-16 text-right" onClick={() => toggleSort('durationMs')}>
-                  Time{sortArrow('durationMs')}
-                </th>
+                {columns.hostApart
+                  ? <>
+                    <th className={`px-2 py-1.5 font-medium ${columns.tier === 'wide' ? 'w-[25%]' : 'w-[30%]'}`}>{t('httpHistory.colHost')}</th>
+                    <th className="px-2 py-1.5 font-medium">{t('httpHistory.colUrl')}</th>
+                  </>
+                  : <th className="px-2 py-1.5 font-medium truncate" title={`${t('httpHistory.colHost')} / ${t('httpHistory.colUrl')}`}>{t('httpHistory.colHost')} / {t('httpHistory.colUrl')}</th>}
+                {columns.detail && <>
+                  <th className="px-2 py-1.5 font-medium w-28">{t('httpHistory.colType')}</th>
+                  <th className="px-2 py-1.5 font-medium w-20 text-right" aria-sort={ariaSort('size')}>
+                    <Button level="quiet" size="compact" onClick={() => toggleSort('size')}>{t('httpHistory.colSize')}{sortArrow('size')}</Button>
+                  </th>
+                  <th className="px-2 py-1.5 font-medium w-20 text-right" aria-sort={ariaSort('durationMs')}>
+                    <Button level="quiet" size="compact" onClick={() => toggleSort('durationMs')}>{t('httpHistory.colTime')}{sortArrow('durationMs')}</Button>
+                  </th>
+                </>}
               </tr>
             </thead>
             <tbody {...rowNav.containerProps}>
@@ -487,7 +579,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
                 const padBottom = items.length ? rowVirtualizer.getTotalSize() - items[items.length - 1].end : 0
                 return (
                   <>
-                    {padTop > 0 && <tr aria-hidden="true"><td colSpan={8} style={{ height: padTop, padding: 0, border: 0 }} /></tr>}
+                    {padTop > 0 && <tr aria-hidden="true"><td colSpan={columns.count} style={{ height: padTop, padding: 0, border: 0 }} /></tr>}
                     {items.map((vi) => {
                 const f = filtered[vi.index]
                 const rowIndex = vi.index
@@ -515,23 +607,33 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
                     className="border-b border-redlog-border-subtle/30 hover:bg-redlog-elevated/30 cursor-pointer focus-visible:outline-none focus-visible:bg-redlog-elevated/50"
                     onClick={() => { rowProps.onClick(); openDetail(eventId) }}
                   >
-                    <td className="px-2 py-1 text-redlog-text-faint tabular-nums">{formatTime(f.timestamp, { seconds: true })}</td>
-                    <td className={`px-2 py-1 font-semibold ${methodClass}`}>{f.method}</td>
-                    <td className={`px-2 py-1 ${statusClass}`}>{f.status ?? '—'}</td>
-                    <td className="px-2 py-1 text-redlog-text-dim max-w-[160px]">
-                      <span className="block truncate" title={f.host}>{f.host}</span>
-                      {scopeState !== 'in-scope' && <span data-testid="http-scope-state" data-scope={scopeState} className={`text-xs ${scopeState === 'out-of-scope' ? 'text-amber-400' : 'text-redlog-text-faint'}`}>{t(`httpScope.${scopeState}`)}</span>}
+                    <td className="px-2 py-1 text-redlog-text-faint tabular-nums truncate" title={formatTime(f.timestamp, { seconds: true })}>{formatTime(f.timestamp, { seconds: true })}</td>
+                    <td className={`px-2 py-1 font-semibold truncate ${methodClass}`} title={f.method}>{f.method}</td>
+                    <td className={`px-2 py-1 truncate ${statusClass}`} title={String(f.status ?? '—')}>{f.status ?? '—'}</td>
+                    <td className="px-2 py-1 text-redlog-text-dim">
+                      {/* Host apart: host over its scope word. Host and path in
+                          one cell: host and scope word share the first line,
+                          so the row keeps its fixed 42px for the virtualizer. */}
+                      <span className={columns.hostApart ? 'block' : 'flex min-w-0 items-baseline gap-2'}>
+                        <span className="block min-w-0 truncate" title={f.host}>{f.host}</span>
+                        {/* No scope at all is a fact about the project, not the row: the
+                            status bar's scope chip says it on every page. */}
+                        {scopeState !== 'in-scope' && scopeState !== 'no-scope' && <span data-testid="http-scope-state" data-scope={scopeState} className={`block shrink-0 text-xs ${scopeState === 'out-of-scope' ? 'text-amber-400' : 'text-redlog-text-faint'}`}>{t(`httpScope.${scopeState}`)}</span>}
+                      </span>
+                      {!columns.hostApart && <span className="block truncate text-redlog-text" title={f.url}>{urlPath}</span>}
                     </td>
-                    <td className="px-2 py-1 text-redlog-text max-w-[400px] truncate" title={f.url}>{urlPath}</td>
-                    <td className="px-2 py-1 text-redlog-text-dim max-w-[120px] truncate" title={f.contentType}>
-                      {f.contentType.replace(/^application\//, '').replace(/;.*/, '')}
-                    </td>
-                    <td className="px-2 py-1 text-redlog-text-dim text-right">{f.size !== null ? formatBytes(f.size) : '—'}</td>
-                    <td className="px-2 py-1 text-redlog-text-dim text-right">{f.durationMs !== null ? `${f.durationMs}ms` : '—'}</td>
+                    {columns.hostApart && <td className="px-2 py-1 text-redlog-text truncate" title={f.url}>{urlPath}</td>}
+                    {columns.detail && <>
+                      <td className="px-2 py-1 text-redlog-text-dim truncate" title={f.contentType}>
+                        {f.contentType.replace(/^application\//, '').replace(/;.*/, '')}
+                      </td>
+                      <td className="px-2 py-1 text-redlog-text-dim text-right truncate" title={f.size !== null ? formatBytes(f.size) : '—'}>{f.size !== null ? formatBytes(f.size) : '—'}</td>
+                      <td className="px-2 py-1 text-redlog-text-dim text-right truncate" title={f.durationMs !== null ? `${f.durationMs}ms` : '—'}>{f.durationMs !== null ? `${f.durationMs}ms` : '—'}</td>
+                    </>}
                   </tr>
                 )
                     })}
-                    {padBottom > 0 && <tr aria-hidden="true"><td colSpan={8} style={{ height: padBottom, padding: 0, border: 0 }} /></tr>}
+                    {padBottom > 0 && <tr aria-hidden="true"><td colSpan={columns.count} style={{ height: padBottom, padding: 0, border: 0 }} /></tr>}
                   </>
                 )
               })()}
@@ -548,7 +650,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
           )}
         </div>
 
-        {(detailEvent || detailLoading) && (
+        {(detailEvent || detailLoading || detailFault) && (
           <>
             {/* Resize handle on the edge the pane grows from — same as the Timeline. */}
             <div
@@ -628,7 +730,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
                     : <PanelRight size={14} aria-hidden />}
                 </button>
                 <button
-                  onClick={() => setDetailEvent(null)}
+                  onClick={closeDetail}
                   className="text-redlog-text-dim hover:text-redlog-text p-0.5 rounded hover:bg-redlog-elevated/40"
                   aria-label={t('httpHistory.closeDetail')}
                 >
@@ -643,6 +745,13 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings }: {
                 <div className="px-3 py-2">
                   <HttpDetail projectId={detailEvent.projectId} data={detailEvent.data} eventId={detailEvent.id} />
                 </div>
+              ) : detailFault?.kind === 'failed' ? (
+                <div data-testid="http-detail-failed" role="alert" className="flex flex-wrap items-center gap-2 px-3 py-2 text-xs text-amber-400">
+                  <span>{t('httpHistory.detailFailed')}</span>
+                  <Button level="quiet" size="compact" onClick={() => readDetail(detailFault.id)}>{t('common.retry')}</Button>
+                </div>
+              ) : detailFault ? (
+                <p data-testid="http-detail-missing" role="status" className="px-3 py-2 text-xs text-redlog-text-dim">{t('httpHistory.detailMissing')}</p>
               ) : null}
             </div>
           </>

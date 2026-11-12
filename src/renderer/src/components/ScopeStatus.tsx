@@ -79,17 +79,24 @@ interface ObservationRow {
   cleared: boolean
 }
 
-export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTimeline?: (ts: number) => void; onOpenSettings?: (candidate?: string) => void } = {}): JSX.Element {
+export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTimeline?: (eventId: string, ts: number) => void; onOpenSettings?: (candidate?: string) => void } = {}): JSX.Element {
+  // The page is the configured state and the observations (with the standing
+  // count that decides "all in scope"). The chain length and the last
+  // recompute are read on their own: either failing leaves its part out, not
+  // the page.
   const loadScope = async () => {
-    const [configured, result, standing, chainLen, lastRecompute] = await Promise.all([
+    const [configured, result, standing] = await Promise.all([
       window.redlog.scope.isConfigured(), window.redlog.scope.getObservations(),
-      window.redlog.scope.getObservationCount(), window.redlog.chain.length(),
-      window.redlog.scope.getLastRecompute()
+      window.redlog.scope.getObservationCount()
     ])
-    return { configured, observations: result.rows as ObservationRow[], truncated: result.truncated, standing, chainLen, lastRecompute }
+    return { configured, observations: result.rows as ObservationRow[], truncated: result.truncated, standing }
   }
   const read = useReadState<Awaited<ReturnType<typeof loadScope>> | null>(loadScope)
-  const { configured = false, observations = [], truncated = false, standing = 0, chainLen = 0, lastRecompute = null } = read.state.value ?? {}
+  const chainRead = useReadState<number>(() => window.redlog.chain.length())
+  const recomputeRead = useReadState(() => window.redlog.scope.getLastRecompute())
+  const { configured = false, observations = [], truncated = false, standing = 0 } = read.state.value ?? {}
+  const chainLen = chainRead.state.value
+  const lastRecompute = recomputeRead.state.value
 
   // Ephemeral: whether the withdrawn rows are expanded. Not persisted and not
   // navigation state — reopening the page starts from the active rows again,
@@ -114,6 +121,24 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
 
   const { t } = useI18n()
 
+  // The row is a verdict written after the fact; the thing the operator wants
+  // on the Timeline is the event that caused it, at the time it happened.
+  // `_causes` names it (the recompute summary and a re-flagged violation are
+  // system rows, so the first non-system cause is the source). When it cannot
+  // be read the jump still lands at the source time.
+  const openCause = async (v: ObservationRow): Promise<void> => {
+    if (!onOpenInTimeline) return
+    let id = ''
+    let ts = v.sourceTs ?? v.timestamp
+    try {
+      const [event] = await window.redlog.events.getById([v.id])
+      const ids = Array.isArray(event?.data._causes) ? event.data._causes.filter((c): c is string => typeof c === 'string') : []
+      const source = (ids.length ? await window.redlog.events.getById(ids) : []).find(row => row.agentType !== 'system')
+      if (source) { id = source.id; if (v.sourceTs === undefined) ts = source.timestamp }
+    } catch { /* fall back to the time alone */ }
+    onOpenInTimeline(id, ts)
+  }
+
   const active = observations.filter((v) => !v.cleared)
   const cleared = observations.filter((v) => v.cleared)
 
@@ -129,8 +154,8 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
   const shownObservations = paged.visible
   const listNav = useListKeyboard({
     count: shownObservations.length,
-    onActivate: (i) => { const v = shownObservations[i]; if (v) onOpenInTimeline?.(v.timestamp) },
-    onJumpToTimeline: (i) => { const v = shownObservations[i]; if (v) onOpenInTimeline?.(v.timestamp) }
+    onActivate: (i) => { const v = shownObservations[i]; if (v) void openCause(v) },
+    onJumpToTimeline: (i) => { const v = shownObservations[i]; if (v) void openCause(v) }
   })
 
   useEffect(() => {
@@ -138,18 +163,18 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
     let timer: ReturnType<typeof setTimeout> | null = null
     const refetch = (): void => {
       if (timer) clearTimeout(timer)
-      timer = setTimeout(() => { if (live) read.retry() }, 100)
+      timer = setTimeout(() => { if (live) { read.retry(); recomputeRead.retry(); chainRead.retry() } }, 100)
     }
     const unsub = window.redlog.events.onNewBatch((events) => {
       const affectsScope = events.some(event => event.agentType === 'system'
         && SCOPE_SUBTYPES.has(String(event.data.subtype ?? '')))
       if (affectsScope) refetch()
       else void window.redlog.chain.length().then(chainLen => {
-        if (live) read.update(prev => prev ? { ...prev, chainLen } : prev)
-      }).catch(() => { if (live) refetch() })
+        if (live) chainRead.update(() => chainLen)
+      }).catch(() => { if (live) chainRead.retry() })
     })
     return () => { live = false; if (timer) clearTimeout(timer); unsub() }
-  }, [read.retry, read.update])
+  }, [read.retry, chainRead.retry, chainRead.update, recomputeRead.retry])
 
   if (read.state.phase === 'failed') {
     return <div role="alert" className="p-pad space-y-2 text-sm text-red-400">
@@ -162,7 +187,7 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
 
   return (
     <div className="p-pad overflow-auto h-full"><div className={`${PAGE_COLUMN} space-y-4`}>
-      {lastRecompute && <RecomputeBanner summary={lastRecompute} onOpenInTimeline={onOpenInTimeline} />}
+      {lastRecompute && <RecomputeBanner summary={lastRecompute} onOpenInTimeline={onOpenInTimeline && ((ts) => onOpenInTimeline('', ts))} />}
 
       <div className="bg-redlog-surface border border-redlog-border rounded-lg overflow-hidden">
         <div className="flex flex-wrap items-start justify-between gap-3 px-4 py-3 border-b border-redlog-border">
@@ -170,7 +195,7 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
             <h2 className="text-sm font-semibold text-redlog-text">{t('scope.observationsTitle')}</h2>
             <p className="text-xs text-redlog-text-faint mt-0.5">{t('scope.observationsCaption')}</p>
           </div>
-          {standing > 0 && cleared.length > 0 && (
+          {cleared.length > 0 && (
             <label className="flex items-center gap-2 text-xs text-redlog-text-dim">
               <input type="checkbox" data-testid="scope-show-cleared" checked={showCleared} onChange={() => setShowCleared((v) => !v)} className="accent-redlog-accent" />
               {t('scope.showCleared', { count: cleared.length })}
@@ -263,7 +288,7 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
               {detail.state.phase === 'loaded' && v.distance === 'excluded' && detail.state.value?.id === v.id && !detail.state.value.rule && <p className="text-redlog-text-faint">{t('scope.ruleUnavailable')}</p>}
               {detail.state.phase === 'loaded' && detail.state.value?.id === v.id && <pre className="font-mono whitespace-pre-wrap break-all max-h-64 overflow-y-auto">{detail.state.value.command ?? v.command}</pre>}
               <div className="flex flex-wrap gap-2">
-                {onOpenInTimeline && <Button size="compact" onClick={() => onOpenInTimeline(v.timestamp)}>{t('scope.openInTimeline')}</Button>}
+                {onOpenInTimeline && <Button size="compact" onClick={() => void openCause(v)}>{t('scope.openInTimeline')}</Button>}
                 {onOpenSettings && <Button size="compact" onClick={() => onOpenSettings(v.target)}>{t('scope.editRule')}</Button>}
               </div>
             </div>}
@@ -286,7 +311,7 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
             <h2 className="text-sm font-semibold text-redlog-text">{t('scope.integrityTitle')}</h2>
             <p className="text-xs text-redlog-text-faint mt-0.5">{t('scope.integrityCaption')}</p>
           </div>
-          <span className="text-redlog-text-dim text-xs font-mono tabular-nums">{t('scope.entries', { count: chainLen })}</span>
+          {chainLen !== null && <span data-testid="scope-chain-entries" className="text-redlog-text-dim text-xs font-mono tabular-nums">{t('scope.entries', { count: chainLen })}</span>}
         </div>
         {onOpenSettings && (
           <div className="flex flex-wrap items-center gap-2 border-t border-redlog-border px-4 py-3 text-xs text-redlog-text-dim">

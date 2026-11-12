@@ -1,0 +1,62 @@
+// @vitest-environment jsdom
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
+import { render, cleanup, fireEvent, waitFor, within, screen } from '@testing-library/react'
+import { I18nProvider } from '../src/renderer/src/i18n'
+import { ToastContainer } from '../src/renderer/src/components/Toast'
+import { CaptureHealthCard } from '../src/renderer/src/components/CaptureHealth'
+
+// The card's source switch writes the whole config. A refused (false) or
+// rejected write must say so and must not refresh the card as if it flipped.
+
+let save: ReturnType<typeof vi.fn>
+const onRefresh = vi.fn()
+
+beforeEach(() => {
+  window.localStorage.setItem('redlog-locale', 'en')
+  onRefresh.mockClear()
+  save = vi.fn(async () => false)
+  ;(window as unknown as { redlog: unknown }).redlog = {
+    config: { get: async () => ({ engagement: { id: 'proj-a' }, packs: { hostMonitors: true } }), save: (...a: unknown[]) => save(...a) },
+    hooks: { install: async () => ({ success: true, message: '' }), uninstall: async () => ({ success: true, message: '' }) }
+  }
+  const capture = {
+    verdict: 'partial', recording: false, lastEventAt: null, checkedAt: 1,
+    sources: [{ id: 'clipboard', configPath: 'packMembers.clipboard', packPath: 'packs.hostMonitors', enabled: true, state: 'ready', lastEventAt: 1 }]
+  }
+  render(
+    <I18nProvider>
+      <ToastContainer />
+      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+      <CaptureHealthCard capture={capture as any} onNavigate={() => {}} onRefresh={onRefresh} />
+    </I18nProvider>
+  )
+})
+afterEach(() => cleanup())
+
+const flip = (): void => {
+  fireEvent.click(screen.getByText(/Other capture sources/))
+  fireEvent.click(screen.getByText('turn off'))
+}
+
+describe('switching a capture source from the Capture Health card', () => {
+  it('says so and does not refresh when the write is refused', async () => {
+    flip()
+    await waitFor(() => expect(save).toHaveBeenCalled())
+    expect(await screen.findByText('Action failed')).toBeTruthy()
+    expect(onRefresh).not.toHaveBeenCalled()
+  })
+
+  it('says so when the write rejects', async () => {
+    save = vi.fn(async () => { throw new Error('disk full') })
+    flip()
+    expect(await screen.findByText('Action failed')).toBeTruthy()
+    expect(onRefresh).not.toHaveBeenCalled()
+  })
+
+  it('binds the write to the project the config was read from, and refreshes on success', async () => {
+    save = vi.fn(async () => true)
+    flip()
+    await waitFor(() => expect(onRefresh).toHaveBeenCalled())
+    expect(save.mock.calls[0][1]).toEqual({ expectProjectId: 'proj-a' })
+  })
+})

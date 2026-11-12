@@ -9,9 +9,14 @@ import { readCastRange, readCastSlice } from '../../core/cast-slice'
 import { castIndexStatus, searchCasts, backfillCastIndex, readIndexedCastRange } from '../../core/cast-index'
 import {
   spawnTerminal, writeTerminal, resizeTerminal, killTerminal, listTerminals,
-  discoverShells, cachedShells
+  discoverShells, cachedShells, ackTerminal
 } from '../terminal-manager'
-import { isInsideDir } from '../../core/paths'
+import { resolveContainedFile } from '../../core/contained-file'
+
+/** A recording named by event data or a search hit, as a real file inside the
+ *  open project's casts/ — never a link out of it (contained-file.ts). */
+const projectCast = (castPath: string | undefined): string | null =>
+  castPath ? resolveContainedFile(path.join(getProjectDir(), 'casts'), castPath) : null
 
 export function registerTerminalIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   ipcMain.handle('terminal:spawn', (_e, id: string, cols: number, rows: number, shellId?: string) =>
@@ -25,6 +30,7 @@ export function registerTerminalIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   ipcMain.on('terminal:write', (_e, id: string, data: string) => writeTerminal(id, data))
   ipcMain.on('terminal:resize', (_e, id: string, cols: number, rows: number) => resizeTerminal(id, cols, rows))
   ipcMain.on('terminal:kill', (_e, id: string) => killTerminal(id))
+  ipcMain.on('terminal:ack', (_e, id: string, chars: number) => ackTerminal(id, chars))
   ipcMain.handle('terminal:list', () => listTerminals())
 
   // Replay a command_end event by slicing its session's .cast file — see
@@ -41,10 +47,11 @@ export function registerTerminalIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       }
       const sess = typeof td.recordingId === 'string' ? queryBuiltinTerminalSessionStart(td.recordingId) : null
       const castPath = sess?.data?.castPath as string | undefined
-      if (!castPath || !isInsideDir(path.join(getProjectDir(), 'casts'), path.resolve(castPath))) return { ok: false, error: 'no cast file for this recording' }
+      const castFile = projectCast(castPath)
+      if (!castFile) return { ok: false, error: 'no cast file for this recording' }
       const duration = Number(td.duration_sec ?? 0) * 1000
       const startMs = target.timestamp - Math.max(duration, 100)
-      const slice = await readCastSlice(castPath, startMs, target.timestamp)
+      const slice = await readCastSlice(castFile, startMs, target.timestamp)
       if (!slice) return { ok: false, error: 'failed to read cast file' }
       return { ok: true, command: td.command, exitCode: td.exit_code, durationSec: td.duration_sec, text: slice.text, bytes: slice.bytes, truncated: slice.truncated }
     } catch (e) {
@@ -67,10 +74,11 @@ export function registerTerminalIpc(ipcMain: IpcMain, ctx: IpcContext): void {
         return { ok: false, error: 'not a builtin-terminal session event' }
       }
       const castPath = typeof td.castPath === 'string' ? td.castPath : undefined
-      if (!castPath || !isInsideDir(path.join(getProjectDir(), 'casts'), path.resolve(castPath))) return { ok: false, error: 'no cast file for this recording' }
+      const castFile = projectCast(castPath)
+      if (!castFile) return { ok: false, error: 'no cast file for this recording' }
       // Slice from 0 to a far future — readCastSlice bounds against the file
       // itself. text captures the whole session, ANSI-stripped.
-      const slice = await readCastSlice(castPath, 0, Number.MAX_SAFE_INTEGER)
+      const slice = await readCastSlice(castFile, 0, Number.MAX_SAFE_INTEGER)
       if (!slice) return { ok: false, error: 'failed to read cast file' }
       // events carries the raw asciinema frames ([relSec, 'o', bytes]) so the
       // renderer can drive a proper scrubber/player. text is kept for the
@@ -102,8 +110,9 @@ export function registerTerminalIpc(ipcMain: IpcMain, ctx: IpcContext): void {
         castPath = (s.data?.castPath ?? end?.data?.castPath) as string | undefined
         if (castPath) break
       }
-      if (!castPath || !isInsideDir(path.join(getProjectDir(), 'casts'), path.resolve(castPath))) return { ok: false, error: 'no active session at this time' }
-      const slice = await readCastSlice(castPath, 0, Number.MAX_SAFE_INTEGER)
+      const castFile = projectCast(castPath)
+      if (!castFile) return { ok: false, error: 'no active session at this time' }
+      const slice = await readCastSlice(castFile, 0, Number.MAX_SAFE_INTEGER)
       if (!slice) return { ok: false, error: 'failed to read cast file' }
       const seekMs = Math.max(0, atMs - slice.castStartMs)
       return { ok: true, events: slice.events, truncated: slice.truncated, seekMs }
@@ -138,9 +147,9 @@ export function registerTerminalIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     // can reach — so re-derive the path from the project root and refuse
     // anything that escapes it, the same guard the api-server applies to
     // castPath out of event data.
-    const castsDir = path.join(getProjectPath(project), 'casts')
-    const full = path.resolve(castsDir, castRel)
-    if (!isInsideDir(castsDir, full)) return null
+    // Real file, not a link out of casts/ (contained-file.ts).
+    const full = resolveContainedFile(path.join(getProjectPath(project), 'casts'), castRel)
+    if (!full) return null
     if(version)return readIndexedCastRange(castRel,off,len,version,getProjectPath(project))
     return readCastRange(full, off, len)
   })

@@ -63,4 +63,45 @@ describe('useVisibility', () => {
     expect(result.current.visibility.firstRun).toBe(false)
     expect(result.current.firstRunActive).toBe(false)
   })
+  // Observed in the running app: create A (first-run), back to the picker,
+  // create B, back, reopen A with 170 events → A showed the first-run screen.
+  const WITH_DATA = { evidenceSeen: true, loggedEver: true }
+  it('drops the first-run latch when the project changes, and decides from the new project', async () => {
+    signals.mockResolvedValue({ ...EMPTY_SIGNALS })
+    const { result, rerender } = renderHook(
+      ({ project }) => useVisibility(project, 'dashboard'),
+      { initialProps: { project: PROJECT as { id: string; name: string } | null } }
+    )
+    await waitFor(() => expect(result.current.firstRunActive).toBe(true))
+
+    rerender({ project: null })
+    expect(result.current.firstRunActive).toBe(false)
+
+    signals.mockResolvedValue(WITH_DATA)
+    rerender({ project: { id: 'p2', name: 'B' } })
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve() })
+    await waitFor(() => expect(result.current.visibility.firstRun).toBe(false))
+    expect(result.current.firstRunActive).toBe(false)
+  })
+
+  it('a project with data reopened after a first-run project is not first-run, even before its probe answers', async () => {
+    signals.mockResolvedValue({ ...EMPTY_SIGNALS })
+    const { result, rerender } = renderHook(
+      ({ project }) => useVisibility(project, 'dashboard'),
+      { initialProps: { project: { id: 'pB', name: 'B' } as { id: string; name: string } | null } }
+    )
+    await waitFor(() => expect(result.current.firstRunActive).toBe(true))
+
+    // Switch straight to A; hold A's answer so the frame between is observable.
+    let answer!: (v: unknown) => void
+    signals.mockImplementation(() => new Promise((r) => { answer = r }))
+    rerender({ project: PROJECT })
+    expect(result.current.firstRunActive).toBe(false)
+    expect(result.current.visSignals).toBeNull()
+
+    await act(async () => { await Promise.resolve() })
+    await act(async () => { answer(WITH_DATA); await Promise.resolve(); await Promise.resolve() })
+    await waitFor(() => expect(result.current.visibility.firstRun).toBe(false))
+    expect(result.current.firstRunActive).toBe(false)
+  })
 })

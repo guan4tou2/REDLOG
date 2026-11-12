@@ -66,7 +66,9 @@ describe('Scope & Evidence page', () => {
     expect(onOpenSettings).toHaveBeenCalledWith('v1.example')
   })
 
-  it.each(['getObservations', 'getLastRecompute'] as const)('shows a failed %s read and recovers on retry without claiming an empty result', async method => {
+  // getLastRecompute used to be here too. Since #691 it is an auxiliary read
+  // that fails on its own without failing the page: test/scope-status-aux-reads.test.tsx.
+  it.each(['getObservations'] as const)('shows a failed %s read and recovers on retry without claiming an empty result', async method => {
     installBridge({ rows: [], truncated: false }, 0)
     vi.spyOn(window.redlog.scope, method).mockRejectedValueOnce(new Error('read refused'))
     render(<I18nProvider><ScopeStatus /></I18nProvider>)
@@ -114,4 +116,25 @@ describe('Scope & Evidence page', () => {
     expect(screen.queryByText('All commands within scope')).toBeNull()
   })
 
+
+  it('keeps cleared history reachable once every violation is withdrawn', async () => {
+    installBridge({ rows: [row('a', { cleared: true })], truncated: false }, 0)
+    await open()
+    const toggle = screen.getByTestId('scope-show-cleared') as HTMLInputElement
+    expect(screen.queryByText('a.example')).toBeNull()
+    fireEvent.click(toggle)
+    expect(screen.getByText('a.example')).toBeTruthy()
+  })
+
+  it('opens the event that caused a violation, not the row written afterwards', async () => {
+    installBridge({ rows: [{ ...row('v1'), sourceTs: 1_699_999_000_000 } as Row], truncated: false }, 1)
+    window.redlog.events.getById = vi.fn(async ids => ids[0] === 'v1'
+      ? [{ id: 'v1', data: { _causes: ['recompute', 'cmd'] } }]
+      : [{ id: 'recompute', agentType: 'system', timestamp: 5, data: {} }, { id: 'cmd', agentType: 'shell', timestamp: 1_699_999_000_000, data: {} }]) as never
+    const onOpenInTimeline = vi.fn()
+    render(<I18nProvider><ScopeStatus onOpenInTimeline={onOpenInTimeline} /></I18nProvider>)
+    fireEvent.click(await screen.findByTestId('scope-judged-live'))
+    fireEvent.click(await screen.findByRole('button', { name: 'Locate in timeline' }))
+    await vi.waitFor(() => expect(onOpenInTimeline).toHaveBeenCalledWith('cmd', 1_699_999_000_000))
+  })
 })

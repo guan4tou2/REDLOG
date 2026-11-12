@@ -51,6 +51,7 @@ const CASES: Case[] = [
   { name: 'extra that overrides a base field', command: 'id', extra: '{"shell":"override","source":"auto-relay","pid":1}', fast: true },
   { name: 'extra holding non-ASCII', command: 'id', extra: '{"cwd":"/tmp/日本語"}', fast: true },
   { name: 'extra holding escapes', command: 'id', extra: '{"stdout":"a\\nb\\t\\"c\\" \\u00e9"}', fast: true },
+  { name: 'extra holding a working directory with control characters, escaped', command: 'id', extra: '{"cwd":"/w/t\\tb\\n\\u0001\\\\x\\"q"}', fast: true },
 
   { name: 'a non-ASCII command', command: '日本語 --help', fast: false },
   { name: 'an accented command', command: 'echo café', fast: false },
@@ -94,12 +95,13 @@ function body(hook: string): string {
   return `
 if [ -n "\${ZSH_VERSION:-}" ]; then zmodload zsh/datetime 2>/dev/null; fi
 echo "CLOCK \${EPOCHREALTIME:+available}"
+echo "NSDATE $(date +%s%N 2>/dev/null)"
 unset _REDLOG_DIR _REDLOG_HOST WSL_DISTRO_NAME REDLOG_EXTERNAL_SESSION REDLOG_TERMINAL REDLOG_TERMINAL_ID
 export SHELL=\${SHELL:-/bin/sh}
 . ${hook}
 # Payload-only fixture: an explicitly resolved offline directory, including WSL.
 _redlog_is_running() { export _REDLOG_DIR="$HOME/.redlog"; return 1; }
-W=$(mktemp -d)
+W=$(mktemp -d "\${TMPDIR:-/tmp}/redlog-payload.XXXXXX")
 trap 'rm -rf "$W"' EXIT
 
 run_case() {
@@ -155,7 +157,7 @@ async function runUnder(shell: 'bash' | 'zsh'): Promise<Result> {
   // shell in turn. A heredoc, so nothing in it is expanded on the way.
   const script = `
 set -u
-S=$(mktemp)
+S=$(mktemp "\${TMPDIR:-/tmp}/redlog-payload-script.XXXXXX")
 cat > "$S" <<'REDLOG_EOF'
 ${body(hook)}
 REDLOG_EOF
@@ -167,7 +169,13 @@ rm -f "$S"
   for (const m of run.stdout.matchAll(/^RC (\d+) (\d+)$/gm)) rc[Number(m[1])] = Number(m[2])
   const dumpLine = run.stdout.split('\n').find((l) => l.startsWith('DUMP '))
   if (!dumpLine) throw new Error(`${shell}: no DUMP line.\nstdout: ${run.stdout.slice(0, 400)}\nstderr: ${run.stderr.slice(0, 600)}`)
-  return { preciseClock: /^CLOCK available$/m.test(run.stdout), rc, dump: JSON.parse(dumpLine.slice(5)) }
+  return {
+    // The shell's own clock, or a `date` that prints nanoseconds: either gives
+    // the builder its millisecond. A `date` that prints a literal N does not.
+    preciseClock: /^CLOCK available$/m.test(run.stdout) || /^NSDATE \d{16,}$/m.test(run.stdout),
+    rc,
+    dump: JSON.parse(dumpLine.slice(5))
+  }
 }
 
 describeShell('the shell-built event payload', () => {
@@ -196,9 +204,10 @@ describeShell('the shell-built event payload', () => {
         })
 
         it(`${c.name}: ${c.fast ? 'is built by the shell' : 'is handed to python'}`, () => {
-          // macOS ships Bash 3 without EPOCHREALTIME. Declining every fast
-          // payload there is intentional; the Python path above must still
-          // produce every event. Bash 5 and zsh retain all fast-path checks.
+          // macOS ships Bash 3 without EPOCHREALTIME; there the builder takes
+          // its millisecond from one `date +%s%N`, and only where that `date`
+          // prints nanoseconds. Without either it declines every payload, and
+          // the Python path above must still produce every event.
           const shouldBuild = c.fast && results[shell]!.preciseClock
           expect(results[shell]!.rc[i], 'return status of the fast builder').toBe(shouldBuild ? 0 : 1)
         })

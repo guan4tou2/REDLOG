@@ -147,10 +147,10 @@ Markers, bookmarks and findings are still yours to write. RedLog keeps the recor
 - **asciinema terminal recording** — every RedLog terminal pane produces a `.cast` file with SHA-256 stored on session end; the timeline exposes both **per-command replay** (▶ Replay stdout) and **full-session replay** (▶ Replay entire session) — critical when the operator ssh'd into a remote host and the local `ssh` command_end is the only chain entry from that stretch
 - **One-click proxied browser** — launches Chromium through your mitmproxy with CDP enabled and a project-local profile, so captured traffic and QuickMarks work without touching your daily browser ([details](docs/agent-integration.md#proxied-browser))
 - **Internal-pivot awareness** — auto-detects ligolo-ng / chisel / `ssh -D/-L/-R` / sshuttle / proxychains from shell commands and records a first-class `pivot` event (intermediate node, route, SOCKS port, MITRE T1090/T1572) so the timeline shows the lateral-movement topology; plain `ssh user@host` also fires a pivot so the timeline reflects "attention moved to a remote host" ([details](docs/event-schema.md#pivot-events))
-- **VPS deployment** — `hooks/vps-deploy.sh install user@vps && hooks/vps-deploy.sh tunnel user@vps` copies the shell hook to a remote box and opens a reverse-tunnel session, so every command run on the VPS lands in the local chain in real time
+- **VPS deployment** — not currently supported: `hooks/vps-deploy.sh` is disabled until it is rebuilt on the current hook install plan
 - **Pause means pause** — while recording is paused RedLog writes nothing except its own audit trail (`system`) and explicit markers. The gate sits at the single DB write point, so every source is covered — the shell hook and the mitmproxy addon included — and no derived event (scope violation, loot, pivot) leaks the content either. The paused API answers `200 {recording:false, skipped}` so the hook doesn't spool and replay it later. Each `recording_paused` / `recording_resumed` row records whether the toggle came from the `ui` or the `api`
 - **AI project boundaries** — transcript capture requires an installed integration, explicit project working directories and activation. Exclusions can narrow that permission; they cannot grant it. The shell hook has a separate recording control and does not inherit the AI directory scope
-- **Extensible plugin system** — 🟢 declarative packs (loot/redaction/target patterns, event types, capture integrations) load automatically; 🔴 code plugins (exporters, monitors) run in an isolated process behind a content-hash-pinned, capability-scoped trust gate ([details](docs/plugin-development.md))
+- **Extensible plugin system** — 🟢 declarative packs (loot/redaction/target patterns, event types, capture integrations) load automatically; the only code contribution, `tailers`, is accepted from bundled plugins only and runs in the main process behind a content-hash-pinned trust gate — it is not isolated; third-party plugins send events through the local API instead ([details](docs/plugin-development.md))
 - **Team sync** — export/import project config profiles so everyone starts with identical scope and settings
 
 ## Features
@@ -195,10 +195,10 @@ Markers, bookmarks and findings are still yours to write. RedLog keeps the recor
 ### HUD (heads-up overlay)
 
 - **IP Widget** — always-on-top floating display: external IP (primary), internal IP + Wi-Fi/wired name, detected relay nodes, recording state, capture health
-- **EXPOSED alarm** — when the external IP hits the blacklist, the whole frame flashes red (toggle in Settings ▸ Overlay); default on
+- **EXPOSED alarm** — when the external IP hits the blacklist, the whole frame flashes red (toggle in Settings ▸ Overlay display); default on
 - **Live pivot chain** — active internal-network pivot nodes (tool · node · route); listed as detected, without claiming which node forwards to which or that a channel is up
-- **macOS Dock icon** — configurable (Settings ▸ Overlay); opening the HUD otherwise flips the app to accessory activation and drops the Dock icon
-- **Click-through Mode** — passes mouse events through to windows below; hover to reactivate
+- **macOS Dock icon** — configurable (Settings ▸ Overlay display); opening the HUD otherwise flips the app to accessory activation and drops the Dock icon
+- **Click-through Mode** — passes mouse events through to windows below; release it with Cmd/Ctrl+Shift+P or the menu bar. HUD settings are machine-wide preferences (`~/.redlog/hud-prefs.json`), not per project
 - **Draggable** — grab the overlay to reposition
 - **Menubar / tray** — red pulsing dot while recording (no text label — keeps the menu-bar compact)
 
@@ -439,9 +439,13 @@ Export your project config as a `.yaml` or `.json` profile:
 
 | Key | Action |
 |-----|--------|
-| Cmd+1..8 | Switch views |
+| Cmd+1..7 | Switch views (Dashboard, Activity, Timeline, HTTP, Targets & scope, Evidence, Terminal) |
+| Cmd+9 | Settings |
+| Cmd+K (alias Cmd+/) | Command palette: go to a view, run a command, search events |
+| Cmd+. | Pause / resume recording |
 | Cmd+Shift+M | Add marker (opens the marker dialog) |
-| Cmd+/ | Search |
+| Cmd+Shift+2 | Take a screenshot of the display under the cursor |
+| Cmd+Shift+P | Release the HUD's click-through (registered only while click-through is on and the HUD is visible) |
 
 ## Security Model
 

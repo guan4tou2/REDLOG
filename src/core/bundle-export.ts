@@ -140,7 +140,13 @@ export interface ExportBundleOpts {
   /** The approved preview's attachment rows, recorded in the manifest so a
    *  recipient can see which targets each cast spans. */
   attachments?: readonly ExportAttachment[]
+  /** The logged-tier digest, already computed by the caller over
+   *  `snapshot.loggedMaxRowId` and already appended to the chain below
+   *  `snapshot.chainedMaxRowId` (export-direct-bundle.ts). Recorded in the
+   *  manifest as given; no digest is computed and no event is inserted. */
+  loggedDigest?: LoggedTierDigest
 }
+export type LoggedTierDigest = ReturnType<typeof loggedTierDigest>
 
 /** Copy the first `limit` bytes of `src` (all of it when `limit` is not smaller). */
 function copyPrefix(src: string, dst: string, limit: number): void {
@@ -239,7 +245,8 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   // bundle is unsigned and the snapshot is skipped, not force-attributed.
   const primary = getPrimaryOperator()
 
-  const loggedDigest = loggedTierDigest(opts.snapshot?.loggedMaxRowId)
+  if (opts.loggedDigest && !opts.snapshot) throw new Error('A precomputed logged-tier digest needs the snapshot it was taken under')
+  const loggedDigest = opts.loggedDigest ?? loggedTierDigest(opts.snapshot?.loggedMaxRowId)
   if (!opts.snapshot && loggedDigest.count > 0 && primary) {
     const ev = insertEvent('system', {
       subtype: 'logged_tier_digest',
@@ -607,9 +614,11 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
     const shWrapper = [
       '#!/usr/bin/env bash',
       '# RedLog bundle verifier — thin wrapper around redlog-verify.py.',
-      '# Requires: python3 (stdlib only for the hash chain). To also verify',
-      '# Ed25519 signatures, run the verifier through uv instead:',
+      '# Requires: python3. Checking Ed25519 signatures also needs the',
+      '# `cryptography` package; without it a signed bundle FAILS (exit 1):',
       '#   uv run --with cryptography redlog-verify.py .',
+      '# Exit 0 = authenticated (or --hash-only), 1 = failed,',
+      '# 3 = hash chain consistent but NOT AUTHENTICATED (no signatures).',
       'set -euo pipefail',
       'DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
       'exec python3 "$DIR/redlog-verify.py" "$DIR" "$@"',
@@ -624,7 +633,8 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
     const cmdWrapper = [
       '@echo off',
       'REM RedLog bundle verifier — thin wrapper around redlog-verify.py.',
-      'REM Requires: python3 on PATH.',
+      'REM Requires: python3 on PATH, plus `cryptography` to check signatures.',
+      'REM Exit 0 = authenticated (or --hash-only), 1 = failed, 3 = not authenticated.',
       'python "%~dp0redlog-verify.py" "%~dp0." %*',
       ''
     ].join('\r\n')
@@ -678,14 +688,21 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
       'verify.cmd',
       '```',
       '',
-      'Both wrappers invoke `python3 redlog-verify.py .` — Python 3.8+ stdlib is',
-      'enough to verify the SHA-256 hash chain. To also verify each event\'s',
-      'Ed25519 signature, run the verifier through uv, which supplies the',
-      'optional dependency without installing anything:',
+      'Both wrappers invoke `python3 redlog-verify.py .` (Python 3.8+). Hashes',
+      'alone only show the bundle is consistent with itself; anyone holding it',
+      'could have rewritten and re-hashed it. Events are therefore signed, and',
+      'checking the Ed25519 signatures needs the `cryptography` package. Run the',
+      'verifier through uv, which supplies it without installing anything:',
       '',
       '```',
       'uv run --with cryptography redlog-verify.py .',
       '```',
+      '',
+      'Exit codes: 0 authenticated, 1 failed (including an unsigned event or a',
+      'signature that cannot be checked), 3 hash chain consistent but NOT',
+      'AUTHENTICATED (nothing signed). `--hash-only` reports the chain without',
+      'authentication and exits 0 instead of 3. Each signer\'s public-key SHA-256',
+      'fingerprint is printed; compare it with the operator out of band.',
       '',
       'The verifier reads `manifest.json`, `events.jsonl`, and `operators.json`',
       'from this directory and prints a summary: events walked, chain intact or',

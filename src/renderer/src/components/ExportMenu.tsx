@@ -370,10 +370,13 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape' && !busy) { e.preventDefault(); closeAll() }
+      if (e.key !== 'Escape') return
+      // Ignored while busy, but still this dialog's: nothing behind it closes.
+      e.preventDefault(); e.stopPropagation()
+      if (!busy) closeAll()
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
   }, [open, busy])
   useEffect(() => { live.current = true; return () => { live.current = false; ++previewSequence.current; ++recentSequence.current } }, [])
 

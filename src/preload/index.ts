@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { RedLogEvent } from '../core/db/events'
 import type { ArtifactAddResponse } from '../core/artifacts'
 import type { EventNote } from '../core/db/event-notes'
+import type { HudPrefs } from '../core/hud-prefs'
 
 // Single source of truth: the bridge is typed against the RedLogAPI contract
 // declared in the renderer's env.d.ts. Before this, env.d.ts was a hand-copied
@@ -308,7 +309,8 @@ const api: RedLogAPI = {
   },
   capture: {
     health: () => ipcRenderer.invoke('capture:health'),
-    clearUnattributedSpool: (upTo: number) => ipcRenderer.invoke('capture:clearUnattributedSpool', upTo)
+    clearUnattributedSpool: (upTo: number) => ipcRenderer.invoke('capture:clearUnattributedSpool', upTo),
+    openPrerequisiteFix: (url: string) => ipcRenderer.invoke('capture:openPrerequisiteFix', url)
   },
   operators: {
     list: () => ipcRenderer.invoke('operators:list')
@@ -340,6 +342,7 @@ const api: RedLogAPI = {
     shells: () => ipcRenderer.invoke('terminal:shells'),
     write: (id: string, data: string) => ipcRenderer.send('terminal:write', id, data),
     resize: (id: string, cols: number, rows: number) => ipcRenderer.send('terminal:resize', id, cols, rows),
+    ack: (id: string, chars: number) => ipcRenderer.send('terminal:ack', id, chars),
     kill: (id: string) => ipcRenderer.send('terminal:kill', id),
     list: () => ipcRenderer.invoke('terminal:list'),
     onData: (id: string, cb: (data: string) => void) => {
@@ -381,11 +384,16 @@ const api: RedLogAPI = {
       return () => ipcRenderer.removeListener('overlay:visibilityChanged', handler)
     },
     moveToCorner: (corner: 'tl' | 'tr' | 'bl' | 'br') => ipcRenderer.send('overlay:moveToCorner', corner),
-    setPassThrough: (on: boolean) => ipcRenderer.send('overlay:setPassThrough', on),
-    onPassThroughChanged: (cb: (on: boolean) => void) => {
-      const handler = (_e: Electron.IpcRendererEvent, on: boolean): void => cb(on)
-      ipcRenderer.on('overlay:passThroughChanged', handler)
-      return () => ipcRenderer.removeListener('overlay:passThroughChanged', handler)
+    setPassThrough: (on: boolean) => ipcRenderer.send('overlay:setPassThrough', on)
+  },
+  // The HUD's settings: the operator's, the same in every project.
+  hudPrefs: {
+    get: () => ipcRenderer.invoke('hudPrefs:get'),
+    set: (partial: Partial<HudPrefs>) => ipcRenderer.invoke('hudPrefs:set', partial),
+    onChanged: (cb: (prefs: HudPrefs) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, prefs: HudPrefs): void => cb(prefs)
+      ipcRenderer.on('hudPrefs:changed', handler)
+      return () => ipcRenderer.removeListener('hudPrefs:changed', handler)
     }
   }
 }

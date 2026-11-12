@@ -5,6 +5,7 @@ import Database from 'better-sqlite3'
 import { stripAnsi, readSingleCastRange, type CastSlice } from './cast-slice'
 import { getProjectDir, dbGeneration } from './db'
 import { ftsTerms } from './query/fts-match'
+import { ensurePrivateFile } from './private-fs'
 
 // Full-text search over terminal recordings.
 //
@@ -106,6 +107,9 @@ export function getCastIndex(projectDir?: string): Database.Database {
   const dir = projectDir ?? getProjectDir()
   if (idx && idxDir === dir) return idx
   if (idx) { try { idx.close() } catch { /* already closed */ } }
+  // Owner-only, like timeline.db: it holds the full text of every recording,
+  // and SQLite gives the -wal and -shm files the mode of this one.
+  ensurePrivateFile(indexPath(dir))
   const db = new Database(indexPath(dir))
   db.pragma('journal_mode = WAL')
   if(db.pragma('user_version',{simple:true})!==2)db.exec('DROP TABLE IF EXISTS cast_fts; DROP TABLE IF EXISTS cast_files;')

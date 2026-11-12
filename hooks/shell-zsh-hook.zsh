@@ -21,7 +21,7 @@ export REDLOG_SHELL=zsh
 # shellcheck source=shell-common.sh
 source "$_redlog_adapter_dir/shell-common.sh"
 unset _redlog_adapter_dir
-_redlog_terminal_allowed || return 0
+_redlog_terminal_allowed || { _redlog_announce_terminal_refused; return 0; }
 _REDLOG_HOOK_LOADED_IN=$$
 
 # EPOCHREALTIME, for the event payload (shell-common.sh builds it without
@@ -130,16 +130,22 @@ _redlog_class_of() {
 # whole of FR-022: a stop held in a shell variable survives neither a subshell
 # nor a prompt, and an operator who types `redlog stop` before a client's
 # credential and sees it recorded anyway uninstalls the tool.
-_REDLOG_SESSION_ID=${REDLOG_TERMINAL_ID:-$(_redlog_new_command_id)}
+_redlog_mint_command_id
+_REDLOG_SESSION_ID=${REDLOG_TERMINAL_ID:-$_redlog_id}
 export _REDLOG_SESSION_ID
 _REDLOG_STATE_FILE=""
 
 _redlog_state_file() {
+  _redlog_state_path
+  printf '%s' "$_REDLOG_STATE_FILE"
+}
+
+# The same, set and not printed: the check at every command reads it.
+_redlog_state_path() {
   if [[ -z "$_REDLOG_STATE_FILE" ]]; then
     local home="${_REDLOG_DIR:-$HOME/.redlog}"
     _REDLOG_STATE_FILE="$home/terminals/${_REDLOG_SESSION_ID}.json"
   fi
-  printf '%s' "$_REDLOG_STATE_FILE"
 }
 
 # `_REDLOG_DIR` is the `.redlog` directory itself — under WSL it resolves to
@@ -158,16 +164,16 @@ _redlog_state() {
 
 # Read at every prompt, by the shell itself. A `python3` per command to answer
 # a yes/no that is one line of JSON would be paid on the operator's prompt
-# forever; `grep` on the same file is the same answer from the same place,
+# forever; reading the same file is the same answer from the same place,
 # which is what rule 2 of contracts/shell-commands.md asks for — not a shell
 # variable. No file yet means a terminal that has not been told otherwise,
-# and the installed default is auto (research.md D4).
+# and the installed default is auto (research.md D4). Read by `read`, not
+# `grep` (`_redlog_state_records`): no process.
 _redlog_is_recording() {
   _redlog_terminal_allowed || return 1
-  local file
-  file=$(_redlog_state_file)
-  [[ -f "$file" ]] || return 0
-  grep -q '"recording"[[:space:]]*:[[:space:]]*true' "$file"
+  _redlog_state_path
+  [[ -f "$_REDLOG_STATE_FILE" ]] || return 0
+  _redlog_state_records "$_REDLOG_STATE_FILE"
 }
 
 redlog() {
@@ -186,15 +192,17 @@ redlog() {
       # rows bracket the gap the way RedLog's own pause rows already bracket a
       # global one — a pair of its own, because reusing `system.recording_*`
       # would draw a paused band across an engagement that never stopped.
+      _redlog_json_escape "$_REDLOG_SESSION_ID"
       _redlog_send_event "capture_stopped" "redlog stop" \
-        "{\"session_id\":\"$_REDLOG_SESSION_ID\",\"reason\":\"operator\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
+        "{\"session_id\":\"$_redlog_json\",\"reason\":\"operator\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
       print -- "[redlog] recording stopped in this terminal — redlog start to resume"
       ;;
     start)
       _redlog_state --action start >/dev/null
       if _redlog_is_recording; then
+        _redlog_json_escape "$_REDLOG_SESSION_ID"
         _redlog_send_event "capture_resumed" "redlog start" \
-          "{\"session_id\":\"$_REDLOG_SESSION_ID\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
+          "{\"session_id\":\"$_redlog_json\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
       fi
       _redlog_state --action show --format human
       print
@@ -291,55 +299,26 @@ redlog() {
   esac
 }
 
-# FR-010. The dangerous outcome is not a missing command — it is a command from
-# engagement A filed under engagement B, which is a lie in a document a client
-# reads, written by the tool whose whole job is to be believable.
-#
-# RedLog rewrites the active identity when the operator opens another project,
-# so the terminal finds out by watching that file — named by shell-common, not
-# here, because paths into the RedLog directory are transport. `zstat` is a
-# builtin: the common case, where nothing changed, costs a stat and no
-# process. Only a changed mtime pays for the relay call that compares the
-# pinned engagement with the current one.
+# FR-010: `_redlog_check_project` (shell-common.sh) stops this terminal when
+# RedLog opens another project. What it compares is this adapter's stamp of
+# the identity file: its mtime, read with `zstat`, a builtin — the common case,
+# where nothing changed, costs a stat and no process.
 zmodload -F zsh/stat b:zstat 2>/dev/null
+# Assigned by the shared check at each command; declared for WARN_CREATE_GLOBAL.
+typeset -g _redlog_stamp _REDLOG_IDENTITY_SEEN
 
-_redlog_check_project() {
-  # RedLog owns and rotates its built-in panes' enrollment. External shells
-  # keep the stop-on-switch pin; they must never be silently rebound.
-  [[ "${REDLOG_TERMINAL:-}" == "1" ]] && return
-  local file
-  file=$(_redlog_identity_file)
-  [[ -f "$file" ]] || return
+_redlog_identity_stamp() {
+  _redlog_stamp=""
+  _redlog_identity_path
+  local file=$_redlog_path
+  [[ -f "$file" ]] || return 1
   local -a st
   # Fractional seconds, not `+mtime` alone: that is whole seconds, so a switch
   # written in the same second the terminal started in (a fast machine, or a
   # script) looks like no change and every later command is filed under the
   # old project.
-  zstat -F '%s.%N' -A st +mtime "$file" 2>/dev/null || return
-  [[ "${st[1]}" == "${_REDLOG_IDENTITY_MTIME:-}" ]] && return
-  # The first sight of the file is the pin itself, not a switch.
-  if [[ -z "${_REDLOG_IDENTITY_MTIME:-}" ]]; then
-    _REDLOG_IDENTITY_MTIME="${st[1]}"
-    return
-  fi
-  _REDLOG_IDENTITY_MTIME="${st[1]}"
-
-  local after
-  after=$(_redlog_state --action project)
-  [[ "$after" == *project-switched* ]] || return
-  [[ -n "${_REDLOG_ANNOUNCED_SWITCH:-}" ]] && return
-  _REDLOG_ANNOUNCED_SWITCH=1
-
-  # The pin is never updated, so the state still names the project whose work
-  # just stopped. The row lands in whichever project RedLog has open now —
-  # that is where someone wondering why this terminal went quiet will be
-  # looking — and it names the old one explicitly rather than letting the
-  # attribution speak for it.
-  local pinned=""
-  [[ "$after" =~ '"engagementId":[[:space:]]*"([^"]*)"' ]] && pinned="$match[1]"
-  _redlog_send_event "session_end" "" \
-    "{\"session_id\":\"$_REDLOG_SESSION_ID\",\"reason\":\"project-switched\",\"engagement_id\":\"$pinned\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
-  print -u2 -- "[redlog] the project changed — this terminal stopped recording; open a new terminal for the new project"
+  zstat -F '%s.%N' -A st +mtime "$file" 2>/dev/null || return 1
+  _redlog_stamp="${st[1]}"
 }
 
 zmodload zsh/zselect 2>/dev/null
@@ -448,7 +427,8 @@ _redlog_preexec() {
 
   _REDLOG_LAST_CMD="$1"
   _REDLOG_CMD_START=$EPOCHSECONDS
-  _REDLOG_CMD_ID=$(_redlog_new_command_id)
+  _redlog_mint_command_id
+  _REDLOG_CMD_ID=$_redlog_id
 
   if _redlog_is_running && [[ "${REDLOG_EXTERNAL_SESSION:-}" != "1" ]]; then
     _redlog_class_of "$1"
@@ -489,33 +469,9 @@ _redlog_preexec() {
     fi
   fi
 
+  _redlog_json_escape "$PWD"
   _redlog_send_event "command_start" "$1" \
-    "{\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"class\":\"$_REDLOG_CMD_CLASS\",\"source\":\"$_REDLOG_EVENT_SOURCE\"$_REDLOG_CMD_CAPTURE}"
-}
-
-# FR-009. The commands run either way — that part has always worked, silently,
-# and silence is the bug. An operator whose RedLog crashed two hours ago has
-# been working unrecorded with no way to know.
-#
-# Once, though, and only on the way in. A warning on every prompt is one an
-# operator learns to read past, and then the one that matters is read past too.
-# The flag is a shell variable on purpose: "have I said this in this shell" is
-# not state that should survive a subshell, unlike the stop (FR-022).
-_redlog_warn_unreachable() {
-  if _redlog_is_running; then
-    _REDLOG_WARNED_UNREACHABLE=""
-    return
-  fi
-  [[ -n "${_REDLOG_WARNED_UNREACHABLE:-}" ]] && return
-  _REDLOG_WARNED_UNREACHABLE=1
-  # The text of each command is still kept for replay (#315) — `_redlog_send_event`
-  # spools it with nowhere to send it — but not what it printed, which only a
-  # live relay can hold. Saying "unrecorded" would be the other way to mislead.
-  if [[ ! -s "$(_redlog_identity_file)" ]]; then
-    print -u2 -- "[redlog] RedLog is not reachable — no project is open; commands and output are not being saved"
-  else
-    print -u2 -- "[redlog] RedLog is not reachable — commands are running without live recording; their text is kept for replay, their output is not"
-  fi
+    "{\"cwd\":\"$_redlog_json\",\"command_id\":\"$_REDLOG_CMD_ID\",\"class\":\"$_REDLOG_CMD_CLASS\",\"source\":\"$_REDLOG_EVENT_SOURCE\"$_REDLOG_CMD_CAPTURE}"
 }
 
 _redlog_precmd() {
@@ -526,9 +482,9 @@ _redlog_precmd() {
   # down, or this shell stopped) each prompt runs the same recording check that
   # preexec already pays per command, so a stopped shell costs nothing new.
   if [[ -z "${_REDLOG_TOOLS_REPORTED:-}" ]]; then _redlog_report_tools; fi
-  [[ -n "$_REDLOG_LAST_CMD" ]] || return
-
-  _redlog_warn_unreachable
+  # No command, but a send may still have dropped something (a project-switch
+  # row, `redlog stop` itself): said here, or at the end below.
+  [[ -n "$_REDLOG_LAST_CMD" ]] || { _redlog_warn_unsaved; return 1; }
 
   local duration=0
   [[ -n "$_REDLOG_CMD_START" ]] && duration=$(( EPOCHSECONDS - _REDLOG_CMD_START ))
@@ -573,7 +529,8 @@ _redlog_precmd() {
       # (FR-008), without two processes watching an empty descriptor.
       redirected) disposition="redirected" ;;
     esac
-    extra="{\"exit_code\":$exit_code,\"duration_sec\":$duration,\"cwd\":\"${PWD//\"/\\\"}\",\"command_id\":\"$_REDLOG_CMD_ID\",\"source\":\"$_REDLOG_EVENT_SOURCE\",\"completeness\":\"metadata-only\",\"output_disposition\":\"$disposition\"$_REDLOG_CMD_CAPTURE}"
+    _redlog_json_escape "$PWD"
+    extra="{\"exit_code\":$exit_code,\"duration_sec\":$duration,\"cwd\":\"$_redlog_json\",\"command_id\":\"$_REDLOG_CMD_ID\",\"source\":\"$_REDLOG_EVENT_SOURCE\",\"completeness\":\"metadata-only\",\"output_disposition\":\"$disposition\"$_REDLOG_CMD_CAPTURE}"
   fi
 
   _redlog_send_event "command_end" "$_REDLOG_LAST_CMD" "$extra"
@@ -582,6 +539,9 @@ _redlog_precmd() {
   _REDLOG_CMD_ID=""
   _REDLOG_CMD_CLASS=""
   _REDLOG_CMD_CAPTURE=""
+  # After the descriptors are back, so the line reaches the terminal rather
+  # than the relay, and after command_end, whose outcome it includes.
+  _redlog_warn_unsaved 1
   return $exit_code
 }
 
@@ -649,7 +609,9 @@ _REDLOG_PTY_NOT_ON_PATH=()
 _redlog_install_pty_wrappers() {
   local prog
   _REDLOG_PTY_NOT_ON_PATH=()
-  for prog in ${(f)"$(python3 "$_REDLOG_RELAY" policy --home "$(_redlog_home)" --field pty 2>/dev/null)"}; do
+  # `$1` is the list when the caller already has it (`boot`, below).
+  (( $# )) || set -- "$(python3 "$_REDLOG_RELAY" policy --home "$(_redlog_home)" --field pty 2>/dev/null)"
+  for prog in ${(f)1}; do
     [[ -n "$prog" ]] || continue
     # Only wrap what is actually here: an executable on PATH. A function named
     # `ssh` on a machine without ssh turns "command not found" into a confusing
@@ -679,7 +641,21 @@ _redlog_install_pty_wrappers() {
 # Pin this terminal's identity and its starting state before the first prompt.
 # `begin` is idempotent — a state file that already exists is left alone, so
 # re-sourcing the adapter does not undo a `redlog stop`.
-_redlog_state --action begin >/dev/null 2>&1
+#
+# The same python3 also answers which programs get a PTY wrapper: `boot` is
+# `begin` and `policy --field pty` in one start-up, ~50 ms off every new tab.
+# A relay from before `boot` says 2 and both are asked separately, as they
+# always were; `begin` asked twice is still one `begin`.
+typeset -g _REDLOG_BOOT_PTY=""
+if ! _REDLOG_BOOT_PTY=$(python3 "$_REDLOG_RELAY" boot --home "$(_redlog_home)" \
+    --session "$_REDLOG_SESSION_ID" 2>/dev/null); then
+  _redlog_state --action begin >/dev/null 2>&1
+  _REDLOG_BOOT_PTY=$(python3 "$_REDLOG_RELAY" policy --home "$(_redlog_home)" --field pty 2>/dev/null)
+fi
+# What `begin` pinned is what the identity file says now, so this is the first
+# sight `_redlog_check_project` compares against: a switch before the first
+# command is then a switch.
+_redlog_identity_stamp && _REDLOG_IDENTITY_SEEN=$_redlog_stamp
 
 # A relayed command's directory is removed by the NEXT prompt's `precmd`.
 # `exit` is a relayed command like any other, and no prompt follows it, so every
@@ -695,7 +671,8 @@ autoload -Uz add-zsh-hook
 add-zsh-hook preexec _redlog_preexec
 add-zsh-hook precmd _redlog_precmd
 add-zsh-hook zshexit _redlog_zshexit
-_redlog_install_pty_wrappers
+_redlog_install_pty_wrappers "$_REDLOG_BOOT_PTY"
+unset _REDLOG_BOOT_PTY
 # Behind the prompt: with thousands left over it is not something to wait for.
 ( _redlog_sweep_relay_dirs </dev/null >/dev/null 2>&1 & )
 _redlog_announce_shell

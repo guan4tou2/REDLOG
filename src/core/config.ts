@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import yaml from 'js-yaml'
 import { DEFAULT_BROWSER } from './browser-defaults'
-import { mkdirPrivate } from './private-fs'
+import { mkdirPrivate, restrictFile } from './private-fs'
 
 export interface VpnAdapter {
   name: string
@@ -93,31 +93,9 @@ export interface RedLogConfig {
      *  better read from the `.cast` recording (searchable text) than a JPEG. */
     captureOnCommand?: boolean
   }
-  overlay: {
-    /** Whether the HUD opens when a project starts. On unless turned off; the
-     *  in-HUD toggle and the tray only hide it for the session (Spec 060
-     *  FR-014). Absent means on. */
-    autoShow?: boolean
-    showMarkButton: boolean
-    /** macOS: keep a Dock icon (opening the HUD otherwise makes the app Dock-less) */
-    showInDock: boolean
-    /** flash the whole HUD frame while the external IP is EXPOSED (blacklist hit) */
-    flashOnExposed: boolean
-    /** overall HUD text scale — multiplier applied to every font size + window
-     *  padding. 1.0 = default; 0.85 shrinks; 1.25 / 1.5 for higher-DPI eyes. */
-    scale: number
-    /** bump the external IP an extra ~1.4× on top of `scale`, since it's the
-     *  single most important number on the bar for OPSEC glances. */
-    emphasizeExternalIp: boolean
-    /** When true, HUD is permanently click-through — hover-tracking is
-     *  disabled, mouse events pass to whatever is behind, and opacity drops
-     *  to `passThroughOpacity` so operator SEES it's non-interactive. Useful
-     *  when the HUD sits over a target's window and you don't want a stray
-     *  drag to steal focus from Burp / a browser. Toggle via Settings ▸ HUD. */
-    passThrough: boolean
-    /** Opacity while passThrough is on. 0.4 = clearly ghost-mode. */
-    passThroughOpacity: number
-  }
+  // `overlay` is gone: the HUD's settings are machine-wide now
+  // (src/core/hud-prefs.ts). An old config.yaml may still carry the block; it
+  // is read once to seed them and otherwise ignored.
   terminal: {
     /** Maximum physical cast-part bytes; capacity rotates, never stops capture.
      *  Store-wide cleanup lives under `retention.casts`. */
@@ -316,16 +294,6 @@ export const DEFAULT_CONFIG: RedLogConfig = {
     diffThreshold: 5,
     captureOnCommand: false
   },
-  overlay: {
-    autoShow: true,
-    showMarkButton: true,
-    showInDock: true,
-    flashOnExposed: true,
-    scale: 1.0,
-    emphasizeExternalIp: false,
-    passThrough: false,
-    passThroughOpacity: 0.4
-  },
   terminal: {
     maxCastBytes: 50 * 1024 * 1024
   },
@@ -411,7 +379,10 @@ export function mergeInitialConfig(config: RedLogConfig, projectId: string, init
   for (const d of initial?.scope?.personalDomains ?? []) if (!personal.includes(d)) personal.push(d)
   return {
     ...config,
-    engagement: { ...config.engagement, id: projectId, ...initial?.engagement },
+    // The id is always the project's own. A caller-supplied one gave two
+    // projects the same engagement id, which every event row and the spool's
+    // attribution boundary rely on being distinct.
+    engagement: { ...config.engagement, ...initial?.engagement, id: projectId },
     operator: { ...config.operator, ...initial?.operator },
     network: { ...config.network, ...initial?.network },
     scope: { ...config.scope, ...initial?.scope, personalDomains: personal },
@@ -440,7 +411,11 @@ export function loadConfig(projectDir: string): RedLogConfig {
 export function saveConfig(projectDir: string, config: RedLogConfig): void {
   mkdirPrivate(projectDir)
   const configPath = path.join(projectDir, 'config.yaml')
-  fs.writeFileSync(configPath, yaml.dump(config, { lineWidth: 120 }), 'utf-8')
+  // Owner-only like the database beside it: scope, operator and integration
+  // settings. `mode` applies only on create, so an older 0644 file is
+  // restricted as well.
+  fs.writeFileSync(configPath, yaml.dump(config, { lineWidth: 120 }), { encoding: 'utf-8', mode: 0o600 })
+  restrictFile(configPath)
 }
 
 /** The scope actually in force, as one value.

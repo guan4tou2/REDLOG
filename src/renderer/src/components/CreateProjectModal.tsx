@@ -6,6 +6,7 @@ import { Button } from './Button'
 import { Modal } from './Modal'
 import { ListField } from './settings/SettingsShared'
 import { parseScopeInput } from '../lib/scopeInput'
+import { isComposing } from '../lib/ime'
 import { profileSummary, profileToInitialConfig, type ImportedProfile, type ProfileFailure } from '../../../core/profile-import'
 
 type Translate = (key: string, vars?: Record<string, string | number>) => string
@@ -162,7 +163,7 @@ export function CreateProjectModal({ open, onClose, onCreated, root }: {
             {t('project.name')} <span aria-hidden className="text-redlog-accent">*</span>
             <input ref={nameInput} aria-required aria-invalid={nameMissing || undefined} value={name} disabled={busy}
               onChange={(e) => { setName(e.target.value); if (e.target.value.trim()) setNameMissing(false) }}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) { e.preventDefault(); void handleCreate() } }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !isComposing(e)) { e.preventDefault(); void handleCreate() } }}
               placeholder={t('project.placeholder')}
               className="mt-1.5 block w-full rounded-lg border border-redlog-border bg-redlog-bg px-3.5 py-2 font-mono text-xs text-redlog-text focus:outline-none focus:ring-2 focus:ring-redlog-accent/40" />
           </label>

@@ -1,11 +1,13 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync, rmdirSync } from 'fs'
 import { dirname, join } from 'path'
 import { homedir } from 'os'
+import { X509Certificate } from 'crypto'
 import { bundledRoot } from './plugins/loader'
 import { captureInstallProblem } from './plugins/manifest'
 import { isOnPath } from './command-lookup'
 import { isDisabled } from './plugins/state'
 import { stopOpenTerminals } from './hook-removal'
+import { readProfilePath } from './powershell-policy'
 
 export type InstallMethod = 'claude-settings' | 'shell-source' | 'powershell-profile' | 'manual'
 
@@ -41,46 +43,87 @@ export interface ManualStep {
   command?: string
 }
 
+/** RedLog's mitmproxy CA, as the trust step installed it. Mirrors
+ *  HttpCaptureStep.tsx's caUntrustCommand (renderer, so not importable here). */
+export interface MitmproxyCa { path: string; sha1: string }
+
+export function mitmproxyCaPath(home: string = homedir()): string {
+  return join(home, '.mitmproxy', 'mitmproxy-ca-cert.pem')
+}
+
+/** Null when the CA has not been generated: nothing was trusted, so there is
+ *  nothing to untrust. */
+export function readMitmproxyCa(path: string = mitmproxyCaPath()): MitmproxyCa | null {
+  try {
+    const cert = new X509Certificate(readFileSync(path))
+    return { path, sha1: cert.fingerprint.replace(/:/g, '').toUpperCase() }
+  } catch {
+    return null
+  }
+}
+
+export function caUntrustCommand(ca: MitmproxyCa, os: NodeJS.Platform = process.platform): string {
+  if (os === 'win32') return `certutil -delstore -user Root ${ca.sha1}`
+  if (os === 'darwin') return `sudo security remove-trusted-cert -d "${ca.path}"; sudo security delete-certificate -Z ${ca.sha1} /Library/Keychains/System.keychain`
+  return `sudo rm -f /usr/local/share/ca-certificates/redlog-mitmproxy-${ca.sha1.slice(0, 16).toLowerCase()}.crt && sudo update-ca-certificates --fresh`
+}
+
+/** The path as the distro sees it, as the manual step and the WSL installer write it. */
+function toWslPath(winPath: string): string {
+  return winPath.replace(/\\/g, '/').replace(/^([A-Za-z]):/, (_m, d: string) => `/mnt/${d.toLowerCase()}`)
+}
+
+const shQuote = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`
+
+/** Run inside the distro. Deletes only the lines RedLog's WSL install writes
+ *  to the rc: the `# RedLog WSL hook` marker and `source "<hook>"` for the
+ *  bash and zsh adapters. Matched whole-line and as fixed strings, so nothing
+ *  else that merely mentions "redlog" (an alias, a PATH entry) is touched; `cat >`
+ *  keeps a symlinked dotfile a symlink. */
+function wslRcRemovalCommand(hookFile: string): string {
+  const dir = hookFile.replace(/[\\/][^\\/]*$/, '')
+  const lines = ['shell-bash-hook.sh', 'shell-zsh-hook.zsh'].map((f) => `source "${toWslPath(`${dir}/${f}`)}"`)
+  const patterns = ['# RedLog WSL hook', ...lines].map((l) => `-e ${shQuote(l)}`).join(' ')
+  return 'for f in ~/.bashrc ~/.zshrc; do [ -f "$f" ] || continue; '
+    + `grep -vxF ${patterns} "$f" > "$f.redlog-tmp"; `
+    + '[ $? -le 1 ] && cat "$f.redlog-tmp" > "$f"; rm -f "$f.redlog-tmp"; done'
+}
+
 // How to undo a source RedLog cannot uninstall for you.
 //
 // `uninstallHook` answered `Manual removal required for <name>` and stopped
 // there — seven of the eleven sources said only that. For a tool that asks
 // operators to care what they leave on a machine, and that tracks cleanup as
 // evidence, "you figure it out" is the wrong half of the install to skip.
-export function buildRemovalSteps(pluginId: string): ManualStep[] | undefined {
+export function buildRemovalSteps(pluginId: string, ca: MitmproxyCa | null = readMitmproxyCa(), hookFile?: string): ManualStep[] | undefined {
   switch (pluginId) {
     case 'mitmproxy':
       return [
-        { label: 'Stop the mitmdump process (Ctrl-C in the terminal running it, or kill it by port)',
-          command: process.platform === 'win32'
-            ? 'for /f "tokens=5" %a in (\'netstat -ano ^| findstr :8080 ^| findstr LISTENING\') do taskkill /PID %a /F'
-            : "pkill -f 'mitmdump -s .*mitmproxy-addon.py'" },
+        // RedLog's managed proxy is stopped from the app, which does it on
+        // its own handle. No kill-by-port or kill-by-name step: a port such as
+        // 8080 belongs to whatever else the operator is running (Burp's default).
+        { label: 'Stop RedLog\'s own proxy with Stop HTTP capture in RedLog' },
         { label: 'Stop the DNS instance too, if you started one',
           command: process.platform === 'win32'
-            ? 'for /f "tokens=5" %a in (\'netstat -ano ^| findstr :5353\') do taskkill /PID %a /F'
+            ? 'powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"Name=\'mitmdump.exe\'\\" | Where-Object { $_.CommandLine -like \'*--mode dns*\' } | ForEach-Object { Stop-Process -Id $_.ProcessId }"'
             : "pkill -f 'mitmdump -s .*--mode dns'" },
         { label: 'Point your browser and tools back off the proxy' },
         // If RedLog told the operator to trust a CA, RedLog owes them the
         // way to stop trusting it. A root certificate left in the store
         // after an engagement is the longest-lived thing this product can
-        // leave on a machine, and it is the one nobody remembers.
-        { label: 'Stop trusting the mitmproxy CA, if you added it to the system store',
-          command: process.platform === 'win32'
-            ? 'certutil -delstore -user Root mitmproxy'
-            : process.platform === 'darwin'
-              ? 'sudo security delete-certificate -c mitmproxy /Library/Keychains/System.keychain'
-              : 'sudo rm -f /usr/local/share/ca-certificates/mitmproxy.crt && sudo update-ca-certificates --fresh' },
-        { label: 'Remove the generated CA and its key from your home directory',
-          command: process.platform === 'win32'
-            ? 'rmdir /s /q "%USERPROFILE%\\.mitmproxy"'
-            : 'rm -rf ~/.mitmproxy' },
+        // leave on a machine, and it is the one nobody remembers. By
+        // fingerprint, never by the name "mitmproxy": another tool's CA
+        // shares it. The mitmproxy confdir (~/.mitmproxy) is shared with the
+        // operator's own mitmproxy, so it is not offered for deletion.
+        { label: 'Stop trusting RedLog\'s mitmproxy CA, if you added it to the system store',
+          command: ca ? caUntrustCommand(ca) : undefined },
         { label: 'Optional - remove the tool itself',
           command: 'uv tool uninstall mitmproxy' }
       ]
     case 'shell-wsl':
       return [
-        { label: 'Remove the RedLog line from the shell rc inside the distro',
-          command: "wsl -- sed -i '/redlog/d' ~/.bashrc ~/.zshrc 2>/dev/null" },
+        { label: 'Remove RedLog\'s hook lines from the shell rc, run inside the distro',
+          command: hookFile ? wslRcRemovalCommand(hookFile) : undefined },
         { label: 'Open a new WSL shell so the change takes effect' }
       ]
     default:
@@ -478,13 +521,43 @@ function isShellSourceInstalled(rcFile: string, hookPath: string, requireCopy = 
 
 // PowerShell loads a different profile per edition: Windows PowerShell 5.1
 // (always present on Windows) and PowerShell 7 (`pwsh`). Documents may be
-// redirected (OneDrive); these are the default locations shell/install.ps1's
-// `$PROFILE` resolves to on a stock install.
-export function powershellProfilePaths(home: string = homedir()): { windowsPowerShell: string; pwsh: string } {
+// redirected (OneDrive), so the real path is asked of PowerShell itself.
+type ProfilePaths = { windowsPowerShell: string; pwsh: string }
+
+/** The conventional locations on a stock install. Kept as the fallback when
+ *  the probe fails, and as the "legacy" place an earlier RedLog wrote to. */
+export function powershellProfilePaths(home: string = homedir()): ProfilePaths {
   return {
     windowsPowerShell: join(home, 'Documents', 'WindowsPowerShell', 'Microsoft.PowerShell_profile.ps1'),
     pwsh: join(home, 'Documents', 'PowerShell', 'Microsoft.PowerShell_profile.ps1')
   }
+}
+
+// One probe per edition per process: detect runs often and a probe spawns a
+// shell. A failed probe is cached too (as null), so a missing pwsh is not
+// retried on every refresh.
+const _profileProbe = new Map<string, string | null>()
+
+/** Where each edition reads its profile: PowerShell's own answer, else the
+ *  conventional path. `pwsh` is probed only when it is on PATH. */
+export function resolvedPowershellProfilePaths(home: string = homedir()): ProfilePaths {
+  const fallback = powershellProfilePaths(home)
+  const ask = (shell: 'powershell' | 'pwsh'): string | null => {
+    if (!_profileProbe.has(shell)) _profileProbe.set(shell, readProfilePath(shell))
+    return _profileProbe.get(shell) ?? null
+  }
+  return {
+    windowsPowerShell: ask('powershell') ?? fallback.windowsPowerShell,
+    pwsh: (commandExists('pwsh') ? ask('pwsh') : null) ?? fallback.pwsh
+  }
+}
+
+/** Every place a RedLog hook line may be: where PowerShell reads today, plus
+ *  the conventional paths an earlier install used. Detect and remove look in
+ *  all of them; install writes only to the resolved ones. */
+function powershellProfileCandidates(home: string = homedir()): string[] {
+  const all = [...Object.values(resolvedPowershellProfilePaths(home)), ...Object.values(powershellProfilePaths(home))]
+  return [...new Set(all)]
 }
 
 // The line the one-click install appends. `$HOME` is resolved by PowerShell at
@@ -498,7 +571,7 @@ function isPowershellProfileInstalled(hookPath: string, requireCopy = true): boo
   if (requireCopy && !existsSync(hookPath)) return false
   const hookName = hookPath.split(/[\\/]/).pop() ?? ''
   const needle = `.redlog\\${hookName}`
-  return Object.values(powershellProfilePaths()).some((profile) => {
+  return powershellProfileCandidates().some((profile) => {
     try { return existsSync(profile) && readFileSync(profile, 'utf-8').includes(needle) } catch { return false }
   })
 }
@@ -657,7 +730,7 @@ export function detectHooks(): PluginInfo[] {
       installMethod: plugin.installMethod,
       hookFile,
       manualSteps,
-      removalSteps: buildRemovalSteps(plugin.id),
+      removalSteps: buildRemovalSteps(plugin.id, undefined, hookFile),
       builtin: builtinIds.has(plugin.id),
       /** Switched off in Settings ▸ 外掛. Still listed, because the producer
        *  runs outside RedLog and disabling does not stop it. */
@@ -690,7 +763,7 @@ export async function detectHooksAsync(): Promise<PluginInfo[]> {
       installMethod: plugin.installMethod,
       hookFile,
       manualSteps,
-      removalSteps: buildRemovalSteps(plugin.id),
+      removalSteps: buildRemovalSteps(plugin.id, undefined, hookFile),
       builtin: builtinIds.has(plugin.id),
       /** Switched off in Settings ▸ 外掛. Still listed, because the producer
        *  runs outside RedLog and disabling does not stop it. */
@@ -836,7 +909,7 @@ export function installHook(pluginId: string): { success: boolean; message: stri
         copyFileSync(src, dest)
         const hookName = dest.split(/[\\/]/).pop()!
         const line = psProfileLine(hookName)
-        const profiles = powershellProfilePaths()
+        const profiles = resolvedPowershellProfilePaths()
         const targets = [profiles.windowsPowerShell, ...(commandExists('pwsh') ? [profiles.pwsh] : [])]
         for (const profile of targets) {
           mkdirSync(dirname(profile), { recursive: true })
@@ -926,7 +999,7 @@ export function uninstallHook(pluginId: string): { success: boolean; message: st
       try {
         const hookName = installTargetFor(plugin).split(/[\\/]/).pop()!
         const needle = `.redlog\\${hookName}`
-        for (const profile of Object.values(powershellProfilePaths())) {
+        for (const profile of powershellProfileCandidates()) {
           if (!existsSync(profile)) continue
           const lines = readFileSync(profile, 'utf-8').split(/\r?\n/)
           const kept = lines.filter((l) => !l.includes(needle) && l.trim() !== PS_PROFILE_MARKER)

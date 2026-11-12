@@ -87,6 +87,21 @@ describe('project list', () => {
     fireEvent.keyDown(field, { key: 'Enter' })
     expect(await screen.findByText('Could not rename the project')).toBeTruthy()
   })
+  it('does not rename or cancel on the Enter and Escape that belong to an input method', async () => {
+    const rename = vi.fn(async () => ({ ok: true }))
+    mount({ projects: [project('p1', 'Proj')], rename })
+    fireEvent.click(await screen.findByRole('button', { name: 'Rename' }))
+    const field = screen.getByDisplayValue('Proj')
+    fireEvent.change(field, { target: { value: 'にほんご' } })
+    fireEvent.keyDown(field, { key: 'Enter', isComposing: true })
+    fireEvent.keyDown(field, { key: 'Enter', keyCode: 229 })
+    fireEvent.keyDown(field, { key: 'Escape', isComposing: true })
+    expect(rename).not.toHaveBeenCalled()
+    expect(screen.getByDisplayValue('にほんご')).toBeTruthy()
+    fireEvent.keyDown(field, { key: 'Enter' })
+    await waitFor(() => expect(rename).toHaveBeenCalledTimes(1))
+  })
+
   it('ignores repeated opens until the current open finishes', async () => {
     const { open } = mount({ projects: [project('p1', 'Proj')] })
     open.mockImplementation(() => new Promise(() => {}))

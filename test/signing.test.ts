@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -157,5 +157,66 @@ describeDB('signing (v0.6.89)', () => {
       expect(r.signedCount).toBe(1)
       void good
     })
+  })
+})
+
+describe('operator id as a key file name', () => {
+  it('accepts any single path segment (Unicode, inner spaces) and rejects separators, controls, . and ..', () => {
+    const s = signing
+    if (!s) return
+    for (const ok of ['operator-1', 'alice-x7k2q9', 'A_b.c', '王小明', 'red team 1', '.x', 'a..b']) expect(s.isSafeOperatorId(ok)).toBe(true)
+    for (const bad of ['', '../x', 'a/b', 'a\\b', '.', '..', 'a\u0000b', 'a\nb', 'a:b', 'a?b', 'end.', 'end ', 'x'.repeat(129)]) expect(s.isSafeOperatorId(bad)).toBe(false)
+  })
+
+  it('never writes a key outside keys/ and signs nothing for a bad id', () => {
+    const s = signing
+    if (!s) return
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-keyname-'))
+    const prev = process.env.REDLOG_KEYS_DIR
+    process.env.REDLOG_KEYS_DIR = path.join(root, 'keys')
+    try {
+      expect(() => s.generateOperatorKeyPair('../escape')).toThrow(/plain file name/)
+      expect(s.signEvent('{}', '../escape')).toBeNull()
+      expect(fs.readdirSync(root).sort()).toEqual(['keys'])
+      expect(fs.readdirSync(path.join(root, 'keys'))).toEqual([])
+    } finally {
+      if (prev === undefined) delete process.env.REDLOG_KEYS_DIR; else process.env.REDLOG_KEYS_DIR = prev
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('operator ids that are not ASCII slugs', () => {
+  it.each(['王小明', 'red team 1'])('%s gets a key and signs', (id) => {
+    const s = signing
+    if (!s) return
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-keyname-'))
+    const prev = process.env.REDLOG_KEYS_DIR
+    process.env.REDLOG_KEYS_DIR = path.join(root, 'keys')
+    try {
+      s.resetSigningCache()
+      const kp = s.generateOperatorKeyPair(id)
+      const sig = s.signEvent('{"a":1}', id)
+      expect(sig).toBeTruthy()
+      expect(s.verifyEventSignature('{"a":1}', sig!, kp.publicKey)).toBe(true)
+      expect(fs.existsSync(path.join(root, 'keys', `${id}.key`))).toBe(true)
+    } finally {
+      if (prev === undefined) delete process.env.REDLOG_KEYS_DIR; else process.env.REDLOG_KEYS_DIR = prev
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('operator id that cannot name a key file', () => {
+  it('logs once per id and writes unsigned', () => {
+    const s = signing
+    if (!s) return
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      s.resetSigningCache()
+      expect(s.signEvent('{}', 'bad/id-once')).toBeNull()
+      expect(s.signEvent('{}', 'bad/id-once')).toBeNull()
+      expect(spy.mock.calls.filter((c) => String(c[0]).includes('bad/id-once'))).toHaveLength(1)
+    } finally { spy.mockRestore() }
   })
 })

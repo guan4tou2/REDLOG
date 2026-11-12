@@ -5,6 +5,7 @@ import http from 'node:http'
 import { managedProxyUrl } from '../../core/managed-proxy-url'
 import { VERIFY_HOST, isVerifyNonce, type HttpVerifyReport } from '../../core/http-verify'
 import { parseUnsavedGapLine, type UnsavedGap } from '../../core/unsaved-gap'
+import type { ProxyFailureReason } from '../../core/capture-health'
 
 export type ManagedProxyState = 'stopped' | 'starting' | 'running' | 'unavailable' | 'failed'
 
@@ -13,6 +14,8 @@ export interface ManagedProxyStatus {
   url: string | null
   pid?: number
   error?: string
+  /** `error` as a code, when the renderer can say it in the operator's language. */
+  errorReason?: ProxyFailureReason
   caPath?: string
   /** The CA file exists. It says nothing about who trusts it. */
   certReady?: boolean
@@ -259,9 +262,9 @@ export class ManagedHttpProxy {
     })
   }
 
-  noteStartFailure(error: string): ManagedProxyStatus {
+  noteStartFailure(error: string, errorReason?: ProxyFailureReason): ManagedProxyStatus {
     if (this.snapshot.state === 'running' || this.snapshot.state === 'starting') return this.status()
-    this.update({ state: 'failed', url: null, error })
+    this.update({ state: 'failed', url: null, error, ...(errorReason ? { errorReason } : {}) })
     return this.status()
   }
 
