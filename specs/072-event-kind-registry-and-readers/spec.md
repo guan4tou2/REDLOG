@@ -288,6 +288,8 @@
 
 ## 開放問題（需要擁有者）
 
+> **2026-11-12 擁有者答覆**：以下各項均照「建議」欄採納（Q1 新的瀏覽器 console 列改回 logged，既有列不動；Q2 契約 1 拒絕外部寫入 `credential_use`，舊入口不變；Q3 匯出不附 `kinds.json` 與 `intervals.jsonl`）。這是決定，尚未實作。
+
 | # | 問題 | 建議 |
 |---|---|---|
 | Q1 | 瀏覽器 console 列今天因 `LOGGED_TIER` 的鍵寫錯而是 chained；新列是否改為設計原意的 logged？ | 改。列入 `TIER_CHANGES`，只影響新列，舊列不動；理由與 DESIGN-two-tier-chain §2.3 相同（console 是足跡，不是證據）。若不改，就把 `LOGGED_TIER` 中的 `'browser:console'` 刪掉，使文件與事實一致 |
