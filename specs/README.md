@@ -47,6 +47,7 @@
 | [074 查詢工作執行緒、增量投影與讀取契約](074-query-worker-projections-and-read-contract/spec.md) | Draft | 2026-11-12 起草，未開始實作；根因審查階段 3 與 6。沒有自己的開放問題（相關問題在 072 Q3、071 O18）。 |
 | [075 來源描述、單一狀態模型與外掛 manifest v2](075-source-status-and-plugin-manifest/spec.md) | Draft | 2026-11-12 起草，未開始實作；根因審查階段 5。開放問題待擁有者（Q1）。2026-11-13 修訂：類型加回 Exporter（Q5 反轉）、內建終端機預設關閉、專案層啟用改為機器層啟用加專案層綁定、manifest 移交 076、未知從不顯示為安全（FR-025）；新開放問題 Q6（「已啟用」一詞）。 |
 | [076 擴充功能模型與機器層級的擷取來源](076-extensions-and-machine-scoped-sources/spec.md) | Draft | 2026-11-13 起草，未開始實作；擴充功能 API v1 的規範性契約在 `contracts/extension-api-v1.md`。開放問題待擁有者（Q1–Q5，含 L2 等級的一行決定 FR-096）。 |
+| [077 交付邊界、私人內容與內容生命週期](077-personal-content-and-delivery/spec.md) | Draft | 2026-11-13 起草，未開始實作；匯出面成為交付唯一被決定與看見的地方（範圍決定交付、待確認就地分組回答、個人、遮蔽、目的地），背後是單一交付點、stub、遮蔽引擎、名稱與位址的分類、清除內容。076 Q4 的前提。開放問題待擁有者（Q1–Q5）。 |
 
 ### 071–075 的跨規格順序
 
