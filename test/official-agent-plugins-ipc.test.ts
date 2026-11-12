@@ -12,7 +12,7 @@ vi.mock('../src/core/plugins', () => ({ listPlugins: m.plugins, listEventTypes: 
 vi.mock('../src/core/config', () => ({ loadConfig: vi.fn() }))
 vi.mock('../src/core/project-manager', () => ({ getProjectDir: vi.fn() }))
 vi.mock('../src/core/plugins/test-sample', () => ({ testSample: vi.fn() }))
-vi.mock('../src/core/plugins/contributions', () => ({ getContributionReport: vi.fn() }))
+vi.mock('../src/core/plugins/contributions', () => ({ getContributionReport: vi.fn(), approvalStepCommands: () => [] }))
 vi.mock('../src/core/capture-health', () => ({ invalidateHooksCache: m.health }))
 vi.mock('../src/core/hooks-manager', () => ({ invalidateHooksCache: m.hooks }))
 vi.mock('../src/core/db/events', () => ({ insertEvent: m.insert }))

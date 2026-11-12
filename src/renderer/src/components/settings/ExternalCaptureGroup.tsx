@@ -30,6 +30,12 @@ import { SOURCE_ROW } from '../../lib/sourceRow'
  *  RedLog's own hooks do not. That dot is the whole test. */
 const isExternal = (h: HookInfo): boolean => h.id.includes('.')
 
+const WITHHELD_LINE: Record<NonNullable<HookInfo['stepsWithheld']>, string> = {
+  'needs-consent': 'plugins.issue.needsConsent',
+  'hash-changed': 'plugins.issue.hashChanged',
+  'bundled-changed': 'settings.externalBundledChanged'
+}
+
 export default function ExternalCaptureGroup({ t, onOpenPlugins }: {
   onOpenPlugins?: () => void
   t: (key: string, vars?: Record<string, string | number>) => string
@@ -39,7 +45,7 @@ export default function ExternalCaptureGroup({ t, onOpenPlugins }: {
     if (!Array.isArray(hooks)) throw new Error(t('settings.externalInvalidResponse'))
     return hooks.filter(isExternal)
   })
-  const hooks = hookRead.state.value ?? []
+  const hooks: HookInfo[] = hookRead.state.value ?? []
   const healthRead = useReadState(async () => {
     const health = await window.redlog.capture.health()
     if (!health || !Array.isArray(health.sources)) throw new Error(t('settings.externalInvalidResponse'))
@@ -105,7 +111,7 @@ export default function ExternalCaptureGroup({ t, onOpenPlugins }: {
             ? t('settings.externalDisabledFeeding')
             : hook.disabled ? t('settings.externalDisabled')
               : !hook.available
-                ? t('settings.externalMissing', { dep: hook.description.match(/tcpdump|tshark|mitmdump|node/)?.[0] ?? '' })
+                ? t('settings.externalMissing', { dep: (hook.missing ?? []).join(', ') })
                 : feeding ? t('settings.externalFeeding')
                   : known ? t('settings.externalIdle')
                     : t('settings.externalNotRunning')
@@ -131,12 +137,20 @@ export default function ExternalCaptureGroup({ t, onOpenPlugins }: {
                   question an operator actually has about a producer they
                   started by hand. */}
               {l && <SourceLastSeen source={l} active={feeding} t={t} />}
+              {/* A plugin's commands are shown only for the content that was
+                  approved, or for a bundled plugin, the content RedLog loaded:
+                  a step is often run under sudo (08-plugin-system F7). */}
+              {hook.stepsWithheld ? <div role="status" data-testid="external-steps-withheld" className="mt-2 space-y-1">
+                <p className="text-xs text-redlog-warn">{t(WITHHELD_LINE[hook.stepsWithheld])}</p>
+                {hook.stepsWithheld !== 'bundled-changed' && !hook.disabled && onOpenPlugins
+                  && <Button level="quiet" onClick={onOpenPlugins}>{t('settings.openPlugins')}</Button>}
+              </div> : null}
               {hook.disabled && onOpenPlugins && <Button level="quiet" onClick={onOpenPlugins}>{t('settings.openPlugins')}</Button>}
-              <details className="mt-2">
+              {!hook.stepsWithheld && <details className="mt-2">
                 <summary className="min-h-8 content-center cursor-pointer text-xs text-redlog-text-dim">{t('settings.externalSetup')}</summary>
                 {describe(hook) && <p className="text-xs text-redlog-text-dim my-2">{describe(hook)}</p>}
                 {groupIndex === 0 && <SetupAndTeardown setup={hook.manualSteps} teardown={hook.removalSteps} t={t} />}
-              </details>
+              </details>}
             </div>
           )
           })

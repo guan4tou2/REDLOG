@@ -247,8 +247,8 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
           type: 'error',
           // "Unable to run" is about code; a plugin that is only profiles runs nothing.
           why: p.tier === 'privileged' ? t('plugins.grantFailedWhy')
-            : (p.terminalProfiles?.length ?? 0) === 0 && (p.captureInstalls?.length ?? 0) > 0
-              ? t('plugins.grantFailedWhyInstall') : t('plugins.grantFailedWhyProfiles'),
+            : (p.terminalProfiles?.length ?? 0) > 0 ? t('plugins.grantFailedWhyProfiles')
+              : (p.captureInstalls?.length ?? 0) > 0 ? t('plugins.grantFailedWhyInstall') : t('plugins.failedWhy'),
           detail: r.error
         })
       }
@@ -343,23 +343,28 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
 
   // What the open dialog asks the operator to approve: code (a third-party
   // tailer, which never runs, is not), and the profiles the plugin declares.
-  const confirms = (p: PluginView | null): { code: boolean; profiles: NonNullable<PluginView['terminalProfiles']>; installs: NonNullable<PluginView['captureInstalls']> } => {
-    if (!p) return { code: false, profiles: [], installs: [] }
+  const confirms = (p: PluginView | null): { code: boolean; profiles: NonNullable<PluginView['terminalProfiles']>; installs: NonNullable<PluginView['captureInstalls']>; steps: string[] } => {
+    if (!p) return { code: false, profiles: [], installs: [], steps: [] }
     // A user plugin whose only code is a tailer runs nothing, whatever is
     // agreed; even one that also declares profiles must not be called code.
     const tailerRefused = p.source === 'user' && p.report?.tailers?.state === 'rejected'
     return {
       code: p.tier === 'privileged' && !tailerRefused,
       profiles: p.terminalProfiles ?? [],
-      installs: p.captureInstalls ?? []
+      installs: p.captureInstalls ?? [],
+      steps: p.captureSteps ?? []
     }
   }
   const consent = confirms(confirmGrant)
+  // Only commands to show: the install wording would describe a hook that is not there.
+  const stepsOnly = !consent.code && consent.profiles.length === 0 && consent.installs.length === 0 && consent.steps.length > 0
   const consentTitle = consent.code ? t('plugins.consentTitle')
-    : consent.profiles.length > 0 ? t('plugins.consentTitleProfiles') : t('plugins.consentTitleInstall')
+    : consent.profiles.length > 0 ? t('plugins.consentTitleProfiles')
+      : stepsOnly ? t('plugins.consentTitleSteps') : t('plugins.consentTitleInstall')
   const consentBody = !confirmGrant ? '' : consent.code ? t('plugins.consentBody', { name: confirmGrant.name })
     : consent.profiles.length > 0 ? t('plugins.consentBodyProfiles', { name: confirmGrant.name })
-      : t('plugins.consentBodyInstall', { name: confirmGrant.name })
+      : stepsOnly ? t('plugins.consentBodySteps', { name: confirmGrant.name })
+        : t('plugins.consentBodyInstall', { name: confirmGrant.name })
 
   const detail = selected && selectedVm ? (
     <PluginDetailPanel
@@ -517,6 +522,14 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
                       : t('plugins.installShell', { name: hook.name })}
                   </li>
                 ))}
+              </ul>
+            </>
+          )}
+          {consent.steps.length > 0 && (
+            <>
+              {!stepsOnly && <p className="text-xs text-redlog-text-dim mb-1">{t('plugins.consentStepsToo')}</p>}
+              <ul data-testid="plugin-consent-steps" className="bg-redlog-bg border border-redlog-border rounded p-2 mb-3 text-xs text-amber-400 space-y-0.5">
+                {consent.steps.map((command, i) => <li key={i} className="font-mono break-all">{command}</li>)}
               </ul>
             </>
           )}

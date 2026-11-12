@@ -137,6 +137,10 @@ export interface CaptureContribution {
   emits?: string[]
   /** CLI commands that must exist for this to be "available" (any-of) */
   requires?: string[]
+  /** CLI commands that must ALL exist (e.g. `node` beside the capture tool).
+   *  What is missing from this list and `requires` is what Settings names as
+   *  not found; the description is never read for it. */
+  requiresAll?: string[]
   /** manifest-relative path to the hook script */
   hookFile: string
   /** Anything but `manual` puts the hook on the operator's machine, so the
@@ -150,7 +154,9 @@ export interface CaptureContribution {
   /** `shell-source` only: one of .zshrc, .bashrc, .bash_profile, .profile.
    *  Anything else makes the plugin an error. */
   shellRcFile?: string
-  /** for installMethod 'manual': ordered copy-paste setup steps */
+  /** for installMethod 'manual': ordered copy-paste setup steps. From a user
+   *  plugin, a step with a command makes the plugin wait for approval, and
+   *  the steps are shown only while its content is the approved content. */
   manualSteps?: Array<{ label: string; command?: string }>
 }
 

@@ -17,7 +17,9 @@
           "pcap_segment"
         ],
         "requires": [
-          "tcpdump",
+          "tcpdump"
+        ],
+        "requiresAll": [
           "node"
         ],
         "hookFile": "hooks/pcap-capture.sh",
@@ -51,7 +53,9 @@
           "pcap_segment"
         ],
         "requires": [
-          "tshark",
+          "tshark"
+        ],
+        "requiresAll": [
           "node"
         ],
         "hookFile": "hooks/pcap-capture.ps1",
