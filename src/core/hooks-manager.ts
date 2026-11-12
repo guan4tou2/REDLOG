@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync, rmdirSync } from 'fs'
-import { dirname, join } from 'path'
-import { homedir } from 'os'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, mkdtempSync, copyFileSync, rmSync, rmdirSync } from 'fs'
+import { dirname, isAbsolute, join } from 'path'
+import { homedir, tmpdir } from 'os'
+import { spawnSync } from 'child_process'
 import { X509Certificate } from 'crypto'
 import { bundledRoot } from './plugins/loader'
 import { captureInstallProblem } from './plugins/manifest'
@@ -396,6 +397,17 @@ function srcPathFor(plugin: PluginManifest): string {
 // otherwise mean this was first exercised on CI's ubuntu leg.
 const hookBlock = (dest: string): string => `\n# RedLog shell hook\nsource ${dest}\n`
 
+// The same hook, for a bash LOGIN file (.bash_profile, .bash_login, .profile).
+// POSIX syntax, because `.profile` is also read by sh, dash and ksh, and by the
+// `sh` a display manager runs at session start — where `source` is not a
+// command and the bash adapter is not loadable. Interactive bash only, so
+// `bash -lc cmd` (editors resolving the environment, CI jobs) does not start
+// a recorder it never had. A login bash that ALSO reaches .bashrc's block
+// sources the adapter twice; the adapter returns at once the second time
+// (`_REDLOG_HOOK_LOADED_IN`, keyed on `$$`).
+const loginHookBlock = (dest: string): string =>
+  `\n# RedLog shell hook\nif [ -n "\${BASH_VERSION:-}" ]; then case $- in *i*) . "${dest}" ;; esac; fi\n`
+
 // One file, several ways to write its path. An rc that says `source ~/.redlog/…`
 // is the same hook as one that says `source /Users/me/.redlog/…`; checking only
 // the absolute spelling made install append a second block next to a `~` one
@@ -410,18 +422,21 @@ function hookSpellings(dest: string, home: string): string[] {
   return out
 }
 
-export function rcWithHook(content: string, dest: string, home: string = homedir()): string {
+export function rcWithHook(content: string, dest: string, home: string = homedir(), block: (dest: string) => string = hookBlock): string {
   // Already there — by our line or by the operator's own, in any spelling of
   // the path — so nothing is added and nothing will be taken away.
   if (hookSpellings(dest, home).some((s) => content.includes(s))) return content
-  return content + hookBlock(dest)
+  return content + block(dest)
 }
 
 export function rcWithoutHook(content: string, dest: string, home: string = homedir()): string {
   // An exact string per spelling, not a pattern with optional newlines around
   // it: the optional parts are what made the removal lossy. Only a block that
   // carries our marker comment goes; a bare line the operator wrote stays.
-  return hookSpellings(dest, home).reduce((c, s) => c.split(hookBlock(s)).join(''), content)
+  // The login-file block is only ever written with the absolute path.
+  return hookSpellings(dest, home)
+    .reduce((c, s) => c.split(hookBlock(s)).join(''), content)
+    .split(loginHookBlock(dest)).join('')
 }
 
 export function getCaptureHookPath(pluginId: string): string | null {
@@ -454,17 +469,161 @@ export function getHookInstallPlan(pluginId: string): Array<{ source: string; ta
 }
 
 // Which shell rc a shell-source hook appends to. Explicit wins; otherwise pick
-// by the operator's login shell.
+// by the operator's login shell. This names the SHELL; where that shell reads
+// the file from is `rcLayout`'s question.
 function shellRcFor(plugin: PluginManifest): string {
   if (plugin.shellRcFile) return plugin.shellRcFile
   return process.env.SHELL?.includes('zsh') ? '.zshrc' : '.bashrc'
 }
 
+// Where each shell really reads its startup file (09-F1).
+//
+// Install used to write `~/.zshrc` / `~/.bashrc` and then read "installed"
+// back from the same file, so a wrong guess read as success: zsh with ZDOTDIR
+// reads `$ZDOTDIR/.zshrc`, and the login bash Terminal.app and iTerm2 start
+// reads `.bash_profile` (or `.bash_login`, or `.profile`) and not `.bashrc`.
+// Settings said installed; the shell never loaded the hook.
+//
+// ZDOTDIR is asked of zsh, because it is usually set in `~/.zshenv` and not in
+// the app's environment. `zsh -c` is not interactive and not a login shell, so
+// it reads /etc/zshenv and `.zshenv` — the files zsh itself reads to find
+// ZDOTDIR — and not `.zprofile`/`.zshrc`, where prompt frameworks and
+// anything that prints live. Its answer goes to a file, not a pipe, so a
+// background job started from `.zshenv` cannot hold the call open. Bounded,
+// asked once per home per process (`invalidateCommandCache` clears it); with
+// no answer the result is `$ZDOTDIR` from this environment, else `$HOME`, and
+// is marked as a guess. Not covered: ZDOTDIR changed in `.zprofile`, which
+// moves `.zshrc` for login shells only.
+const ZDOTDIR_PROBE_TIMEOUT_MS = 2_000
+const _zdotdirProbe = new Map<string, string | null>()
+
+function probeZdotdir(home: string): string | null {
+  if (process.platform === 'win32') return null
+  let work: string | undefined
+  try {
+    work = mkdtempSync(join(tmpdir(), 'redlog-zdotdir-'))
+    const answer = join(work, 'answer')
+    const r = spawnSync('zsh', ['-c', 'print -r -- "${ZDOTDIR:-$HOME}" >| "$1"', 'redlog-zdotdir', answer], {
+      env: { ...process.env, HOME: home },
+      stdio: 'ignore',
+      timeout: ZDOTDIR_PROBE_TIMEOUT_MS,
+      killSignal: 'SIGKILL'
+    })
+    if (r.error || r.status !== 0 || !existsSync(answer)) return null
+    const dir = readFileSync(answer, 'utf8').replace(/\n$/, '')
+    return dir && isAbsolute(dir) && !/[\r\n]/.test(dir) ? dir : null
+  } catch {
+    return null
+  } finally {
+    if (work) rmSync(work, { recursive: true, force: true })
+  }
+}
+
+function zshRcPath(home: string): { path: string; guessed: boolean } {
+  if (!_zdotdirProbe.has(home)) _zdotdirProbe.set(home, probeZdotdir(home))
+  const asked = _zdotdirProbe.get(home)
+  if (asked) return { path: join(asked, '.zshrc'), guessed: false }
+  return { path: join(process.env.ZDOTDIR || home, '.zshrc'), guessed: true }
+}
+
+const BASH_LOGIN_FILES = ['.bash_profile', '.bash_login', '.profile'] as const
+
+/** The one file a login bash reads: the first of the three that exists. */
+function bashLoginFile(home: string): string | null {
+  for (const name of BASH_LOGIN_FILES) {
+    const p = join(home, name)
+    if (existsSync(p)) return p
+  }
+  return null
+}
+
+const readText = (p: string): string | null => {
+  try { return existsSync(p) ? readFileSync(p, 'utf8') : null } catch { return null }
+}
+
+/** A login file that already loads `.bashrc` reaches the hook through it.
+ *  Read as text, so only the common uncommented forms count
+ *  (`. ~/.bashrc`, `source "$HOME/.bashrc"`, behind `[ -f … ] &&` or an `if`).
+ *  A miss is harmless: the login block is then added as well, and the second
+ *  load returns at once. */
+function sourcesBashrc(content: string, home: string): boolean {
+  const homes = ['~', '\\$HOME', '\\$\\{HOME\\}', home.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')].join('|')
+  const re = new RegExp(`(^|[;&|{(\\s])(source|\\.)\\s+["']?(${homes})/\\.bashrc["']?(\\s|;|$)`)
+  return content.split(/\r?\n/).some((line) => {
+    const code = line.trim()
+    return !code.startsWith('#') && re.test(code)
+  })
+}
+
+type RcState = 'read' | 'unread' | 'absent'
+
+interface RcLayout {
+  /** Where install writes, each with the block that file gets. */
+  writes: Array<{ path: string; block: (dest: string) => string }>
+  /** Every file a block of ours may be in: detection and removal look here. */
+  candidates: string[]
+  /** Whether the shell loads a hook line found in these files. */
+  state: (hookName: string) => RcState
+  /** zsh did not answer and the ZDOTDIR is assumed. */
+  guessed: boolean
+}
+
+function rcLayout(plugin: PluginManifest, home: string = homedir()): RcLayout {
+  const rcName = shellRcFor(plugin)
+  const has = (p: string | null, hookName: string): boolean => !!p && (readText(p)?.includes(hookName) ?? false)
+  if (rcName === '.zshrc') {
+    const { path, guessed } = zshRcPath(home)
+    const candidates = [...new Set([path, join(home, '.zshrc')])]
+    return {
+      writes: [{ path, block: hookBlock }],
+      candidates,
+      state: (n) => has(path, n) ? 'read' : candidates.some((c) => has(c, n)) ? 'unread' : 'absent',
+      guessed
+    }
+  }
+  // The login-file handling leans on the built-in adapter's sourced-twice
+  // guard. A plugin's own hook is not known to have one, so it gets the one
+  // file it named.
+  if (plugin.id === 'shell-bash' && rcName === '.bashrc') {
+    const bashrc = join(home, '.bashrc')
+    const login = bashLoginFile(home)
+    const loginText = login ? readText(login) : null
+    const writes: RcLayout['writes'] = [{ path: bashrc, block: hookBlock }]
+    // No login file at all: a login bash reads nothing, so one is created,
+    // holding only this block. An existing `.profile` is never shadowed by a
+    // new `.bash_profile`: the block goes into the file bash already reads.
+    if (!login) writes.push({ path: join(home, '.bash_profile'), block: loginHookBlock })
+    else if (!sourcesBashrc(loginText ?? '', home)) writes.push({ path: login, block: loginHookBlock })
+    const candidates = [bashrc, ...BASH_LOGIN_FILES.map((f) => join(home, f))]
+    return {
+      writes,
+      candidates,
+      state: (n) => {
+        const nonLogin = has(bashrc, n)
+        const loginReach = !!login && (has(login, n) || (nonLogin && sourcesBashrc(loginText ?? '', home)))
+        if (nonLogin && loginReach) return 'read'
+        return candidates.some((c) => has(c, n)) ? 'unread' : 'absent'
+      },
+      guessed: false
+    }
+  }
+  const path = join(home, rcName)
+  return {
+    writes: [{ path, block: hookBlock }],
+    candidates: [path],
+    state: (n) => has(path, n) ? 'read' : 'absent',
+    guessed: false
+  }
+}
+
+const tildePath = (p: string, home: string = homedir()): string =>
+  p.startsWith(`${home}/`) ? `~${p.slice(home.length)}` : p
+
 // Per-command lookup cache. The answer virtually never changes during a
 // session; `invalidateCommandCache()` resets it after an install/uninstall so
 // the next `detectHooks()` re-probes.
 const _cmdCache = new Map<string, boolean>()
-export function invalidateCommandCache(): void { _cmdCache.clear() }
+export function invalidateCommandCache(): void { _cmdCache.clear(); _zdotdirProbe.clear() }
 
 // A PATH lookup, not a spawned `which` / `where`: one process per probe cost
 // hundreds of milliseconds on Windows, on the main thread (command-lookup.ts).
@@ -508,15 +667,15 @@ function isClaudeSettingsInstalled(commands: string[]): boolean {
   }
 }
 
-// `requireCopy: false` asks only whether the rc still sources the hook, which
-// is what removal needs: the copy may already have been deleted by hand.
-function isShellSourceInstalled(rcFile: string, hookPath: string, requireCopy = true): boolean {
-  if (requireCopy && !existsSync(hookPath)) return false
-  const rcPath = join(homedir(), rcFile)
-  if (!existsSync(rcPath)) return false
-  const content = readFileSync(rcPath, 'utf-8')
-  const hookName = hookPath.split(/[\\/]/).pop() ?? ''
-  return content.includes(hookName)
+// 'read': a file the shell loads sources the hook. 'unread': a line is there,
+// but only where this shell will not load it (a `~/.zshrc` under ZDOTDIR, a
+// `.bashrc` no login file reaches) — not installed, and not nothing either:
+// removal still takes it out. `requireCopy: false` asks only about the lines,
+// which is what removal needs: the copy may already have been deleted by hand.
+function shellSourceState(plugin: PluginManifest, requireCopy = true): RcState {
+  const hookPath = installTargetFor(plugin)
+  if (requireCopy && !existsSync(hookPath)) return 'absent'
+  return rcLayout(plugin).state(hookPath.split(/[\\/]/).pop() ?? '')
 }
 
 // PowerShell loads a different profile per edition: Windows PowerShell 5.1
@@ -581,7 +740,7 @@ function checkInstalled(plugin: PluginManifest): boolean {
     case 'claude-settings':
       return isClaudeSettingsInstalled(claudeHookCommands(plugin))
     case 'shell-source':
-      return isShellSourceInstalled(plugin.shellRcFile ?? '.zshrc', installTargetFor(plugin))
+      return shellSourceState(plugin) === 'read'
     case 'powershell-profile':
       return isPowershellProfileInstalled(installTargetFor(plugin))
     case 'manual':
@@ -794,7 +953,12 @@ export function refreshInstalledHooks(): string[] {
     const files = plugin.installMethod === 'shell-source' ? getHookInstallPlan(plugin.id)
       : plugin.installMethod === 'powershell-profile' ? [{ source: srcPathFor(plugin), target: installTargetFor(plugin) }]
       : null
-    if (!files || !checkInstalled(plugin)) continue
+    // A shell-source copy that any rc names is in use, whether or not that rc
+    // is one the shell reads today: an out-of-date copy is wrong either way.
+    const enrolled = plugin.installMethod === 'shell-source'
+      ? shellSourceState(plugin) !== 'absent'
+      : checkInstalled(plugin)
+    if (!files || !enrolled) continue
     let changed = false
     for (const file of files) {
       try {
@@ -822,7 +986,7 @@ export function removeInstalledHooks(): string[] {
     // The line is what has to go, so ask whether it is there — not whether
     // the copy it names still is (the operator may have cleared ~/.redlog).
     const sourced = plugin.installMethod === 'shell-source'
-      ? isShellSourceInstalled(plugin.shellRcFile ?? '.zshrc', installTargetFor(plugin), false)
+      ? shellSourceState(plugin, false) !== 'absent'
       : plugin.installMethod === 'powershell-profile'
         ? isPowershellProfileInstalled(installTargetFor(plugin), false)
         : false
@@ -885,12 +1049,18 @@ export function installHook(pluginId: string): { success: boolean; message: stri
           if (!existsSync(file.source)) throw new Error(`Missing hook file: ${file.source}`)
           copyFileSync(file.source, file.target)
         }
-        const rcFile = shellRcFor(plugin)
-        const rcPath = join(homedir(), rcFile)
-        const before = existsSync(rcPath) ? readFileSync(rcPath, 'utf-8') : ''
-        const after = rcWithHook(before, dest)
-        if (after !== before) writeFileSync(rcPath, after)
-        return { success: true, message: `${plugin.name} hook installed. Run: source ~/${rcFile}` }
+        const layout = rcLayout(plugin)
+        for (const { path, block } of layout.writes) {
+          const before = existsSync(path) ? readFileSync(path, 'utf-8') : ''
+          const after = rcWithHook(before, dest, homedir(), block)
+          if (after !== before) writeFileSync(path, after)
+        }
+        const files = layout.writes.map((w) => tildePath(w.path))
+        return {
+          success: true,
+          message: `${plugin.name} hook added to ${files.join(' and ')}. Open a new terminal, or run: source ${files[0]}`
+            + (layout.guessed ? ' (zsh did not say where it reads .zshrc, so this is assumed)' : '')
+        }
       } catch (e) {
         return { success: false, message: `Failed: ${e}` }
       }
@@ -964,10 +1134,11 @@ export function uninstallHook(pluginId: string): { success: boolean; message: st
     }
     case 'shell-source': {
       try {
-        const rcFile = shellRcFor(plugin)
-        const rcPath = join(homedir(), rcFile)
         const dest = installTargetFor(plugin)
-        if (existsSync(rcPath)) {
+        // Every file a block may be in — where the shell reads today, and the
+        // `~/.zshrc` or login file an earlier install wrote to.
+        for (const rcPath of rcLayout(plugin).candidates) {
+          if (!existsSync(rcPath)) continue
           const before = readFileSync(rcPath, 'utf-8')
           const after = rcWithoutHook(before, dest)
           if (after !== before) {

@@ -607,7 +607,6 @@ describeShell('terminal application boundary in real POSIX adapters', () => {
         const events = collector.events.slice(before)
         expect(events.some(e => String(e.data.command).includes('app-probe'))).toBe(true)
         expect(events.some(e => String(e.data.command).includes('after-exclusion'))).toBe(false)
-        expect(report.transcript).toContain('[redlog] shell hook loaded')
       }
     } finally { await collector.close() }
   }, 180_000)

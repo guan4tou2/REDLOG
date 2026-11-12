@@ -7,9 +7,9 @@ if [[ -z "${BASH_VERSION:-}" ]]; then
   return 1 2>/dev/null || exit 1
 fi
 
-# Sourced twice from one rc (a relative and an absolute path to the same file
-# are the usual way) the banner printed twice and the prompt hooks registered
-# twice. Plain, un-exported: a child shell is a new interpreter and must load.
+# Sourced twice in one shell (a relative and an absolute path to the same file,
+# or a login file and the .bashrc it loads) the prompt hooks registered twice.
+# Plain, un-exported: a child shell is a new interpreter and must load.
 [[ "${_REDLOG_HOOK_LOADED_IN:-}" == "$$" ]] && return 0
 
 # The directory part by expansion, as `dirname` would give it: one process
@@ -30,7 +30,34 @@ export REDLOG_SHELL=bash
 # shellcheck source=shell-common.sh
 source "$_redlog_adapter_dir/shell-common.sh"
 unset _redlog_adapter_dir
-_redlog_terminal_allowed || { _redlog_announce_terminal_refused; return 0; }
+# Refused: say so at the first prompt, once, and never during init. Put ahead
+# of the operator's prompt command and handing its status on, so a prompt that
+# shows `$?` still shows theirs. A newline, not `;`, joins the two: their value
+# may start with one.
+_redlog_refused_at_prompt() {
+  local rc=$?
+  if [[ -n "${_REDLOG_REFUSED_PENDING:-}" ]]; then
+    _REDLOG_REFUSED_PENDING=""
+    _redlog_announce_terminal_refused
+  fi
+  return $rc
+}
+if ! _redlog_terminal_allowed; then
+  _REDLOG_REFUSED_PENDING=1
+  if (( BASH_VERSINFO[0] > 5 || (BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] >= 1) )) \
+     && [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]]; then
+    [[ " ${PROMPT_COMMAND[*]} " == *" _redlog_refused_at_prompt "* ]] \
+      || PROMPT_COMMAND=(_redlog_refused_at_prompt "${PROMPT_COMMAND[@]}")
+  elif [[ -z "${PROMPT_COMMAND:-}" ]]; then
+    PROMPT_COMMAND=_redlog_refused_at_prompt
+  elif [[ "$PROMPT_COMMAND" != *_redlog_refused_at_prompt* ]]; then
+    PROMPT_COMMAND=_redlog_refused_at_prompt$'\n'$PROMPT_COMMAND
+  fi
+  return 0
+fi
+# Left defined when the terminal is allowed: a refused load earlier in this
+# shell may already have put it in PROMPT_COMMAND.
+_REDLOG_REFUSED_PENDING=""
 _REDLOG_HOOK_LOADED_IN=$$
 
 # Explicit PTY capture owns this child shell; avoid unpinned duplicate events.
@@ -735,4 +762,3 @@ _redlog_state --action begin >/dev/null 2>&1
 _redlog_identity_stamp && _REDLOG_IDENTITY_SEEN=$_redlog_stamp
 # Behind the prompt: with thousands left over it is not something to wait for.
 ( _redlog_sweep_relay_dirs </dev/null >/dev/null 2>&1 & )
-_redlog_announce_shell

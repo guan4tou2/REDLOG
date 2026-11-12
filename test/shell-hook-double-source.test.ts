@@ -5,11 +5,18 @@ import os from 'node:os'
 import path from 'node:path'
 
 // An rc that sources the hook twice (relative and absolute path to the same
-// file) must not announce twice, and a child shell must still load it.
+// file, or a login file and the .bashrc it loads) must register its prompt
+// hook once, and a child shell must still load it. Loading prints nothing, so
+// what is counted is the registration itself.
 const have = (exe: string): boolean => spawnSync(exe, ['-c', 'exit 0'], { stdio: 'ignore' }).status === 0
-const banners = (s: string): number => (s.match(/shell hook loaded/g) ?? []).length
 
-function run(exe: 'bash' | 'zsh', hook: string, body: string) {
+const COUNT = {
+  bash: 'printf "@@%s\\n" "$PROMPT_COMMAND"',
+  zsh: 'print -r -- "@@${(j: :)precmd_functions}"'
+} as const
+const NEEDLE = { bash: '_redlog_prompt_command', zsh: '_redlog_precmd' } as const
+
+function run(exe: 'bash' | 'zsh', hook: string, body: string): string {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-dbl-'))
   try {
     return spawnSync(exe, ['-c', body], {
@@ -19,14 +26,18 @@ function run(exe: 'bash' | 'zsh', hook: string, body: string) {
   } finally { fs.rmSync(home, { recursive: true, force: true }) }
 }
 
+const registrations = (exe: 'bash' | 'zsh', out: string): number[] =>
+  out.split('\n').filter((l) => l.startsWith('@@')).map((l) => l.split(NEEDLE[exe]).length - 1)
+
 for (const [exe, hook] of [['bash', 'hooks/shell-bash-hook.sh'], ['zsh', 'hooks/shell-zsh-hook.zsh']] as const) {
   ;(have(exe) ? describe : describe.skip)(`${exe} hook sourced twice`, () => {
-    it('announces once', () => {
-      expect(banners(run(exe, hook, 'source "$HOOK"; source "$HOOK"'))).toBe(1)
+    it('registers once', () => {
+      expect(registrations(exe, run(exe, hook, `source "$HOOK"; source "$HOOK"; ${COUNT[exe]}`))).toEqual([1])
     })
-    it('a child shell started from it still loads and announces', () => {
-      const out = run(exe, hook, 'source "$HOOK"; "$EXE" -c \'source "$HOOK"\'')
-      expect(banners(out)).toBe(2)
+    it('a child shell started from it still loads', () => {
+      const child = `source "$HOOK"; ${COUNT[exe]}`
+      const out = run(exe, hook, `source "$HOOK"; ${COUNT[exe]}; "$EXE" -c '${child.replace(/'/g, `'\\''`)}'`)
+      expect(registrations(exe, out)).toEqual([1, 1])
     })
   })
 }
