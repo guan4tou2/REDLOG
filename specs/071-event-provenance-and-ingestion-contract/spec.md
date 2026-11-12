@@ -460,7 +460,7 @@
 
 > **2026-11-12 擁有者答覆**：Q6 照建議——寫入連線改為 `synchronous=FULL`，改之前先量測寫入成本；量測結果若顯示影響明顯，回報後再議折衷。
 
-> **2026-11-12 已實作**：寫入連線設 `synchronous = FULL`；`fullfsync` 不開。量測（MacBook Pro M2 Pro、內建 Apple SSD AP1024Z／APFS，經 `insertEvent` 的真實寫入路徑，每列一次 commit）：FULL 對 NORMAL 的總耗時為 1–5 倍（100 筆 shell 突發 33→178 ms；2,000 筆 HTTP flow 事件 0.58→1.95 s；20k 積壓 9.7→23.2 s；每次 commit 平均約 1 ms、p99 約 10–16 ms），在可接受範圍。`fullfsync = ON` 每次 commit 約 6 ms，2,000 筆 HTTP 事件 13.7 s、20k 積壓 175 s（今天的 18–24 倍），且主執行緒同步等待，所以不開；代價是 macOS 上斷電時最近幾筆 commit 仍可能遺失（FR-062）。Q6 關閉。
+> **2026-11-12 已實作**：寫入連線設 `synchronous = FULL`；`fullfsync` 不開。量測（MacBook Pro M2 Pro、內建 Apple SSD AP1024Z／APFS，經 `insertEvent` 的真實寫入路徑，每列一次 commit，單一行程、1 分鐘負載低於 8）：FULL 與 NORMAL 在雜訊範圍內沒有差別（100 筆 shell 突發 35→42 ms；2,000 筆 HTTP flow 事件 0.79→0.60 s；20k 積壓 9.0→8.8 s；FULL 每次 commit p50 約 0.2–0.3 ms、p99 低於 3 ms），macOS 上不清磁碟快取的 `fsync()` 很便宜。`fullfsync = ON` 每次 commit 約 4–5 ms，100 筆突發 0.66 s、2,000 筆 HTTP 事件 10.6 s、20k 積壓 112 s（今天的 12–19 倍），且主執行緒同步等待，所以不開；代價是 macOS 上斷電時最近幾筆 commit 仍可能遺失（FR-062）。Q6 關閉。
 
 O13–O17（原 Q1–Q5）已決定。以下是 2026-11-12 Phase 1 實作後新出現、尚未答覆的事項；本規格不替擁有者決定。
 

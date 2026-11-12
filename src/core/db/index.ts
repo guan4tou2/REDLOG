@@ -146,7 +146,8 @@ export function initDB(projectDir: string): Database.Database {
   // keeps an explicit setting when it finds the file in WAL mode.
   // `fullfsync` stays off: on macOS a plain fsync does not flush the drive's
   // cache, so a power cut can still take the newest commits, but F_FULLFSYNC
-  // measured ~6 ms a commit, 18-24x today (spec 071 Q6).
+  // measured 4-5 ms a commit, 12-19x today, where FULL measured no more than
+  // NORMAL (spec 071 Q6).
   // Only this writer: the read-only connections never commit, and the derived
   // indexes (http-body-index.db, cast index) are rebuilt from evidence.
   db.pragma('synchronous = FULL')
