@@ -193,6 +193,13 @@ describe('Activity project query', () => {
     expect(queryActivityPage(request('', { activityFilter: { actions: ['system'] } })).totalGroups).toBe(2)
   })
 
+  it('keeps an in-scope tally row out of security: it shares the subtype but is not a violation', () => {
+    add('tally', 10, 'system', { subtype: 'scope_violation', target: 'ok.example', distance: 'in_scope' })
+    add('viol', 20, 'system', { subtype: 'scope_violation', target: 'evil.example', distance: 'outside' })
+    const all = queryActivityPage(request())
+    expect(all.items.map(a => [a.anchor.id, a.action])).toEqual([['viol', 'security'], ['tally', 'system']])
+  })
+
   it('rejects invalid typed Activity filters instead of implying that nothing matches', () => {
     expect(() => queryActivityPage(request('', { activityFilter: { actions: ['typo'] as never } }))).toThrow(/filter/i)
     expect(() => queryActivityPage(request('', { activityFilter: { states: ['running'] as never } }))).toThrow(/filter/i)

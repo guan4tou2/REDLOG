@@ -65,8 +65,10 @@ export function activityClassification(event: Pick<RedLogEvent, 'agentType' | 'd
       // `alert` and `scope_violation` were listed here as agent types and never
       // written (report 10, A.5); the external API refuses all five. A scope
       // violation is written as agent_type `system`, subtype `scope_violation`,
-      // and is the one row that belongs to `security`.
-      : event.agentType === 'system' && d.subtype === SCOPE_VIOLATION_SUBTYPE ? 'security'
+      // and is the one row that belongs to `security`. In-scope verdicts are
+      // written under the same subtype as an adherence tally
+      // (scope-recompute-run.ts); they are not violations and stay `system`.
+      : event.agentType === 'system' && d.subtype === SCOPE_VIOLATION_SUBTYPE && d.distance !== 'in_scope' ? 'security'
       : ['scanner', 'dns', 'browser', 'pcap'].includes(event.agentType) ? 'network'
         : ['screenshot', 'marker', 'loot'].includes(event.agentType) ? 'evidence'
           : ['system', 'process', 'clipboard', 'cleanup'].includes(event.agentType) ? 'system' : 'other'
