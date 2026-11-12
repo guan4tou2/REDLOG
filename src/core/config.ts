@@ -4,7 +4,8 @@ import path from 'path'
 import * as yaml from 'js-yaml'
 import { DEFAULT_BROWSER } from './browser-defaults'
 import { loadYamlDocument } from './yaml-document'
-import { mkdirPrivate, restrictFile } from './private-fs'
+import { mkdirPrivate, writePrivateFileAtomic } from './private-fs'
+import { CONFIG_INVALID_TAG } from './config-invalid'
 
 export interface VpnAdapter {
   name: string
@@ -398,27 +399,89 @@ export function mergeInitialConfig(config: RedLogConfig, projectId: string, init
  *  every later load in the process. */
 const defaults = (): RedLogConfig => structuredClone(DEFAULT_CONFIG)
 
-export function loadConfig(projectDir: string): RedLogConfig {
-  const configPath = path.join(projectDir, 'config.yaml')
-  try {
-    const raw = fs.readFileSync(configPath, 'utf-8')
-    const parsed = loadYamlDocument(raw) as Record<string, unknown>
-    return deepMerge(defaults() as unknown as Record<string, unknown>, parsed) as unknown as RedLogConfig
-  } catch {
-    return defaults()
+/** What is on disk, in the three cases a caller has to tell apart.
+ *
+ *  `absent` is a project that has never been opened: the defaults ARE its
+ *  config. `invalid` is a file that is there and cannot be used — a typo, a
+ *  merge marker, a list or a scalar at the top, an empty file, something that
+ *  is not a file. Its defaults would be a different engagement (`engagement.id`
+ *  `default`, operator `operator-1`, no scope, offline off), so nothing may be
+ *  read from it, and above all nothing may be written over it. */
+export type ConfigRead =
+  | { kind: 'absent'; config: RedLogConfig }
+  | { kind: 'ok'; config: RedLogConfig }
+  | { kind: 'invalid'; file: string; reason: string }
+
+/** Thrown by `loadConfig` for an `invalid` file. The message carries the tag
+ *  the renderer recognises after IPC (core/config-invalid.ts), the file, and a
+ *  short reason. */
+export class ConfigInvalidError extends Error {
+  constructor(readonly file: string, readonly reason: string) {
+    super(`${CONFIG_INVALID_TAG} ${file}: ${reason}`)
+    this.name = 'ConfigInvalidError'
   }
+}
+
+function parseFailure(e: unknown): string {
+  if (e instanceof yaml.YAMLException) {
+    const line = typeof e.mark?.line === 'number' ? ` (line ${e.mark.line + 1})` : ''
+    return `not valid YAML: ${e.reason || 'parse error'}${line}`
+  }
+  return 'not valid YAML'
+}
+
+export function readConfig(projectDir: string): ConfigRead {
+  const file = path.join(projectDir, 'config.yaml')
+  let raw: string
+  try {
+    raw = fs.readFileSync(file, 'utf-8')
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException)?.code
+    if (code === 'ENOENT') return { kind: 'absent', config: defaults() }
+    return { kind: 'invalid', file, reason: `cannot be read (${code ?? 'unknown error'})` }
+  }
+  let parsed: unknown
+  try { parsed = loadYamlDocument(raw) } catch (e) { return { kind: 'invalid', file, reason: parseFailure(e) } }
+  // An empty file is not "no settings": a save cut off after the truncate
+  // leaves exactly this, and its defaults would rebind the engagement id.
+  if (parsed === null || parsed === undefined) return { kind: 'invalid', file, reason: 'empty, not a mapping' }
+  if (typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { kind: 'invalid', file, reason: `not a mapping (a ${Array.isArray(parsed) ? 'list' : typeof parsed})` }
+  }
+  return { kind: 'ok', config: deepMerge(defaults() as unknown as Record<string, unknown>, parsed as Record<string, unknown>) as unknown as RedLogConfig }
+}
+
+/** The config, or the defaults when there is no file. Throws
+ *  `ConfigInvalidError` for a file that is there and unusable — it used to
+ *  return the defaults, which the open then wrote over the file and every
+ *  caller acted on as if they were the operator's settings.
+ *
+ *  Each caller still reads the file itself; one config view for the open
+ *  project is Spec 073. */
+export function loadConfig(projectDir: string): RedLogConfig {
+  const read = readConfig(projectDir)
+  if (read.kind === 'invalid') throw new ConfigInvalidError(read.file, read.reason)
+  return read.config
+}
+
+/** The config a project open binds to, written back so the file carries every
+ *  current section. Called before the open project is closed: a file that
+ *  cannot be used throws here with nothing written and nothing stopped. */
+export function prepareOpenConfig(projectDir: string): RedLogConfig {
+  const config = loadConfig(projectDir)
+  saveConfig(projectDir, config)
+  return config
 }
 
 /** Writes the file and returns its revision (see `readConfigRevision`). */
 export function saveConfig(projectDir: string, config: RedLogConfig): string {
   mkdirPrivate(projectDir)
   const configPath = path.join(projectDir, 'config.yaml')
-  // Owner-only like the database beside it: scope, operator and integration
-  // settings. `mode` applies only on create, so an older 0644 file is
-  // restricted as well.
+  // Whole or not at all, owner-only like the database beside it (scope,
+  // operator and integration settings): a write cut off in place is how an
+  // unparseable config.yaml appears in the first place.
   const text = yaml.dump(config, { lineWidth: 120 })
-  fs.writeFileSync(configPath, text, { encoding: 'utf-8', mode: 0o600 })
-  restrictFile(configPath)
+  writePrivateFileAtomic(configPath, text)
   return revisionOf(text)
 }
 
@@ -527,9 +590,9 @@ export type ProjectScopeSummary =
   | { state: 'unset' }
   | { state: 'unknown' }
 
-/** Read-only and deliberately not built on `loadConfig` (which turns every
- *  error into defaults, i.e. into "no scope") or `snapshotScope` (which turns
- *  an unreadable scope file into an empty one). Writes nothing, opens no
+/** Read-only and deliberately not built on `loadConfig` (which throws, and
+ *  this answers for every project in the picker) or `snapshotScope` (which
+ *  turns an unreadable scope file into an empty one). Writes nothing, opens no
  *  database. */
 export function readProjectScope(projectDir: string): ProjectScopeSummary {
   let raw: string
