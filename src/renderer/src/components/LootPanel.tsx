@@ -11,6 +11,7 @@ import { useInfiniteScroll } from '../lib/useInfiniteScroll'
 import { ListFooter } from './ListFooter'
 import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
 import { EmptyByConstructionNotice } from './FilterNotice'
+import { EventContentReader } from './EventContentReader'
 
 interface LootEvent {
   id: string
@@ -18,6 +19,12 @@ interface LootEvent {
   targetId: string | null
   source: string | null
   matches: Array<{ type: string; confidence: string; preview: string }>
+  /** The event whose text produced the hit (`_causes`); null when none was
+   *  recorded — clipboard and API scans keep no source text. */
+  sourceEventId: string | null
+  /** The line the first hit sits on, as stored: where the reader opens. Taken
+   *  before any filter, so narrowing the list does not move an open reader. */
+  hit: string
 }
 
 const PAGE_SIZE = 200
@@ -42,16 +49,26 @@ const lootKey = (event: LootEvent): string => event.id
 const isLootBatch = (events: RedLogEvent[]): boolean => events.some((evt) => evt.agentType === 'loot')
 
 function projectLootEvent(e: { id: string; timestamp: number; targetId?: string | null; data: Record<string, unknown> }): LootEvent {
+  const matches = (e.data.matches as LootEvent['matches']) ?? []
+  const causes = Array.isArray(e.data._causes) ? e.data._causes.filter((c): c is string => typeof c === 'string' && c.length > 0) : []
   return {
     id: e.id,
     timestamp: e.timestamp,
     targetId: e.targetId ?? null,
     source: (e.data.source as string) ?? null,
-    matches: (e.data.matches as LootEvent['matches']) ?? []
+    matches,
+    sourceEventId: causes[0] ?? null,
+    hit: typeof matches[0]?.preview === 'string' ? matches[0].preview : ''
   }
 }
 
-export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: string, ts: number) => void }): JSX.Element {
+export function LootPanel({ onOpenInTimeline, projectId, active = true }: {
+  onOpenInTimeline?: (eventId: string, ts: number) => void
+  /** Without it a row opens to its actions only, with no source content. */
+  projectId?: string
+  /** False while the page is kept hidden behind another one. */
+  active?: boolean
+}): JSX.Element {
   // Filter by loot type; null = show all. Chips appear at the top with counts.
   const [typeFilter, setTypeFilter] = useState<string | null>(null)
   const [query, setQuery] = useState('')
@@ -116,12 +133,14 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
 
   // §9: page the rows so a large haul doesn't mount all at once. `visibleList`
   // stays the name the render uses; it's now the windowed slice.
-  const paged = useInfiniteScroll(fullList)
+  // A live refresh is the same question: it must not shrink the window back to
+  // the first page and take an open row (and its reader) with it.
+  const paged = useInfiniteScroll(fullList, undefined, JSON.stringify([sharedFilter, typeFilter, needle]))
   const visibleList = paged.visible
 
-  // Same keys as every other list (§9). ⌘↩ and Enter both go to the Timeline
-  // here: a loot row has no detail panel of its own, so "activate" and "show
-  // me where this came from" are the same request. Nav spans the rendered rows.
+  // Same keys as every other list (§9): Enter opens the row in place, ⌘↩ goes
+  // to the Timeline. Nav spans the rendered rows. Keys typed inside an open
+  // row's reader are the reader's, not the list's (see the container below).
   const listNav = useListKeyboard({
     count: visibleList.length,
     onActivate: (i) => { const le = visibleList[i]; if (le) toggleOpen(le.id) },
@@ -220,7 +239,8 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
         // header count, so what you see and what the header says can never
         // disagree. Each source event keeps its own grouping so the "click
         // card → jump to timeline" flow still lands on a real event id.
-        <div className="space-y-2" {...listNav.containerProps} aria-label={t('loot.title', { count: paged.total })}>
+        <div className="space-y-2 min-w-0" {...listNav.containerProps} aria-label={t('loot.title', { count: paged.total })}
+          onKeyDown={(e) => { if (!(e.target as HTMLElement).closest?.('[data-loot-detail]')) listNav.containerProps.onKeyDown(e) }}>
           {visibleList.length === 0 && (
             // Same three-part shape as the no-loot state (§5-4): what would be
             // here, why it is not, and the one action that changes that. A
@@ -272,11 +292,30 @@ export function LootPanel({ onOpenInTimeline }: { onOpenInTimeline?: (eventId: s
                 </div>
               ))}
               {open.has(le.id) && (
-                <div data-testid="loot-detail" className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-redlog-border pt-2" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-                  <span className="text-xs italic text-redlog-text-faint">{t('loot.hitNotProof')}</span>
-                  {onOpenInTimeline && (
-                    <Button size="compact" data-testid="loot-locate" onClick={() => onOpenInTimeline(le.id, le.timestamp)}>{t('loot.openInTimeline')} →</Button>
-                  )}
+                <div
+                  data-testid="loot-detail"
+                  data-loot-detail
+                  className="mt-3 min-w-0 cursor-auto space-y-2 border-t border-redlog-border pt-2"
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => {
+                    // One layer per Escape: an expanded reader closes itself
+                    // first; next the row closes, and focus goes back to it.
+                    if (e.key !== 'Escape' || e.defaultPrevented) return
+                    e.preventDefault()
+                    const row = (e.currentTarget.closest('[role="option"]') as HTMLElement | null)
+                    toggleOpen(le.id)
+                    row?.focus({ preventScroll: true })
+                  }}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs italic text-redlog-text-faint">{t('loot.hitNotProof')}</span>
+                    {onOpenInTimeline && (
+                      <Button size="compact" data-testid="loot-locate" onClick={() => onOpenInTimeline(le.id, le.timestamp)}>{t('loot.openInTimeline')} →</Button>
+                    )}
+                  </div>
+                  {projectId && (le.sourceEventId
+                    ? <EventContentReader projectId={projectId} eventId={le.sourceEventId} active={active} find={le.hit || undefined} />
+                    : <p data-testid="loot-no-source" role="status" className="text-xs text-redlog-text-dim">{t('content.status.not-captured')}</p>)}
                 </div>
               )}
             </div>
