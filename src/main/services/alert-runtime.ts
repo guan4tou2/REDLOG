@@ -45,14 +45,14 @@ export interface IPStatusShape {
 }
 
 /** Maps the richer five-verdict alert semantics onto the three-colour
- *  badge the UI has always shown. `presumed_safe` reads as safe (we
- *  don't have positive-safe evidence, but nothing is red); `off_profile`
- *  reads as exposed (whitelist configured, IP didn't match — a real
- *  fact, deserves red). */
+ *  badge the UI has always shown. `presumed_safe` reads as unknown: it
+ *  means only that no list matched, so nothing says the address is safe;
+ *  `off_profile` reads as exposed (whitelist configured, IP didn't match —
+ *  a real fact, deserves red). */
 function verdictToSafety(v: IPVerdict | null): IPStatusShape['ipSafety'] {
   if (!v) return 'unknown'
   if (v.value === 'exposed' || v.value === 'off_profile') return 'exposed'
-  if (v.value === 'safe' || v.value === 'presumed_safe') return 'safe'
+  if (v.value === 'safe') return 'safe'
   return 'unknown'
 }
 
