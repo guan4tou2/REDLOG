@@ -1,0 +1,103 @@
+# 同類系統的設計參考：整合（2026-11-12）
+
+> **狀態**：research — 外部系統的設計參考，不是需求；採用與否由 [工作計畫](../WORK-PLAN.md) 的各階段決定  
+> **範圍**：四份研究報告的整合，對應 [根因審查與落地計畫](../records/2026-11-12/ROOT-CAUSE-REVIEW.md) 的階段  
+> **最後核對**：2026-11-12。研究者依公開的一手來源撰寫，各報告末尾列有未能驗證的項目；本頁的整合未另行查證來源
+
+四份報告：
+
+- [A 防竄改的紀錄與可驗證的匯出](PRIOR-ART-A-tamper-evident-records.md)
+- [B 寫入契約與遺失的記帳](PRIOR-ART-B-ingestion-contracts.md)
+- [C 錄製工具、shell 整合與狀態模型](PRIOR-ART-C-recorders-and-status.md)
+- [D 桌面應用架構與驗證](PRIOR-ART-D-desktop-architecture-and-verification.md)
+
+研究方法：每個主題比較至少三個獨立系統，取它們一致的做法；特別找維護者自述「第一版做錯、後來改掉」之處；最後判斷哪些能搬到本機、單人的記錄工具。這些系統多半是分散式或多租戶的，許多複雜度是為了這裡沒有的問題。
+
+## 對各階段的影響
+
+### 階段 0／7：量測與驗證
+
+| 採用 | 來源系統的做法 | 說明 |
+|---|---|---|
+| 量延遲，不量做了什麼；超標才採樣並歸因到具名的處理程式 | Node `monitorEventLoopDelay`、VS Code 的無回應採樣、W3C Long Animation Frames | e2e 斷言「超過寬鬆門檻的次數為 0」；p99 只記錄不斷言 |
+| 效能回歸用「工作量計數」判定，不用牆鐘時間 | rustc-perf、iai（指令數）、Perfherder（歷史離群） | 與既有的「開檔次數／走訪列數」斷言一致；比例測試留作手動 |
+| 測試掌控時間；模組單例每個測試重置；略過要有原因並被計數 | Testing Library、Vitest、Playwright clock、pytest、Bazel | #706 已做略過記帳；時間掌控與單例重置未做 |
+| **正式版的啟動測試不靠除錯埠**：app 內建自檢旗標，結果寫成檔案並以結束碼表示 | VS Code 對建置產物的 smoke、Electron fuses 的限制 | 可取代目前「冒煙版另開 inspector」的折衷，使受測的二進位檔就是要發行的那一個 |
+| mutation testing 只對 diff 範圍、每行至多一個 | Google 的 mutation testing 論文、Stryker incremental | 對應「測試從未被證明會失敗」 |
+
+### 階段 1／4：核心蓋身分、寫入契約
+
+| 採用 | 來源系統的做法 | 說明 |
+|---|---|---|
+| 身分由憑證決定、由接收端蓋章；用戶端自述的欄位另外命名並視為不可信 | Sentry DSN、Kubernetes bound token、journald 的 `_` 欄位、OTel resource | 每個來源一把只能寫入的憑證；主行程蓋上來源與收到的時間 |
+| 兩個時間戳：事件時間（來源時鐘）與觀察時間（接收端時鐘） | OTel log data model、Sentry `sent_at` | 重送的事件不再套用「現在」的時間與目標 |
+| 逐項回執，結果為封閉列舉：已寫入（commit 之後才回）、重複、永久拒絕（附原因）、稍後重試 | OTLP partial success、Kinesis PutRecords、Fluent Forward ack | 取代以 HTTP 狀態碼猜測；永久拒絕的不得重送 |
+| 冪等鍵在事件產生時就生成並隨暫存檔持久；資料庫對它設唯一約束，永久有效 | Kafka idempotent producer、Stripe | 取代「兩秒內容比對」；重複回「已收」而非錯誤 |
+| `(來源實例, 序號)`：序號缺口是唯一能涵蓋來源自己當掉那一刻的做法 | Kafka、`/dev/kmsg`、perf `PERF_RECORD_LOST` | 接收端據此推出缺口 |
+| 遺失帳本：以「原因 × 數量」計數，與資料分開、稍後送出；原因是封閉列舉，分有意（暫停、過濾）與非有意（溢出、錯誤） | Sentry client reports、OTel SDK 指標、Vector、auditd | 帳本進鏈；時間軸上原位標示缺口；匯出附帶 |
+| 交接目錄用 `tmp → new` 的原子改名；壞檔隔離不刪，隔離區有上限並在介面呈現 | maildir、Postfix、Fluent Bit／Logstash 的 DLQ | 取代現在無人讀取的 `.bad`；滿了時丟最新的並記帳，不擋住使用者的 shell |
+| 暫停在最上游就丟棄並記為「有意」；接收端以持久化的暫停區間再過濾一次 | Sentry、OTel sampler | 解決暫停期間的內容被補進紀錄的疑慮 |
+| 一份有版本的規格、一組共用測試向量、每個來源一個受測入口 | sigstore-conformance、OTel compliance matrix | sh、zsh、bash、PowerShell、Python、JS 共用 |
+
+### Bundle 與證據完整性
+
+| 採用 | 來源系統的做法 | 說明 |
+|---|---|---|
+| 簽「內容清單」，每項列長度與帶演算法名稱的摘要 | TUF targets、OCI descriptor、in-toto／DSSE | 進行中的封存事件即此方向 |
+| 省略與竄改分開：被省略項目的雜湊仍留在被簽的結構裡，並有明確的遮蔽標記；驗證器分「依政策省略／遺失／不符」三種 | C2PA 的 redaction | 對應匯出時的遮蔽與範圍裁切 |
+| 簽實際的位元組，驗章後才解析；避免通用的 JSON 正規化 | DSSE、TUF 的教訓 | 新格式採用；既有事件的雜湊方式不動 |
+| 兩個驗證器共用資料化的測試向量（含預期錯誤碼） | Wycheproof、sigstore-conformance | 進行中 |
+| 尾端截斷與回滾，日誌自己偵測不到：靠收件者手上較舊的檢查點、定期心跳、明確的啟動／正常關閉／異常關閉紀錄 | Go checksum database、CloudTrail digest、Schneier–Kelsey | 每份匯出附檢查點與上一份的檢查點 |
+| 封存時對同一序列另算 Merkle root 並簽檢查點，使子集匯出可證明、兩份匯出可證明一致 | RFC 9162、C2SP checkpoint | 既有的雜湊鏈保留管寫入順序；此項為後續增強 |
+| 外部時間錨定只錨一個雜湊；離線時明寫時間來源為本機時鐘；時間來源需經認證 | RFC 3161、OpenTimestamps、Roughtime、NTS | 取代未經認證的 NTP 樣本 |
+| 金鑰識別碼只是提示；信任來自帶外核對的指紋；輪替時由舊鑰背書新鑰 | signify、minisign、TUF root rotation | — |
+| 寫下威脅模型，包含「同使用者的本機程式可以重寫整個儲存，本機結構偵測不到」 | CT、Sigstore、journald FSS 的自述限制 | 能限制損害的只有已交出去的檢查點與外部時間戳 |
+
+### 階段 3：查詢執行緒與衍生資料
+
+| 採用 | 來源系統的做法 | 說明 |
+|---|---|---|
+| 一個寫入者加一到兩個讀取者，各在自己的執行緒；用到連線本地狀態的查詢固定在同一條連線 | Signal Desktop 的 SQL 層、SQLite WAL | Notion 的教訓：多個寫入者造成資料損壞後改為單一寫入者 |
+| 寫入回傳提交序號，讀取請求帶「至少到這個序號」，由分派者保證讀得到自己剛寫的 | Signal、local-first 同步引擎 | 解決移出主執行緒後的 read-your-writes |
+| 衍生資料是由有序紀錄推進的投影，各自記錄處理到哪裡；追不上時介面顯示「索引中（落後 N 筆）」 | SQLite FTS5、Replicache、LMAX | 取代每次讀取重算 |
+
+### 階段 5：來源狀態與首次使用
+
+| 採用 | 來源系統的做法 | 說明 |
+|---|---|---|
+| 條件的形狀：沒有該條件即「無法確認」；原因必填；附訊息與起始時間 | Kubernetes API conventions | — |
+| 「設定了沒」「在跑嗎」「健康嗎」「曾經成功過嗎」分軸記錄 | systemd 的三軸、Elastic 的 expected／observed | 對應根因審查的「具名事實」 |
+| 「曾經成功」一旦成立就不清除，只作為說明；啟動期內的失敗不計 | Docker start-period | 解決每次啟動都顯示黃色 |
+| 總覽不採「最壞的子項代表全部」；關閉與待命不列入 | Grafana Alloy、Syncthing | — |
+| HTTPS 攔截分四個獨立事實，各依客戶端記錄：代理在聽、該客戶端有經過、TLS 被信任、流量已保存 | mitmproxy、HTTP Toolkit、Proxyman | 取代單一的「已驗證」 |
+| 範圍未定義不等於全部在範圍內；範圍只影響顯示與標記，不影響擷取 | ZAP、Caido；Burp 使用者常誤會的選項 | 與現行原則一致 |
+
+研究建議的狀態詞是六個（Off／Waiting／Live／Idle／Degraded／Broken）。這裡**不採用**其詞表：已決定的是八個來源狀態與四個整體狀態（見根因審查 §4），且先前已決定不使用「閒置」。採用的是上表的形狀與規則。
+
+### Shell 擷取本身
+
+| 採用 | 來源系統的做法 | 說明 |
+|---|---|---|
+| 由 shell 自己送出控制序列標記指令的開始、文字、執行、結束與結束碼、目前目錄，並帶 nonce | FinalTerm／OSC 133、VS Code 的 OSC 633、iTerm2、kitty | 內建終端機可直接採用；外部終端機取決於它是否轉送 |
+| 依實際收到的序列判定整合品質（無／基本／完整），並在執行期自我檢查 | VS Code | 取代「安裝了就算可用」 |
+| 錄製格式：第一行標頭，其後每行一個事件；另有調整大小、標記、結束、缺口事件 | asciicast v3、tlog | 與既有 cast 相近；缺口事件是新增 |
+| 寫不進後端時不中斷操作者，但每段遺失都留下納入鏈的缺口紀錄 | Teleport async 模式；與 sudo 預設相反 | 與「被動記錄」的定位一致 |
+
+研究同時記下這些做法已知未解的情況（子 shell、複合指令、背景工作、ssh 進遠端、巢狀 shell、tmux），以及 VS Code 自己的缺口（PowerShell 只讀 `$?`；bash 只處理 `PROMPT_COMMAND` 陣列的第一個元素）。採用時不重蹈。
+
+### 階段 6：介面的讀取模型與導覽
+
+| 採用 | 來源系統的做法 | 說明 |
+|---|---|---|
+| 結果以「問題」為鍵；「狀態」與「是否正在讀取」分開；換鍵時可保留舊資料並標示為佔位 | TanStack Query、RTK Query、Relay | 取其模型，不引入函式庫 |
+| 以主題失效，有訂閱才重讀；晚到的舊回應不得覆蓋新狀態 | RTK Query tags | 取代各頁自行過濾原始批次 |
+| 計數誠實：有上限的結果顯示為「N+」，分頁以游標為準 | Relay connection spec、GitHub／Linear 的清單 | 對應計數的定義 |
+| 導覽堆疊的每一項記錄頁面、參數、捲動錨點與選取；隱藏的頁面保留但取消訂閱 | VS Code 的導覽歷史、React `Activity` | #705 的返回路徑是其前置 |
+| Escape 只由最上層處理並歸還焦點；輸入法組字期間不處理按鍵 | Radix DismissableLayer、WAI-ARIA APG | 已部分完成 |
+
+## 不採用
+
+- 分散式系統才需要的部分：見證者網路、gossip、多寫入者協調、跨節點的排序。
+- 整套引入任何框架或函式庫。
+- 以六個狀態詞取代已決定的八個。
+- 寫不進後端就中斷工作階段（sudo、Teleport 同步模式的做法）。
