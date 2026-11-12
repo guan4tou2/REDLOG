@@ -13,6 +13,7 @@ import { DEFAULT_ORDER, primaryLabelKey, NUMBERED_SLOTS } from '../lib/sidebarOr
 import { applyDensity, resolveDensity, storedDensity, DENSITY_KEY } from '../lib/density'
 import { formatTime } from '../lib/time'
 import { parseQuery } from '../../../core/query/contract'
+import { configInvalidDetail } from '../../../core/config-invalid'
 import { toast } from './Toast'
 import { addArtifactsWithFeedback } from '../lib/addArtifacts'
 import { flushPendingSaves } from '../lib/pendingSaves'
@@ -129,7 +130,9 @@ async function switchProject(
       // Mount the picker's toast container before publishing the failure.
       flushSync(() => onProjectClosed?.())
     }
-    toast(t('project.openFailedTitle'), { type: 'error', why: t('project.openFailedWhy'), detail: err instanceof Error ? err.message : String(err) })
+    const message = err instanceof Error ? err.message : String(err)
+    const configFile = configInvalidDetail(message)
+    toast(t('project.openFailedTitle'), { type: 'error', why: configFile ? t('project.openFailedConfigWhy') : t('project.openFailedWhy'), detail: configFile ?? message })
   }
 }
 

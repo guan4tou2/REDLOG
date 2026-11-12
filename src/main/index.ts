@@ -11,7 +11,10 @@ import { loadOverlayPosition, saveOverlayPosition } from './services/overlay-pos
 import { createTray, refreshTrayMenu, setTrayRecording, setTrayText } from './tray'
 import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
 import { exportableProfile, writeProfileFile } from '../core/profile-export'
-import { loadConfig, saveConfig, snapshotScope, readScopeFile, mergeInitialConfig, DEFAULT_CONFIG, RedLogConfig } from '../core/config'
+// Every loadConfig below throws on a config.yaml that is there but unusable
+// rather than handing out defaults; each still reads the file for itself until
+// the single config view (Spec 073).
+import { loadConfig, prepareOpenConfig, snapshotScope, readScopeFile, mergeInitialConfig, DEFAULT_CONFIG, RedLogConfig } from '../core/config'
 import { debugLog, debugLogPath, isDebugLogEnabled, setDebugLogEnabled } from '../core/debug-log'
 import { unsavedGapForProject } from '../core/unsaved-gap'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
@@ -251,7 +254,10 @@ async function startManagedHttpCaptureNow(): Promise<ManagedProxyStatus> {
   if (!stillOpen()) return managedHttpProxy.status()
   const addonPath = getCaptureHookPath('mitmproxy')
   if (!addonPath) return managedHttpProxy.noteStartFailure('mitmproxy capture addon is disabled or missing')
-  const config = loadConfig(projectDir)
+  // Not on the defaults' port: the operator's endpoint is in the file that
+  // cannot be read.
+  let config: RedLogConfig
+  try { config = loadConfig(projectDir) } catch (e) { return managedHttpProxy.noteStartFailure((e as Error).message) }
   const current = managedHttpProxy.status()
   const before = current.state
   const endpoint = managedProxyEndpoint(config)
@@ -342,8 +348,11 @@ function httpCaptureStatus(): ManagedProxyStatus {
   const status = managedHttpProxy.status()
   const projectDir = openProjectDir()
   if (!projectDir) return status
-  const context = verificationContext(loadConfig(projectDir), status)
   try {
+    // Inside the try: every capture-health read comes through here, and an
+    // unreadable config.yaml leaves the proxy's own status true while the
+    // verification against it is unknown.
+    const context = verificationContext(loadConfig(projectDir), status)
     const evidence = httpVerificationHistory.read(projectDir).filter(row => row.projectId === context.projectId).at(-1) ?? null
     return { ...status, verificationEvidence: evidence, verificationState: httpVerificationState(evidence, context) }
   } catch {
@@ -608,7 +617,17 @@ const configStore = createConfigStore({
 function reapplyOpenConfig(reason: 'plugins-changed' | 'hook-config'): void {
   const dir = openProjectDir()
   const open = projectRuntime.current()
-  if (dir && open) configApplier.apply({ reason, identity: open, next: loadConfig(dir) })
+  if (!dir || !open) return
+  let next: RedLogConfig
+  try { next = loadConfig(dir) } catch (e) {
+    // Not the defaults (no scope, no redaction rules, offline off) in place of
+    // the operator's: the subsystems keep the config they were last given. Not
+    // thrown either: the plugin change that called this is already made, and
+    // its audit row comes after this call.
+    console.warn(`[config] ${reason} not re-applied: ${(e as Error).message}`)
+    return
+  }
+  configApplier.apply({ reason, identity: open, next })
 }
 
 // Which command_ends need a recompute at all: see pivot-refresh.ts.
@@ -777,9 +796,10 @@ function startProject(project: ProjectMeta): void {
   const openedAt = Date.now()
   // Prepare configuration before closing the current project. A failed read
   // or write must not leave a new binding (or discard the usable old one).
+  // A config.yaml that is there but unusable throws here, untouched: its
+  // defaults would bind this project as engagement `default`.
   const projectDir = getProjectPath(project)
-  const config = loadConfig(projectDir)
-  saveConfig(projectDir, config)
+  const config = prepareOpenConfig(projectDir)
   if (projectRuntime.current()) stopProject()
   const opening = projectRuntime.begin(project, { engagementId: config.engagement.id, operatorId: config.operator.id })
   try {
@@ -1745,7 +1765,10 @@ app.whenReady().then(() => {
     const open = projectRuntime.current()
     const projectDir = openProjectDir()
     if (!projectDir || !open) return { ok: false, error: 'No project open' }
-    const cfg = loadConfig(projectDir)
+    // Not with the defaults' proxy settings: they may route around the
+    // operator's own upstream proxy.
+    let cfg: RedLogConfig
+    try { cfg = loadConfig(projectDir) } catch (e) { return { ok: false, error: (e as Error).message } }
     const browserCfg = { ...DEFAULT_BROWSER, ...(cfg.browser ?? {}), ...(startUrl ? { startUrl } : {}) }
     // Through RedLog's own proxy the browser trusts that proxy's CA by its key,
     // so HTTPS works without a root certificate in the OS trust store.

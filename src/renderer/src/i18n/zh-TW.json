@@ -1004,6 +1004,7 @@
   "settings.integrityNoAnchorsWhy": "目前沒有東西可以錨定——證據鏈是空的。",
   "project.openFailedTitle": "無法開啟專案",
   "project.openFailedWhy": "沒有載入或改動任何東西。資料庫可能被另一個 RedLog 視窗鎖住。",
+  "project.openFailedConfigWhy": "無法讀取 config.yaml。檔案保持原樣，也沒有載入任何東西；修正後再開啟專案。",
   "project.leaveTitle": "離開 {{name}}？",
   "project.switchTitle": "離開 {{from}}，改開 {{to}}？",
   "project.leaveMessage": "這份記錄會停止。已經寫進去的東西都留在專案裡，重新開啟就接著記。",
