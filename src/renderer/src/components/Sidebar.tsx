@@ -20,6 +20,8 @@ interface NavItem {
   badge?: number
   badgeColor?: string
   badgeLabel?: string
+  /** The badge count is a lower bound. */
+  badgeAtLeast?: boolean
 }
 
 // Lucide, 1.5px stroke, 16px (UIUX-STANDARD §4). These used to be the Unicode
@@ -37,7 +39,7 @@ import { isMac } from '../lib/platform'
 import { useAppCounts } from '../lib/useAppCounts'
 
 export default function Sidebar({ active, onNavigate, projectId }: SidebarProps): JSX.Element {
-  const { lootCount, scopeObservations } = useAppCounts()
+  const { lootCount, lootPartial, scopeObservations } = useAppCounts()
   const { t } = useI18n()
 
   // §4: 12% tint + same-colour text, the same vocabulary the badges elsewhere
@@ -46,21 +48,22 @@ export default function Sidebar({ active, onNavigate, projectId }: SidebarProps)
   // to prevent.
   // `label` names what the count counts, so a screen reader (and the tooltip)
   // says "1 violation" rather than a bare digit that could be a shortcut.
-  const badge = (count: number, tone: string, label: string): JSX.Element | null =>
+  // `atLeast`: the count is a lower bound, shown as "N+".
+  const badge = (count: number, tone: string, label: string, atLeast = false): JSX.Element | null =>
     count > 0 ? (
       <span
         className={`min-w-[18px] h-[18px] rounded-full ${tone} text-xs font-semibold tabular-nums flex items-center justify-center px-1`}
         title={label}
         aria-label={label}
       >
-        {count > 99 ? '99+' : count}
+        {count > 99 ? '99+' : atLeast ? `${count}+` : count}
       </span>
     ) : null
 
   const itemMap: Record<string, NavItem> = {
     dashboard: { id: 'dashboard', label: t('sidebar.dashboard'), icon: Gauge },
     terminal: { id: 'terminal', label: t('sidebar.terminal'), icon: ChevronRight },
-    screenshots: { id: 'screenshots', label: t(primaryLabelKey('screenshots')), icon: Files, badge: lootCount, badgeColor: 'bg-amber-500/12 text-amber-400', badgeLabel: t('sidebar.lootBadge', {count:lootCount}) },
+    screenshots: { id: 'screenshots', label: t(primaryLabelKey('screenshots')), icon: Files, badge: lootCount, badgeColor: 'bg-amber-500/12 text-amber-400', badgeAtLeast: lootPartial, badgeLabel: t(lootPartial ? 'sidebar.lootBadgeAtLeast' : 'sidebar.lootBadge', {count:lootCount}) },
     targets: { id: 'targets', label: t(primaryLabelKey('targets')), icon: Crosshair, badge: scopeObservations, badgeColor: 'bg-redlog-danger/12 text-redlog-danger', badgeLabel:t('sidebar.observationsBadge',{count:scopeObservations}) },
     search: { id: 'search', label: t('sidebar.search'), icon: Search },
     timeline: { id: 'timeline', label: t('sidebar.timeline'), icon: Rows3 },
@@ -150,7 +153,7 @@ export default function Sidebar({ active, onNavigate, projectId }: SidebarProps)
                 </span>
               )}
               <span className={`ml-auto flex items-center gap-2 shrink-0 ${collapsed ? 'hidden' : ''}`}>
-                {'badge' in item && item.badge !== undefined && badge(item.badge, item.badgeColor || 'bg-redlog-elevated text-redlog-text-dim', item.badgeLabel ?? String(item.badge))}
+                {'badge' in item && item.badge !== undefined && badge(item.badge, item.badgeColor || 'bg-redlog-elevated text-redlog-text-dim', item.badgeLabel ?? String(item.badge), item.badgeAtLeast)}
               {/* §5.3: the number is printed, not hidden in a tooltip. It can
                   be, now that the order is fixed — while rows could be dragged
                   the number was a property of the current arrangement rather

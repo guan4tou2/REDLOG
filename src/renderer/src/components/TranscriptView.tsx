@@ -386,7 +386,10 @@ function buildBlocks(events: Ev[], names: Record<string, string>, t: (k: string,
       out.push({
         id: e.id, ts: e.timestamp, kind: 'loot', actor: actorOf(e),
         input: `◆ ${matches.map((m) => m.type).join(', ') || 'loot'}`,
-        meta: `${matches.length} match${matches.length === 1 ? '' : 'es'}`,
+        // A capped event (#695) stored only part of what it found.
+        meta: d.matches_truncated === true && typeof d.matches_total === 'number'
+          ? t('loot.itemsOfTotal', { count: matches.length, total: d.matches_total })
+          : `${matches.length} match${matches.length === 1 ? '' : 'es'}`,
         events: [e]
       })
     }

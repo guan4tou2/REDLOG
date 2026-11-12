@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { initDB, closeDB, getDB } from '../src/core/db/index'
-import { searchHttpBodyEventIds, bodySearchCoverage, closeHttpBodyIndex, linkHttpBodyEvent, pruneHttpBodyIndex, pruneSavedFileIndex } from '../src/core/http-body-index'
+import { searchHttpBodyEventIds, bodySearchCoverage, closeHttpBodyIndex, linkHttpBodyEvent, pruneHttpBodyIndex, pruneSavedFileIndex, eventIdsReferencingBody } from '../src/core/http-body-index'
 import type { ExportSnapshot } from '../src/core/export-plan'
 
 // #695: a text search used to re-walk every content-ref row and re-open and
@@ -46,12 +46,13 @@ function transcript(id: string, text: string): void {
   fs.writeFileSync(path.join(dir, 'agent-transcripts', 'conv.jsonl'), text)
   insert(id, { snapshot_path: 'agent-transcripts/conv.jsonl', cumulative_bytes: Buffer.byteLength(text), cumulative_sha256: sha(text) }, 'events', 'agent', 'transcript_snapshot')
 }
+/** Every index row and every FTS row: what a search answers from. */
 function dump(): unknown {
   const db = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
   try {
     return {
-      // What a search answers from. The verification columns hold inode and
-      // mtime signatures, which differ between two runs by construction.
+      // The verification columns hold inode and mtime signatures, which differ
+      // between two runs by construction.
       refs: db.prepare('SELECT event_id,sha256,file,size,encoding,status,indexed_bytes,reason,kind,available_bytes FROM body_event_refs ORDER BY event_id,sha256').all(),
       fts: db.prepare('SELECT event_id,sha256,content FROM body_fts ORDER BY event_id,sha256,content').all(),
     }
@@ -59,15 +60,46 @@ function dump(): unknown {
 }
 const QUERIES = ['alpha', 'marker3', 'marker9', 'transcriptword', 'artifactword', 'inlineword', 'zzznothing']
 /** incremental: one process throughout. restart: a new process before every
- *  search, the index DB kept. rebuild: a new process and no index DB. */
+ *  search, the index DB kept. rebuild: a new process and no index DB, once
+ *  per step. */
 type Mode = 'incremental' | 'restart' | 'rebuild'
 function observe(mode: Mode, snapshot?: ExportSnapshot): unknown {
+  // What the index holds depends on the project and the boundary, not on the
+  // query, so one rebuild per step is the from-scratch index every query is
+  // answered from. Rebuilding before each of the fourteen searches cost
+  // fourteen index creations per step, which ran a step past its timeout on
+  // windows-latest. The check below holds that reference to it: the searches
+  // after the first must leave the rebuilt index exactly as it was.
+  if (mode !== 'incremental') closeHttpBodyIndex()
+  if (mode === 'rebuild') for (const suffix of ['', '-wal', '-shm']) fs.rmSync(path.join(dir, `http-body-index.db${suffix}`), { force: true })
+  let built: unknown, firstCoverage: unknown
   const searches = QUERIES.flatMap(q => [false, true].map(excludeAiRaw => {
-    if (mode !== 'incremental') closeHttpBodyIndex()
-    if (mode === 'rebuild') for (const suffix of ['', '-wal', '-shm']) fs.rmSync(path.join(dir, `http-body-index.db${suffix}`), { force: true })
-    return [q, excludeAiRaw, searchHttpBodyEventIds(q, dir, excludeAiRaw, snapshot).sort()]
+    if (mode === 'restart') closeHttpBodyIndex()
+    const ids = searchHttpBodyEventIds(q, dir, excludeAiRaw, snapshot).sort()
+    // Before a later search can bring the index back in line.
+    if (firstCoverage === undefined) { firstCoverage = bodySearchCoverage(snapshot); built = dump() }
+    return [q, excludeAiRaw, ids]
   }))
-  return { searches, coverage: bodySearchCoverage(snapshot), index: dump() }
+  const observed = { searches, firstCoverage, coverage: bodySearchCoverage(snapshot), index: dump() }
+  if (mode === 'rebuild') expect(observed.index, 'the searches after the rebuild changed the rebuilt index').toEqual(built)
+  // The rebuild reference is from zero only for its first search. Every step
+  // of the other modes is also held to an index built from nothing in a
+  // set-aside file, which no incremental sync ever touches.
+  else expect(fromZero(snapshot), `${mode}: a from-zero build`).toEqual({ alpha: searches[0][2], coverage: observed.coverage, index: observed.index })
+  return observed
+}
+/** One search, the coverage and the dump from an index built from nothing in
+ *  its own file; the project's index is put back untouched afterwards. */
+function fromZero(snapshot?: ExportSnapshot): unknown {
+  closeHttpBodyIndex()
+  const live = path.join(dir, 'http-body-index.db'), aside = `${live}.aside`
+  for (const suffix of ['', '-wal', '-shm']) if (fs.existsSync(live + suffix)) fs.renameSync(live + suffix, aside + suffix)
+  try {
+    return { alpha: searchHttpBodyEventIds('alpha', dir, false, snapshot).sort(), coverage: bodySearchCoverage(snapshot), index: dump() }
+  } finally {
+    closeHttpBodyIndex()
+    for (const suffix of ['', '-wal', '-shm']) { fs.rmSync(live + suffix, { force: true }); if (fs.existsSync(aside + suffix)) fs.renameSync(aside + suffix, live + suffix) }
+  }
 }
 
 /** What a step leaves behind for the steps after it. */
@@ -160,7 +192,9 @@ function play(mode: Mode): void {
         if (broken) ctx.skip(`an earlier step of the ${mode} run failed (${broken}); this step builds on its state`)
         if (mode !== 'rebuild' && !reference.has(step.name)) ctx.skip('the rebuild reference for this step was not recorded')
         try {
-          snapshot = step.apply(h) ?? (BOUNDED.has(step.name) ? snapshot : undefined)
+          // One commit for the step's source rows, as ingest batches them; a
+          // commit per row is a flush per row on a Windows runner.
+          snapshot = getDB().transaction(() => step.apply(h))() ?? (BOUNDED.has(step.name) ? snapshot : undefined)
           const observed = observe(mode, snapshot) as Observed
           if (mode === 'rebuild') reference.set(step.name, observed)
           else expect(observed, `${mode}: ${step.name}`).toEqual(reference.get(step.name))
@@ -244,6 +278,53 @@ describe('incremental body-search backfill', () => {
     pruneHttpBodyIndex(sha('alpha work2'), dir)
     expect(work(() => expect(searchHttpBodyEventIds('work2', dir)).toEqual(['w2']))).toEqual({ opens: 1, rows: 10 })
   })
+
+  /** Commit records appended to the index's WAL: each is a flush. */
+  function walCommits(): number {
+    const file = path.join(dir, 'http-body-index.db-wal')
+    if (!fs.existsSync(file)) return 0
+    const b = fs.readFileSync(file)
+    if (b.length < 32) return 0
+    const page = b.readUInt32BE(8)
+    let n = 0
+    for (let off = 32; off + 24 + page <= b.length; off += 24 + page) if (b.readUInt32BE(off + 4) !== 0) n++
+    return n
+  }
+  // Each commit is a flush, and creating and reopening the index is what the
+  // scripted history's rebuild and restart modes do over and over: on a
+  // Windows runner that is where their time went.
+  it('creates a new index in one commit and opens an index at its version without a write', () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-body-open-'))
+    initDB(dir)
+    eventIdsReferencingBody('none', dir)
+    expect(walCommits()).toBe(1)
+    // A second handle keeps the WAL from being checkpointed away on close.
+    const holder = new Database(path.join(dir, 'http-body-index.db'))
+    try {
+      closeHttpBodyIndex()
+      const before = walCommits()
+      eventIdsReferencingBody('none', dir)
+      expect(walCommits() - before).toBe(0)
+    } finally { holder.close() }
+  })
+
+  // Another connection holding the index's write lock (the export worker,
+  // mid-walk) must not fail a search: it answers from the index as it stands,
+  // and coverage, which reads the project's rows, shows what is not linked.
+  it('answers from the index as it stands while another writer holds it', () => {
+    seed(5)
+    searchHttpBodyEventIds('alpha', dir)
+    bodyEvent('w5', 'alpha work5')
+    const holder = new Database(path.join(dir, 'http-body-index.db'))
+    try {
+      holder.prepare('BEGIN IMMEDIATE').run()
+      expect(searchHttpBodyEventIds('alpha', dir)).toHaveLength(5)
+      expect(bodySearchCoverage()).toMatchObject({ indexed: 5, pending: 1 })
+      holder.prepare('ROLLBACK').run()
+    } finally { holder.close() }
+    expect(searchHttpBodyEventIds('alpha', dir)).toHaveLength(6)
+    expect(bodySearchCoverage()).toMatchObject({ indexed: 6, pending: 0 })
+  }, 30_000)
 
   it('treats a row ingest already linked as a no-op at the next search', () => {
     seed(5)

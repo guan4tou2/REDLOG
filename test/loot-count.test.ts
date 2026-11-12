@@ -45,5 +45,17 @@ describeDB('getLootCount', () => {
       matches: [{ type: 'jwt', confidence: 'medium', preview: 'eyJ...' }]
     }, { operatorId })
     expect(events.getLootCount()).toBe(3)
+    expect(events.lootCountIsPartial()).toBe(false)
+  })
+
+  // #695: an event that found more than it could store makes the count a
+  // lower bound; the count itself still counts what is stored.
+  it('says when the count is a lower bound', () => {
+    events.insertEvent('loot', {
+      subtype: 'credential_detected', count: 1, matches_truncated: true, matches_total: 900,
+      matches: [{ type: 'password_hash', confidence: 'high', preview: '$6$...' }]
+    }, { operatorId })
+    expect(events.getLootCount()).toBe(1)
+    expect(events.lootCountIsPartial()).toBe(true)
   })
 })

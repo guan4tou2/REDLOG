@@ -18,25 +18,28 @@ function getIndex(projectDir = getProjectDir()): Database.Database {
   if (index && indexDir === projectDir)
     return index
   closeHttpBodyIndex()
-  index = new Database(path.join(projectDir, 'http-body-index.db'))
-  index.pragma('journal_mode = WAL')
+  const db = index = new Database(path.join(projectDir, 'http-body-index.db'))
+  db.pragma('journal_mode = WAL')
   // `synchronous` stays at the WAL default (NORMAL), unlike timeline.db: a
   // row lost to an OS crash here is linked again by the first search after
   // launch, which walks every content-ref event (see the backfill note below).
   // Rebuild only this disposable index, never a source Event or sidecar.
   // v7 added the verification columns below; an older index is rebuilt once.
-  if (index.pragma('user_version', { simple: true }) !== 7)
-    index.exec('DROP TABLE IF EXISTS body_fts; DROP TABLE IF EXISTS body_event_refs; DROP TABLE IF EXISTS body_index_state; DROP TABLE IF EXISTS body_index_meta')
-  index.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS body_fts USING fts5(content,event_id UNINDEXED,sha256 UNINDEXED,tokenize='unicode61 remove_diacritics 2',prefix='2 3');
-  CREATE TABLE IF NOT EXISTS body_event_refs (
-   event_id TEXT NOT NULL,sha256 TEXT NOT NULL,file TEXT NOT NULL,size INTEGER NOT NULL,encoding TEXT NOT NULL,
-   status TEXT NOT NULL,indexed_bytes INTEGER NOT NULL,reason TEXT NOT NULL,kind TEXT NOT NULL,available_bytes INTEGER NOT NULL,
-   tier TEXT,verified_desc TEXT,verified_file TEXT,verified_sig TEXT,PRIMARY KEY(event_id,sha256)
-  );
-  CREATE INDEX IF NOT EXISTS body_event_refs_sha256 ON body_event_refs(sha256);
-  CREATE TABLE IF NOT EXISTS body_index_meta (key TEXT PRIMARY KEY,value TEXT NOT NULL);
-  PRAGMA user_version=7;
-  CREATE TEMP TABLE body_seen(event_id TEXT NOT NULL,sha256 TEXT NOT NULL,PRIMARY KEY(event_id,sha256));`)
+  // The schema is written in one transaction, and an index already at v7 is
+  // opened without a write: each commit is a flush, slow on Windows.
+  if (db.pragma('user_version', { simple: true }) !== 7) db.transaction(() => {
+    db.exec('DROP TABLE IF EXISTS body_fts; DROP TABLE IF EXISTS body_event_refs; DROP TABLE IF EXISTS body_index_state; DROP TABLE IF EXISTS body_index_meta')
+    db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS body_fts USING fts5(content,event_id UNINDEXED,sha256 UNINDEXED,tokenize='unicode61 remove_diacritics 2',prefix='2 3');
+    CREATE TABLE IF NOT EXISTS body_event_refs (
+     event_id TEXT NOT NULL,sha256 TEXT NOT NULL,file TEXT NOT NULL,size INTEGER NOT NULL,encoding TEXT NOT NULL,
+     status TEXT NOT NULL,indexed_bytes INTEGER NOT NULL,reason TEXT NOT NULL,kind TEXT NOT NULL,available_bytes INTEGER NOT NULL,
+     tier TEXT,verified_desc TEXT,verified_file TEXT,verified_sig TEXT,PRIMARY KEY(event_id,sha256)
+    );
+    CREATE INDEX IF NOT EXISTS body_event_refs_sha256 ON body_event_refs(sha256);
+    CREATE TABLE IF NOT EXISTS body_index_meta (key TEXT PRIMARY KEY,value TEXT NOT NULL);`)
+    db.pragma('user_version=7')
+  })()
+  db.exec('CREATE TEMP TABLE body_seen(event_id TEXT NOT NULL,sha256 TEXT NOT NULL,PRIMARY KEY(event_id,sha256));')
   indexDir = projectDir
   return index
 }
@@ -295,6 +298,8 @@ function sync(projectDir: string, snapshot?: ExportSnapshot): void {
     const intact = !before || (row.below === before.n && idAt(before.max) === before.idAtMax)
     return { n: row.n, max: row.max, idAtMax: idAt(row.max), intact, after: before?.max ?? 0 }
   })
+  // IMMEDIATE: the write lock is waited for at BEGIN (the busy timeout), not
+  // refused mid-walk when another connection committed after this one read.
   forgetOnError(() => db.transaction(() => {
     if (directoriesChanged) {
       stmt(db, 'UPDATE body_event_refs SET verified_desc=NULL,verified_file=NULL,verified_sig=NULL').run()
@@ -310,7 +315,7 @@ function sync(projectDir: string, snapshot?: ExportSnapshot): void {
       full = [...linkedOutsideWalk].some(id => !seen.has(id)) || !recheck(projectDir)
     }
     if (full) walkAll(db, projectDir, snapshot, latestIds, tiers.map(t => ({ after: 0, upTo: t.max })))
-  })())
+  }).immediate())
   walked = { source, boundary, latest, tiers: tiers.map(({ n, max, idAtMax }) => ({ n, max, idAtMax })) }
   linkedOutsideWalk.clear()
   dirty = false
@@ -387,7 +392,11 @@ export function searchHttpBodyEventIds(query: string, projectDir = getProjectDir
   const match = toFtsMatch(query)
   if (!match)
     return []
-  sync(projectDir,snapshot)
+  // Another writer of the index (the export worker, mid-walk) held it past
+  // the busy timeout: answer from the index as it stands. Coverage reads the
+  // project's rows, so a ref this left unlinked still shows as pending.
+  try { sync(projectDir,snapshot) }
+  catch (error) { if (!(error instanceof Database.SqliteError && error.code.startsWith('SQLITE_BUSY'))) throw error }
   const db = getIndex(projectDir)
   // Failed references have already lost their FTS rows. Report them through
   // coverage without withholding unrelated, verified matches.
