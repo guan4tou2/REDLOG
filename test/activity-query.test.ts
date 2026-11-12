@@ -178,6 +178,21 @@ describe('Activity project query', () => {
     expect(queryActivityPage(request('needle', { activityFilter: { actions: ['network'] } })).totalGroups).toBe(0)
   })
 
+  it('routes a scope violation to the security action and leaves the other system rows where they were', () => {
+    add('sys-a', 10, 'system', { subtype: 'session_start' })
+    add('viol', 20, 'system', { subtype: 'scope_violation', target: 'evil.example', distance: 'outside' })
+    add('sys-b', 30, 'process', { subtype: 'process_start' })
+    add('mark', 40, 'marker', { title: 'm' })
+    const all = queryActivityPage(request())
+    expect(all.items.map(a => [a.anchor.id, a.action])).toEqual([
+      ['mark', 'evidence'], ['sys-b', 'system'], ['viol', 'security'], ['sys-a', 'system']
+    ])
+    const ids = (action: string): string[] => queryActivityPage(request('', { activityFilter: { actions: [action] } })).items.map(a => a.anchor.id)
+    expect(ids('security')).toEqual(['viol'])
+    expect(ids('system')).toEqual(['sys-b', 'sys-a'])
+    expect(queryActivityPage(request('', { activityFilter: { actions: ['system'] } })).totalGroups).toBe(2)
+  })
+
   it('rejects invalid typed Activity filters instead of implying that nothing matches', () => {
     expect(() => queryActivityPage(request('', { activityFilter: { actions: ['typo'] as never } }))).toThrow(/filter/i)
     expect(() => queryActivityPage(request('', { activityFilter: { states: ['running'] as never } }))).toThrow(/filter/i)

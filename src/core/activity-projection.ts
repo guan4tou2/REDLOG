@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { operationPairKey, sourceSessionKey } from './operation-pair-key'
 import type { RedLogEvent } from './db/event-types'
+import { SCOPE_VIOLATION_SUBTYPE } from './scope-vocabulary'
 import type { ActivityAction, ActivityKind, ToolAction } from './activity-contract'
 
 type Source = Pick<RedLogEvent, 'id' | 'engagementId' | 'sessionId' | 'agentType' | 'data'>
@@ -61,8 +62,11 @@ export function activityClassification(event: Pick<RedLogEvent, 'agentType' | 'd
   const action: ActivityAction = event.agentType === 'agent' ? toolAction === 'execute' ? 'command' : 'conversation'
     : event.agentType === 'shell' ? 'command'
       // Agent types that some writer produces. `connection`, `artifact`, `file`,
-      // `alert` and `scope_violation` were listed here and never written (report
-      // 10, A.5); the external API refuses all five.
+      // `alert` and `scope_violation` were listed here as agent types and never
+      // written (report 10, A.5); the external API refuses all five. A scope
+      // violation is written as agent_type `system`, subtype `scope_violation`,
+      // and is the one row that belongs to `security`.
+      : event.agentType === 'system' && d.subtype === SCOPE_VIOLATION_SUBTYPE ? 'security'
       : ['scanner', 'dns', 'browser', 'pcap'].includes(event.agentType) ? 'network'
         : ['screenshot', 'marker', 'loot'].includes(event.agentType) ? 'evidence'
           : ['system', 'process', 'clipboard', 'cleanup'].includes(event.agentType) ? 'system' : 'other'
