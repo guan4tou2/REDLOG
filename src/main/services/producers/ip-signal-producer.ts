@@ -65,7 +65,7 @@ async function getExternalIPviaDNS(): Promise<string> {
  *  itself when it is a bare JSON string — and only when that is one IPv4
  *  address. Anything else means that provider failed. A 200 with another JSON
  *  shape used to become the "address" `[object Object]`, which misses every
- *  list and, with only a blacklist set, reads presumed_safe: SAFE on screen
+ *  list and, with only a blacklist set, reads presumed_safe (once shown as SAFE)
  *  (TESTING.md G-IP2). IPv4 only, as on the DNS path, because the list matcher
  *  cannot judge an IPv6 range (G-IP1). */
 function addressIn(data: unknown): string | null {

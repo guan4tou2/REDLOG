@@ -2446,7 +2446,6 @@
   "eventTitle.airgapOff": "air-gap 模式已關閉",
   "eventTitle.ipVerdict": "出口 IP：{{verdict}}",
   "eventTitle.ipOffProfile": "不在任何 IP 清單",
-  "eventTitle.ipPresumedSafe": "推定安全",
   "eventTitle.sessionStart": "開啟專案，開始記錄",
   "eventTitle.chainSampleBroken": "證據鏈抽樣驗證未通過",
   "eventTitle.systemOther": "系統事件：{{name}}",
