@@ -222,13 +222,19 @@ describe('App keeps the Timeline jump origin mounted (#692)', () => {
 describe('keptOrigin helpers', () => {
   const kept = { view: 'loot', projectId: 'p1', scroll: [] }
 
-  it('keeps only while on the Timeline with the back link to that origin, in that project', () => {
-    expect(keptView({ view: 'timeline', returnTo: 'loot', projectId: 'p1', kept })).toBe('loot')
-    expect(keptView({ view: 'loot', returnTo: null, projectId: 'p1', kept })).toBeNull()
-    expect(keptView({ view: 'timeline', returnTo: null, projectId: 'p1', kept })).toBeNull()
-    expect(keptView({ view: 'timeline', returnTo: 'targets', projectId: 'p1', kept })).toBeNull()
-    expect(keptView({ view: 'timeline', returnTo: 'loot', projectId: 'p2', kept })).toBeNull()
-    expect(keptView({ view: 'timeline', returnTo: 'loot', projectId: 'p1', kept: null })).toBeNull()
+  // Contract changed with the return trail: the origin is kept for the whole
+  // trail (Timeline, then Activity), not only while on the Timeline.
+  it('keeps only while the trail in force starts at that origin, in that project', () => {
+    expect(keptView({ view: 'timeline', trail: ['loot', 'timeline'], projectId: 'p1', kept })).toBe('loot')
+    expect(keptView({ view: 'search', trail: ['loot', 'timeline', 'search'], projectId: 'p1', kept })).toBe('loot')
+    expect(keptView({ view: 'loot', trail: [], projectId: 'p1', kept })).toBeNull()
+    expect(keptView({ view: 'timeline', trail: [], projectId: 'p1', kept })).toBeNull()
+    expect(keptView({ view: 'timeline', trail: ['targets', 'timeline'], projectId: 'p1', kept })).toBeNull()
+    expect(keptView({ view: 'search', trail: ['timeline', 'search'], projectId: 'p1', kept })).toBeNull()
+    // A trail whose last step is not the page on screen is over.
+    expect(keptView({ view: 'terminal', trail: ['loot', 'timeline'], projectId: 'p1', kept })).toBeNull()
+    expect(keptView({ view: 'timeline', trail: ['loot', 'timeline'], projectId: 'p2', kept })).toBeNull()
+    expect(keptView({ view: 'timeline', trail: ['loot', 'timeline'], projectId: 'p1', kept: null })).toBeNull()
   })
 
   it('does not keep pages outside the list, or with no root to measure', () => {

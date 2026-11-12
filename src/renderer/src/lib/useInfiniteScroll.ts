@@ -37,12 +37,14 @@ export interface InfiniteScroll<T> {
  * list identity changes (a new filter, a reload), so a filtered-down list never
  * shows a stale tall window.
  */
-export function useInfiniteScroll<T>(items: T[], pageSize = LIST_PAGE_SIZE): InfiniteScroll<T> {
+export function useInfiniteScroll<T>(items: T[], pageSize = LIST_PAGE_SIZE, resetKey?: string): InfiniteScroll<T> {
   const [visibleCount, setVisibleCount] = useState(pageSize)
   const total = items.length
 
-  // Reset on list-identity change (new filter / reload).
-  useEffect(() => { setVisibleCount(pageSize) }, [items, pageSize])
+  // Reset on list-identity change (new filter / reload). A list that is
+  // re-read in place by a live refresh names its question instead, so a
+  // refresh does not take back the rows the operator scrolled to.
+  useEffect(() => { setVisibleCount(pageSize) }, [resetKey === undefined ? items : resetKey, pageSize])
 
   const showMore = useCallback(
     () => setVisibleCount((c) => nextVisibleCount(c, items.length, pageSize)),

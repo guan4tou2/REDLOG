@@ -1,14 +1,15 @@
-// The page a Timeline jump came from, kept mounted and hidden for the length of
-// that one visit so "back" returns to it as it was (#692): its search text,
-// filters, open row and selection are React state, and a remount threw them
-// away. Only one page is ever kept, and only while the visit lasts.
+// The page a return trail started from (lib/returnTrail.ts), kept mounted and
+// hidden for as long as the trail lasts — on the Timeline and on to Activity —
+// so going back returns to it as it was (#692): its search text, filters, open
+// row and selection are React state, and a remount threw them away. Only one
+// page is ever kept, and only while the trail lasts.
 //
-// HTTP history is deliberately not in the list. It contributes the export
-// menu's "this view" scope from an effect that does not know whether it is on
-// screen, so while hidden it can take that scope over from the Timeline (any
-// shared-filter change re-runs it), and on return it has lost the scope the
-// Timeline's unmount cleared. It needs the `active` gate SearchPanel has before
-// it can be kept.
+// A hidden page must not act on the page in front. HTTP history contributes
+// the export menu's "this view" scope and owns list keys; both are gated on the
+// `active` prop App passes it, as SearchPanel's are, which is what lets it be
+// kept. Loot takes `active` for its open readers. The other pages contribute
+// no scope and listen for no window keys. What every kept page still does is
+// re-read on live batches and on a shared-filter change, as it would on screen.
 const KEEPABLE: ReadonlySet<string> = new Set(['http_history', 'targets', 'scope', 'loot', 'bookmarks', 'screenshots'])
 
 type ScrollSnapshot = ReadonlyArray<{ el: Element; top: number }>
@@ -34,12 +35,14 @@ export function keepOnJump(origin: string, projectId: string | undefined, root: 
   return { view: origin, projectId, scroll }
 }
 
-/** The view to keep mounted behind the current one, or null. Anything other
- *  than sitting on the Timeline with the back link to that origin drops it —
- *  a sidebar or palette move clears `returnTo`, another jump replaces it. */
-export function keptView(s: { view: string; returnTo: string | null; projectId: string; kept: KeptOrigin | null }): string | null {
-  const { view, returnTo, projectId, kept } = s
-  if (!kept || view !== 'timeline' || returnTo !== kept.view || kept.projectId !== projectId) return null
+/** The view to keep mounted behind the current one, or null: only while the
+ *  trail in force on `view` starts at that origin and the operator is further
+ *  along it. A sidebar or palette move ends the trail; a jump that starts a new
+ *  one replaces it. */
+export function keptView(s: { view: string; trail: readonly string[]; projectId: string; kept: KeptOrigin | null }): string | null {
+  const { view, trail, projectId, kept } = s
+  if (!kept || kept.projectId !== projectId || trail.length < 2) return null
+  if (trail[0] !== kept.view || trail[trail.length - 1] !== view || view === kept.view) return null
   return kept.view
 }
 
