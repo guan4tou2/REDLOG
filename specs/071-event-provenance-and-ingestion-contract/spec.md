@@ -32,7 +32,9 @@
 | O17 | （原 Q5）外掛 Source 停用後才送達的積壓一律拒收，計為有意（`credential-revoked`） | E、G |
 | O18 | 因果歸屬不用猜的：指令 id 由環境變數 `REDLOG_COMMAND_ID` 帶給子行程，並在 proxy 位址的 userinfo 帶標記，兩者都做、userinfo 先上；都取不到時不寫 `_causes`（[擷取種類盤點](../../docs/records/2026-11-12/root-cause/10-capture-kinds-and-presentation.md) 問題 4；proxy userinfo 的可行性尚未實測） | 待併入 A、I 與 tasks |
 
-> 本檔與 plan、tasks 中仍寫作「開放問題 Q1–Q5」之處，分別對應 O13–O17，已決定。O18 是起草後才做的決定，FR 與 tasks 尚未為它展開，動工前需補上。
+> 本檔與 plan、tasks 中仍寫作「開放問題 Q1–Q5」之處，分別對應 O13–O17，已決定。O18 是起草後才做的決定，FR 與 tasks 尚未為它展開，動工前需補上（Spec 074 Phase 5 的 `cause_counts` 依賴它，見 [specs/README.md](../README.md)「071–075 的跨規格順序」）。新的未決事項見文末「開放問題（需要擁有者）」。
+>
+> **2026-11-12 跨規格對帳（071–075）**：本規格依同批起草的 072–075 做了下列增補，均為新增、不改既有列的形狀：`_ingest.rules`／`rules_partial`（FR-005、FR-006，Spec 075 的 Processor 規則紀錄）；`/api/whoami` 回傳呼叫者來源的狀態（FR-07B，Spec 075）；`CommitReceipt`（FR-096，Spec 074）；`terminal_targets` 的回填歸屬（FR-010，Spec 074）；種類的 tier 改由 Spec 072 的登記表回答（FR-113）；每個來源在本專案的第一次與最近一次接受（FR-056，Spec 075）。另依 Phase 1 實作（#716）更正三處事實：直接呼叫 `insertEvent(` 為 31 處；`PRAGMA synchronous` 實為 NORMAL；relay 不重試 5xx。
 
 ### 本規格自行決定的（理由與被否決的替代方案見 plan.md）
 
@@ -165,7 +167,7 @@
 - 暫停在觀察與送達之間切換：依觀察時間判斷。
 - 外部終端機綁定 A 而 B 開著：終端機本地暫停並計數，A 重開時送出 `capture_resumed`。
 - 外部 shell 啟動時沒有專案開著：`hello` 延到第一次綁定專案時才送。
-- shell 沒有 python3，算不出交接檔 MAC：檔案進隔離區（`unauthenticated`），保留但不自動寫入（開放問題 Q3）。
+- shell 沒有 python3，算不出交接檔 MAC：檔案進隔離區（`unauthenticated`），保留但不自動寫入（O15）。
 - 以提權身分執行的來源（例如 sudo 下的 pcap）：交接檔要屬於發起的使用者。接收端讀不到時，只改名移入隔離區（`unreadable`）。
 - WSL 經 `/mnt/c` 存取時權限位元不受強制：屬已知平台限制，寫入風險說明。
 - 重送的項目，其原列已被保留期刪除（logged 層）：回 `duplicate` 並標 `original: pruned`，不再寫入。
@@ -213,9 +215,11 @@
   | `target_via` | 目標如何決定（FR-010） |
   | `claimed` | 來源自述、未被採信為身分的值：`producer`（`name@version`）、`operator` |
   | `stripped` | 被移除的保留鍵名；沒有時省略 |
+  | `rules` | 寫入路徑上、結果被寫進本列的使用者 Processor 規則集（Spec 075 FR-059）：字串陣列，每項 `<pluginId>#<內容雜湊前 12 碼>`，依字典序；沒有使用者規則參與時省略 |
+  | `rules_partial` | `true` 表示本列的使用者推導因每事件時限而未完成（Spec 075 FR-059）；完成時省略 |
 
   來源送來的 `_ingest`、`_raw`、`_clock_anomaly`、`_source_time_rejected` 一律移除。`_causes` 是唯一可由來源寫入的底線鍵（Domain Invariant 6）。
-- **FR-006** `_ingest` 只含字串、整數、布林、null 與字串陣列，使兩個 verifier 的序列化逐位元組一致。一般項目序列化後不超過 512 bytes。
+- **FR-006** `_ingest` 只含字串、整數、布林、null 與字串陣列，使兩個 verifier 的序列化逐位元組一致。一般項目序列化後不超過 512 bytes，含 `rules` 的列也一樣：`rules` 是有界形式，不帶外掛版本，至多 3 項、每項至多 45 bytes（`pluginId` 截至 32 字元）；超過 3 個外掛參與時，保留字典序前 2 項，第 3 項寫 `+<其餘數目>`。外掛版本與完整規則內容由內容雜湊在外掛詳情中對照（Spec 075 FR-059）。
 - **FR-007** 新列的 engagement 一律等於開著的專案 DB 所綁定的 engagement。任何入口都不再寫 `'default'`。沒有綁定的 DB 時不寫入，回 `retry`／`no-project`。
 - **FR-008** `observed.project` 與開著的專案不同時，不寫入，回 `retry`／`foreign-project`，項目留給它自己的專案（Spec 002 FR-001）。沒有 `observed.project` 的交接項目進隔離區（`no-project`，承接 Spec 002 FR-006 的語意）。專案已不在本機專案清單中的交接項目進隔離區（`unknown-project`）。
 - **FR-009** 列的操作者是觀察當下的操作者。`observed.operator` 是本專案已知且未撤銷的操作者時採用；否則採機器層級設定中的目前操作者（O12），來源的值記在 `_ingest.claimed.operator`。
@@ -226,7 +230,9 @@
   4. `terminal-last`：同一終端機在觀察時間以前、最後一筆 `explicit` 或 `extracted` 列的目標；
   5. `none`。
 
-  全部由持久化資料決定。不論是否重啟、經哪個入口、何時送達，結果相同。全域目前目標不再自動套用到任何列（O11；不屬於任何終端機的 app 內操作見開放問題 Q4）。
+  全部由持久化資料決定。不論是否重啟、經哪個入口、何時送達，結果相同。全域目前目標不再自動套用到任何列（O11；不屬於任何終端機的 app 內操作見 O16）。
+
+  `terminal-last` 讀專案資料庫中的 `terminal_targets` 表。這張表歸本規格：由寫入路徑在同一個 commit 交易內同步寫入。它同時是 Spec 074 可重建的投影：含 071 之前事件的專案需要回填，回填由 074 的 `heavy` 執行緒計算、由主行程的寫入者以小交易寫入（074 FR-032、plan D5）。**回填完成之前**（含 074 尚未落地、回填從未開始的期間），該專案的新列不套用第 4 步：沒有 `explicit`、`extracted`、`command` 可用的列寫 `target_via: "none"`。列永不改寫，所以這些列的 `none` 是永久的；這是重啟等價（SC-003）唯一的例外，只發生在含 071 之前事件的專案。沒有 071 之前事件的專案不需要回填，第 4 步一開始就適用。
 - **FR-011** 新列的終端機身分只有一個正規值 `_ingest.terminal`：取 `observed.terminal`；舊入口依序取 `data.terminalId`、`data.terminal_id`。核心中需要新列終端機身分的地方一律讀這個值。
 - **FR-012** 接收端認定的來源只由憑證（或行程內呼叫者）決定。`producer.name`／`version` 只記錄、不用於信任。對帶 `_ingest` 的列，凡依「是否為內建終端機」做的存取或信任判斷（例如 `/api/terminal/replay` 讀取 cast），一律以 `_ingest.producer` 為準。純顯示用途不在本規格。
 - **FR-013** 交接用的 identity 檔（`~/.redlog/active-identity.json`）以原子方式寫入，讀者不會讀到半寫的內容；欄位只增不改。
@@ -258,7 +264,7 @@
 - **FR-034** 來源只依 `outcome`／`reason`（以及 FR-033 的請求層級狀態）決定行動，不依錯誤字串。
 - **FR-035** 接收端發出的每一個 `rejected`（`plumbing` 除外）都由接收端計入遺失帳本。來源只計從未送到接收端的遺失，同一件事只計一次。
 - **FR-036** 舊入口 `POST /api/events`（請求中沒有 `contract`）對每種情況回與今天相同的狀態碼，只在回應中**增加** `outcome`／`reason` 欄位。201 的回應主體仍是該列（既有來源讀其中的 `id`，`mitmproxy-addon.py:635-669`）。唯一的行為修正：ingest 內的跨專案拒絕仍回 409，主體文字改為與標頭 pin 相同的 `engagement changed`，讓 relay 計為被拒（今天被當成已收，`redlog-relay.py:333-338`）。
-- **FR-037** 舊入口與舊版憑證至少保留到所有內建來源改用契約 1 之後兩個 minor 版本，且在本機 14 天內仍有舊入口流量時不移除。移除另立規格（開放問題 Q2）。
+- **FR-037** 舊入口與舊版憑證至少保留到所有內建來源改用契約 1 之後兩個 minor 版本，且在本機 14 天內仍有舊入口流量時不移除。移除另立規格（O14）。
 
 #### D. 冪等（US1）
 
@@ -282,7 +288,7 @@
   | `handoff-full` | 否 | 來源 |
   | `handoff-write-failed` | 否 | 來源 |
   | `encode-failed` | 否 | 來源 |
-  | `malformed`、`too-large`、`kind-not-allowed`、`key-conflict`、`unauthenticated`、`unreadable`、`incomplete-write`、`unknown-project`、`no-project` | 否 | 接收端 |
+  | `malformed`、`too-large`、`kind-not-allowed`、`key-conflict`、`unauthenticated`、`unreadable`、`incomplete-write`、`unknown-project`、`no-project`、`legacy-bad`（FR-069 一次移入的舊 `.bad` 檔） | 否 | 接收端 |
   | `sequence-gap`（原因未知） | 否 | 接收端由序號推導 |
   | `ended-unclean`（尾端數量未知） | 否 | 接收端 |
 
@@ -294,9 +300,11 @@
   - 該 instance 靜默超過 24 小時且沒有 `bye`，記為 `ended-unclean`。
 
   缺號扣掉來源回報的原因計數，餘數記為原因未知。
+
+  本表是遺失原因的**唯一**封閉清單；交接隔離區的原因（FR-066）與它相同。Spec 075 的來源狀態理由是另一份清單（顯示用），它的 `loss` 事實以本表的原因名稱彙總，不另立遺失原因。
 - **FR-054** 每次結算，對有遺失的 instance 寫一列 chained `system.capture_gap`（沿用既有 subtype），內容含：來源、instance、序號範圍、各原因計數、未說明數、有意／非有意、窗口起訖、相關指令 id（若 `observed.command` 有值）。列的 `timestamp` 為窗口起點，讓它出現在時間軸上的原位。接收端的拒收與隔離以同樣方式按 instance（舊入口按來源）彙總。
 - **FR-055** 不計為遺失：`duplicate`、`plumbing`、尚未結算的 `retry`。
-- **FR-056** 狀態呈現在既有的 capture 狀態內，不新增頁面，每個來源呈現以下事實：存活（K）、最近一次寫入、待確認數、非有意與有意遺失數、隔離區數量與原因、是否仍在用舊入口。
+- **FR-056** 狀態呈現在既有的 capture 狀態內，不新增頁面，每個來源提供以下事實（如何算成狀態屬 Spec 075）：存活（K）；本專案**第一次接受**該來源列的時間（里程碑，一旦寫入不再改，也不因保留期刪列而清除）與最近一次接受的時間；待確認數；非有意與有意遺失數，以及最近一次非有意缺口窗口的結束時間；停用後被拒數（`source-disabled`、`credential-revoked` 兩個原因在停用或撤銷時刻之後的計數）；隔離區數量與原因；是否仍在用舊入口。這些事實取代 Spec 075 之外任何「曾經成功過」的獨立紀錄（不另建 proof 檔）。
 - **FR-057** 缺口列是 chained 列，自然進入匯出；本規格不改變 bundle 格式。
 - **FR-058** 審查找出的不計數情況，各自有明確落點：
   - spool 達上限 → `handoff-full`；
@@ -305,16 +313,16 @@
   - relay 最後一列被拒或缺 `bye` → 接收端計數，或記為 `ended-unclean` 並帶指令 id；
   - 沒有 port → 寫交接檔；
   - `redlog-send.ps1` 的 `catch {}` → 依回執處理並計數；
-  - pcap-capture 沒有連線時直接丟棄 → 寫交接檔。
+  - pcap-capture 不檢查 POST 的結果（沒有連線、或任何非 2xx 都被當成已送達，靜默遺失）→ 依回執處理：沒有回應與 `retry` 寫交接檔，`rejected` 由接收端計數。
 
 #### F. 交接目錄（US3、US4）
 
 - **FR-060** 結構為 `~/.redlog/handoff/<project>/{tmp,new,quarantine}`。`new/` 中的檔名為 `<觀察毫秒>-<instance>-<seq>.rli`，依觀察時間排序。
 - **FR-061** 來源只在 `tmp/` 以獨占方式建檔，寫完後以同一檔案系統內的 rename 移入 `new/`。接收端從不讀 `tmp/`。`new/` 中永遠沒有寫一半的檔。
-- **FR-062** Python、Node、PowerShell 在 rename 前對檔案 fsync。shell 不 fsync，斷電時可能留下損毀檔，由 MAC 檢出並隔離。接收端只在 commit 之後刪檔；資料庫維持每次 commit 同步落盤。
+- **FR-062** Python、Node、PowerShell 在 rename 前對檔案 fsync。shell 不 fsync，斷電時可能留下損毀檔，由 MAC 檢出並隔離。接收端只在 commit 之後刪檔。資料庫的耐久度依今天的事實：WAL 下 `PRAGMA synchronous = NORMAL`（見 Assumptions），commit 對行程當掉是耐久的，對斷電或作業系統當掉**不保證**，最近的幾筆 commit 可能遺失，而其交接檔已刪。是否改為 FULL 見開放問題 Q6；在答覆前，本規格不宣稱 `accepted` 對斷電耐久。
 - **FR-063** 每個專案的 `new/` 合計（所有來源）最多 5000 檔；能廉價量測大小的來源另限 512 MiB；單檔不超過 20 MiB。滿了就丟最新的並計 `handoff-full`，絕不阻塞操作者。
 - **FR-064** 交接檔第一行宣告憑證 id、世代與 HMAC，其後是項目的確切位元組。MAC 以憑證衍生的金鑰、對加上領域前綴的項目位元組計算。接收端先驗 MAC 再解析。金鑰不出現在 argv 或環境變數中。
-- **FR-065** 交接檔走與 API 相同的整條管線，包括依憑證的種類政策。任何檔都不能產生該憑證不得寫入的種類：`system`、衍生種類、`marker`／`amended` 都不行。
+- **FR-065** 交接檔走與 API 相同的整條管線，包括依憑證的種類政策。任何檔都不能產生該憑證不得寫入的種類：`system`、衍生種類、`amended` 都不行；`marker` 只有種類範圍明列它的憑證可以（目前只有 O13 的 `agent-tools`）。種類範圍的資料取自 Spec 072 登記表的 `writers`（072 FR-005），本規格負責強制。
 - **FR-066** 隔離區只放不可重試的項目，檔名 `<原因>--<原檔名>`，旁附 `.why`（原因、細節、時間、接收端版本）。每個專案上限 1000 檔或 256 MiB，滿了就只計數。隔離區的檔從不自動重新處理。操作者可以開啟所在資料夾或清除，清除動作寫一列 chained 紀錄。
 - **FR-067** `tmp/` 中超過 24 小時的孤兒檔移入隔離區（`incomplete-write`）。
 - **FR-068** 目錄權限 0700、檔案 0600；Windows 只授權給擁有者。以提權身分執行的來源，交接檔屬於發起的使用者。
@@ -330,13 +338,18 @@
   - `hooks/pcap-agent.py`：`pcap-agent`；
   - 每個外掛 Source：`plugin:<id>`，種類取自 manifest 的 `emits`（O6）；
   - 遠端主機：`remote:<名稱>`，限定單一專案；
+  - AI 工具整合（O13）：`agent-tools`，可寫 `agent`、`marker`，另可讀狀態；
   - 舊版：`legacy`。
+
+  這份來源類別的值域（加上行程內的 `in-process` 與 `derived`）就是 Spec 072 `ProducerClass` 的值域；外掛類別在 072 中記為 `plugin`，個別外掛由憑證 id 區分。
 
   官方 AI adapter、內建終端機的 session 生命週期列與 `system` 列走行程內入口，沒有憑證。
 - **FR-072** 憑證由 app 直接寫檔發放，不需要網路服務：
   - app 啟動時：為已安裝的 hook、內建終端機、受管代理發放；
-  - 操作者手動啟用外掛 Source 時：發放 `plugin:<id>`（O9）；
+  - 操作者第一次在任一專案啟用外掛 Source（Spec 075 FR-076 的 `on`）時：發放 `plugin:<id>`（O9）；憑證是機器層級的（plan D7），之後其他專案的啟用不再發放；
   - 操作者以 CLI 執行時：發放遠端主機的憑證。
+
+  每次寫入憑證檔都經 Spec 073 的安裝帳本（`install-ledger.apply`，類型 `credential-file`），使移除能收回它；073 的帳本落地前直接寫檔。
 - **FR-073** 來源讀取 `~/.redlog/credentials/<來源>.cred`（單行，0600，目錄 0700）。接收端只保存 secret 的摘要與 MAC 金鑰，secret 本身不進資料庫、日誌或任何事件。
 - **FR-074** 憑證從不出現在任何行程的 argv 或子行程的環境變數中。內建終端機的 hook 以既有的非秘密旗標 `REDLOG_TERMINAL` 找到自己的憑證檔。`test/shell-token-not-in-argv.test.ts` 擴充到每個來源。
 - **FR-075** 輪替以原子方式替換檔案。上一世代對 bearer 認證另有 10 分鐘寬限；對觀察時間早於輪替時刻的交接檔仍有效。輪替在開著的專案寫一列 chained 紀錄。
@@ -349,7 +362,8 @@
   - `~/.redlog/api-token` 改放機器層級、只能寫入的 `legacy` 憑證；
   - CLI 讀新路徑。
 - **FR-079** 不需操作者重新安裝即可延續：app 啟動時更新 hook 檔並寫好憑證檔。仍在執行舊函式的 shell 經舊入口繼續寫入。無法自動重新發放的地方（WSL 中手動複製的 hook、VPS、第三方來源）同樣經舊入口繼續，但只能寫入；狀態呈現指出哪些來源仍在用舊入口，遠端主機需要操作者以 CLI 重新發放。
-- **FR-07A** 官方 AI adapter 的項目，若所屬專案沒有同意（O9），回 `rejected`／`source-disabled`。
+- **FR-07A** 以專案為單位的啟用由接收端強制：官方 AI adapter 的項目，若所屬專案沒有有效的同意（O9；同意狀態由 Spec 073 的 `ai-consent` 回答）；外掛 Source 的項目，若所屬專案對該來源不是 `on`（Spec 075 的 `enabledForProject`）；兩者都回 `rejected`／`source-disabled`，計為有意。專案層的 `off` 不撤銷機器層的憑證（FR-076 的撤銷只對機器層的停用、撤銷、雜湊改變、移除）。
+- **FR-07B** `GET /api/whoami`（來源憑證可呼叫，FR-070）回傳呼叫者的憑證 id、來源類別、世代，以及該來源在目前開著的專案中的狀態：Spec 075 的狀態碼、理由碼與動作碼（075 FR-031 的同一份 payload 中該來源的一項）。沒有開著的專案時狀態為 `unknown`；075 落地前一律回 `unknown` 並說明。shell 的 `redlog status` 讀它（075 FR-035）。
 
 #### H. 暫停邊界（US2）
 
@@ -358,16 +372,17 @@
 - **FR-082** 接收端對每個項目（任何入口，包括舊入口）以觀察時間對照持久化的暫停區間判斷，取代今天「早於最近一次恢復即拒」的判法（`ingest.ts:160-168`）。沒有恢復紀錄的暫停延續到下一次恢復或重開的標記。落在區間內：`rejected`／`paused`，計為有意；落在區間外：即使目前是暫停狀態也寫入。
 - **FR-083** 暫停期間觀察到的內容，之後任何時候都不會寫入，與排空和開專案的順序無關。
 - **FR-084** `system`、`marker` 的暫停豁免與既有的 `bypassPause`（手動截圖）不變。
-- **FR-085** 外部終端機在 `hello` 時綁定一個專案。開著的專案不是綁定的專案時，終端機在觀察點本地暫停，計 `project-switched`（有意），絕不送往其他專案（O10）。綁定的專案重新開啟時，送出 `capture_resumed` 事件並附計數。內建終端機維持 Spec 055 的輪替。
+- **FR-085** 外部終端機在 `hello` 時綁定一個專案。開著的專案不是綁定的專案時，終端機在觀察點本地暫停，計 `project-switched`（有意），絕不送往其他專案（O10）。綁定的專案重新開啟時，送出 `capture_resumed` 事件並附計數。內建終端機維持 Spec 055 的輪替。本規格擁有來源端（relay 的轉移、`project-switched` 計數、`capture_resumed` 項目）；app 端的綁定狀態、生命週期與終端機狀態檔的 schema 屬 Spec 073（FR-040–045）。兩側的轉移表由同一個 agreement 測試 `test/terminal-enrollment-agreement.test.ts` 保證一致（本規格 T075、073 T060，同一個 PR 或同日配對）。
 
 #### I. 單一入口（US1、US4）
 
 - **FR-090** 每一列事件不論來源，都依序經過同一組階段：認證 → 驗證 → 蓋章 → 去重 → 結算執行期配對 → 政策（種類、暫停、未記錄的終端機、plumbing、同意、專案）→ 推導 → commit → 回執 → commit 後的工作。各入口只在「認證」不同。
 - **FR-091** 結果會寫進該列並被雜湊的推導（`_causes`、目標、標籤、cast 區段、loot 命中加入遮罩 denylist、遮罩 span、sidecar 參照）在 commit 前同步完成；本規格不把它們延後（02 §3）。commit 之後才做的：publish、HTTP body 索引連結、scope 派送、companion 列（以 `derived` 再走一次入口）、存活狀態更新。
-- **FR-092** 目前直接呼叫 `insertEvent` 的 30 處（系統生命週期、保留期稽核、錨定、匯出摘要、scope 重算、loot、alert、markers、plugins）改走入口，以 `system`／`derived` 身分略過「推導」，但不略過蓋章、政策、去重與 commit。
+- **FR-092** 目前直接呼叫 `insertEvent` 的 31 處（Phase 1 量得，#716；系統生命週期、保留期稽核、錨定、匯出摘要、scope 重算、loot、alert、markers、plugins）改走入口，以 `system`／`derived` 身分略過「推導」，但不略過蓋章、政策、去重與 commit。之後新增的行程內寫入（Spec 072 的 `system.project_closed`、Spec 073 的 `session_start` 與當機補寫）同樣走入口。
 - **FR-093** 入口等價：同一份內容不論經哪個入口進來，寫出的列除 `_ingest.door`／`auth`／`credential` 與收到時間外相同。
 - **FR-094** 正式程式碼中，commit 階段之外出現 DB 寫入原語的呼叫時，gate 失敗。基準值只能下降，最後為 0。
 - **FR-095** commit 原語不得靜默回報「什麼都沒寫」：它要嘛寫入，要嘛丟出錯誤。入口把錯誤對應為 `retry`，並記入 capture 狀態。
+- **FR-096** commit 階段在每次 commit 之後，於行程內回傳 `CommitReceipt = {seq, chainedMaxRowId, loggedMaxRowId}`（Spec 074 FR-020）：`seq` 是每次開啟從 1 起算、每次 commit 加一的記憶體內整數，一個交易只有一個；兩個 rowid 是該 commit 後兩層的最大 rowid。它只是回傳值與 commit 後工作的輸入，**不寫入任何列或表**，不進 `_ingest`、不進雜湊。commit 後的工作把它交給 Spec 074 的讀取服務（`notifyCommit`）與變更主題分類（`topicsForCommit`）。
 
 #### J. 用戶端規格與一致性（US7）
 
@@ -388,7 +403,7 @@
 - **FR-110** `hello`、`alive`、`bye` 不寫入任何一層。接收端用它們維護來源 instance 的登記與存活狀態，狀態呈現讀這些資料，不讀事件。
 - **FR-111** 舊入口收到的 `system.producer_heartbeat` 改送存活通道，回 2xx 但不寫入。外部事件政策不再允許任何 `system` 種類。
 - **FR-112** 「此 shell 有被記錄」的依據，是該專案收到一個綁定到此專案的 instance 的 `hello`（O10）。
-- **FR-113** 分層規則：核心表決定哪些種類為 chained。`plugin:<id>` 憑證寫入、但不在核心表內的種類一律進 logged 層。核心來源與舊入口的未知種類維持今天的預設（chained）。只影響新列。
+- **FR-113** 分層規則：核心表決定哪些種類為 chained。`plugin:<id>` 憑證寫入、但不在核心表內的種類一律進 logged 層。核心來源與舊入口的未知種類維持今天的預設（chained）。只影響新列。「核心表」就是 Spec 072 的種類登記表：本規格的 `classifyTier` 只呼叫 072 的 `tierFor(agentType, subtype, producerClass)`，不另立任何 tier 表。072 的登記表落地前，本規格照今天的 `classifyTier` 出貨（外掛種類仍為 chained），本條在 072 Phase 4 的 T040 才生效。
 
 ### Key Entities
 
@@ -411,7 +426,7 @@
 - **SC-004** FR-058 列出的每個情境都在結算期限內出現對應的缺口列，且每個 instance 的帳平衡（US3）。
 - **SC-005** 暫停 property test（至少 10,000 組隨機案例）與「暫停中當掉」的真機情境：觀察時間落在暫停區間內的列為 0。
 - **SC-006** 100% 的 API 路由宣告所需能力；每一類來源憑證對每條非寫入路由都得到 403。
-- **SC-007** 正式程式碼中直接呼叫 DB 寫入原語的位置為 0（基準 30）。
+- **SC-007** 正式程式碼中直接呼叫 DB 寫入原語的位置為 0（基準 31，#716 量得）。
 - **SC-008** 每個內建來源在其支援平台上通過全部必要向量；相容矩陣由測試結果產生。
 - **SC-009** 每項的去重額外工作不超過一次索引查詢加一次插入；一百萬項的去重儲存不超過 100 MB；典型 `_ingest` 不超過 320 bytes（工作量計數，不用牆鐘）。
 - **SC-010** 介面沒有新增頁面或路由；新增的介面字串每個語系不超過 8 個 key，且通過 `test/ui-copy.test.ts`。
@@ -422,8 +437,9 @@
 
 - 單一使用者、單機。**威脅模型**：防的是瀏覽器或網頁、敵意的錄製內容、只有檔案讀寫工具（不能執行程式碼）的代理、bundle 的持有者；**不防**能執行任意程式碼的同使用者程序（05-F6）。憑證與 MAC 防的是誤歸屬與越權，不防惡意的本機程序。
 - 來源與接收端在同一台機器、同一時鐘。跨 VM、SSH 或遠端主機的來源可帶 `sent_at`，但本規格不據此校正時間。
-- 本機已有 POSIX shell 擷取的地方就有 python3：adapter 每個指令會呼叫 relay（`shell-zsh-hook.zsh:116,161`）。沒有 python3 的情形見開放問題 Q3。
-- SQLite 維持 WAL 且每次 commit 同步落盤（`db/index.ts:140`；SQLite 預設 `synchronous = FULL`），FR-062 依賴這點。
+- 本機已有 POSIX shell 擷取的地方就有 python3：adapter 每個指令會呼叫 relay（`shell-zsh-hook.zsh:116,161`）。沒有 python3 的情形見 O15。
+- SQLite 維持 WAL（`db/index.ts:140`）。**`PRAGMA synchronous` 在每條專案連線第一次寫入 WAL 之後是 NORMAL（1），不是 FULL**：better-sqlite3 以 `SQLITE_DEFAULT_WAL_SYNCHRONOUS=1` 建置，app 從不設定這個 pragma（#716 的 T005 量得）。WAL + NORMAL 下，commit 對行程當掉耐久，斷電或作業系統當掉時最近的 commit 可能遺失。FR-032 的 `accepted` 與 FR-062 的「commit 後刪交接檔」因此只對行程當掉成立；是否改為 FULL 見開放問題 Q6。
+- relay 只對網路錯誤（沒有回應、連線被拒、逾時）重試，不對 5xx 重試；01 報告 F1 表中「relay 重試 5xx」一格在 #716 未能重現（T004 依實測釘住）。
 - 操作者身分讀自機器層級設定（O12）；搬遷本身是另一項變更。
 - 依賴：階段 0 的略過記帳（#706 已合併）；#708 的事件排序修正與本規格無衝突；#711 的 bundle 第 4 版與本規格無格式衝突。
 
@@ -440,10 +456,21 @@
 - DESIGN-plugin-kernel §3 的「先存原始位元組 + mapper」管線；以 OSC 序列傳遞內建終端機事件。
 - 從隔離區重新寫入（需要另一個規格）。
 
+## 開放問題（需要擁有者）
+
+> **2026-11-12 擁有者答覆**：Q6 照建議——寫入連線改為 `synchronous=FULL`，改之前先量測寫入成本；量測結果若顯示影響明顯，回報後再議折衷。這是決定，尚未實作；FR-062 與 T005 於實作時一併改回「FULL」。
+
+O13–O17（原 Q1–Q5）已決定。以下是 2026-11-12 Phase 1 實作後新出現、尚未答覆的事項；本規格不替擁有者決定。
+
+| # | 問題 | 建議 |
+|---|---|---|
+| Q6 | `PRAGMA synchronous` 實為 NORMAL（見 Assumptions），`accepted` 之後來源會刪掉交接檔，所以斷電或作業系統當掉時，最近幾筆已回 `accepted` 的事件可能既不在資料庫、也不在交接目錄。要在寫入連線設 `synchronous = FULL`，還是在契約中寫明「`accepted` 對行程當掉耐久、對斷電不耐久」？ | 設 FULL（只在寫入連線）。先以 T061 的 perf lane 量測每次 commit 的額外成本，再決定；量測前不改。若不改，FR-032、FR-062 與 `docs/domain/SPEC-ingestion-contract.md` 要明寫斷電的界線 |
+
 ## Domain References
 
 - `.specify/memory/constitution.md` I、II、III、VI、VII、VIII、IX。
 - `docs/domain/glossary.md`：Event、Chained／Logged Event、Capture Session、Source Time、Receipt Time；Domain Invariant 5、6、8、9。本規格新增的術語在 T080 寫入 glossary。
 - `docs/design/DESIGN-capture-trust.md` §1–§3；`DESIGN-two-tier-chain.md` §2.1；`DESIGN-plugin-kernel.md` §3。
 - Spec 002（FR-001、FR-006、FR-007）、003（FR-004）、052（FR-010）、055。
+- Spec 072–075（同批起草）：介面見 plan「與兄弟規格的介面」；跨規格的實作順序只寫在 [specs/README.md](../README.md)「071–075 的跨規格順序」。
 

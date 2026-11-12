@@ -1,8 +1,9 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync, rmdirSync } from 'fs'
-import { dirname, join } from 'path'
-import { homedir } from 'os'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, mkdtempSync, copyFileSync, rmSync, rmdirSync } from 'fs'
+import { dirname, isAbsolute, join } from 'path'
+import { homedir, tmpdir } from 'os'
+import { spawnSync } from 'child_process'
 import { X509Certificate } from 'crypto'
-import { bundledRoot } from './plugins/loader'
+import { bundledRoot, loadPlugins } from './plugins/loader'
 import { captureInstallProblem } from './plugins/manifest'
 import { isOnPath } from './command-lookup'
 import { isDisabled } from './plugins/state'
@@ -34,6 +35,22 @@ export interface PluginManifest {
   manualSteps?: ManualStep[]
   /** absolute plugin dir — set for capture entries contributed by a plugin. */
   _dir?: string
+  /** Set for capture entries contributed by a plugin (see `CaptureGate`). */
+  _gate?: CaptureGate
+}
+
+/** Why a plugin capture's commands are not shown: its plugin awaits approval
+ *  (`needs-consent`), its content is no longer what was approved
+ *  (`hash-changed`), or a bundled plugin's files changed after RedLog loaded
+ *  them (`bundled-changed`). */
+export type StepsWithheld = 'needs-consent' | 'hash-changed' | 'bundled-changed'
+
+/** How a plugin capture's commands are vouched for. `withheld` is decided at
+ *  load; `verify` is asked each time the commands are about to be shown, and
+ *  answers why they may not be. */
+export interface CaptureGate {
+  withheld?: StepsWithheld
+  verify?: () => StepsWithheld | undefined
 }
 
 export interface ManualStep {
@@ -141,6 +158,11 @@ export interface PluginInfo {
   emits?: string[]
   installed: boolean
   available: boolean
+  /** The commands from `requiresAll` and `requires` that are not on PATH, by
+   *  name from those lists: what Settings says is not found. */
+  missing?: string[]
+  /** Set when the capture's commands are not shown, and why. */
+  stepsWithheld?: StepsWithheld
   installMethod: InstallMethod
   hookFile: string
   /** for installMethod 'manual' (and the powershell-profile fallback): ordered, copy-paste setup steps */
@@ -282,7 +304,8 @@ const externalCaptures: PluginManifest[] = []
 export function registerCapturePlugins(
   pluginId: string,
   dir: string,
-  entries: Array<Omit<PluginManifest, 'requires'> & { requires?: string[] }>
+  entries: Array<Omit<PluginManifest, 'requires'> & { requires?: string[] }>,
+  gate?: CaptureGate
 ): { accepted: number; rejected: Array<{ name: string; reason: string }> } {
   let accepted = 0
   const rejected: Array<{ name: string; reason: string }> = []
@@ -306,7 +329,7 @@ export function registerCapturePlugins(
     const id = e.id.startsWith(`${pluginId}.`) ? e.id : `${pluginId}.${e.id}`
     // A plugin names a file; where it goes is not the plugin's to say.
     const installTarget = e.installTarget ? join(homedir(), '.redlog', e.installTarget) : undefined
-    externalCaptures.push({ ...e, id, installTarget, requires: e.requires ?? [], _dir: dir })
+    externalCaptures.push({ ...e, id, installTarget, requires: e.requires ?? [], _dir: dir, _gate: gate })
     const retired = retiredCaptures.findIndex((m) => m.id === id)
     if (retired >= 0) retiredCaptures.splice(retired, 1)
     accepted++
@@ -396,6 +419,17 @@ function srcPathFor(plugin: PluginManifest): string {
 // otherwise mean this was first exercised on CI's ubuntu leg.
 const hookBlock = (dest: string): string => `\n# RedLog shell hook\nsource ${dest}\n`
 
+// The same hook, for a bash LOGIN file (.bash_profile, .bash_login, .profile).
+// POSIX syntax, because `.profile` is also read by sh, dash and ksh, and by the
+// `sh` a display manager runs at session start — where `source` is not a
+// command and the bash adapter is not loadable. Interactive bash only, so
+// `bash -lc cmd` (editors resolving the environment, CI jobs) does not start
+// a recorder it never had. A login bash that ALSO reaches .bashrc's block
+// sources the adapter twice; the adapter returns at once the second time
+// (`_REDLOG_HOOK_LOADED_IN`, keyed on `$$`).
+const loginHookBlock = (dest: string): string =>
+  `\n# RedLog shell hook\nif [ -n "\${BASH_VERSION:-}" ]; then case $- in *i*) . "${dest}" ;; esac; fi\n`
+
 // One file, several ways to write its path. An rc that says `source ~/.redlog/…`
 // is the same hook as one that says `source /Users/me/.redlog/…`; checking only
 // the absolute spelling made install append a second block next to a `~` one
@@ -410,18 +444,21 @@ function hookSpellings(dest: string, home: string): string[] {
   return out
 }
 
-export function rcWithHook(content: string, dest: string, home: string = homedir()): string {
+export function rcWithHook(content: string, dest: string, home: string = homedir(), block: (dest: string) => string = hookBlock): string {
   // Already there — by our line or by the operator's own, in any spelling of
   // the path — so nothing is added and nothing will be taken away.
   if (hookSpellings(dest, home).some((s) => content.includes(s))) return content
-  return content + hookBlock(dest)
+  return content + block(dest)
 }
 
 export function rcWithoutHook(content: string, dest: string, home: string = homedir()): string {
   // An exact string per spelling, not a pattern with optional newlines around
   // it: the optional parts are what made the removal lossy. Only a block that
   // carries our marker comment goes; a bare line the operator wrote stays.
-  return hookSpellings(dest, home).reduce((c, s) => c.split(hookBlock(s)).join(''), content)
+  // The login-file block is only ever written with the absolute path.
+  return hookSpellings(dest, home)
+    .reduce((c, s) => c.split(hookBlock(s)).join(''), content)
+    .split(loginHookBlock(dest)).join('')
 }
 
 export function getCaptureHookPath(pluginId: string): string | null {
@@ -454,17 +491,161 @@ export function getHookInstallPlan(pluginId: string): Array<{ source: string; ta
 }
 
 // Which shell rc a shell-source hook appends to. Explicit wins; otherwise pick
-// by the operator's login shell.
+// by the operator's login shell. This names the SHELL; where that shell reads
+// the file from is `rcLayout`'s question.
 function shellRcFor(plugin: PluginManifest): string {
   if (plugin.shellRcFile) return plugin.shellRcFile
   return process.env.SHELL?.includes('zsh') ? '.zshrc' : '.bashrc'
 }
 
+// Where each shell really reads its startup file (09-F1).
+//
+// Install used to write `~/.zshrc` / `~/.bashrc` and then read "installed"
+// back from the same file, so a wrong guess read as success: zsh with ZDOTDIR
+// reads `$ZDOTDIR/.zshrc`, and the login bash Terminal.app and iTerm2 start
+// reads `.bash_profile` (or `.bash_login`, or `.profile`) and not `.bashrc`.
+// Settings said installed; the shell never loaded the hook.
+//
+// ZDOTDIR is asked of zsh, because it is usually set in `~/.zshenv` and not in
+// the app's environment. `zsh -c` is not interactive and not a login shell, so
+// it reads /etc/zshenv and `.zshenv` — the files zsh itself reads to find
+// ZDOTDIR — and not `.zprofile`/`.zshrc`, where prompt frameworks and
+// anything that prints live. Its answer goes to a file, not a pipe, so a
+// background job started from `.zshenv` cannot hold the call open. Bounded,
+// asked once per home per process (`invalidateCommandCache` clears it); with
+// no answer the result is `$ZDOTDIR` from this environment, else `$HOME`, and
+// is marked as a guess. Not covered: ZDOTDIR changed in `.zprofile`, which
+// moves `.zshrc` for login shells only.
+const ZDOTDIR_PROBE_TIMEOUT_MS = 2_000
+const _zdotdirProbe = new Map<string, string | null>()
+
+function probeZdotdir(home: string): string | null {
+  if (process.platform === 'win32') return null
+  let work: string | undefined
+  try {
+    work = mkdtempSync(join(tmpdir(), 'redlog-zdotdir-'))
+    const answer = join(work, 'answer')
+    const r = spawnSync('zsh', ['-c', 'print -r -- "${ZDOTDIR:-$HOME}" >| "$1"', 'redlog-zdotdir', answer], {
+      env: { ...process.env, HOME: home },
+      stdio: 'ignore',
+      timeout: ZDOTDIR_PROBE_TIMEOUT_MS,
+      killSignal: 'SIGKILL'
+    })
+    if (r.error || r.status !== 0 || !existsSync(answer)) return null
+    const dir = readFileSync(answer, 'utf8').replace(/\n$/, '')
+    return dir && isAbsolute(dir) && !/[\r\n]/.test(dir) ? dir : null
+  } catch {
+    return null
+  } finally {
+    if (work) rmSync(work, { recursive: true, force: true })
+  }
+}
+
+function zshRcPath(home: string): { path: string; guessed: boolean } {
+  if (!_zdotdirProbe.has(home)) _zdotdirProbe.set(home, probeZdotdir(home))
+  const asked = _zdotdirProbe.get(home)
+  if (asked) return { path: join(asked, '.zshrc'), guessed: false }
+  return { path: join(process.env.ZDOTDIR || home, '.zshrc'), guessed: true }
+}
+
+const BASH_LOGIN_FILES = ['.bash_profile', '.bash_login', '.profile'] as const
+
+/** The one file a login bash reads: the first of the three that exists. */
+function bashLoginFile(home: string): string | null {
+  for (const name of BASH_LOGIN_FILES) {
+    const p = join(home, name)
+    if (existsSync(p)) return p
+  }
+  return null
+}
+
+const readText = (p: string): string | null => {
+  try { return existsSync(p) ? readFileSync(p, 'utf8') : null } catch { return null }
+}
+
+/** A login file that already loads `.bashrc` reaches the hook through it.
+ *  Read as text, so only the common uncommented forms count
+ *  (`. ~/.bashrc`, `source "$HOME/.bashrc"`, behind `[ -f … ] &&` or an `if`).
+ *  A miss is harmless: the login block is then added as well, and the second
+ *  load returns at once. */
+function sourcesBashrc(content: string, home: string): boolean {
+  const homes = ['~', '\\$HOME', '\\$\\{HOME\\}', home.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')].join('|')
+  const re = new RegExp(`(^|[;&|{(\\s])(source|\\.)\\s+["']?(${homes})/\\.bashrc["']?(\\s|;|$)`)
+  return content.split(/\r?\n/).some((line) => {
+    const code = line.trim()
+    return !code.startsWith('#') && re.test(code)
+  })
+}
+
+type RcState = 'read' | 'unread' | 'absent'
+
+interface RcLayout {
+  /** Where install writes, each with the block that file gets. */
+  writes: Array<{ path: string; block: (dest: string) => string }>
+  /** Every file a block of ours may be in: detection and removal look here. */
+  candidates: string[]
+  /** Whether the shell loads a hook line found in these files. */
+  state: (hookName: string) => RcState
+  /** zsh did not answer and the ZDOTDIR is assumed. */
+  guessed: boolean
+}
+
+function rcLayout(plugin: PluginManifest, home: string = homedir()): RcLayout {
+  const rcName = shellRcFor(plugin)
+  const has = (p: string | null, hookName: string): boolean => !!p && (readText(p)?.includes(hookName) ?? false)
+  if (rcName === '.zshrc') {
+    const { path, guessed } = zshRcPath(home)
+    const candidates = [...new Set([path, join(home, '.zshrc')])]
+    return {
+      writes: [{ path, block: hookBlock }],
+      candidates,
+      state: (n) => has(path, n) ? 'read' : candidates.some((c) => has(c, n)) ? 'unread' : 'absent',
+      guessed
+    }
+  }
+  // The login-file handling leans on the built-in adapter's sourced-twice
+  // guard. A plugin's own hook is not known to have one, so it gets the one
+  // file it named.
+  if (plugin.id === 'shell-bash' && rcName === '.bashrc') {
+    const bashrc = join(home, '.bashrc')
+    const login = bashLoginFile(home)
+    const loginText = login ? readText(login) : null
+    const writes: RcLayout['writes'] = [{ path: bashrc, block: hookBlock }]
+    // No login file at all: a login bash reads nothing, so one is created,
+    // holding only this block. An existing `.profile` is never shadowed by a
+    // new `.bash_profile`: the block goes into the file bash already reads.
+    if (!login) writes.push({ path: join(home, '.bash_profile'), block: loginHookBlock })
+    else if (!sourcesBashrc(loginText ?? '', home)) writes.push({ path: login, block: loginHookBlock })
+    const candidates = [bashrc, ...BASH_LOGIN_FILES.map((f) => join(home, f))]
+    return {
+      writes,
+      candidates,
+      state: (n) => {
+        const nonLogin = has(bashrc, n)
+        const loginReach = !!login && (has(login, n) || (nonLogin && sourcesBashrc(loginText ?? '', home)))
+        if (nonLogin && loginReach) return 'read'
+        return candidates.some((c) => has(c, n)) ? 'unread' : 'absent'
+      },
+      guessed: false
+    }
+  }
+  const path = join(home, rcName)
+  return {
+    writes: [{ path, block: hookBlock }],
+    candidates: [path],
+    state: (n) => has(path, n) ? 'read' : 'absent',
+    guessed: false
+  }
+}
+
+const tildePath = (p: string, home: string = homedir()): string =>
+  p.startsWith(`${home}/`) ? `~${p.slice(home.length)}` : p
+
 // Per-command lookup cache. The answer virtually never changes during a
 // session; `invalidateCommandCache()` resets it after an install/uninstall so
 // the next `detectHooks()` re-probes.
 const _cmdCache = new Map<string, boolean>()
-export function invalidateCommandCache(): void { _cmdCache.clear() }
+export function invalidateCommandCache(): void { _cmdCache.clear(); _zdotdirProbe.clear() }
 
 // A PATH lookup, not a spawned `which` / `where`: one process per probe cost
 // hundreds of milliseconds on Windows, on the main thread (command-lookup.ts).
@@ -508,15 +689,15 @@ function isClaudeSettingsInstalled(commands: string[]): boolean {
   }
 }
 
-// `requireCopy: false` asks only whether the rc still sources the hook, which
-// is what removal needs: the copy may already have been deleted by hand.
-function isShellSourceInstalled(rcFile: string, hookPath: string, requireCopy = true): boolean {
-  if (requireCopy && !existsSync(hookPath)) return false
-  const rcPath = join(homedir(), rcFile)
-  if (!existsSync(rcPath)) return false
-  const content = readFileSync(rcPath, 'utf-8')
-  const hookName = hookPath.split(/[\\/]/).pop() ?? ''
-  return content.includes(hookName)
+// 'read': a file the shell loads sources the hook. 'unread': a line is there,
+// but only where this shell will not load it (a `~/.zshrc` under ZDOTDIR, a
+// `.bashrc` no login file reaches) — not installed, and not nothing either:
+// removal still takes it out. `requireCopy: false` asks only about the lines,
+// which is what removal needs: the copy may already have been deleted by hand.
+function shellSourceState(plugin: PluginManifest, requireCopy = true): RcState {
+  const hookPath = installTargetFor(plugin)
+  if (requireCopy && !existsSync(hookPath)) return 'absent'
+  return rcLayout(plugin).state(hookPath.split(/[\\/]/).pop() ?? '')
 }
 
 // PowerShell loads a different profile per edition: Windows PowerShell 5.1
@@ -581,7 +762,7 @@ function checkInstalled(plugin: PluginManifest): boolean {
     case 'claude-settings':
       return isClaudeSettingsInstalled(claudeHookCommands(plugin))
     case 'shell-source':
-      return isShellSourceInstalled(plugin.shellRcFile ?? '.zshrc', installTargetFor(plugin))
+      return shellSourceState(plugin) === 'read'
     case 'powershell-profile':
       return isPowershellProfileInstalled(installTargetFor(plugin))
     case 'manual':
@@ -709,35 +890,52 @@ function hasManualSteps(plugin: PluginManifest): boolean {
   return plugin.installMethod === 'manual' || plugin.installMethod === 'powershell-profile'
 }
 
+/** The listed dependencies that are not on PATH: every missing all-of entry,
+ *  and the any-of alternatives when none of them is there. */
+function missingCommands(plugin: PluginManifest): string[] {
+  const all = (plugin.requiresAll ?? []).filter((cmd) => !commandExists(cmd))
+  const anyOf = plugin.requires.length > 0 && !plugin.requires.some((cmd) => commandExists(cmd)) ? plugin.requires : []
+  return [...all, ...anyOf]
+}
+
+/** Why this capture's commands must not be shown right now, if they must not. */
+function stepsWithheld(plugin: PluginManifest): StepsWithheld | undefined {
+  return plugin._gate?.withheld ?? plugin._gate?.verify?.()
+}
+
+function pluginInfo(plugin: PluginManifest, available: boolean, builtinIds: Set<string>): PluginInfo {
+  const hookFile = srcPathFor(plugin)
+  const withheld = stepsWithheld(plugin)
+  const manualSteps = hasManualSteps(plugin) && !withheld
+    ? (plugin.manualSteps ?? buildManualSteps(plugin.id, hookFile, available))
+    : undefined
+  const missing = available ? [] : missingCommands(plugin)
+  return {
+    id: plugin.id,
+    name: plugin.name,
+    description: plugin.description,
+    agentType: plugin.agentType,
+    emits: plugin.emits,
+    platforms: plugin.platforms,
+    installed: checkInstalled(plugin),
+    available,
+    ...(missing.length > 0 ? { missing } : {}),
+    ...(withheld ? { stepsWithheld: withheld } : {}),
+    installMethod: plugin.installMethod,
+    hookFile,
+    manualSteps,
+    removalSteps: buildRemovalSteps(plugin.id, undefined, hookFile),
+    builtin: builtinIds.has(plugin.id),
+    /** Switched off in Settings ▸ 外掛. Still listed, because the producer
+     *  runs outside RedLog and disabling does not stop it. */
+    disabled: (plugin as { disabled?: boolean }).disabled === true,
+    stepsAreOptional: plugin.id === 'mitmproxy'
+  }
+}
+
 export function detectHooks(): PluginInfo[] {
   const builtinIds = new Set(PLUGIN_REGISTRY.map((p) => p.id))
-  return listableManifests().map((plugin) => {
-    const hookFile = srcPathFor(plugin)
-    const available = checkAvailable(plugin)
-    const manualSteps = hasManualSteps(plugin)
-      ? (plugin.manualSteps ?? buildManualSteps(plugin.id, hookFile, available))
-      : undefined
-
-    return {
-      id: plugin.id,
-      name: plugin.name,
-      description: plugin.description,
-      agentType: plugin.agentType,
-      emits: plugin.emits,
-      platforms: plugin.platforms,
-      installed: checkInstalled(plugin),
-      available,
-      installMethod: plugin.installMethod,
-      hookFile,
-      manualSteps,
-      removalSteps: buildRemovalSteps(plugin.id, undefined, hookFile),
-      builtin: builtinIds.has(plugin.id),
-      /** Switched off in Settings ▸ 外掛. Still listed, because the producer
-       *  runs outside RedLog and disabling does not stop it. */
-      disabled: (plugin as { disabled?: boolean }).disabled === true,
-      stepsAreOptional: plugin.id === 'mitmproxy'
-    }
-  })
+  return listableManifests().map((plugin) => pluginInfo(plugin, checkAvailable(plugin), builtinIds))
 }
 
 let _detectCache: PluginInfo[] | null = null
@@ -745,38 +943,23 @@ let _detectCache: PluginInfo[] | null = null
 export async function detectHooksAsync(): Promise<PluginInfo[]> {
   const manifests = listableManifests()
   const builtinIds = new Set(PLUGIN_REGISTRY.map((p) => p.id))
-  const results = await Promise.all(manifests.map(async (plugin) => {
-    const hookFile = srcPathFor(plugin)
-    const available = await checkAvailableAsync(plugin)
-    const manualSteps = hasManualSteps(plugin)
-      ? (plugin.manualSteps ?? buildManualSteps(plugin.id, hookFile, available))
-      : undefined
-    return {
-      id: plugin.id,
-      name: plugin.name,
-      description: plugin.description,
-      agentType: plugin.agentType,
-      emits: plugin.emits,
-      platforms: plugin.platforms,
-      installed: checkInstalled(plugin),
-      available,
-      installMethod: plugin.installMethod,
-      hookFile,
-      manualSteps,
-      removalSteps: buildRemovalSteps(plugin.id, undefined, hookFile),
-      builtin: builtinIds.has(plugin.id),
-      /** Switched off in Settings ▸ 外掛. Still listed, because the producer
-       *  runs outside RedLog and disabling does not stop it. */
-      disabled: (plugin as { disabled?: boolean }).disabled === true,
-      stepsAreOptional: plugin.id === 'mitmproxy'
-    }
-  }))
+  const results = await Promise.all(manifests.map(async (plugin) =>
+    pluginInfo(plugin, await checkAvailableAsync(plugin), builtinIds)))
   _detectCache = results
   return results
 }
 
+/** The last detection, with each plugin capture's commands vouched for again:
+ *  the cache is answered before it is refreshed, and a file can change in
+ *  between. */
 export function getCachedHooks(): PluginInfo[] | null {
-  return _detectCache
+  if (!_detectCache) return null
+  const gated = new Map(listableManifests().filter((m) => m._gate).map((m) => [m.id, m]))
+  return _detectCache.map((info) => {
+    const plugin = gated.get(info.id)
+    const withheld = plugin ? stepsWithheld(plugin) : undefined
+    return withheld ? { ...info, manualSteps: undefined, stepsWithheld: withheld } : info
+  })
 }
 
 export function invalidateHooksCache(): void {
@@ -794,7 +977,12 @@ export function refreshInstalledHooks(): string[] {
     const files = plugin.installMethod === 'shell-source' ? getHookInstallPlan(plugin.id)
       : plugin.installMethod === 'powershell-profile' ? [{ source: srcPathFor(plugin), target: installTargetFor(plugin) }]
       : null
-    if (!files || !checkInstalled(plugin)) continue
+    // A shell-source copy that any rc names is in use, whether or not that rc
+    // is one the shell reads today: an out-of-date copy is wrong either way.
+    const enrolled = plugin.installMethod === 'shell-source'
+      ? shellSourceState(plugin) !== 'absent'
+      : checkInstalled(plugin)
+    if (!files || !enrolled) continue
     let changed = false
     for (const file of files) {
       try {
@@ -822,13 +1010,112 @@ export function removeInstalledHooks(): string[] {
     // The line is what has to go, so ask whether it is there — not whether
     // the copy it names still is (the operator may have cleared ~/.redlog).
     const sourced = plugin.installMethod === 'shell-source'
-      ? isShellSourceInstalled(plugin.shellRcFile ?? '.zshrc', installTargetFor(plugin), false)
+      ? shellSourceState(plugin, false) !== 'absent'
       : plugin.installMethod === 'powershell-profile'
         ? isPowershellProfileInstalled(installTargetFor(plugin), false)
         : false
     if (sourced && uninstallHook(plugin.id).success) removed.push(plugin.id)
   }
   return removed
+}
+
+// Removal outlives the manifest (08-plugin-system F3).
+//
+// Uninstall used to look only at what is loaded right now, so once a plugin
+// was disabled, revoked, changed on disk, or its starter pack switched off,
+// the lines RedLog had written for it answered "Unknown plugin" and stayed in
+// the operator's rc and Claude Code settings for good. What uninstall removes
+// is decided by RedLog's own formats (the marked rc block, the exact command
+// string), never by the manifest's prose; the manifest only says which file
+// name and which rc. So it may be read from wherever it still exists.
+
+/** The capture entries of every plugin on disk that is not an error,
+ *  whatever its trust or enable state, shaped as `registerCapturePlugins`
+ *  registers them. */
+function capturesOnDisk(): PluginManifest[] {
+  const out: PluginManifest[] = []
+  for (const p of loadPlugins()) {
+    if (p.status === 'error') continue
+    for (const cap of p.manifest.contributes?.capture ?? []) {
+      if (!cap?.id || !cap.hookFile || captureInstallProblem(cap)) continue
+      const id = cap.id.startsWith(`${p.manifest.id}.`) ? cap.id : `${p.manifest.id}.${cap.id}`
+      out.push({
+        ...cap, id, requires: cap.requires ?? [], _dir: p.dir,
+        installTarget: cap.installTarget ? join(homedir(), '.redlog', cap.installTarget) : undefined
+      })
+    }
+  }
+  return out
+}
+
+/** The entry `pluginId` names: loaded, switched off this session, a built-in
+ *  whose starter pack is switched off, or read from its plugin's folder. */
+function manifestForRemoval(pluginId: string): PluginManifest | undefined {
+  return allManifests().find((p) => p.id === pluginId)
+    ?? retiredCaptures.find((p) => p.id === pluginId)
+    ?? PLUGIN_REGISTRY.find((p) => p.id === pluginId)
+    ?? (pluginId.includes('.') ? capturesOnDisk().find((p) => p.id === pluginId) : undefined)
+}
+
+const RC_FILES = ['.zshrc', '.bashrc', '.bash_profile', '.profile']
+const RC_BLOCK_RE = /\n# RedLog shell hook\nsource ([^\n]+)\n/g
+
+/** Hook entries in RedLog's own format that no capture RedLog can still read
+ *  accounts for: each file, and the line in it. */
+function unclaimedEntries(): Array<{ file: string; line: string; kind: 'rc' | 'claude' }> {
+  const home = homedir()
+  const known = [...PLUGIN_REGISTRY, ...externalCaptures, ...retiredCaptures, ...capturesOnDisk()]
+  const claimedRc = new Set(known.filter((m) => m.installMethod === 'shell-source')
+    .flatMap((m) => hookSpellings(installTargetFor(m), home)))
+  const claimedClaude = new Set(known.filter((m) => m.installMethod === 'claude-settings').flatMap(claudeHookCommands))
+  const out: Array<{ file: string; line: string; kind: 'rc' | 'claude' }> = []
+  for (const rc of RC_FILES) {
+    const file = join(home, rc)
+    let content = ''
+    try { content = existsSync(file) ? readFileSync(file, 'utf-8') : '' } catch { continue }
+    for (const match of `\n${content}`.matchAll(RC_BLOCK_RE)) {
+      if (!claimedRc.has(match[1])) out.push({ file, line: `source ${match[1]}`, kind: 'rc' })
+    }
+  }
+  const settingsPath = join(home, '.claude', 'settings.json')
+  try {
+    const groups = existsSync(settingsPath) ? JSON.parse(readFileSync(settingsPath, 'utf-8'))?.hooks?.PostToolUse : undefined
+    const pluginsDir = join(home, '.redlog', 'plugins')
+    for (const group of Array.isArray(groups) ? groups as ClaudeHookGroup[] : []) {
+      for (const hook of Array.isArray(group?.hooks) ? group.hooks : []) {
+        const command = hook?.command
+        if (typeof command !== 'string' || claimedClaude.has(command)) continue
+        if (command.startsWith(`${pluginsDir}/`) || command.startsWith(`${pluginsDir}\\`) || command.startsWith('redlog-hooks/')) {
+          out.push({ file: settingsPath, line: command, kind: 'claude' })
+        }
+      }
+    }
+  } catch { /* unreadable settings: nothing to name from it */ }
+  return out
+}
+
+/** No manifest names `pluginId` any more, so which entries were its own cannot
+ *  be known. Nothing is removed on a guess; the entries RedLog wrote that no
+ *  readable plugin claims are named, file and line, for the operator. */
+function unclaimedRemoval(pluginId: string): { success: boolean; message: string; steps?: ManualStep[] } {
+  const entries = unclaimedEntries()
+  if (entries.length === 0) {
+    return {
+      success: false,
+      message: `${pluginId} is not loaded and its plugin folder is gone. No hook line RedLog wrote is left without an owner in ${RC_FILES.map((f) => `~/${f}`).join(', ')} or ~/.claude/settings.json.`
+    }
+  }
+  const steps = entries.map((e) => ({
+    label: e.kind === 'rc'
+      ? `In ${e.file}, delete the line "# RedLog shell hook" and the line after it: ${e.line}`
+      : `In ${e.file}, delete the PostToolUse hook whose command is ${e.line}`
+  }))
+  return {
+    success: false,
+    message: `${pluginId} is not loaded and its plugin folder is gone, so RedLog cannot tell which entries were its own and removed nothing. ` +
+      `These were written by RedLog and no plugin claims them: ${steps.map((s) => s.label).join('; ')}`,
+    steps
+  }
 }
 
 export function installHook(pluginId: string): { success: boolean; message: string } {
@@ -885,12 +1172,18 @@ export function installHook(pluginId: string): { success: boolean; message: stri
           if (!existsSync(file.source)) throw new Error(`Missing hook file: ${file.source}`)
           copyFileSync(file.source, file.target)
         }
-        const rcFile = shellRcFor(plugin)
-        const rcPath = join(homedir(), rcFile)
-        const before = existsSync(rcPath) ? readFileSync(rcPath, 'utf-8') : ''
-        const after = rcWithHook(before, dest)
-        if (after !== before) writeFileSync(rcPath, after)
-        return { success: true, message: `${plugin.name} hook installed. Run: source ~/${rcFile}` }
+        const layout = rcLayout(plugin)
+        for (const { path, block } of layout.writes) {
+          const before = existsSync(path) ? readFileSync(path, 'utf-8') : ''
+          const after = rcWithHook(before, dest, homedir(), block)
+          if (after !== before) writeFileSync(path, after)
+        }
+        const files = layout.writes.map((w) => tildePath(w.path))
+        return {
+          success: true,
+          message: `${plugin.name} hook added to ${files.join(' and ')}. Open a new terminal, or run: source ${files[0]}`
+            + (layout.guessed ? ' (zsh did not say where it reads .zshrc, so this is assumed)' : '')
+        }
       } catch (e) {
         return { success: false, message: `Failed: ${e}` }
       }
@@ -934,8 +1227,8 @@ export function installHook(pluginId: string): { success: boolean; message: stri
 /** `steps` is present when RedLog cannot do the removal itself: the operator
  *  needs to know what to undo, not just that it is their job. */
 export function uninstallHook(pluginId: string): { success: boolean; message: string; steps?: ManualStep[] } {
-  const plugin = allManifests().find((p) => p.id === pluginId)
-  if (!plugin) return { success: false, message: `Unknown plugin: ${pluginId}` }
+  const plugin = manifestForRemoval(pluginId)
+  if (!plugin) return unclaimedRemoval(pluginId)
 
   switch (plugin.installMethod) {
     case 'claude-settings': {
@@ -957,20 +1250,23 @@ export function uninstallHook(pluginId: string): { success: boolean; message: st
           })
         }
         writeFileSync(settingsPath, JSON.stringify(settings, null, 2))
-        return { success: true, message: `${plugin.name} hook removed` }
+        return { success: true, message: `${plugin.name} hook removed from ~/.claude/settings.json` }
       } catch (e) {
         return { success: false, message: `Failed: ${e}` }
       }
     }
     case 'shell-source': {
       try {
-        const rcFile = shellRcFor(plugin)
-        const rcPath = join(homedir(), rcFile)
         const dest = installTargetFor(plugin)
-        if (existsSync(rcPath)) {
+        // Every file a block may be in — where the shell reads today, and the
+        // `~/.zshrc` or login file an earlier install wrote to.
+        const removedFrom: string[] = []
+        for (const rcPath of rcLayout(plugin).candidates) {
+          if (!existsSync(rcPath)) continue
           const before = readFileSync(rcPath, 'utf-8')
           const after = rcWithoutHook(before, dest)
           if (after !== before) {
+            removedFrom.push(tildePath(rcPath))
             // An rc that holds nothing but our block was created by the
             // install. Leaving a 0-byte file behind is a footprint, the same
             // one the PowerShell branch below already refuses to leave.
@@ -985,7 +1281,9 @@ export function uninstallHook(pluginId: string): { success: boolean; message: st
         const { stopped } = shell ? stopOpenTerminals(shell) : { stopped: 0 }
         return {
           success: true,
-          message: `${plugin.name} hook removed. New terminals will not record.` +
+          // Name the files that were actually changed: the hook may have been
+          // in more than one (the rc file and a login file), or in none.
+          message: `${plugin.name} hook removed${removedFrom.length ? ` from ${removedFrom.join(', ')}` : ''}. New terminals will not record.` +
             (stopped > 0 ? ` ${stopped} open terminal${stopped === 1 ? '' : 's'} stopped recording (redlog start resumes one).` : '') +
             // The bash adapter keeps no per-terminal state, so there is nothing
             // to stop from outside: say so rather than imply it is handled.

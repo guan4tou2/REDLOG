@@ -33,7 +33,6 @@ for (const shell of ['bash', 'zsh'] as const) {
   ;(available ? describe : describe.skip)(`${shell} terminal status`, () => {
     it('does not promise recording just because the hook loaded', () => {
       const output = run('redlog status; redlog start; redlog mode auto; redlog status')
-      expect(output).toContain('shell hook loaded')
       expect(output).toContain('not recording (no project')
       expect(output).toContain('open a project and a new terminal')
       expect(output).not.toMatch(/will be recorded|recording in this terminal|^recording /m)

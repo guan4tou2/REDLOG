@@ -7,7 +7,7 @@ import type { IpcContext } from './types'
 import { loadConfig } from '../../core/config'
 import { getProjectDir as getProjectPath } from '../../core/project-manager'
 import { testSample } from '../../core/plugins/test-sample'
-import { getContributionReport } from '../../core/plugins/contributions'
+import { approvalStepCommands, getContributionReport } from '../../core/plugins/contributions'
 import { requiresApproval, installingCaptures } from '../../core/plugins/manifest'
 import { createOfficialAgentPluginManager } from '../../core/plugins/official-agents'
 import { listPlugins, listEventTypes, setPluginEnabled, grantPluginTrust, revokePluginTrust, reloadPlugins, terminalProfilesError } from '../../core/plugins'
@@ -20,9 +20,10 @@ import { eventBus } from '../../core/event-bus'
 // Serialise LoadedPlugin to a UI-friendly shape (drop absolute dirs/hashes we
 // don't need in the renderer; keep what the panel renders + acts on).
 //
-// `terminalProfiles` and `captureInstalls` are what the approval dialog shows:
-// the profiles the plugin declares that RedLog would accept, and the capture
-// entries that RedLog would install. Both are read from the manifest and not
+// `terminalProfiles`, `captureInstalls` and `captureSteps` are what the
+// approval dialog shows: the profiles the plugin declares that RedLog would
+// accept, the capture entries that RedLog would install, and the commands it
+// would show to run. Both are read from the manifest and not
 // from the report, because a plugin awaiting approval has registered nothing yet.
 // `profilesError` is the same on every row: the shell's snapshot of the
 // profiles could not be brought up to date, whichever plugin the change was to.
@@ -33,12 +34,13 @@ function pluginView() {
     officialAgent: official.some(entry => entry.pluginId === p.manifest.id),
     id: p.manifest.id, name: p.manifest.name, version: p.manifest.version,
     description: p.manifest.description ?? '', author: p.manifest.author ?? '',
-    source: p.source, tier: p.tier, needsApproval: requiresApproval(p.manifest), status: p.status,
+    source: p.source, tier: p.tier, needsApproval: requiresApproval(p.manifest, p.source), status: p.status,
     capabilities: p.manifest.capabilities ?? [],
     contributes: Object.keys(p.manifest.contributes ?? {}),
     terminalProfiles: checkTerminalProfiles(p.manifest.id, p.manifest.contributes?.terminalProfiles).accepted
       .map(({ name, mode, executables, reason }) => ({ name, mode, executables, reason })),
     captureInstalls: installingCaptures(p.manifest),
+    captureSteps: approvalStepCommands(p),
     profilesError,
     error: p.error,
     apiAhead: p.apiAhead === true,

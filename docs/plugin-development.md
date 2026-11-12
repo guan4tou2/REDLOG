@@ -54,10 +54,15 @@ my-plugin/
     tools.js            # 🔴 CommonJS module (optional)
 ```
 
-Plugins are discovered from two roots (user overrides bundled by id):
+Plugins are discovered from two roots:
 
 - **User:** `~/.redlog/plugins/<id>/`  ← drop your plugin here
 - **Bundled:** `<RedLog resources>/plugins/<id>/` (first-party plugins)
+
+A bundled plugin's id is reserved. A user plugin that declares one (or a
+folder named after one whose manifest cannot be read) is not loaded: it is
+listed in Settings ▸ Plugins as an error, "id … is reserved by a built-in
+plugin", so you can find and remove it, and the bundled plugin keeps running.
 
 Every path referenced in the manifest must stay **inside** the plugin directory
 (no `..`, no absolute paths) and must exist, or the plugin fails to load.
@@ -262,6 +267,7 @@ started: the class list says so, and that command is recorded as metadata only
     "description": "Capture commands run through acme-cli",
     "agentType": "shell",
     "requires": ["acme-cli"],           // any-of; used for availability detection
+    "requiresAll": ["node"],            // optional; every one must be on PATH
     "platforms": ["darwin", "linux"],    // optional; omitted = all hosts
     "hookFile": "hooks/acme-wrapper.sh",
     "installMethod": "manual",          // 'shell-source' | 'claude-settings' | 'manual' — anything else fails the plugin
@@ -277,8 +283,18 @@ same one-click install (`shell-source`/`claude-settings`) or guided steps
 (`manual`). An entry that RedLog installs (anything but `manual`) is not offered
 until you approve the plugin in Settings ▸ Plugins, at its current content: the
 approval is pinned to the manifest and to the hook file's bytes, so a changed
-hook asks again. A `manual` entry only shows steps and needs no approval. Use the `{hookFile}` placeholder in `manualSteps` — RedLog fills in
-the absolute path. The capture id is namespaced as `<plugin-id>.<id>`.
+hook asks again. A `manual` entry only shows steps. When one of those steps
+has a `command`, the plugin waits for approval too: until it is approved, its
+row in Settings ▸ Other capture sources says so and shows no commands, and the
+approval dialog lists the commands it covers. A command is shown only while
+the plugin's content is still the approved content, checked again each time
+it is shown; if the hook file changes, the commands disappear and the plugin
+shows **CODE CHANGED** until you approve again. Use the `{hookFile}` placeholder
+in `manualSteps` — RedLog fills in the absolute path of the file the approval
+pinned. The capture id is namespaced as `<plugin-id>.<id>`.
+
+When the capture is unavailable, Settings names the commands from `requiresAll`
+and `requires` that are not on PATH. Nothing is read from `description`.
 
 `platforms` accepts `darwin`, `linux`, and `win32`. Settings groups inapplicable
 sources under Other platforms without execution steps. A producer that is
@@ -413,9 +429,10 @@ installable capture hook), are governed by a content-hash-pinned consent record
    **Settings ▸ Plugins** and click **Review & trust**. The dialog lists the
    exact capabilities requested.
 3. Granting pins the current hash + capabilities.
-4. If the code or requested capabilities later change, the hash no longer
-   matches → trust is automatically revoked and the plugin returns to
-   **CODE CHANGED / NEEDS CONSENT** until you review again.
+4. If the content later changes, the hash no longer matches → trust is
+   automatically revoked and the plugin shows **CODE CHANGED** until you
+   review again. A manifest that asks for more capabilities at the same hash
+   shows **NEEDS CONSENT**.
 5. **Revoke trust** at any time; the isolated process is killed and its
    contributions are removed.
 

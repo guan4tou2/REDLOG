@@ -2,13 +2,13 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import { validateManifest, tierOf, requiresApproval, computeContentHash } from './manifest'
-import { isTrusted } from './trust'
+import { grantedHash, isTrusted } from './trust'
 import { isDisabled } from './state'
 import { PLUGIN_API_VERSION } from './types'
 import type { LoadedPlugin, PluginStatus } from './types'
 
-// Discovery roots, in precedence order. A user plugin with the same id as a
-// bundled one wins (lets operators override a shipped plugin).
+// Discovery roots. A bundled id is reserved: a user plugin that declares one
+// is listed as failed and not loaded (see `loadPlugins`).
 export function bundledRoot(): string {
   // packaged: <resources>/plugins ; dev: repo/plugins
   const packaged = join(process.resourcesPath ?? '', 'plugins')
@@ -37,12 +37,24 @@ function listPluginDirs(root: string): string[] {
 
 function statusFor(p: Omit<LoadedPlugin, 'status'>): PluginStatus {
   if (isDisabled(p.manifest.id)) return 'disabled'
-  if (!requiresApproval(p.manifest)) return 'active'
-  // privileged code, or a terminal profile: gated on the operator's approval of
-  // this exact content
+  if (!requiresApproval(p.manifest, p.source)) return 'active'
+  // privileged code, a terminal profile, a hook, or a command to show: gated
+  // on the operator's approval of this exact content
   const requested = p.manifest.capabilities ?? []
   if (isTrusted(p.manifest.id, p.contentHash, requested)) return 'active'
-  return 'needs-consent'
+  const approved = grantedHash(p.manifest.id)
+  return approved !== undefined && approved !== p.contentHash ? 'hash-changed' : 'needs-consent'
+}
+
+/** Whether a loaded plugin's files are still the content it was loaded with,
+ *  and, where approval is needed, still the content the operator approved.
+ *  Read again at the moment a command from it is about to be shown: the
+ *  status was decided at load, and the file can change after that. */
+export function contentStillApproved(p: LoadedPlugin): boolean {
+  const now = computeContentHash(p.manifest, p.dir)
+  if (now !== p.contentHash) return false
+  if (!requiresApproval(p.manifest, p.source)) return true
+  return isTrusted(p.manifest.id, now, p.manifest.capabilities ?? [])
 }
 
 /** One plugin, whatever is in its folder. A manifest that makes validation
@@ -88,10 +100,30 @@ function errorPlugin(dir: string, source: 'bundled' | 'user', error: string): Lo
   }
 }
 
+/** A user plugin folder that names a bundled plugin's id. It is listed, so the
+ *  operator can find and remove it, under an id no manifest can have (`@` is
+ *  outside the id pattern): every store and list keyed by id — trust grants,
+ *  the disable flag, contribution registries, the Plugins page — keeps seeing
+ *  the bundled plugin under its own id and this folder under another. */
+function reservedIdPlugin(dir: string, loaded: LoadedPlugin): LoadedPlugin {
+  const folder = dir.split(/[\\/]/).pop() ?? 'unknown'
+  const error = loaded.status === 'error'
+    ? `${loaded.error ?? 'invalid manifest'}; the folder name is reserved by a built-in plugin`
+    : `id "${loaded.manifest.id}" is reserved by a built-in plugin; this plugin is not loaded`
+  const id = `${folder}@user`
+  return {
+    manifest: { id, name: folder, version: '0.0.0', redlogApi: 0, contributes: {} },
+    dir, source: 'user', tier: 'declarative', status: 'error', contentHash: '', error
+  }
+}
+
 /**
- * Discover and validate every plugin. User plugins override bundled ones by id.
- * Pure w.r.t. side effects — it reads disk + trust/state stores but changes
- * nothing; callers decide what to do with each plugin based on its status.
+ * Discover and validate every plugin. A bundled plugin always loads: a user
+ * plugin that declares a bundled id, or sits in a folder named after one
+ * without a readable manifest, is listed as an error under an id of its own
+ * and contributes nothing (08-plugin-system F4). Pure w.r.t. side effects — it
+ * reads disk + trust/state stores but changes nothing; callers decide what to
+ * do with each plugin based on its status.
  */
 export function loadPlugins(): LoadedPlugin[] {
   const byId = new Map<string, LoadedPlugin>()
@@ -99,9 +131,11 @@ export function loadPlugins(): LoadedPlugin[] {
     const p = loadOne(dir, 'bundled')
     byId.set(p.manifest.id, p)
   }
+  const reserved = new Set(byId.keys())
   for (const dir of listPluginDirs(userRoot())) {
     const p = loadOne(dir, 'user')
-    byId.set(p.manifest.id, p) // user wins
+    const entry = reserved.has(p.manifest.id) ? reservedIdPlugin(dir, p) : p
+    byId.set(entry.manifest.id, entry)
   }
   return [...byId.values()]
 }

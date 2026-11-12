@@ -286,6 +286,25 @@ describe('the plugins page shows what main has done', () => {
       expect(opts).not.toContain('tool profiles')
     })
 
+    // 08-plugin-system F7: a user plugin's capture commands are shown only once
+    // approved, so the dialog lists the exact commands, with the file path the
+    // approval pins, and does not call them hooks it installs.
+    it('lists the commands a plugin would have RedLog show, and no hook install', async () => {
+      const steps = (over: Record<string, unknown> = {}) => ({
+        ...view('st'), status: 'needs-consent', needsApproval: true, contributes: ['capture'], terminalProfiles: [],
+        captureInstalls: [], captureSteps: ['sudo "/home/op/.redlog/plugins/st/hook.sh" eth0'], ...over
+      })
+      api.list.mockResolvedValue([steps()])
+      draw()
+      fireEvent.click(await screen.findByTestId('plugin-details-st'))
+      fireEvent.click(screen.getByTestId('plugin-detail-review-st'))
+      const dialog = await screen.findByTestId('plugin-consent-dialog')
+      expect(dialog.textContent).toContain(en['plugins.consentTitleSteps'])
+      expect(dialog.textContent).not.toContain(en['plugins.consentTitleInstall'])
+      expect(Array.from(screen.getByTestId('plugin-consent-steps').querySelectorAll('li')).map((li) => li.textContent))
+        .toEqual(['sudo "/home/op/.redlog/plugins/st/hook.sh" eth0'])
+    })
+
     it('a refused approval of profiles does not say the plugin "stays unable to run"', async () => {
       api.list.mockResolvedValue([declaring()])
       api.grant.mockResolvedValue({ ok: false, error: 'plugin failed to load', plugins: [declaring()] })

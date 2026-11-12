@@ -20,7 +20,7 @@
 
 **Primary Dependencies**：better-sqlite3、Node `crypto`、Python `hmac`／`hashlib`、.NET `HMACSHA256`。不新增套件。
 
-**Storage**：專案 DB 新增兩張簿記表與兩個可為 NULL 的去正規化欄位；新增機器層級的憑證登記檔；交接目錄。事件表結構、雜湊、觸發器都不變。
+**Storage**：專案 DB 新增三張簿記表（`ingest_keys`、`ingest_instances`、`ingest_producers`）、一張可重建的 `terminal_targets` 與兩個可為 NULL 的去正規化欄位；新增機器層級的憑證登記檔；交接目錄。事件表結構、雜湊、觸發器都不變。
 
 **Testing**：Vitest（單元、整合、property、共用向量的驅動）；`tools/redlog-verify.py` 經 Vitest 呼叫；Playwright e2e 只在 ubuntu。真機驗收另列。
 
@@ -89,8 +89,9 @@
 - **時間**：沿用 `timestamp`（來源時間）與 `created_at`（收到時間）的雙時間設計。另記觀察時間 `observed_at`（OTel 的 Timestamp 與 ObservedTimestamp）。暫停判斷與目標承接都用觀察時間。
 - **目標**（O11）：`explicit` → `extracted` → `command` → `terminal-last` → `none`。
   - `terminal-last` 與 `command` 改從持久資料查，取代 `ingest.ts:83,399` 只存在記憶體的 map（01-F5(a)(b)）。
-  - 新增衍生、可重建的 `terminal_targets(terminal, observed_at, target)` 表；commit 時寫入，開專案時若缺就從事件回填。
-  - 不再套用 `ingest.ts:251-255` 的全域目前目標（app 內操作見開放問題 Q4）。
+  - 新增衍生、可重建的 `terminal_targets(terminal, observed_at, target)` 表，放在專案 DB，本規格擁有；寫入路徑在同一個 commit 交易內寫入（Spec 074 的投影執行器在此呼叫 `advanceInTransaction`）。
+  - **回填**（含 071 之前事件的專案）不在本規格做：由 Spec 074 的 `heavy` 執行緒以唯讀連線計算，分批交回主行程，由寫入者以小交易依序寫入（074 plan D5 的 `tt-backfill`）。回填完成前，這種專案的新列不套用 `terminal-last`，寫 `target_via: "none"`，永久（spec FR-010）。回填是否完成由 074 回報（`terminal_targets` 投影的狀態）；寫入路徑在記憶體中保存最近一次的回報，未知時（含 074 尚未落地）視為未完成。不需要回填的專案（沒有 071 之前的事件）視為已完成。
+  - 不再套用 `ingest.ts:251-255` 的全域目前目標（app 內操作見 O16）。
 - **否決**：由來源在觀察當下宣告目標。那樣要把目前目標寫進 identity 檔，每次改目標都改變每個 shell 的 stamp（`shell-common.sh:334-341`），而且來源宣告的目標不可信。
 
 ### D3 新入口 `/api/ingest` 加逐項回執；`/api/events` 保持狀態碼
@@ -150,6 +151,14 @@ ingest_instances(producer, instance, project_bound, hello_at, bye_seq, contiguou
 
 缺口結算後寫一列 chained `system.capture_gap`（FR-054）。
 
+另一張小表給 Spec 075 的「曾經成功過」事實（FR-056）：
+
+```sql
+ingest_producers(producer TEXT PRIMARY KEY, first_accepted_at INTEGER, last_accepted_at INTEGER)
+```
+
+每個來源一列；`first_accepted_at` 第一次 `accepted` 時寫入、之後不改，保留期刪列不影響它；`last_accepted_at` 每次 `accepted` 更新（同一個交易）。`ingest_instances` 會在 30 天後壓縮刪除，不能承擔這個里程碑。`ingest_instances.hello_at` 之外，這張表是 075 唯一需要的新持久事實，不另建 proof 檔（075 D10）。
+
 **否決**：
 
 - 獨立的 `loss_ledger` 表加上匯出時附 `loss_ledger.jsonl`（PRIOR-ART-B §9.5）：會改變 bundle 格式；用缺口列就能進鏈、上時間軸、隨匯出走；
@@ -177,6 +186,8 @@ ingest_instances(producer, instance, project_bound, hello_at, bye_seq, contiguou
 
 - **來源憑證放機器層級**：來源跨專案存活；歸屬由 `observed.project` 決定，不由憑證決定。若做成 per-project，每次切換專案都要重新發放給每個來源。
 - **操作者憑證維持 per-project**：保留現有的祕密隔離（`api-server.ts:909-918`），只把鏡像路徑改到 `~/.redlog/credentials/operator`。
+- **外掛 Source 的憑證與專案啟用**：憑證機器層級，第一次在任一專案 `on` 時發放；專案層的 `on`／`off` 不發放也不撤銷，由接收端的政策階段依專案判斷（FR-07A，`source-disabled`）。這保住了「切換專案不重新發放」，又讓 Spec 075 的專案層開關有真正的效果。
+- **發放經安裝帳本**：寫 `<producer>.cred` 經 Spec 073 的 `install-ledger.apply`（`credential-file`），撤銷與移除依帳本收回（073 T076）。
 - **登記檔** `~/.redlog/credentials/registry.json`（0600，只有 app 會寫），每筆 `{id, producer, class, kinds, project?, generations:[{gen, secret_sha256, mac_key, issued_at, retired_at?}], revoked_at?}`。
 - **來源的檔案** `<producer>.cred` 只有一行：`rlc1.<id>.<gen>.<secret b64url>`。bearer 值就是整行；shell 不必解析 JSON。
 - **內建終端機用一把 `builtin-terminal` 憑證，不做每個 pane 一把**：在本威脅模型下，每 pane 一把不增加安全性，卻帶來交接檔在 pane 關閉後的退休問題。
@@ -194,8 +205,11 @@ authenticate(door) → validate → stamp → dedup → settle → gate → deri
 ```
 
 - `insertEvent` 只剩 `src/core/ingest/commit.ts` 可以呼叫；`test/**` 仍可直接匯入以佈置測試資料。
-- 30 處直接呼叫依檔案遷移，由 ratchet gate 鎖住。
+- 31 處直接呼叫（#716 量得）依檔案遷移，由 ratchet gate 鎖住。
 - `insertEvent` 內部的暫停與跨專案閘門改成會丟錯的斷言（FR-095）。
+- `commit` 回傳 `CommitReceipt {seq, chainedMaxRowId, loggedMaxRowId}`（FR-096）。`seq` 是 `commit.ts` 模組內、每次開啟歸零的計數；Spec 073 落地後它屬於 session 的 `project-state`，不是模組層變數。rowid 取自剛插入的列，不另查。
+- `postCommit` 依序：publish、scope 派送、companion 列、存活狀態更新，以及 Spec 074 落地後的 `queryService.notifyCommit(receipt)`、`topicsForCommit(rows, writes)` 與 HTTP body 索引連結（改送 074 的 `derived-op`，取代 `ingest.ts:290` 的直接寫入）。
+- 推導階段若有使用者 Processor 參與，蓋章階段寫 `_ingest.rules`／`rules_partial`（FR-005、FR-006；Spec 075 FR-059）。蓋章在推導之前，所以這兩個鍵在推導完成後、commit 之前補入同一個 `_ingest`，仍在雜湊內。
 
 ### D9 存活通道（O7）
 
@@ -204,20 +218,15 @@ authenticate(door) → validate → stamp → dedup → settle → gate → deri
 - 舊入口收到的 heartbeat 改送存活表，回 200（pcap-capture 只檢查 `r.ok`，`pcap-capture.js:49`）。
 - 舊專案裡既有的 heartbeat 列不動。
 
-### D10 分層規則（O8）
+### D10 分層規則（O8）：取用 072 的 `tierFor`
 
-`classifyTier(producerClass, agentType, subtype)`：
+**決定**（2026-11-12 跨規格對帳後）：本規格不另立 tier 表。Spec 072 的種類登記表是唯一一張「哪些種類 chained」的表；`classifyTier(producerClass, agentType, subtype)` 只呼叫 072 的 `tierFor(agentType, subtype, producerClass)`：已登記 → 登記的 `tier`；未登記且來源類別為 `plugin` → logged；其他 → chained（今天的安全預設，用於核心來源與舊入口）。本規格原先規劃的 `CORE_CHAINED` 表與「`LOGGED_TIER`／`CORE_CHAINED` 互斥」測試取消；pcap-capture 與 c2 的種類由外掛憑證寫入時改為 logged，記在 072 的 `TIER_CHANGES`（072 T040）。
 
-1. 在 `LOGGED_TIER` 中 → logged；
-2. 在新增的、明列的 `CORE_CHAINED` 中 → chained；
-3. 來源類別為 `plugin:*` → logged；
-4. 其他 → chained（今天的安全預設，用於核心來源與舊入口）。
-
-`tier-classifier-total` 測試擴充為兩張表互斥且涵蓋核心的全部輸出。
+**過渡**：072 的登記表落地前，本規格照今天的 `classifyTier` 出貨，外掛種類仍是 chained；FR-113 在 072 T040 合併時才生效。完整性檢查（每個寫出的種類都有 tier）是 072 的 `writers-registered` gate，不是本規格的。
 
 ### D11 外部終端機切換專案即暫停（O10）
 
-在 relay 的 `apply_terminal_action`，`project-switched` 從永久停止改為「綁定專案不符時暫停」；綁定的專案再開時送 `capture_resumed`。這改的是 Spec 052 FR-010 與 `shell-common.sh:312-325` 的契約；依 CLAUDE.md「Changing behaviour」，相關 spec 與測試屬於本變更（T075）。
+在 relay 的 `apply_terminal_action`，`project-switched` 從永久停止改為「綁定專案不符時暫停」；綁定的專案再開時送 `capture_resumed`。這改的是 Spec 052 FR-010 與 `shell-common.sh:312-325` 的契約；依 CLAUDE.md「Changing behaviour」，相關 spec 與測試屬於本變更（T075）。relay 一側屬本規格；TS 一側（`terminal-enrollment.ts` 的 `bindingState`）、終端機狀態檔的 schema 與 app 端的呈現屬 Spec 073 FR-040–045。兩側共用一個 agreement 測試：`test/terminal-enrollment-agreement.test.ts`（本規格 T075、073 T060）。
 
 ### D12 暫停狀態檔
 
@@ -295,7 +304,18 @@ RLI1 c4kq2… 1 hmac-sha256 3f9a…
 | VPS 與外掛手上的舊 token | 降為 `legacy`；遠端主機由操作者以 CLI 重新發放 `remote:<名稱>` |
 | `pending/` | 過渡期內排空（legacy-handoff）；`.bad` 與 `.unattributed` 一次移入隔離區 |
 | 降版 | 舊版不認得 `/api/ingest`（404），新來源把項目放進交接目錄並保留；舊版不排空 `handoff/`，升回來後補寫。舊版 session 寫的列由 verifier 報為「自述」 |
-| AI 代理工具（`docs/agent-integration.md`） | 若繼續讀 `api-token`，只剩寫入；能力預設見開放問題 Q1 |
+| AI 代理工具（`docs/agent-integration.md`） | 若繼續讀 `api-token`，只剩寫入；能力預設見 O13（`agent-tools`） |
+
+## 與兄弟規格的介面（2026-11-12 對帳）
+
+| 兄弟 | 本規格需要 | 本規格提供 |
+|---|---|---|
+| 072 種類登記表 | `tierFor`（D10）；`writers`（種類政策，T010）；`pause`（暫停豁免，T015）；`identity.target`（目標步驟，T024）；`KindId` 型別（行程內入口，072 T045） | 強制、時間基準、目標演算法、回執；`ProducerClass` 的值域（FR-071）；`system.project_closed` 經本入口寫入 |
+| 073 專案執行期 | session 的 token 與綁定的 engagement（FR-007）；機器層的目前操作者（FR-009）；AI 同意狀態（FR-07A）；安裝帳本（憑證檔，FR-072）；TS 一側的終端機綁定（FR-085） | `handoff-dir.ts` 的 RedLog 根目錄解析（073 FR-020）；FR-080 暫停狀態檔；relay 一側的綁定與 `capture_resumed`；共用 agreement 測試 |
+| 074 讀取服務與投影 | `notifyCommit`、`topicsForCommit`、`derived-op`（postCommit，D8）；`terminal_targets` 的回填（D2） | `CommitReceipt`（FR-096）；`terminal_targets` 表與同步寫入；`_ingest.terminal` 正規值（FR-011）；`_causes` 的指令 id（O18，FR 未展開，見 spec 的注記） |
+| 075 來源狀態 | 來源狀態 payload（FR-07B 的 `/api/whoami`）；`enabledForProject`（FR-07A）；外掛 `emits`（憑證範圍）與啟用時刻（發放時機） | FR-056 的事實（存活、第一次與最近一次接受、遺失帳本依 FR-050 原因名稱、停用後被拒、隔離、舊入口）；`_ingest.rules`／`rules_partial`；憑證登記狀態與發放、撤銷 |
+
+跨規格的實作順序只寫在 [specs/README.md](../README.md)「071–075 的跨規格順序」；下方是本規格自己的 Phase 順序。
 
 ## 依賴順序
 
@@ -379,7 +399,7 @@ docs/domain/SPEC-ingestion-contract.md   # 用戶端規格本文（T080）
 ```text
 src/core/ingest.ts → src/core/ingest/{index,stamp,dedup,gate,commit,receipt,ledger,liveness}.ts
 src/core/db/event-write.ts            # insertEvent 只供 commit；classifyTier 依 D10
-src/core/db/index.ts                  # ingest_keys、ingest_instances、terminal_targets；FTS 例外
+src/core/db/index.ts                  # ingest_keys、ingest_instances、ingest_producers、terminal_targets；FTS 例外
 src/core/api-server.ts                # /api/ingest；路由能力表；舊入口加欄位
 src/core/external-event-policy.ts     # 種類政策表（依來源類別）
 src/core/credentials.ts               # 登記、發放、輪替、撤銷、認證、MAC

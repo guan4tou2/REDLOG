@@ -1,6 +1,6 @@
 import { loadPlugins } from './loader'
 import { requiresApproval } from './manifest'
-import { applyContributions, removeContributions, tailerUnsupportedReason } from './contributions'
+import { applyContributions, approvalStepCommands, removeContributions, tailerUnsupportedReason } from './contributions'
 import { grant, revoke } from './trust'
 import { setDisabled } from './state'
 import { getEventTypes } from '../event-registry'
@@ -123,14 +123,15 @@ export function setPluginEnabled(pluginId: string, enabled: boolean): PluginInit
 export function grantPluginTrust(pluginId: string, grantedBy?: string): { ok: boolean; error?: string; profilesError?: string } {
   const p = current.find((x) => x.manifest.id === pluginId)
   if (!p) return { ok: false, error: 'plugin not found' }
-  if (!requiresApproval(p.manifest)) return { ok: false, error: 'plugin needs no approval' }
   if (p.status === 'error') return { ok: false, error: p.error ?? 'plugin failed to load' }
+  if (!requiresApproval(p.manifest, p.source)) return { ok: false, error: 'plugin needs no approval' }
   // Consent cannot make an unsupported source work, and must not look as if it
-  // did. A third-party tailer that also declares profiles is the exception: the
-  // tailer still does not run, whatever is agreed, but the profiles are the
-  // operator's to approve and would otherwise have no way to be.
+  // did. A third-party tailer that also declares profiles or capture commands
+  // is the exception: the tailer still does not run, whatever is agreed, but
+  // the rest is the operator's to approve and would otherwise have no way to be.
   const unsupported = tailerUnsupportedReason(p)
-  if (unsupported && checkTerminalProfiles(pluginId, p.manifest.contributes?.terminalProfiles).accepted.length === 0) {
+  if (unsupported && checkTerminalProfiles(pluginId, p.manifest.contributes?.terminalProfiles).accepted.length === 0
+    && approvalStepCommands(p).length === 0) {
     return { ok: false, error: unsupported }
   }
   grant(pluginId, p.contentHash, (p.manifest.capabilities ?? []) as Capability[], grantedBy)

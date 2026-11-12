@@ -209,7 +209,10 @@ describe('loader + declarative contributions', () => {
         }]
       }
     }, { 'hook.sh': '#!/bin/bash\n' })
+    // A user plugin's command is shown only once its content is approved.
+    grant('cap-plugin', loadPlugins().find((x) => x.manifest.id === 'cap-plugin')!.contentHash, [])
     const p = loadPlugins().find((x) => x.manifest.id === 'cap-plugin')!
+    expect(p.status).toBe('active')
     applyContributions(p)
     const hook = detectHooks().find((h) => h.id === 'cap-plugin.thing')
     expect(hook).toBeTruthy()
@@ -236,10 +239,11 @@ describe('privileged trust gate', () => {
     p = loadPlugins().find((x) => x.manifest.id === 'tool-plugin')!
     expect(p.status).toBe('active')
 
-    // changing the code invalidates the pinned trust → back to needs-consent
+    // changing the code invalidates the pinned trust → hash-changed: approved
+    // once, and the content is not what was approved
     fs.writeFileSync(path.join(dir, 'code', 'tools.js'), 'exports.tools = [1]\n')
     p = loadPlugins().find((x) => x.manifest.id === 'tool-plugin')!
-    expect(p.status).toBe('needs-consent')
+    expect(p.status).toBe('hash-changed')
     expect(isTrusted('tool-plugin', p.contentHash, ['read:events'])).toBe(false)
     revoke('tool-plugin')
   })
@@ -460,7 +464,7 @@ describe('terminalProfiles in a manifest', () => {
         ...manifest, contributes: { terminalProfiles: [{ ...ligolo, mode: 'native' }] }
       }))
       initPlugins()
-      expect(statusOf('tp-decl')).toBe('needs-consent')
+      expect(statusOf('tp-decl')).toBe('hash-changed')
       expect(fs.existsSync(snapshotPath())).toBe(false)
 
       // Approving the new content brings it back; revoking takes it away.
@@ -577,7 +581,7 @@ describe('terminalProfiles in a manifest', () => {
       // the content changes: the approval no longer covers it, and it stops
       fs.writeFileSync(path.join(dir, 'code', 'tools.js'), 'exports.tools = [1]\n')
       initPlugins()
-      expect(listPlugins().find((x) => x.manifest.id === 'tp-trust')?.status).toBe('needs-consent')
+      expect(listPlugins().find((x) => x.manifest.id === 'tp-trust')?.status).toBe('hash-changed')
       expect(fs.existsSync(snapshotPath())).toBe(false)
     } finally {
       removeContributions('tp-trust')
