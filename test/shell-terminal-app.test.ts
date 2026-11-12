@@ -33,7 +33,8 @@ const hookDir = (): string =>
 
 type Shell = 'zsh' | 'bash'
 
-const LOADED = '[redlog] shell hook loaded'
+// Loading prints nothing (test/shell-quiet-init.test.ts); that the adapter
+// loaded is shown by the commands it records.
 const REFUSED = '[redlog] this terminal is not recorded — RedLog is set to record only in'
 
 interface Scenario {
@@ -130,8 +131,7 @@ describeShell('a terminal-app selection records in that app only', () => {
     describe(shell, () => {
       it('the named app: loads, records every command, and attests once', async () => {
         const o = await run({ shell, selection: 'Apple_Terminal', origin: 'Apple_Terminal', commands: THREE })
-        expect(o.transcript, o.raw).toContain(LOADED)
-        expect(o.transcript).not.toContain(REFUSED)
+        expect(o.transcript, o.raw).not.toContain(REFUSED)
         for (const c of THREE) {
           expect(o.commands, o.raw).toContain(`command_start ${c}`)
           expect(o.commands).toContain(`command_end ${c}`)
@@ -141,7 +141,6 @@ describeShell('a terminal-app selection records in that app only', () => {
 
       it('another app: does not load, sends nothing, and says why in one line', async () => {
         const o = await run({ shell, selection: 'Apple_Terminal', origin: 'iTerm.app', commands: THREE })
-        expect(o.transcript, o.raw).not.toContain(LOADED)
         expect(count(o.transcript, REFUSED), o.raw).toBe(1)
         expect(o.transcript).toContain(`${REFUSED} Apple_Terminal`)
         expect(o.commands).toEqual([])
@@ -150,7 +149,7 @@ describeShell('a terminal-app selection records in that app only', () => {
 
       it('RedLog\'s own pane satisfies any named app', async () => {
         const o = await run({ shell, selection: 'iTerm.app', origin: 'builtin', commands: ['echo pane'] })
-        expect(o.transcript, o.raw).toContain(LOADED)
+        expect(o.transcript, o.raw).not.toContain(REFUSED)
         expect(o.commands).toContain('command_start echo pane')
       }, 120_000)
 
@@ -173,8 +172,7 @@ describeShell('a terminal-app selection records in that app only', () => {
       for (const selection of [null, 'all'] as const) {
         it(`${selection === null ? 'no selection file' : '`all`'}: records as before and never asks`, async () => {
           const o = await run({ shell, selection, origin: 'iTerm.app', commands: THREE })
-          expect(o.transcript, o.raw).toContain(LOADED)
-          expect(o.transcript).not.toContain(REFUSED)
+          expect(o.transcript, o.raw).not.toContain(REFUSED)
           expect(o.commands).toContain('command_end echo three')
           expect(o.attestations, o.raw).toBe(0)
         }, 120_000)
