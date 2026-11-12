@@ -111,9 +111,11 @@ sqlite.describe('the spool drain counts each file once (review round 3)', () => 
     ops.createOperator({ id: OP, name: 'P', token: ops.generateToken(), isPrimary: true })
     sessionStart()
   })
-  afterEach(() => {
+  afterEach(async () => {
     if (bus().paused) bus().resume('ui')
     vi.useRealTimers()
+    // Windows cannot remove a directory that still holds an open database.
+    ;(await import('../src/core/http-body-index')).closeHttpBodyIndex()
     db.closeDB()
     for (const d of [dir, spool, keys]) {
       for (const f of walk(d)) { try { fs.chmodSync(path.join(d, f), 0o600) } catch { /* gone */ } }

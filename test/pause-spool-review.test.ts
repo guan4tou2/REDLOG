@@ -83,10 +83,12 @@ sqlite.describe('the pause rule and the spool drain after review', () => {
     ing._resetIngest()
     ops.createOperator({ id: OP, name: 'P', token: ops.generateToken(), isPrimary: true })
   })
-  afterEach(() => {
+  afterEach(async () => {
     if (bus().paused) bus().resume('ui')
     ing.configureIngest({ terminalLifecycle: null })
     vi.useRealTimers()
+    // Windows cannot remove a directory that still holds an open database.
+    ;(await import('../src/core/http-body-index')).closeHttpBodyIndex()
     db.closeDB()
     for (const d of [dir, spool, keys]) {
       for (const f of walk(d)) { try { fs.chmodSync(path.join(d, f), 0o600) } catch { /* gone */ } }

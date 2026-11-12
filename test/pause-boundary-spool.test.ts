@@ -79,8 +79,10 @@ sqlite.describe('the pause boundary on spool replay', () => {
     ops.createOperator({ id: OP, name: 'Pause', token: ops.generateToken(), isPrimary: true })
     events.insertEvent('system', { subtype: 'session_start' }, opening)
   })
-  afterEach(() => {
+  afterEach(async () => {
     vi.useRealTimers()
+    // Windows cannot remove a directory that still holds an open database.
+    ;(await import('../src/core/http-body-index')).closeHttpBodyIndex()
     db.closeDB()
     for (const d of [dir, spool, keys]) fs.rmSync(d, { recursive: true, force: true })
     if (prevKeys === undefined) delete process.env.REDLOG_KEYS_DIR
