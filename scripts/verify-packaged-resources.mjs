@@ -68,6 +68,8 @@ const forbidden = [
   'hooks/shell-preexec-hook.sh',
   'hooks/redlog-hook.zsh',
   'hooks/claude-code-hook.sh',
+  // Copied the full-authority API token to a remote host.
+  'hooks/vps-deploy.sh',
   'plugins/pack-ai-agents',
   // The plugin code host was removed in Spec 027; its child script must not ship.
   'plugin-runner.js'

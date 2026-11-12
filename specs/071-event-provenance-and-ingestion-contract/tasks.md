@@ -127,7 +127,7 @@
 - [ ] T080 新增 `docs/domain/SPEC-ingestion-contract.md`（用戶端規格本文，契約 1）；glossary 加入 Producer、Producer Instance、Credential、Handoff Directory、Receipt、Loss Ledger、Observation Time。
 - [ ] T081 [P] 更新 `docs/api-reference.md`（`/api/ingest`、`/api/whoami`、舊入口新增的欄位、能力表）與 `docs/agent-integration.md`（依 O13）。
 - [ ] T082 [P] 修訂 `DESIGN-plugin-kernel.md` §3（`/api/ingest` 的新定義）、`DESIGN-two-tier-chain.md` §2.1（外掛種類預設為 logged）、`DESIGN-capture-trust.md` §3（暫停改以區間判斷）。
-- [ ] T083 [P] 修訂 `hooks/vps-deploy.sh` 中「沒有較窄的 token 可用」的說明，改用 `remote:<名稱>` 憑證。
+- [ ] T083 [P] 遠端主機部署：`hooks/vps-deploy.sh` 因把 API token 複製到遠端已移除（2026-11-13）；若要恢復，以 `remote:<名稱>` 憑證重建，不得複製 API token。
 - **Gate**：五道 gate；`verify:specs`。
 
 ## Phase 8 — 驗收

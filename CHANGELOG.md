@@ -5,6 +5,12 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Removed `hooks/vps-deploy.sh`. It was already disabled, but it still shipped
+  in every package with the steps that copied the API token, which can read
+  every event, export, sanitise and switch recording, to a remote host. Remote
+  capture is not supported until append-only credentials exist (Spec 071). The
+  package check now refuses the file, and a source scan fails if a shipped
+  script, UI string or doc again copies the token to another host.
 - IP status: SAFE now needs an address that was read and is still being read.
   A status with no address, a failed lookup, an address not re-read within
   (confirmations + 1) polls plus 30 s (a pool that never confirms a new

@@ -346,7 +346,7 @@ Phase 4 必須早於 5，因為逐項回執要有接收端認定的來源身分�
 
 **讀 token 檔的地方**（散在各處，07-F3）：
 
-- `shell-common.sh`、`redlog-send.sh`／`.ps1`、`shell-hook.ps1`、`redlog-relay.py`、`redlog-session.py`、`mitmproxy-addon.py`、`pcap-agent.py`、`pcap-capture.js`、`c2-tail.js`、`cli/redlog-cli.js`、`vps-deploy.sh`、`wsl-redlog-test.sh`。
+- `shell-common.sh`、`redlog-send.sh`／`.ps1`、`shell-hook.ps1`、`redlog-relay.py`、`redlog-session.py`、`mitmproxy-addon.py`、`pcap-agent.py`、`pcap-capture.js`、`c2-tail.js`、`cli/redlog-cli.js`、`wsl-redlog-test.sh`（`vps-deploy.sh` 已移除，見 T083）。
 - 全部在 Phase 6 換成共用的 client：python 一份、sh 一組函式、ps1 一份、js 一份。
 
 **寫 identity 檔的地方**：`main/index.ts:378-383` 一處，改成原子寫入。
