@@ -1,0 +1,204 @@
+{
+  "generatedFrom": "test/fixtures/golden-pre071-generate.ts on main before Spec 071",
+  "rows": {
+    "events": [
+      {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "hash": "03cfeb504c165092aab2d34a5cc5b5ccdd4bc9329e92f86b32e089ceac8e2394",
+        "sha256": "84f39edaf379105c7cb8a6c2e7aa81b2d7005d57407c95617736ef6c5d66d701"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000004",
+        "hash": "1f06b0fa0b7f25350a08b4166aa1dfaafadff4934f96b21538aeb455e91891a2",
+        "sha256": "27287c354356036b9524346beddf5fec2e907f22bb3e7763a79c33a9b55b7eec"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000005",
+        "hash": "33261a4ca4a9292ebf8904f91c6ca0a06feeb8413f9c66189af0f36275689ccd",
+        "sha256": "cbc66603e92a687039fff659f153607a49a93a5ce7daeb8eec161418ba684360"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000006",
+        "hash": "f12b7c1282d8a2ecd44b6d64dcdd0dc1db512647f2263b76e53777f3ee7555cf",
+        "sha256": "9834917d9bddfc010ed851cb95c9f666307dda80fa3d2aa973b99240184c15ab"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000007",
+        "hash": "736f997938ae487ff351f8d3f0991a7ad3a48cbc048f41bf1c92cb41dddc6479",
+        "sha256": "d3342e5aafaf875f434ec30671964fd71126a8718fab77018f51c2a9aaaab25d"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000008",
+        "hash": "903ca20c06c17b886d915d8411345409c3393dd2c325832cd1b6448d5946880a",
+        "sha256": "2bfa4bc9021f24a905fdeb7985439549b516d198db2361aacc451c74e1e85369"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000009",
+        "hash": "afdeb919cfeaca2812743695421dddf1bd37e78961e13880d0f9f740a63f08b3",
+        "sha256": "1aee9abb58ae58b270537137ed56f9718f3df069d5a37a2213daa081863c1083"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000013",
+        "hash": "3a320296940ce55c74dcee77283b72b8cb533c04062b933394ddb406d654383f",
+        "sha256": "733501ad66162ce766758ca9fc22fcf2e906febf3ae5597b40282015d0006d43"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000014",
+        "hash": "c4681723a4dffb7df1cc0606d6d51f04af7c7a52eb192c09be08070565eef642",
+        "sha256": "2e76f9c3c060123bbfab91231b6770262b70364f568f7ab14132935a46bd9a3d"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000015",
+        "hash": "088222e1533bfadd26ea1adee4c6f9c475b4d618a6edf590cc10490a783af05d",
+        "sha256": "47b1adc64f6011d496e892a9631cc8090356f478275a81007988d2751f38907a"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000016",
+        "hash": "a58f44b02226da0e66ac9de0f98de87b0773e02032761284da6fb15d8d7cc45d",
+        "sha256": "1ec35e5f6d108352eb6bd53f90e5bfa8cc5f612e433d1b8e71e4733318157183"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000017",
+        "hash": "715d3535db3359589a486bd1a1b1a1a6505ab1b4ef96ef35bf0c76ffa34a1564",
+        "sha256": "74e63c2373e6f28d95324bddbb066245207b02ca82c201438f0458ba8393a5d1"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000018",
+        "hash": "473a88489d9b34829eb1e93231dfbc4b85368f12478ac649a08a30d4f847b839",
+        "sha256": "b74b7d0def84916fed8f8cb151e887e59a7daed7eedadb878d967b55564ebd3a"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000019",
+        "hash": "a7d7b9d2a5fcc39f0dafb674710b52dca0d937c284502185ffb45152f60cbd5b",
+        "sha256": "015a006a225a221b17e9e054d26f6b307bafe8a0899c3505e01b793e06c6be82"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000020",
+        "hash": "f30ea3dd9254edf2b04d00823a03508d5b51cead68032c528c76cfad171b56f2",
+        "sha256": "640e20337e476ed0653165ef0823f99a433c8f4fe3afd150390dc22a16545723"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000021",
+        "hash": "ecb5c24a3ec22ad18ebd9a27e8f1bb56719b2f4179aa0bc825d7a1ca7036d070",
+        "sha256": "6744314950e42da1d23d83ec48d9ab96d7bf00798255a5700d52f49089d64399"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000022",
+        "hash": "d1ca013edf2e9a33c8c3fc5d909a6c1c086938285a2ac6fff712ef591ab705fb",
+        "sha256": "0e63842eb097a20e5000f55ef3904078e66553d56be76f8e689c451f6ea707ee"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000024",
+        "hash": "77bda547881c21485df9ef0db46c247f08116b0345b34ddee659bf87a6e059a0",
+        "sha256": "e22d8d79a529e41e73d4a2d15db36030886537cc22e6cd53be6f03452776fae8"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000025",
+        "hash": "5bcac9dacbf9e2774a696f611bd2adb6724ed667a999696e146e186b8dce97b6",
+        "sha256": "0d8c5cb6e066e2e27318d9da92bb1db7596795019c1dc4504659044bf26f29f0"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000026",
+        "hash": "1be398a4be6250d1b9ffbd673ce88e12b28de1a5a411e4c0eda64b3ac4d11c35",
+        "sha256": "18d87d7af547e414f5b8a713abc3dda8eceaaa2af76c226ee4c9a0bf5cc32e5c"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000028",
+        "hash": "c53d08450e484d4c587bcf1188d79c7fdbfd4a0c298d56826ed823892f090f02",
+        "sha256": "3ee6d8aa115bd33b67c20d6c9994bd5d126df164cd1c0cdf64abec195227b6fe"
+      }
+    ],
+    "events_logged": [
+      {
+        "id": "00000000-0000-4000-8000-000000000010",
+        "hash": null,
+        "sha256": "1c9f49e505cc7493f36c49ab92a6c8b61b86eafe63d9fbaacd6e6e94fdd039fe"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000011",
+        "hash": null,
+        "sha256": "dcf0459d3e0692646d51a51a5d563ebe621a2bfef425e7d42b47f9155826509a"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000012",
+        "hash": null,
+        "sha256": "6916dc54de997f61b83edf4faab73e2701e7c3b895459a1d5fef439781769872"
+      }
+    ],
+    "sanitized_events": [
+      {
+        "id": "undefined",
+        "hash": null,
+        "sha256": "c6af18d6592366f26619c267b58ff47a7e643a4359cf82fbc99001356f126da4"
+      }
+    ],
+    "operators": [
+      {
+        "id": "op-golden",
+        "hash": null,
+        "sha256": "a5123a8c2e3aefc95e6b8ac013fd6300cbae7f5981d4f109841b6f771760cca9"
+      }
+    ]
+  },
+  "rowsSha256": "a35fecb6d59c28543295ef5f7f2a84fc8360d62a95486f7e2745933c00d0523b",
+  "appVerify": {
+    "ok": true,
+    "walked": 21,
+    "brokenAtEventId": null,
+    "brokenReason": null,
+    "currentHead": "49eefeee037c58260eb7d1f66e358d37c5f9310bade9325c9d9e0d9d01eebe7f",
+    "anchorMatchesWalkedHead": false,
+    "clockAnomalies": [],
+    "signedCount": 21,
+    "unsignedCount": 0,
+    "noPubKeyCount": 0,
+    "authentication": "verified",
+    "authenticationReasons": [],
+    "firstUncheckedEventId": null,
+    "badSignatureAtEventId": null
+  },
+  "bundleVerify": {
+    "complete": {
+      "exitCode": 0,
+      "category": "verified",
+      "problems": [],
+      "seal": "sealed",
+      "attachments": {
+        "bound": [],
+        "boundUnverifiedRow": [],
+        "unbound": [],
+        "mismatched": [],
+        "omittedDeclared": [],
+        "missingUndeclared": [],
+        "unlisted": []
+      }
+    },
+    "projection": {
+      "exitCode": 0,
+      "category": "verified",
+      "problems": [],
+      "seal": "sealed",
+      "attachments": {
+        "bound": [],
+        "boundUnverifiedRow": [],
+        "unbound": [],
+        "mismatched": [],
+        "omittedDeclared": [],
+        "missingUndeclared": [],
+        "unlisted": []
+      }
+    }
+  },
+  "pythonVerify": {
+    "complete": {
+      "status": 0,
+      "stdout": "\nRedLog bundle verification report\n========================================\nBundle dir       : <bundle>\nBundle version   : 4\nEngagement ID    : eng-golden-pre071\nEvents walked    : 18\nManifest checksum: matches (not an authenticated source identity)\nChain            : INTACT\nChain-head match : yes (recomputed matches manifest.chainHead)\nSeal             : SEALED (export 00000000-0000-4000-8000-000000000023; it follows the delivered chain directly)\n                   rows before it and the manifest are as exported\nSignatures       : 18 verified\nSigner           : op-golden  sha256:5df840e88a41a05b32c8c076086ae442d696f8556d8e3452d2738f96722e8e0d\n  compare these fingerprints with the operator out of band;\n  a key taken from this bundle only proves the bundle agrees with itself\nLogged tier      : 3 rows present in events_logged.jsonl\n                   (not chained or signed; digest matches; bytes sealed by the export)\nAttachments      : 0 match the digest recorded at capture\nManifest files   : 5 verified (sha256 matches)\n",
+      "stderr": ""
+    },
+    "projection": {
+      "status": 0,
+      "stdout": "\nRedLog bundle verification report\n========================================\nBundle dir       : <bundle>\nBundle version   : 4\nEngagement ID    : eng-golden-pre071\nEvents walked    : 20\nManifest checksum: matches (not an authenticated source identity)\nEvidence         : Projection (delivered subset)\nSource chain     : NOT VERIFIED (omitted/transformed source records)\nOmitted chained  : 1\nTransformed rows : 6 (source payload/signature not verified)\nProjection limits: policy/transformation metadata is exporter-declared\nChain-head match : n/a (source boundary, not delivered subset)\nSeal             : SEALED (export 00000000-0000-4000-8000-000000000027; it follows the delivered chain directly)\n                   rows before it and the manifest are as exported\nSignatures       : 16 verified\nSigner           : op-golden  sha256:5df840e88a41a05b32c8c076086ae442d696f8556d8e3452d2738f96722e8e0d\n  compare these fingerprints with the operator out of band;\n  a key taken from this bundle only proves the bundle agrees with itself\nLogged tier      : 3 rows present in events_logged.jsonl\n                   (not chained or signed; digest not comparable (the delivered logged tier is a subset or transformed); bytes sealed by the export)\nAttachments      : 0 match the digest recorded at capture\nManifest files   : 5 verified (sha256 matches)\n",
+      "stderr": ""
+    }
+  }
+}

@@ -249,6 +249,12 @@ describe('3. commands are shown only for the content that was approved', () => {
 requires('posix-shell').describe('4. a hook can be removed after its plugin stops loading', () => {
   const shellCap = { id: 'sh', name: 'Acme shell', description: 'd', agentType: 'shell', hookFile: 'hook.sh', installMethod: 'shell-source', shellRcFile: '.zshrc' }
   const claudeCap = { id: 'cc', name: 'Acme claude', description: 'd', agentType: 'agent', hookFile: 'hook.sh', installMethod: 'claude-settings' }
+  // test/setup.ts points ZDOTDIR at an empty directory so no test runs the
+  // developer's zsh startup files; install follows ZDOTDIR, so these cases —
+  // which are about `~/.zshrc` — start from none, as a plain terminal would.
+  let savedZdotdir: string | undefined
+  beforeEach(() => { savedZdotdir = process.env.ZDOTDIR; delete process.env.ZDOTDIR })
+  afterEach(() => { if (savedZdotdir === undefined) delete process.env.ZDOTDIR; else process.env.ZDOTDIR = savedZdotdir })
   const rc = () => fs.readFileSync(path.join(home, '.zshrc'), 'utf-8')
   const settings = () => JSON.parse(fs.readFileSync(path.join(home, '.claude', 'settings.json'), 'utf-8'))
 

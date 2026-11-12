@@ -7,8 +7,8 @@ if [[ -z "${ZSH_VERSION:-}" ]]; then
   return 1 2>/dev/null || exit 1
 fi
 
-# Sourced twice from one rc (a relative and an absolute path to the same file
-# are the usual way) the banner printed twice and the prompt hooks registered
+# Sourced twice in one shell (a relative and an absolute path to the same file,
+# or a login file and the .zshrc/.bashrc it loads) the prompt hooks registered
 # twice. Plain, un-exported: a child shell is a new interpreter and must load.
 [[ "${_REDLOG_HOOK_LOADED_IN:-}" == "$$" ]] && return 0
 
@@ -21,7 +21,23 @@ export REDLOG_SHELL=zsh
 # shellcheck source=shell-common.sh
 source "$_redlog_adapter_dir/shell-common.sh"
 unset _redlog_adapter_dir
-_redlog_terminal_allowed || { _redlog_announce_terminal_refused; return 0; }
+# Refused: say so at the first prompt, once, and never during init.
+_redlog_refused_at_prompt() {
+  local rc=$?
+  add-zsh-hook -d precmd _redlog_refused_at_prompt
+  _redlog_announce_terminal_refused
+  return $rc
+}
+if ! _redlog_terminal_allowed; then
+  autoload -Uz add-zsh-hook
+  add-zsh-hook precmd _redlog_refused_at_prompt
+  return 0
+fi
+# Allowed after all (a re-source once the selection changed): the deferred
+# notice is no longer true.
+if (( ${+precmd_functions} )) && (( ${precmd_functions[(I)_redlog_refused_at_prompt]} )); then
+  add-zsh-hook -d precmd _redlog_refused_at_prompt
+fi
 _REDLOG_HOOK_LOADED_IN=$$
 
 # EPOCHREALTIME, for the event payload (shell-common.sh builds it without
@@ -674,5 +690,7 @@ add-zsh-hook zshexit _redlog_zshexit
 _redlog_install_pty_wrappers "$_REDLOG_BOOT_PTY"
 unset _REDLOG_BOOT_PTY
 # Behind the prompt: with thousands left over it is not something to wait for.
-( _redlog_sweep_relay_dirs </dev/null >/dev/null 2>&1 & )
-_redlog_announce_shell
+# BG_NICE off for this one job: where lowering a priority is not allowed (some
+# containers and sandboxes) zsh reports `nice(5) failed` on the terminal, and
+# that would be init output.
+( unsetopt BG_NICE; _redlog_sweep_relay_dirs </dev/null >/dev/null 2>&1 & )

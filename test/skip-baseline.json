@@ -52,7 +52,7 @@
     }
   },
   "win32": {
-    "skippedCases": 731,
+    "skippedCases": 758,
     "mustRun": [
       "test/csp-production.test.ts",
       "test/bundle-requires.test.ts",
@@ -76,10 +76,12 @@
       "test/fs-acl.test.ts": 1,
       "test/hook-payload-stdin.test.ts": 1,
       "test/hook-uninstall-message.test.ts": 2,
+      "test/hook-rc-location.test.ts": 10,
       "test/hook-update-mixed-version.test.ts": 16,
       "test/hooks-removal-and-profile-path.test.ts": 1,
       "test/http-flow-query-perf.test.ts": 2,
       "test/late-output.pty.test.ts": 10,
+      "test/legacy-producer-decisions.test.ts": 11,
       "test/login-path.test.ts": 2,
       "test/loot-emit-dedup.test.ts": 1,
       "test/official-agent-plugins.test.ts": 1,
@@ -108,6 +110,7 @@
       "test/shell-redlog-run.test.ts": 3,
       "test/shell-spool-cap.test.ts": 1,
       "test/shell-spool-no-sidecar.test.ts": 6,
+      "test/shell-quiet-init.test.ts": 6,
       "test/shell-status.test.ts": 4,
       "test/shell-terminal-app.test.ts": 14,
       "test/shell-token-not-in-argv.test.ts": 7,
