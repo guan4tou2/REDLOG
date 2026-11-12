@@ -71,6 +71,6 @@ export function activityClassification(event: Pick<RedLogEvent, 'agentType' | 'd
       : event.agentType === 'system' && d.subtype === SCOPE_VIOLATION_SUBTYPE && d.distance !== 'in_scope' ? 'security'
       : ['scanner', 'dns', 'browser', 'pcap'].includes(event.agentType) ? 'network'
         : ['screenshot', 'marker', 'loot'].includes(event.agentType) ? 'evidence'
-          : ['system', 'process', 'clipboard', 'cleanup'].includes(event.agentType) ? 'system' : 'other'
+          : ['system', 'process', 'cleanup'].includes(event.agentType) ? 'system' : 'other'
   return { action, toolAction, provider, sourceSession }
 }

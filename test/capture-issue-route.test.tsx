@@ -36,7 +36,7 @@ describe('captureIssueView', () => {
   })
 
   it('stays on the dashboard when no single source is the answer', () => {
-    expect(captureIssueView({ verdict: 'partial', sources: [failed('screenshot'), failed('clipboard')] })).toBe('dashboard')
+    expect(captureIssueView({ verdict: 'partial', sources: [failed('screenshot'), failed('file-watcher')] })).toBe('dashboard')
     expect(captureIssueView({ verdict: 'partial', sources: [failed('screenshot')], managedHttpProxy: { state: 'failed' } })).toBe('dashboard')
     // Dark is a write or chain failure, or nothing wired — not one source.
     expect(captureIssueView({ verdict: 'dark', sources: [failed('screenshot')] })).toBe('dashboard')
@@ -81,7 +81,7 @@ describe('the capture issue the status bar raises', () => {
   })
 
   it('names the dashboard when two sources are failing', async () => {
-    installBridge([failed('clipboard'), failed('screenshot')])
+    installBridge([failed('file-watcher'), failed('screenshot')])
     render(<I18nProvider><StatusBar /></I18nProvider>)
     await waitFor(() => expect(snapshotIssues().find((i) => i.id === 'capture')?.view).toBe('dashboard'))
   })

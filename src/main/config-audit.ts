@@ -39,12 +39,12 @@ export function diffSecurityConfig(
   check('operator.id', oldCfg.operator?.id, newCfg.operator?.id)
   check('operator.name', oldCfg.operator?.name, newCfg.operator?.name)
   // What the engagement records is part of the audit trail (Spec 035: packs
-  // replaced the per-source switches, including clipboard's).
+  // replaced the per-source switches).
   check('packs.hostMonitors', oldCfg.packs?.hostMonitors, newCfg.packs?.hostMonitors)
   check('agentTailer.sources', oldCfg.agentTailer?.sources, newCfg.agentTailer?.sources)
   check('packs.windowsOutput', oldCfg.packs?.windowsOutput, newCfg.packs?.windowsOutput)
   // A per-member opt-out changes what the engagement records just as much as
-  // the pack switch does -- switching the clipboard off inside a running Host
+  // the pack switch does -- switching the file watcher off inside a running Host
   // monitors pack leaves a gap in the record, and a gap nobody can account for
   // later is exactly what this audit row exists to prevent.
   for (const member of PACK_MEMBERS) {

@@ -58,12 +58,12 @@ Then:
 ```
 Given:
   chained marker event (no target_id) — whitelisted
-  chained clipboard event (no target_id) — not whitelisted
+  chained process event (no target_id) — not whitelisted
 When:
   queryScopeFilteredEvents(scopeTargets)
 Then:
   marker included
-  clipboard excluded
+  process excluded
 ```
 
 ### Scenario 4: Empty scope returns all eligible events from both tiers

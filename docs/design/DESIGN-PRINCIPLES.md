@@ -64,10 +64,10 @@ undifferentiated pile of sensitive data in your evidence store.
 
 **Corollary — default-on vs opt-in by source:** capture the operator's *own
 deliberate actions* (commands, agent tool calls, navigation, targets) on by
-default; ambient *vacuums* (clipboard, periodic screenshots) opt-in — not because
+default; ambient *vacuums* (periodic screenshots) opt-in — not because
 they shouldn't be captured, but because they must run continuously and carry an
-exposure window, so the operator should consciously accept that bet. (RedLog
-already does this: clipboard off by default.)
+exposure window, so the operator should consciously accept that bet. (The
+clipboard monitor, the other vacuum, was removed outright on 2026-11-13.)
 
 ## 3. Two-tier attributes: record facts, never write interpretation as fact
 

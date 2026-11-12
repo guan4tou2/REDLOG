@@ -90,7 +90,7 @@ main 內的 producer ─────────────────┘
 | 內建 terminal | [terminal-manager.ts](../src/main/terminal-manager.ts)；PTY、cast、session rotation，作外部終端以外的備用入口 |
 | HTTP／HTTPS／WS／TCP | [managed-http-proxy.ts](../src/main/services/managed-http-proxy.ts)、`hooks/mitmproxy-addon.py`；只宣稱實際經過來源的覆蓋，不等於全系統網路 |
 | HTTP 驗證歷史 | [http-verification-evidence.ts](../src/core/http-verification-evidence.ts)、[http-verification-history.ts](../src/main/services/http-verification-history.ts)；專案本地有界歷史，不用 UA 當穩定 client 身分，也不從歷史恢復目前 CA trust |
-| 截圖、clipboard、檔案／程序／連線 | main services 與 IPC；選用能力、讀取權限、觀測資訊與已保存原件分開 |
+| 截圖、檔案／程序／連線 | main services 與 IPC；選用能力、讀取權限、觀測資訊與已保存原件分開 |
 | AI | optional packages → tailer host，見下一節；必須明確選用及有專案授權 |
 
 來源 lifecycle 的唯一語意見 [capture-source-lifecycle](domain/SPEC-capture-source-lifecycle.md)；沉默不當失敗，來源恢復不抹掉歷史缺口。支援平台與實測限制見各 spec／[packaged smoke](PACKAGED-SMOKE.md)，不在此抄一份綠燈矩陣。

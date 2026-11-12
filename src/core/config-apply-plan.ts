@@ -5,7 +5,7 @@
 // hook exclusions all make a config "current". Each used to do its own subset of
 // the work, and a save re-ran every reconfigure there is: changing a loot rule
 // or the HUD stopped and restarted the AI transcript tailers (#686 was the
-// symptom), re-seeded the clipboard, file, process and connection monitors,
+// symptom), re-seeded the file, process and connection monitors,
 // re-armed the screenshot timer and fired an external IP lookup.
 //
 // This module is the decision and nothing else: given the config that was last
@@ -46,11 +46,9 @@ export type ConfigApplyStep =
   | 'scopeRecompute'
   | 'terminal'
   | 'lootDetector'
-  | 'clipboardOptions'
   | 'fileWatcherOptions'
   | 'connectionMonitorOptions'
   | 'processMonitorOptions'
-  | 'packClipboard'
   | 'packFileWatcher'
   | 'packConnectionMonitor'
   | 'packProcessMonitor'
@@ -88,13 +86,11 @@ export const OPEN_SEQUENCE: readonly ConfigApplyEntry[] = [
   { hook: 'wireTerminalIngest' },
   { step: 'ingestActiveTarget' },
   { hook: 'startProjectServices' },
-  { step: 'clipboardOptions' },
   { step: 'fileWatcherOptions' },
   { step: 'connectionMonitorOptions' },
   { step: 'powershellTranscriptIdentity' },
   { step: 'processMonitorOptions' },
   { step: 'agentTailerHost' },
-  { step: 'packClipboard' },
   { step: 'packFileWatcher' },
   { step: 'packConnectionMonitor' },
   { step: 'packProcessMonitor' },
@@ -115,11 +111,9 @@ export const APPLY_ORDER: readonly ConfigApplyStep[] = [
   'scopeRecompute',
   'terminal',
   'lootDetector',
-  'clipboardOptions',
   'fileWatcherOptions',
   'connectionMonitorOptions',
   'processMonitorOptions',
-  'packClipboard',
   'packFileWatcher',
   'packConnectionMonitor',
   'packProcessMonitor',
@@ -130,7 +124,6 @@ export const APPLY_ORDER: readonly ConfigApplyStep[] = [
 ]
 
 const PACK_STEP: Record<PackMemberId, ConfigApplyStep> = {
-  clipboard: 'packClipboard',
   fileWatcher: 'packFileWatcher',
   connectionMonitor: 'packConnectionMonitor',
   processMonitor: 'packProcessMonitor',
@@ -171,11 +164,9 @@ export const CONFIG_DEPENDENCIES: Readonly<Record<ConfigApplyStep, readonly stri
   scopeRecompute: ['scope.targets', 'scope.excludeTargets', 'scope.warnOnViolation', 'scope.scopeFile'],
   terminal: ['terminal'],
   lootDetector: ['loot'],
-  clipboardOptions: ['clipboard'],
   fileWatcherOptions: ['fileWatcher'],
   connectionMonitorOptions: ['connectionMonitor'],
   processMonitorOptions: ['processMonitor'],
-  packClipboard: packMemberDeps('clipboard'),
   packFileWatcher: packMemberDeps('fileWatcher'),
   packConnectionMonitor: packMemberDeps('connectionMonitor'),
   packProcessMonitor: packMemberDeps('processMonitor'),
@@ -212,7 +203,7 @@ const isPlainObject = (v: unknown): v is Record<string, unknown> =>
 
 /** Leaf paths whose value differs. Arrays compare whole, by value. A section
  *  present on one side only is walked as if empty on the other, so adding
- *  `packMembers.clipboard` reads as that field, not as all of `packMembers`. */
+ *  `packMembers.fileWatcher` reads as that field, not as all of `packMembers`. */
 export function changedConfigPaths(prev: unknown, next: unknown, at: string[] = []): string[][] {
   const walkable = (v: unknown): boolean => isPlainObject(v) || v === undefined
   if ((isPlainObject(prev) || isPlainObject(next)) && walkable(prev) && walkable(next)) {

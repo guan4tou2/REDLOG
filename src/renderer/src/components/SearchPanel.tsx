@@ -27,7 +27,6 @@ function eventSummary(e: RedLogEvent, fold?: MarkerFold): string {
   if (e.agentType === 'shell' && ['session_output', 'command_start', 'command_end'].includes(String(d.subtype))) return eventTitle(e)
   if (e.agentType === 'shell') return `$ ${(d.command as string)?.slice(0, 120) || ''}`
   if (e.agentType === 'screenshot') return `Screenshot (${d.trigger})`
-  if (e.agentType === 'clipboard') return `Clipboard: ${(d.content as string)?.slice(0, 80) || ''}`
   if (e.agentType === 'marker') {
     if (isMarkerAmendment(e)) return `↻ ${amendedFields(e).join(' · ')}`
     const eff = fold?.effective

@@ -30,7 +30,6 @@ const CONFIG = {
   overlay: {},
   packs: {},
   screenshot: {},
-  clipboard: {},
   processMonitor: {},
   connectionMonitor: {},
   fileWatcher: {},

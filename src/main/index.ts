@@ -77,7 +77,6 @@ import { compileClassPolicy, knownProfiles } from '../core/terminal-class'
 import { createToolDetector, rescanTrigger } from '../core/tool-detection'
 import { readContributedProfiles } from '../core/terminal-profiles'
 import { listWslDistros, getNetworkMode, installHook as wslInstallHook, uninstallHook as wslUninstallHook, runDiagnostics as wslRunDiagnostics, removeWslHooks } from '../core/wsl-manager'
-import { configureClipboardMonitor, startClipboardMonitor, stopClipboardMonitor } from './clipboard-monitor'
 import { configureFileWatcher, stopFileWatcher } from './services/file-watcher'
 import { configureProcessMonitor, stopProcessMonitor } from './services/process-monitor'
 import { configureConnectionMonitor, stopConnectionMonitor } from './services/connection-monitor'
@@ -568,8 +567,6 @@ const configApplier = createConfigApplier({
     castProbe: getCastPosition
   }),
   configureIngest,
-  configureClipboardMonitor,
-  startClipboardMonitor,
   configureFileWatcher,
   configureConnectionMonitor,
   configurePowershellTranscript,
@@ -1266,7 +1263,6 @@ function stopProject(): void {
   if (recomputeTimer) { clearTimeout(recomputeTimer); recomputeTimer = null }
   recomputePending = null
   clean(() => alertRuntime.stop())
-  clean(stopClipboardMonitor)
   clean(stopFileWatcher)
   clean(stopProcessMonitor)
   clean(stopConnectionMonitor)

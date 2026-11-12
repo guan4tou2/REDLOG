@@ -481,8 +481,8 @@ describeDB('capture-health', () => {
     // Spec 035: sources switch by pack. Host monitors off, AI agents on.
     configureCaptureHealth({ packs: { hostMonitors: false } })
     const h = getCaptureHealth()
-    expect(h.sources.find((s) => s.id === 'clipboard')?.state).toBe('off')
-    expect(h.sources.find((s) => s.id === 'clipboard')?.enabled).toBe(false)
+    expect(h.sources.find((s) => s.id === 'file-watcher')?.state).toBe('off')
+    expect(h.sources.find((s) => s.id === 'file-watcher')?.enabled).toBe(false)
     // Switched on and nothing has come through it yet: it can record, which
     // is all this axis claims. Its silence is reported as an empty
     // `lastEventAt`, not as a second state.
@@ -516,11 +516,10 @@ describeDB('capture-health', () => {
   // readout lags behind the thing it is reporting on.
   it('a config change is visible immediately, not after the cache TTL', () => {
     mockHooks({ 'shell-zsh': false })
-    // The clipboard is ticked explicitly: it does not come on with the pack (#224).
-    configureCaptureHealth({ packs: { hostMonitors: true }, packMembers: { clipboard: true } })
-    expect(getCaptureHealth().sources.find((s) => s.id === 'clipboard')?.enabled).toBe(true)
-    configureCaptureHealth({ packs: { hostMonitors: false }, packMembers: { clipboard: true } })
-    expect(getCaptureHealth().sources.find((s) => s.id === 'clipboard')?.enabled).toBe(false)
+    configureCaptureHealth({ packs: { hostMonitors: true } })
+    expect(getCaptureHealth().sources.find((s) => s.id === 'file-watcher')?.enabled).toBe(true)
+    configureCaptureHealth({ packs: { hostMonitors: false } })
+    expect(getCaptureHealth().sources.find((s) => s.id === 'file-watcher')?.enabled).toBe(false)
   })
 })
 
@@ -788,7 +787,6 @@ describeDB('capture-health: the indexed probes answer what the IN-list probes di
       'browser-console': oldLast(`agent_type = 'browser'`),
       'connection-monitor': oldLast(`agent_type = 'scanner' AND subtype IN ('connection','connection_end')`),
       screenshot: oldLast(`agent_type = 'screenshot'`),
-      clipboard: oldLast(`agent_type = 'clipboard'`),
       'process-monitor': oldLast(`agent_type = 'process'`),
       'file-watcher': oldLast(`agent_type = 'file_transfer' AND json_extract(data,'$.source') = 'file-watcher'`)
     }

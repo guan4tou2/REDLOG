@@ -36,9 +36,9 @@ describe('turning a pack member on from the Capture Health card', () => {
   })
   afterEach(() => cleanup())
 
-  const clipboard = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
-    id: 'clipboard',
-    configPath: 'packMembers.clipboard',
+  const fileWatcher = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+    id: 'file-watcher',
+    configPath: 'packMembers.fileWatcher',
     packPath: 'packs.hostMonitors',
     enabled: false,
     state: 'off',
@@ -49,24 +49,24 @@ describe('turning a pack member on from the Capture Health card', () => {
   it('turns its pack on with it, so the switch does not report the opposite of what it did', async () => {
     // A member is only on when its pack is too. Writing the member alone left
     // the operator flipping a switch and watching the row stay `off`.
-    const el = draw([clipboard()])
+    const el = draw([fileWatcher()])
     fireEvent.click(within(el).getByText(/Other capture sources/))
     fireEvent.click(within(el).getByText('turn on'))
     await waitFor(() => expect(saved).not.toBeNull())
     expect(saved).toEqual([
-      { path: ['packMembers', 'clipboard'], value: true, baseAbsent: true },
+      { path: ['packMembers', 'fileWatcher'], value: true, baseAbsent: true },
       { path: ['packs', 'hostMonitors'], value: true, base: false }
     ])
   })
 
   it('leaves the pack alone when one member is turned off', async () => {
-    // The other three members are not this operator's to lose.
+    // The other members are not this operator's to lose.
     ;(window as unknown as { redlog: { config: { get: () => Promise<unknown> } } }).redlog.config.get =
       async () => ({ packs: { hostMonitors: true } })
-    const el = draw([clipboard({ enabled: true, state: 'ready', lastEventAt: 1 })])
+    const el = draw([fileWatcher({ enabled: true, state: 'ready', lastEventAt: 1 })])
     fireEvent.click(within(el).getByText(/Other capture sources/))
     fireEvent.click(within(el).getByText('turn off'))
     await waitFor(() => expect(saved).not.toBeNull())
-    expect(saved).toEqual([{ path: ['packMembers', 'clipboard'], value: false, baseAbsent: true }])
+    expect(saved).toEqual([{ path: ['packMembers', 'fileWatcher'], value: false, baseAbsent: true }])
   })
 })

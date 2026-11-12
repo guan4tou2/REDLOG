@@ -41,7 +41,7 @@ function patch(p: { ops: Op[] }): unknown {
 const baseConfig = (targets: string[]): Record<string, unknown> => ({
   engagement: { id: 'proj-a', name: 'A' },
   operator: { id: 'op' },
-  packs: {}, screenshot: {}, clipboard: {}, processMonitor: {},
+  packs: {}, screenshot: {}, processMonitor: {},
   connectionMonitor: {}, fileWatcher: {},
   scope: { targets, excludeTargets: [], personalDomains: [] }
 })

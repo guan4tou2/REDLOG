@@ -53,7 +53,7 @@ const initial = (): Record<string, unknown> => ({
   operator: { id: 'op', name: 'Op' },
   network: { whitelist: [], blacklist: [], checkInterval: 61, providers: [], confirmations: 3, ipMode: 'auto', vpnAdapters: [] },
   scope: { warnOnViolation: true, targets: ['in.test'], excludeTargets: [], personalDomains: [], scopeFile: '/scope/a.txt' },
-  screenshot: { quality: 85 }, clipboard: {}, processMonitor: {}, connectionMonitor: {}, fileWatcher: {}, packs: {},
+  screenshot: { quality: 85 }, processMonitor: {}, connectionMonitor: {}, fileWatcher: {}, packs: {},
   browser: { binary: '/bin/chromium-x', proxy: '', cdpPort: 9222, isolateProfile: true, ignoreCertErrors: false, startUrl: '', extraArgs: [] },
   httpCapture: { port: 6661, listenHost: '127.0.0.1', routeTerminals: false },
   loot: { disabledRules: [] },

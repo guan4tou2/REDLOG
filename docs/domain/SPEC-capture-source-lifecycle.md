@@ -46,7 +46,7 @@ It was wrong in a way worth recording, because the mistake is easy to make
 again.
 
 What `Idle` measured was the **operator**, not the capture. A terminal with
-nobody typing in it, a clipboard nobody copied to, a file watcher over a
+nobody typing in it, a file watcher over a
 directory nobody touched — all "idle", none of them a fact about whether
 RedLog can record. Worse, it was windowed: ten minutes of not typing moved a
 source from green to amber and back with nothing changed, and an indicator
@@ -254,4 +254,4 @@ does not create or widen project recording permission.
 
 Opening source settings only reads machine state. Explicit Connect / Verify / repair opens the same terminal enrollment used by first-run setup; host Bash/Zsh/PowerShell and WSL retain their own installers and nonce identities. An installed profile is not a received command, and a command is not output proof. Only adapters the backend reports usable may be installed; this does not add PowerShell-on-macOS backend support.
 
-Dependencies are prepared in the selected source page through the existing installer/cancel/progress path. An unknown or failed integration-list read offers retry, never an enabled project switch. Restoring a known disabled bundled integration is a machine action; it does not change the project's pack selection or enable clipboard. Missing/untrusted integrations retain the management route instead of pretending a repair succeeded. External producers retain their own start commands and heartbeat; no project toggle claims to start them.
+Dependencies are prepared in the selected source page through the existing installer/cancel/progress path. An unknown or failed integration-list read offers retry, never an enabled project switch. Restoring a known disabled bundled integration is a machine action; it does not change the project's pack selection. Missing/untrusted integrations retain the management route instead of pretending a repair succeeded. External producers retain their own start commands and heartbeat; no project toggle claims to start them.

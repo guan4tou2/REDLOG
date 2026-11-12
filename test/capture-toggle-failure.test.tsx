@@ -23,7 +23,7 @@ beforeEach(() => {
   }
   const capture = {
     verdict: 'partial', recording: false, lastEventAt: null, checkedAt: 1,
-    sources: [{ id: 'clipboard', configPath: 'packMembers.clipboard', packPath: 'packs.hostMonitors', enabled: true, state: 'ready', lastEventAt: 1 }]
+    sources: [{ id: 'file-watcher', configPath: 'packMembers.fileWatcher', packPath: 'packs.hostMonitors', enabled: true, state: 'ready', lastEventAt: 1 }]
   }
   render(
     <I18nProvider>

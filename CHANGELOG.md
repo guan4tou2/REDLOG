@@ -10,6 +10,11 @@ for full commit body + generated notes.
 - Removed the bundled `transparent-proxy` plugin, which rewrote this host's
   nat rules as root. HTTP capture runs alongside the operator's own proxy. The
   mitmproxy addon no longer stamps `proxy_mode` on HTTP events.
+- Removed clipboard monitoring: the Host monitors pack is process, connection
+  and file monitoring, and the timeline has no clipboard lane. Rows a project
+  already holds open in the system lane with the generic reader. A
+  `clipboard` section or `packMembers.clipboard` left in a project's config is
+  ignored, and the external API no longer accepts `agent_type: clipboard`.
 - Removed `hooks/vps-deploy.sh`. It was already disabled, but it still shipped
   in every package with the steps that copied the API token, which can read
   every event, export, sanitise and switch recording, to a remote host. Remote

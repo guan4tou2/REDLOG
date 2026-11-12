@@ -20,7 +20,7 @@ interface LootEvent {
   source: string | null
   matches: Array<{ type: string; confidence: string; preview: string }>
   /** The event whose text produced the hit (`_causes`); null when none was
-   *  recorded — clipboard and API scans keep no source text. */
+   *  recorded — API scans keep no source text. */
   sourceEventId: string | null
   /** Matches the event stored, before any filter. */
   stored: number

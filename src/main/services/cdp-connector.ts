@@ -151,7 +151,7 @@ function closeAllTabSockets(): void {
 
 async function pollNavigations(): Promise<void> {
   // Ambient CDP navigation capture — skip while paused (aligns with
-  // clipboard + screenshot ambient gating). Matches the pause semantics
+  // screenshot ambient gating). Matches the pause semantics
   // an operator expects when clicking "pause recording".
   if (eventBus.paused) return
   let tabs: BrowserTab[]

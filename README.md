@@ -107,9 +107,8 @@ built-in terminals opened afterwards. Proxy-aware tools still need the right
 trust configuration; client support for proxy variables varies. Raw TCP, SMB,
 LDAP, RDP and nmap SYN scans do not become HTTP evidence through this switch.
 
-Optional host monitoring, clipboard and AI capture
-are configured under **Settings ▸ Other capture sources**. Clipboard has its
-own opt-in. Windows output is beside terminal setup under **Commands & terminal**. AI integrations are individually uninstalled by default; install,
+Optional host monitoring and AI capture
+are configured under **Settings ▸ Other capture sources**. Windows output is beside terminal setup under **Commands & terminal**. AI integrations are individually uninstalled by default; install,
 select project working directories and explicitly enable the chosen integration.
 
 > **Windows / WSL users** — see [docs/windows-setup.md](docs/windows-setup.md) for PowerShell hooks and WSL integration.
@@ -119,7 +118,7 @@ select project working directories and explicitly enable the chosen integration.
 <table>
 <tr>
 <td width="50%"><a href="docs/screenshots/dashboard.jpg"><img src="docs/screenshots/dashboard.jpg" alt="Dashboard" /></a><br/><b>Dashboard</b> — capture health as an exception report, external / internal IP with the live pivot topology, session counters, engagement metadata</td>
-<td width="50%"><a href="docs/screenshots/timeline.jpg"><img src="docs/screenshots/timeline.jpg" alt="Timeline" /></a><br/><b>Attack Timeline</b> — 18 lanes banded into commands / traffic / artifacts / signals, density minimap, cluster popups, per-command and full-session <code>.cast</code> replay</td>
+<td width="50%"><a href="docs/screenshots/timeline.jpg"><img src="docs/screenshots/timeline.jpg" alt="Timeline" /></a><br/><b>Attack Timeline</b> — 17 lanes banded into commands / traffic / artifacts / signals, density minimap, cluster popups, per-command and full-session <code>.cast</code> replay</td>
 </tr>
 </table>
 
@@ -130,7 +129,7 @@ Penetration testers need a tamper-evident record of what they did during an enga
 - **Commands** from a connected shell: command, exit code, duration and working directory. Ordinary **Bash and Zsh** commands also record bounded output automatically. Native/interactive exceptions remain metadata-only; explicit `redlog-session` records a PTY session with merged streams. PowerShell output uses its transcript integration.
 - **Deliberate exceptions:** `nc`, `ncat`, editors, pagers and the `claude` and `codex` CLIs retain native terminal behavior, with metadata instead of captured output. The AI conversation is recorded from its local transcript only when AI conversation capture is enabled (see below); otherwise only the launch command is. Zsh routes `ssh`, `socat` and `pwncat-cs` through a separate PTY recorder; Bash requires an explicit `redlog-session` for that class. PTY streams are merged and local suspension differs. `redlog class list` shows the effective rules, including operator overrides.
 - **HTTP(S)** that goes through RedLog's proxy — the capture browser, or a tool pointed at the proxy. Traffic that does not use the proxy (raw TCP, SMB, nmap SYN scans) is not recorded as HTTP.
-- **Optional sources**, off until you turn them on: process, connection and file monitoring; the clipboard (its own opt-in); AI agent transcripts; periodic screenshots.
+- **Optional sources**, off until you turn them on: process, connection and file monitoring; AI agent transcripts; periodic screenshots.
 
 Markers, bookmarks and findings are still yours to write. RedLog keeps the record; it does not write the report.
 
@@ -165,7 +164,6 @@ Markers, bookmarks and findings are still yours to write. RedLog keeps the recor
 | Cleanup auto-detector | `history -c`, `journalctl --vacuum`, `wevtutil cl`, `shred`, `touch -t`, `chattr +i` → `cleanup` events | NIST SP 800-86 anti-forensics tracking |
 | File-transfer auto-detector | `curl -o`, `wget -O`, `scp`, `rsync`, `python -m http.server` → `file_transfer` events | T1105 ingress / T1041 exfil |
 | Browser CDP monitor | Every URL change in the built-in browser → `http_navigation` (T1071.001) | Filters `chrome://`, `about:`, `devtools:`, `view-source:` |
-| Clipboard monitor *(opt-in)* | SHA-256 + length + line count always; loot detector runs on content; 120-char redacted preview optional | Off by default — clipboard is sensitive |
 | Screenshot agent | Periodic + on-demand desktop captures | SHA-256 in event, quality configurable |
 | IP monitor | External IP + safety hysteresis (safe/exposed/unknown) | `system.ip_transition` on every state or IP change |
 | OPSEC state monitor | VPN interfaces (utun/tun/tap/wg/ppp/…), DNS resolvers, primary MAC, hostname | `system.opsec_state_changed` on any drift (30 s poll) |
@@ -176,7 +174,7 @@ Markers, bookmarks and findings are still yours to write. RedLog keeps the recor
 
 ### Timeline & UI
 
-- **Swim-lane Timeline** — 18 lanes (shell, agent, http_navigation, scanner, browser, dns, pivot, screenshot, clipboard, file_transfer, credential_use, c2_checkin, marker, loot, cleanup, scope, process, system) banded into four collapsible groups: commands / traffic / artifacts / signals. Empty lanes auto-collapse — only what this engagement touched
+- **Swim-lane Timeline** — 17 lanes (shell, agent, http_navigation, scanner, browser, dns, pivot, screenshot, file_transfer, credential_use, c2_checkin, marker, loot, cleanup, scope, process, system) banded into four collapsible groups: commands / traffic / artifacts / signals. Empty lanes auto-collapse — only what this engagement touched
 - **Housekeeping filter** — RedLog's own lifecycle (api_started, session_start, terminal-pane open/close, the "silent" hook auto-source) stays in the DB for the record but is hidden from the timeline
 - **Command pair collapse** — a `shell.command_start` disappears once its matching `command_end` lands (same pid+cmd); still-running commands keep showing
 - **Cursor-anchored zoom** — trackpad pinch and wheel zoom stay locked to what's under the cursor
@@ -386,7 +384,7 @@ Project event metadata is stored in SQLite (`~/.redlog/projects/<id>/timeline.db
 | engagement_id | TEXT | Engagement identifier |
 | session_id | TEXT | App session UUID |
 | operator_id | TEXT | Operator identifier |
-| agent_type | TEXT | shell, screenshot, clipboard, file_transfer, marker, loot, system |
+| agent_type | TEXT | shell, screenshot, file_transfer, marker, loot, system |
 | hostname | TEXT | Machine hostname |
 | source_ip | TEXT | Source IP (nullable) |
 | target_id | TEXT | Auto-detected target (nullable) |
@@ -452,7 +450,6 @@ Export your project config as a `.yaml` or `.json` profile:
 - **Sandbox**: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`
 - **contextBridge**: explicit API surface — renderer cannot access Node.js
 - **Path validation**: screenshot reads validated within project directory
-- **Clipboard redaction**: passwords, API keys, private keys auto-redacted
 - **API auth**: Bearer token (random 32 bytes), file permission 0600
 - **API binding**: 127.0.0.1 only — not exposed to network
 

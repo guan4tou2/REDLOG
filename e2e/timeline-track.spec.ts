@@ -84,7 +84,7 @@ test.describe.serial('timeline-geometry: timeline geometry + startup gates', () 
   })
 
   // ---------------------------------------------------------------- setup
-  test('seed all 18 lanes + an out-of-range marker', async () => {
+  test('seed all 17 lanes + an out-of-range marker', async () => {
     const port = readFileSync(join(tmpHome, '.redlog', 'api-port'), 'utf-8').trim()
     const token = readFileSync(join(tmpHome, '.redlog', 'api-token'), 'utf-8').trim()
     const base = `http://127.0.0.1:${port}`
@@ -99,7 +99,6 @@ test.describe.serial('timeline-geometry: timeline geometry + startup gates', () 
       ['dns', { subtype: 'dns_query', query: 'target.example' }],
       ['pivot', { tool: 'ssh', via: '10.0.0.5', route: '-D 1080' }],
       ['screenshot', { filename: 'a.jpg', sha256: 'x'.repeat(64) }],
-      ['clipboard', { sha256: 'y'.repeat(64), length: 12, lines: 1 }],
       ['file_transfer', { direction: 'ingress', tool: 'curl' }],
       ['credential_use', { user_context: 'admin' }],
       ['c2_checkin', { description: 'implant checked in' }],
@@ -124,7 +123,7 @@ test.describe.serial('timeline-geometry: timeline geometry + startup gates', () 
       expect(r.ok, `POST ${agent_type} failed: ${r.status}`).toBeTruthy()
     }
 
-    // Shrink the window so 18 lanes cannot fit — this is the P0-2 condition.
+    // Shrink the window so 17 lanes cannot fit — this is the P0-2 condition.
     await resizeMainWindow(app, 1280, 620)
     await openSwimLanes(page)
     await page.waitForTimeout(1500)
@@ -132,7 +131,7 @@ test.describe.serial('timeline-geometry: timeline geometry + startup gates', () 
 
   // ---------------------------------------------------------------- P0-2
   test('lane stack scrolls vertically instead of clipping (v0.9.4 P0-2)', async () => {
-    // Lanes now open banded (§6). Expand every band so all 18 lanes show, which
+    // Lanes now open banded (§6). Expand every band so all 17 lanes show, which
     // is the many-rows overflow scenario this test exists for.
     for (const b of ['commands', 'traffic', 'artifacts', 'signals']) {
       const chip = page.locator(`[data-testid="timeline-band-${b}"]`)
@@ -154,9 +153,9 @@ test.describe.serial('timeline-geometry: timeline geometry + startup gates', () 
       }
     })
     expect(geom, 'scroll container not found').not.toBeNull()
-    // 18 lanes plus the four band headings, which stay put when expanded so the
+    // 17 lanes plus the four band headings, which stay put when expanded so the
     // grouping does not vanish the moment a band gains children.
-    expect(geom!.laneRows, 'expected all 18 lanes under their four bands').toBe(22)
+    expect(geom!.laneRows, 'expected all 17 lanes under their four bands').toBe(21)
     expect(geom!.scrollHeight, 'lane stack should overflow at this height')
       .toBeGreaterThan(geom!.clientHeight)
 

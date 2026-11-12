@@ -11,7 +11,7 @@
  *  documented path; e2e/cli-smoke.spec.ts caught it. */
 const EXTERNAL_ALLOWED_AGENT_TYPES: ReadonlySet<string> = new Set([
   'scanner', 'shell', 'terminal', 'dns', 'external', 'agent', 'marker',
-  'process', 'credential_use', 'file_transfer', 'clipboard', 'screenshot',
+  'process', 'credential_use', 'file_transfer', 'screenshot',
   'browser', 'http_navigation',
   // v0.15: out-of-process pcap producer (hooks/pcap-agent.py) — connection
   // attempts / SYN scans / non-proxied flow metadata the app-layer proxy

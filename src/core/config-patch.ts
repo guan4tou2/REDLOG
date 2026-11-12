@@ -101,7 +101,6 @@ export const CONFIG_SCHEMA: Node = obj({
   scope: obj({ warnOnViolation: bool, targets: strs, excludeTargets: strs, personalDomains: strs, scopeFile: { t: 'nullable', of: str } }),
   screenshot: obj({ quality: num, intervalSec: num, diffThreshold: num, captureOnCommand: bool }),
   terminal: obj({ maxCastBytes: num }),
-  clipboard: obj({ pollMs: num, storePreview: bool }),
   browser: obj({ binary: str, proxy: str, cdpPort: num, isolateProfile: bool, ignoreCertErrors: bool, startUrl: str, extraArgs: strs }),
   httpCapture: obj({ port: num, listenHost: str, routeTerminals: bool }),
   redaction: obj({ allowlist: strs, denylist: strs, entropyThreshold: num, minLength: num }),
@@ -109,7 +108,7 @@ export const CONFIG_SCHEMA: Node = obj({
   processMonitor: obj({ pollMs: num, ignoreCommands: strs }),
   connectionMonitor: obj({ pollMs: num }),
   packs: obj({ hostMonitors: bool, windowsOutput: bool }),
-  packMembers: obj({ processMonitor: bool, connectionMonitor: bool, fileWatcher: bool, clipboard: bool, powershellTranscript: bool }),
+  packMembers: obj({ processMonitor: bool, connectionMonitor: bool, fileWatcher: bool, powershellTranscript: bool }),
   agentTailer: obj({
     sources: {
       t: 'record',

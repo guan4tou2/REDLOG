@@ -212,7 +212,6 @@ export function CaptureHealthCard({ capture, unknown, projectId, onNavigate, onR
     'agent-claude-code': t('capture.agentClaudeCode'),
     'agent-codex': t('capture.agentCodex'),
     'screenshot': t('capture.screenshot'),
-    'clipboard': t('capture.clipboard'),
     // v0.6.92 W-project producers.
     'browser-console': t('capture.browserConsole'),
     'process-monitor': t('capture.processMonitor'),

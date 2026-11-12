@@ -83,10 +83,10 @@ Several earlier judgements were built on the old core and invert:
 
 ## 2. Capture coverage — four gaps
 
-Eight sources exist: terminal (RedLog's own panes and, once the shell hook is
+Seven sources exist: terminal (RedLog's own panes and, once the shell hook is
 installed, the operator's own shell — one capability, and the event says which
 terminal a command came from), agent-tailer, mitmproxy, browser-console,
-screenshot, clipboard, file-watcher, process-monitor.
+screenshot, file-watcher, process-monitor.
 Measured against "come back to the timeline and see what was done at that
 moment", four gaps. All four are to be closed.
 
@@ -340,8 +340,8 @@ empty. "Which credentials did I use where" is one of the questions an
 after-action review asks most.
 
 **Decision: give `credential_use` a producer; leave `c2_checkin` external.**
-Credential use is derivable from capture that already runs — a key copied to
-the clipboard, `-p` / `--password` on a command line, an `Authorization`
+Credential use is derivable from capture that already runs — `-p` /
+`--password` on a command line, an `Authorization`
 header seen by mitmproxy. C2 check-in needs integration with a specific C2
 framework, and parsing a C2's logs is RedEye's job by the positioning's own
 table.

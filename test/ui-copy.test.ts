@@ -21,7 +21,7 @@ import glob from 'fast-glob'
 //   5. a paragraph where a helper line belongs
 //
 // Deliberate non-rules: length alone, sentence count alone, and any ban on
-// hint keys. The clipboard scope warning, the SYN-scan blind spot and the
+// hint keys. The SYN-scan blind spot and the
 // unsigned-build update instructions are all long, and all belong.
 
 const ROOT = path.join(__dirname, '..')
@@ -179,7 +179,6 @@ describe('UI copy: no redundant descriptions', () => {
       const WARNINGS = new Set([
         'ip.exposedHint',
         'firstRun.policy.why',
-        'settings.clipboardScopeWarn',
         'settings.connectionMonitorSynNote',
         'settings.lootRuleStopped',
         'update.readyHint',

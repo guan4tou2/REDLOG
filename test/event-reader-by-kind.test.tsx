@@ -132,3 +132,17 @@ describe('rows sit in a lane named for what they are', () => {
     expect(toLane('c2_checkin')).toBe('c2_checkin')
   })
 })
+
+describe('a kind RedLog no longer writes', () => {
+  // The clipboard monitor was removed; a project may still hold its rows. They
+  // land in the system lane, the generic reader and the generic title.
+  const row = ev('clipboard', { subtype: 'copy', content_sha256: 'ab' })
+
+  it('falls back instead of failing', () => {
+    expect(toLane('clipboard')).toBe('system')
+    expect(eventReader(row)).toBe('generic')
+    expect(eventTitle(row)).toBe('clipboard: copy')
+    render(<I18nProvider><GenericEventDetail kind="clipboard · copy" data={row.data as Record<string, unknown>} /></I18nProvider>)
+    expect(screen.getByText(/clipboard · copy/)).toBeTruthy()
+  })
+})
