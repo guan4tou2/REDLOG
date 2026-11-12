@@ -20,6 +20,43 @@ export interface RecordingMarker {
  *  - recording now, but this project's last word was "paused": that pause did
  *    not carry over (restart), and without a resume the timeline would draw it
  *    open until now across events that were recorded. */
+/** How long to wait before each retry of a marker that failed to write; the
+ *  last delay repeats for as long as the project is open. */
+export const MARKER_RETRY_DELAYS_MS = [1_000, 5_000, 30_000, 120_000, 300_000]
+
+/** Write a pause/resume marker, and keep trying while it throws.
+ *
+ *  These rows are the whole record of a pause, and the spool drain reads them
+ *  (core/recording-state.ts): a resume that is never written leaves the pause
+ *  without an end, and the drain holds back every file after it. A failure is
+ *  reported where capture-write failures are (`onError`) and retried at the
+ *  marker's own time, so the row lands where the toggle happened. Only a throw
+ *  is retried: a write that returns, with a row or without one (refused for
+ *  good), ends it, as does `isCurrent` turning false. */
+export function writeMarkerWithRetry(options: {
+  /** `retry` is true from the second try on: the row then needs the toggle's
+   *  own time, which the first try gets by being written at it. */
+  write: (retry: boolean) => void
+  onError: (error: unknown) => void
+  schedule: (retry: () => void, ms: number) => void
+  isCurrent: () => boolean
+}): void {
+  let attempt = 0
+  const run = (): void => {
+    if (!options.isCurrent()) return
+    try {
+      options.write(attempt > 0)
+      return
+    } catch (error) {
+      options.onError(error)
+    }
+    const delay = MARKER_RETRY_DELAYS_MS[Math.min(attempt, MARKER_RETRY_DELAYS_MS.length - 1)]
+    attempt++
+    options.schedule(run, delay)
+  }
+  run()
+}
+
 export function markerForOpen(pausedNow: boolean, lastSubtype: string | null): RecordingMarker | null {
   if (pausedNow) {
     if (lastSubtype === 'recording_paused') return null

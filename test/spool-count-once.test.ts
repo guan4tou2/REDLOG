@@ -1,0 +1,389 @@
+// Spec 071 Phase 2, third review (probes A–J). Each test states a rule:
+//
+//   - a spool file is COUNTED at most once, across drains and restarts: the
+//     gap row names the files it counts, and a file a committed row names is
+//     not counted again — only its move or removal is retried (A);
+//   - one drain shares one quarantine reservation across its slices and the
+//     legacy migration (I, J);
+//   - one gap row per reason per drain, split only past FILES_PER_ROW names,
+//     with per-owner counts in its data (E);
+//   - a loss is placed in time only by a usable source time (F);
+//   - another project's file that cannot be read is left where it is (G);
+//   - a pause between slices commits nothing (H);
+//   - a command_end is refused when its output started, or the command
+//     started, inside a recorded pause, or its output spans one (B, C);
+//   - a pause begun in this session with no resume row yet makes the drain
+//     wait, never drop (D); a failed marker write is retried.
+
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { requires } from './helpers/requires'
+import { writeMarkerWithRetry, MARKER_RETRY_DELAYS_MS } from '../src/core/recording-state-marker'
+
+const sqlite = requires('better-sqlite3')
+
+let db: typeof import('../src/core/db/index')
+let events: typeof import('../src/core/db/events')
+let ops: typeof import('../src/core/db/operators')
+let ing: typeof import('../src/core/ingest')
+let busMod: typeof import('../src/core/event-bus')
+let drain: typeof import('../src/core/spool-drain')
+let replay: typeof import('../src/core/spool-replay')
+if (sqlite.ok) {
+  db = await import('../src/core/db/index')
+  events = await import('../src/core/db/events')
+  ops = await import('../src/core/db/operators')
+  ing = await import('../src/core/ingest')
+  busMod = await import('../src/core/event-bus')
+  drain = await import('../src/core/spool-drain')
+  replay = await import('../src/core/spool-replay')
+}
+
+const ENG = 'eng-A'
+const OP = 'op-A'
+const id = { engagementId: ENG, operatorId: OP }
+const other = { engagementId: 'eng-B', operatorId: 'op-B' }
+const T0 = Date.UTC(2026, 10, 12, 9, 0, 0)
+const SEC = 1000
+
+sqlite.describe('the spool drain counts each file once (review round 3)', () => {
+  let dir = ''
+  let spool = ''
+  let keys = ''
+  const prevKeys = process.env.REDLOG_KEYS_DIR
+  const bus = (): typeof import('../src/core/event-bus').eventBus => busMod.eventBus
+  const at = (ms: number): void => { vi.setSystemTime(ms) }
+  const marker = (subtype: 'recording_paused' | 'recording_resumed', ms: number): void => {
+    events.insertEvent('system', { subtype, source: 'ui' }, { ...id, occurredAt: ms })
+  }
+  const pause = (ms: number): void => { at(ms); bus().pause('ui'); marker('recording_paused', ms) }
+  const resume = (ms: number): void => { at(ms); bus().resume('ui'); marker('recording_resumed', ms) }
+  const rows = (): Array<{ type: string; subtype: string; t: number; data: Record<string, unknown> }> =>
+    (db.getDB().prepare(`SELECT agent_type, subtype, timestamp, data FROM events WHERE agent_type <> 'system' OR subtype = 'capture_gap'
+      UNION ALL SELECT agent_type, subtype, timestamp, data FROM events_logged`).all() as Array<{ agent_type: string; subtype: string; timestamp: number; data: string }>)
+      .map((r) => ({ type: r.agent_type, subtype: r.subtype, t: r.timestamp, data: JSON.parse(r.data) as Record<string, unknown> }))
+  const commands = (): string[] => rows().filter((r) => r.type === 'shell').map((r) => `${r.subtype}:${String(r.data.command)}`)
+  const gapRows = (): Array<{ t: number; data: Record<string, unknown> }> => rows().filter((r) => r.subtype === 'capture_gap' && r.type === 'system')
+  const gaps = (): Array<Record<string, unknown>> => gapRows().map((r) => r.data)
+  /** A producer's own record of a loss, replayed from the spool. */
+  const producerGaps = (): Array<Record<string, unknown>> => rows().filter((r) => r.subtype === 'capture_gap' && r.type === 'scanner').map((r) => r.data)
+  const put = (name: string, body: string | object, mtime?: number): string => {
+    const f = path.join(spool, name)
+    fs.writeFileSync(f, typeof body === 'string' ? body : JSON.stringify(body))
+    if (mtime !== undefined) fs.utimesSync(f, mtime / 1000, mtime / 1000)
+    return f
+  }
+  const ls = (d: string): string[] => { try { return fs.readdirSync(d).sort() } catch { return [] } }
+  const walk = (d: string): string[] => ls(d).flatMap((n) => fs.statSync(path.join(d, n)).isDirectory() ? walk(path.join(d, n)).map((m) => `${n}/${m}`) : [n])
+  const files = (): string[] => walk(spool).filter((n) => !n.endsWith('.why'))
+  const forbidden = (n: number): object => ({ agent_type: 'system', data: { subtype: 'config_changed', n }, _identity: id })
+  const shell = (subtype: string, command: string, extra: Record<string, unknown> = {}): object =>
+    ({ agent_type: 'shell', data: { subtype, command, terminalId: `t-${command}`, pid: 1, ...extra }, _identity: id })
+  const open = (): void => {
+    db.initDB(dir)
+    db.bindDBEngagement(ENG)
+    ing._resetIngest()
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ now: T0, toFake: ['Date'] })
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-once-db-'))
+    spool = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-once-spool-'))
+    keys = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-once-keys-'))
+    process.env.REDLOG_KEYS_DIR = keys
+    open()
+    ops.createOperator({ id: OP, name: 'P', token: ops.generateToken(), isPrimary: true })
+  })
+  afterEach(() => {
+    if (bus().paused) bus().resume('ui')
+    vi.useRealTimers()
+    db.closeDB()
+    for (const d of [dir, spool, keys]) {
+      for (const f of walk(d)) { try { fs.chmodSync(path.join(d, f), 0o600) } catch { /* gone */ } }
+      fs.rmSync(d, { recursive: true, force: true })
+    }
+    if (prevKeys === undefined) delete process.env.REDLOG_KEYS_DIR
+    else process.env.REDLOG_KEYS_DIR = prevKeys
+  })
+
+  // ── Item 1: counted once ────────────────────────────────────────────────
+
+  sqlite.it('A: a file whose move keeps failing is counted by one row, across drains and a restart; the move is retried', () => {
+    // A file where the quarantine directory should be: every move fails.
+    fs.writeFileSync(path.join(spool, 'quarantine'), 'not a directory')
+    put('0001.json', forbidden(1))
+    for (let i = 0; i < 3; i++) {
+      at(T0 + i * 31 * SEC)
+      expect(drain.drainSpoolOnce(spool, id)!.outcomes['0001.json']).toBe('deferred')
+    }
+    db.closeDB()
+    open()
+    at(T0 + 120 * SEC)
+    drain.drainSpoolOnce(spool, id)
+    expect(gaps()).toEqual([expect.objectContaining({ reason: 'kind-not-allowed', skipped_units: 1, files: ['0001.json'] })])
+    expect(files()).toEqual(['0001.json', 'quarantine'])
+    // The obstacle goes: the next drain moves it, and still counts nothing new.
+    fs.rmSync(path.join(spool, 'quarantine'))
+    at(T0 + 150 * SEC)
+    expect(drain.drainSpoolOnce(spool, id)!.outcomes['0001.json']).toBe('quarantined')
+    expect(files()).toEqual([`quarantine/${ENG}/kind-not-allowed--0001.json`])
+    expect(gaps()).toHaveLength(1)
+  })
+
+  sqlite.it('A: a counted file is not offered to the pipeline again', () => {
+    fs.writeFileSync(path.join(spool, 'quarantine'), 'not a directory')
+    let tries = 0
+    ing.configureIngest({ terminalLifecycle: { prepare: () => { tries++; throw new Error('pipeline down') }, recorded: () => undefined } })
+    put('0001.json', shell('command_start', 'never-lands'))
+    let t = T0
+    for (let i = 0; i < 8; i++) { at(t); drain.drainSpoolOnce(spool, id); t += 31 * 60 * SEC }
+    ing.configureIngest({ terminalLifecycle: null })
+    expect(gaps()).toEqual([expect.objectContaining({ reason: 'failed', files: ['0001.json'] })])
+    // Five tries to fail, then counted; after that, no more writes are tried.
+    expect(tries).toBe(5)
+  })
+
+  sqlite.it('one reason past FILES_PER_ROW names is split into parts, each naming its own files', () => {
+    const n = drain.FILES_PER_ROW + 1
+    for (let i = 0; i < n; i++) put(`${String(i).padStart(4, '0')}.json`, forbidden(i))
+    drain.drainSpoolOnce(spool, id)
+    const g = gaps()
+    expect(g.map((r) => [r.reason, r.skipped_units, r.part, r.parts, (r.files as string[]).length]))
+      .toEqual([['kind-not-allowed', drain.FILES_PER_ROW, 1, 2, drain.FILES_PER_ROW], ['kind-not-allowed', 1, 2, 2, 1]])
+    expect(new Set([...(g[0].files as string[]), ...(g[1].files as string[])]).size).toBe(n)
+  })
+
+  // ── Item 2: one ledger per drain ────────────────────────────────────────
+
+  sqlite.it('I: the quarantine bound holds for a drain made of many slices', () => {
+    for (let n = 0; n < 6; n++) put(`${String(n).padStart(4, '0')}.json`, forbidden(n))
+    const session = new drain.SpoolDrainSession(id)
+    let after = ''
+    for (;;) {
+      const r = drain.drainSpoolOnce(spool, id, 2, after, { quarantineMaxFiles: 2 }, session)
+      if (!r || r.last === null) break
+      after = r.last
+    }
+    session.commit()
+    expect(ls(path.join(spool, 'quarantine', ENG)).filter((n) => !n.endsWith('.why'))).toHaveLength(2)
+    expect(gaps()).toEqual([expect.objectContaining({ skipped_units: 6, quarantined: 2, content_not_kept: 4 })])
+  })
+
+  sqlite.it('I: the quarantine bound holds for a drain of total Infinity, as main starts it', () => {
+    for (let n = 0; n < 6; n++) put(`${String(n).padStart(4, '0')}.json`, forbidden(n))
+    let session: InstanceType<typeof drain.SpoolDrainSession> | null = null
+    replay.startSpoolDrain({
+      drainOnce: (limit, after) => {
+        if (after === '') session = new drain.SpoolDrainSession(id)
+        return drain.drainSpoolOnce(spool, id, limit, after, { quarantineMaxFiles: 2 }, session ?? undefined)?.last ?? null
+      },
+      finish: () => { session?.commit(); session = null },
+      total: 200, slice: 2, isCurrent: () => true,
+      schedule: (next) => next(),
+      repeat: () => undefined
+    })
+    expect(ls(path.join(spool, 'quarantine', ENG)).filter((n) => !n.endsWith('.why'))).toHaveLength(2)
+    expect(gaps()).toEqual([expect.objectContaining({ skipped_units: 6, quarantined: 2 })])
+  })
+
+  sqlite.it('J: the legacy migration and the replay share the quarantine room', () => {
+    put('old.json.bad', JSON.stringify({ agent_type: 'shell', data: {}, _identity: id }))
+    put('0001.json', forbidden(1))
+    drain.drainSpoolOnce(spool, id, Infinity, '', { quarantineMaxFiles: 1 })
+    expect(ls(path.join(spool, 'quarantine', ENG)).filter((n) => !n.endsWith('.why'))).toHaveLength(1)
+  })
+
+  // ── Item 6: one row per reason, owners in its data ──────────────────────
+
+  sqlite.it('E: one malformed row per drain, whoever the files belong to, with per-owner counts', () => {
+    put('0001.json', '{', T0 - 3600e3)
+    put('0002.json', { agent_type: 'shell', _identity: id }, T0 - 3600e3)
+    drain.drainSpoolOnce(spool, id)
+    expect(gaps()).toEqual([expect.objectContaining({ reason: 'malformed', skipped_units: 2, by_owner: { this: 1, unknown: 1 } })])
+  })
+
+  // ── Item 7: a loss is placed only by a usable time ──────────────────────
+
+  sqlite.it('F: a source time the row rule rejects does not place a loss', () => {
+    at(T0 + 100 * SEC)
+    put('0001.json', { agent_type: 'system', data: { subtype: 'config_changed', source_timestamp: 1_700_000_000 }, _identity: id })
+    drain.drainSpoolOnce(spool, id)
+    const [row] = gapRows()
+    expect({ t: row.t, started: row.data.gap_started_at, ended: row.data.gap_ended_at, rejected: row.data._source_time_rejected })
+      .toEqual({ t: T0 + 100 * SEC, started: T0 + 100 * SEC, ended: T0 + 100 * SEC, rejected: undefined })
+  })
+
+  // ── Item 5: another project's file stays ────────────────────────────────
+
+  sqlite.it('G: another project\'s file that cannot be read stays where it is, uncounted, however long', () => {
+    if (process.platform === 'win32') return // chmod 000 does not stop the owner reading on Windows
+    const f = put('0001.json', { agent_type: 'shell', data: { subtype: 'command_start', command: 'B-evidence' }, _identity: other })
+    fs.chmodSync(f, 0o000)
+    let t = T0
+    for (let i = 0; i < 8; i++) { at(t); drain.drainSpoolOnce(spool, id); t += 31 * 60 * SEC }
+    expect(files()).toEqual(['0001.json'])
+    expect(gaps()).toEqual([])
+  })
+
+  sqlite.it('G: a truncated file belongs to the project its text names', () => {
+    const old = T0 - 3600e3
+    put('0001.json', `{"agent_type":"shell","_identity":{"engagementId":"${other.engagementId}","operatorId":"op-B"},"data":{"comm`, old)
+    put('0002.json', `{"agent_type":"shell","_identity":{"engagementId":"${ENG}","operatorId":"${OP}"},"data":{"comm`, old)
+    drain.drainSpoolOnce(spool, id)
+    expect(files()).toEqual(['0001.json', `quarantine/${ENG}/malformed--0002.json`])
+    expect(gaps()).toEqual([expect.objectContaining({ reason: 'malformed', skipped_units: 1, files: ['0002.json'] })])
+    expect(gaps()[0].by_owner).toBeUndefined()
+  })
+
+  // ── Probe H: a pause between slices ─────────────────────────────────────
+
+  sqlite.it('H: a pause between slices commits nothing — no row, no file dropped — until a drain after it', () => {
+    pause(T0 + 10 * SEC)
+    resume(T0 + 20 * SEC)
+    at(T0 + 30 * SEC)
+    put('0001.json', shell('command_start', 'in-pause', { source_timestamp: T0 + 15 * SEC }))
+    put('0002.json', shell('command_start', 'after', { source_timestamp: T0 + 25 * SEC }))
+    const session = new drain.SpoolDrainSession(id)
+    drain.drainSpoolOnce(spool, id, 1, '', {}, session)
+    pause(T0 + 31 * SEC)
+    expect(drain.drainSpoolOnce(spool, id, 1, '0001.json', {}, session)).toBeNull()
+    expect(session.commit()).toEqual({ '0001.json': 'deferred' })
+    expect(gaps()).toEqual([])
+    expect(files()).toEqual(['0001.json', '0002.json'])
+    resume(T0 + 40 * SEC)
+    drain.drainSpoolOnce(spool, id)
+    expect(gaps()).toEqual([expect.objectContaining({ reason: 'paused', skipped_units: 1, files: ['0001.json'] })])
+    expect(commands()).toEqual(['command_start:after'])
+    expect(files()).toEqual([])
+  })
+
+  // ── Item 3: command_end ─────────────────────────────────────────────────
+
+  sqlite.it('B: output that started inside a recorded pause is refused, even with a missing or rejected source time', () => {
+    pause(T0 + 10 * SEC)
+    resume(T0 + 20 * SEC)
+    at(T0 + 30 * SEC)
+    put('0001.json', shell('command_end', 'future-end', { exit_code: 0, stdout: 'x', output_started_at: T0 + 12 * SEC, source_timestamp: T0 + 30 * SEC + 5 * 60 * SEC }))
+    put('0002.json', shell('command_end', 'no-end', { exit_code: 0, stdout: 'x', output_started_at: T0 + 12 * SEC }))
+    put('0003.json', shell('command_end', 'after', { exit_code: 0, stdout: 'x', output_started_at: T0 + 21 * SEC, source_timestamp: T0 + 25 * SEC }))
+    drain.drainSpoolOnce(spool, id)
+    expect(commands()).toEqual(['command_end:after'])
+    expect(gaps()).toEqual([expect.objectContaining({ reason: 'paused', skipped_units: 2 })])
+  })
+
+  sqlite.it('B: output that began before a recorded pause and ended after it is refused whole', () => {
+    pause(T0 + 10 * SEC)
+    resume(T0 + 20 * SEC)
+    at(T0 + 30 * SEC)
+    put('0001.json', shell('command_end', 'spans', { exit_code: 0, stdout: 'x', output_started_at: T0 + 5 * SEC, source_timestamp: T0 + 25 * SEC }))
+    put('0002.json', shell('command_end', 'before', { exit_code: 0, stdout: 'x', output_started_at: T0 + 2 * SEC, source_timestamp: T0 + 8 * SEC }))
+    drain.drainSpoolOnce(spool, id)
+    expect(commands()).toEqual(['command_end:before'])
+  })
+
+  sqlite.it('C: without output_started_at, a start derived from the end less the duration inside a pause is refused', () => {
+    pause(T0 + 10 * SEC)
+    resume(T0 + 20 * SEC)
+    at(T0 + 30 * SEC)
+    put('0001.json', shell('command_start', 'typed-in-pause', { source_timestamp: T0 + 12 * SEC }))
+    put('0002.json', shell('command_end', 'typed-in-pause', { exit_code: 0, duration_sec: 13, source_timestamp: T0 + 25 * SEC }))
+    put('0003.json', shell('command_end', 'short', { exit_code: 0, duration_sec: 3, source_timestamp: T0 + 25 * SEC }))
+    // Known limit: nothing places its start, so it is written.
+    put('0004.json', shell('command_end', 'no-duration', { exit_code: 0, source_timestamp: T0 + 25 * SEC }))
+    drain.drainSpoolOnce(spool, id)
+    expect(commands()).toEqual(['command_end:short', 'command_end:no-duration'])
+  })
+
+  // ── Item 8: the boundary ────────────────────────────────────────────────
+
+  sqlite.it('a pause is [pause, resume): the moment of the pause is paused, the moment of the resume is not', () => {
+    pause(T0 + 10 * SEC)
+    resume(T0 + 20 * SEC)
+    at(T0 + 30 * SEC)
+    put('0001.json', shell('command_start', 'at-pause', { source_timestamp: T0 + 10 * SEC }))
+    put('0002.json', shell('command_start', 'at-resume', { source_timestamp: T0 + 20 * SEC }))
+    put('0003.json', shell('command_start', 'just-before', { source_timestamp: T0 + 10 * SEC - 1 }))
+    drain.drainSpoolOnce(spool, id)
+    expect(commands()).toEqual(['command_start:at-resume', 'command_start:just-before'])
+  })
+
+  // ── Item 4: a pause with no resume row yet ──────────────────────────────
+
+  sqlite.it('D: a resume whose marker is not written yet makes the drain wait, not drop; it drains once the marker lands', () => {
+    pause(T0 + 10 * SEC)
+    at(T0 + 20 * SEC)
+    bus().resume('ui') // the marker write failed
+    at(T0 + 30 * SEC)
+    put('0001.json', shell('command_start', 'after-resume', { source_timestamp: T0 + 25 * SEC }))
+    put('0002.json', shell('command_start', 'no-time'))
+    put('0003.json', shell('command_start', 'before-pause', { source_timestamp: T0 + 5 * SEC }))
+    put('0004.json', { agent_type: 'scanner', data: { subtype: 'capture_gap', reason: 'queue-full', skipped_units: 3, gap_started_at: T0 + 22 * SEC, gap_ended_at: T0 + 23 * SEC }, _identity: id })
+    const first = drain.drainSpoolOnce(spool, id)!
+    expect(first.outcomes).toEqual({ '0001.json': 'deferred', '0002.json': 'deferred', '0003.json': 'ingested', '0004.json': 'deferred' })
+    expect(gaps()).toEqual([])
+    // The retried marker lands at the toggle's own time.
+    marker('recording_resumed', T0 + 20 * SEC)
+    at(T0 + 40 * SEC)
+    drain.drainSpoolOnce(spool, id)
+    expect(commands()).toEqual(['command_start:before-pause', 'command_start:after-resume', 'command_start:no-time'])
+    expect(gaps()).toEqual([])
+    expect(producerGaps()).toEqual([expect.objectContaining({ reason: 'queue-full', skipped_units: 3 })])
+    expect(files()).toEqual([])
+  })
+
+  sqlite.it('D: a queue gap and a spool file agree about when a recorded pause ends', () => {
+    pause(T0 + 10 * SEC)
+    resume(T0 + 20 * SEC)
+    at(T0 + 30 * SEC)
+    // Wholly inside the pause: not a loss. Reaching past its end: kept, and says so.
+    put('0001.json', { agent_type: 'scanner', data: { subtype: 'capture_gap', reason: 'queue-full', skipped_units: 3, gap_started_at: T0 + 11 * SEC, gap_ended_at: T0 + 19 * SEC }, _identity: id })
+    put('0002.json', { agent_type: 'scanner', data: { subtype: 'capture_gap', reason: 'queue-full', skipped_units: 4, gap_started_at: T0 + 15 * SEC, gap_ended_at: T0 + 25 * SEC }, _identity: id })
+    drain.drainSpoolOnce(spool, id)
+    expect(producerGaps()).toEqual([expect.objectContaining({ skipped_units: 4, overlaps_pause: true })])
+  })
+})
+
+describe('a pause or resume marker that fails to write', () => {
+  it('is reported and retried at the toggle\'s own time until it lands', () => {
+    const scheduled: number[] = []
+    const queue: Array<() => void> = []
+    const errors: unknown[] = []
+    const tries: boolean[] = []
+    writeMarkerWithRetry({
+      write: (retry) => { tries.push(retry); if (tries.length < 3) throw new Error('disk full') },
+      onError: (e) => errors.push(e),
+      schedule: (retry, ms) => { scheduled.push(ms); queue.push(retry) },
+      isCurrent: () => true
+    })
+    while (queue.length) queue.shift()!()
+    expect(tries).toEqual([false, true, true])
+    expect(errors).toHaveLength(2)
+    expect(scheduled).toEqual(MARKER_RETRY_DELAYS_MS.slice(0, 2))
+  })
+
+  it('stops once the project is closed', () => {
+    const queue: Array<() => void> = []
+    let current = true
+    let tries = 0
+    writeMarkerWithRetry({
+      write: () => { tries++; throw new Error('disk full') },
+      onError: () => undefined,
+      schedule: (retry) => { queue.push(retry) },
+      isCurrent: () => current
+    })
+    current = false
+    while (queue.length) queue.shift()!()
+    expect(tries).toBe(1)
+  })
+})
+
+describe('the no-project copy', () => {
+  it('names the directory the files are in', () => {
+    for (const lang of ['en', 'zh-TW']) {
+      const strings = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'src', 'renderer', 'src', 'i18n', `${lang}.json`), 'utf8')) as Record<string, string>
+      expect(strings['capture.unattributedSpoolWhere']).toContain('~/.redlog/pending/quarantine/_no-project')
+    }
+  })
+})

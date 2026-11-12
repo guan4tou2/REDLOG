@@ -13,57 +13,139 @@
 //      bearer of the API token meets, narrowed for a file that carries no
 //      credential (external-event-policy.ts, `legacy-handoff`); then the pause
 //      rule below; then ingest() like every other producer;
-//   3. what was not written is counted in one chained `system.capture_gap` per
-//      reason per drain (FR-054) — and only once that row is committed are the
-//      files it counts moved or removed. A row that cannot be written leaves
-//      them in place and is reported like any other capture-write failure.
+//   3. what was not written is counted in chained `system.capture_gap` rows —
+//      one per reason per drain, split only when one reason counts more than
+//      FILES_PER_ROW files (FR-054) — each naming the files it counts. Only
+//      once a row is committed are its files moved or removed. A row that
+//      cannot be written leaves them in place, uncounted, and is reported like
+//      any other capture-write failure. A file a committed row already names
+//      is never counted again (the chain is the record); only its move or
+//      removal is retried.
 //
-// The pause rule for a spool file (Spec 071 FR-082 as revised 2026-11-13): it
-// is refused, intentionally and for good, if its source time is usable and lies
-// inside a pause this project recorded (a recorded pause with no resume ends at
-// the reopen). Otherwise it is written, at receipt — including a command_end
-// observed before a pause, and a file whose source time is missing or not
-// usable. A producer's own record of a loss is never refused as paused.
+// The pause rule for a spool file (Spec 071 FR-082/083 as revised 2026-11-13):
+// it is refused, intentionally and for good, if a usable time of its
+// observation lies inside a pause this project recorded. Otherwise it is
+// written, at receipt. While the record holds a pause begun in this session
+// with no resume yet, any file it could bear on waits. A producer's own record
+// of a loss is never refused as paused.
 
-import { replaySpoolDirectory, migrateLegacySpoolFiles, applySpoolLosses, type SpoolLoss, type SpoolOutcome, type SpoolReplayEvent, type SpoolReplayOptions, type SpoolReplayResult } from './spool-replay'
+import {
+  replaySpoolDirectory, migrateLegacySpoolFiles, applySpoolActions, QuarantineLedger,
+  type PlannedFile, type SpoolLoss, type SpoolOutcome, type SpoolReplayEvent, type SpoolReplayOptions, type SpoolReplayResult
+} from './spool-replay'
 import { isKindAllowed } from './external-event-policy'
 import { ingest, committedEventOf } from './ingest'
-import { isPauseJudgedGap, queueGapAgainstPauses, pauseIntervals } from './queue-gap'
-import { recordingStateRows, sourceTimeRejection } from './db/events'
-import { recordingStateAt, pauseBeganBetween } from './recording-state'
+import { isPauseJudgedGap, queueGapAgainstPauses } from './queue-gap'
+import { sourceTimeRejection } from './db/events'
+import { getDB } from './db/index'
+import { recordedPauses, stateAt, pauseBeganIn, type RecordedPauses } from './recording-state'
 import { eventBus } from './event-bus'
 import { noteDbError } from './capture-health'
 
 export interface SpoolDrainIdentity { engagementId: string; operatorId: string }
 
-/** What one drain — every slice of it — has to count, committed at its end. */
+/** The most file names one gap row carries. A reason that counts more in one
+ *  drain is written as several rows (`part` of `parts`). */
+export const FILES_PER_ROW = 100
+
+/** Spool file names this project's committed gap rows have counted, with the
+ *  reason each was counted under. Read from the chain. */
+function countedInChain(): Map<string, string> {
+  const out = new Map<string, string>()
+  let rows: Array<{ data: string }> = []
+  try {
+    rows = getDB().prepare(`SELECT data FROM events WHERE agent_type = 'system' AND subtype = 'capture_gap'`).all() as typeof rows
+  } catch { return out }
+  for (const row of rows) {
+    let data: { source?: unknown; reason?: unknown; files?: unknown }
+    try { data = JSON.parse(row.data) as typeof data } catch { continue }
+    if (data.source !== 'hook-spool' || !Array.isArray(data.files)) continue
+    for (const name of data.files) if (typeof name === 'string') out.set(name, String(data.reason))
+  }
+  return out
+}
+
+/** What one drain — every slice of it — has to count, committed at its end,
+ *  and the quarantine room every slice of it shares. */
 export class SpoolDrainSession {
   private readonly groups = new Map<string, SpoolLoss>()
+  private retries: PlannedFile[] = []
+  private ledger: QuarantineLedger | null = null
+  private counted: Map<string, string> | null = null
   constructor(private readonly opening: SpoolDrainIdentity) {}
 
-  add(losses: readonly SpoolLoss[]): void {
+  /** The options a slice replays with: this drain's ledger and the chain's
+   *  record of what is already counted. */
+  options(given: SpoolReplayOptions): SpoolReplayOptions {
+    this.ledger ??= given.ledger ?? new QuarantineLedger(given.quarantineMaxFiles, given.quarantineMaxBytes)
+    const counted = this.counted ??= countedInChain()
+    return { ...given, ledger: this.ledger, countedAs: (name) => counted.get(name) ?? null }
+  }
+
+  add(losses: readonly SpoolLoss[], retries: readonly PlannedFile[] = []): void {
     for (const loss of losses) {
-      const key = `${loss.reason}\u0000${loss.owner}`
-      const row = this.groups.get(key)
-      if (!row) { this.groups.set(key, { ...loss, files: [...loss.files] }); continue }
+      const row = this.groups.get(loss.reason)
+      if (!row) { this.groups.set(loss.reason, { ...loss, owners: { ...loss.owners }, files: [...loss.files] }); continue }
       row.count += loss.count
       row.kept += loss.kept
+      row.owners.this += loss.owners.this
+      row.owners.unknown += loss.owners.unknown
       row.firstAt = Math.min(row.firstAt, loss.firstAt)
       row.lastAt = Math.max(row.lastAt, loss.lastAt)
       row.files.push(...loss.files)
     }
+    this.retries.push(...retries)
   }
 
   /** Write each gap row; apply its files' plan only once the row is there.
-   *  Returns what each counted file became. */
+   *  Returns what each counted file became. While recording is paused nothing
+   *  is written or moved: the plan is dropped and every file stays, to be
+   *  judged again by a drain after the pause. */
   commit(): Record<string, 'quarantined' | 'dropped' | 'deferred'> {
     const out: Record<string, 'quarantined' | 'dropped' | 'deferred'> = {}
-    for (const loss of this.groups.values()) {
-      if (recordLoss(loss, this.opening)) Object.assign(out, applySpoolLosses([loss]))
-      else for (const f of loss.files) out[f.name] = 'deferred'
-    }
+    const groups = [...this.groups.values()]
+    const retries = this.retries
     this.groups.clear()
+    this.retries = []
+    if (eventBus.paused) {
+      for (const f of [...groups.flatMap((g) => g.files), ...retries]) out[f.name] = 'deferred'
+      return out
+    }
+    Object.assign(out, applySpoolActions(retries))
+    for (const loss of groups) {
+      const parts = chunk(loss.files, FILES_PER_ROW)
+      parts.forEach((files, index) => {
+        const row = lossOf(loss, files)
+        if (recordLoss(row, this.opening, parts.length > 1 ? { part: index + 1, parts: parts.length } : null)) {
+          for (const f of files) this.counted?.set(f.name, loss.reason)
+          Object.assign(out, applySpoolActions(files))
+        } else {
+          for (const f of files) out[f.name] = 'deferred'
+        }
+      })
+    }
     return out
+  }
+}
+
+function chunk<T>(items: readonly T[], size: number): T[][] {
+  const out: T[][] = []
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size))
+  return out.length ? out : [[]]
+}
+
+/** The numbers of one row, from the files it names. */
+function lossOf(group: SpoolLoss, files: PlannedFile[]): SpoolLoss {
+  const times = files.map((f) => f.at ?? group.firstAt)
+  return {
+    reason: group.reason,
+    intentional: group.intentional,
+    count: files.length,
+    kept: files.filter((f) => f.action.kind === 'quarantine').length,
+    owners: { this: files.filter((f) => f.owner !== 'unknown').length, unknown: files.filter((f) => f.owner === 'unknown').length },
+    firstAt: Math.min(...times),
+    lastAt: Math.max(...times),
+    files
   }
 }
 
@@ -73,20 +155,32 @@ function usableSourceTime(value: unknown, now: number): number | null {
   return value !== undefined && value !== null && sourceTimeRejection(value, now) === null ? value as number : null
 }
 
-/** Was this spooled item observed inside a pause the project recorded? */
-function observedInRecordedPause(data: Record<string, unknown>, now: number): boolean {
+/** Was this spooled item observed inside a pause the project recorded?
+ *  'unknown' when the record cannot say yet. */
+function observedInRecordedPause(data: Record<string, unknown>, pauses: RecordedPauses, now: number): boolean | 'unknown' {
   // A producer's record of its own loss is evidence about capture, not
   // captured content: never refused as paused.
   if (data.subtype === 'capture_gap') return false
   const at = usableSourceTime(data.source_timestamp, now)
-  if (at === null) return false
-  if (recordingStateAt(at) === 'paused') return true
-  // A command's end that carries its output inline was observed from the
-  // output's start: a pause recorded anywhere in between keeps it out.
-  if (data.subtype === 'command_end' && data.output_streamed !== true) {
-    const started = usableSourceTime(data.output_started_at, now)
-    if (started !== null && started < at && (recordingStateAt(started) === 'paused' || pauseBeganBetween(started, at))) return true
+  const times: number[] = []
+  if (at !== null) times.push(at)
+  let spanned = false
+  if (data.subtype === 'command_end') {
+    // A command's end carries what was typed, and its output, from before its
+    // own time. Its start is the output's start when the producer gave one,
+    // else its end less its duration.
+    const outputStarted = usableSourceTime(data.output_started_at, now)
+    const duration = typeof data.duration_sec === 'number' && Number.isFinite(data.duration_sec) && data.duration_sec >= 0 ? data.duration_sec : null
+    const started = outputStarted ?? (at !== null && duration !== null ? at - duration * 1000 : null)
+    if (started !== null) times.push(started)
+    // Output that began before a pause and ended after it: refused whole.
+    if (outputStarted !== null && at !== null && outputStarted < at && pauseBeganIn(pauses, outputStarted, at)) spanned = true
   }
+  const states = times.map((t) => stateAt(pauses, t))
+  if (spanned || states.includes('paused')) return true
+  if (states.includes('unknown')) return 'unknown'
+  // No usable time at all: nothing places it, unless the record is still open.
+  if (times.length === 0 && pauses.unresolvedFrom !== null) return 'unknown'
   return false
 }
 
@@ -105,8 +199,9 @@ export function drainSpoolOnce(
   if (eventBus.paused) return null
   const clock = options.now ?? Date.now
   const own = session ?? new SpoolDrainSession(opening)
-  const migrated = after === '' ? migrateLegacySpoolFiles(directory, opening, options) : null
-  let pauses: ReturnType<typeof pauseIntervals> | null = null
+  const sliceOptions = own.options(options)
+  const migrated = after === '' ? migrateLegacySpoolFiles(directory, opening, sliceOptions) : null
+  const pauses = recordedPauses()
   const emit = ({ agentType, data: spooled, engagementId: spoolEngagement, operatorId: spoolOperator }: SpoolReplayEvent): boolean | SpoolOutcome => {
     // The question the API asks, asked first: a forged file gets no further.
     if (!isKindAllowed('legacy-handoff', agentType, spooled)) {
@@ -114,12 +209,18 @@ export function drainSpoolOnce(
     }
     // A queue-full or proxy-stop gap is judged against the pauses before it
     // lands: one counted entirely while paused is not a loss, and is done
-    // with (#460, #291).
-    const data = isPauseJudgedGap(spooled)
-      ? queueGapAgainstPauses(spooled, pauses ??= pauseIntervals(recordingStateRows()))
-      : spooled
+    // with (#460, #291). Against the same record, with the same end for a
+    // pause the record has not closed: one that reaches into it waits.
+    let data: Record<string, unknown> | null = spooled
+    if (isPauseJudgedGap(spooled)) {
+      const end = Number(spooled.gap_ended_at ?? spooled.gap_started_at)
+      if (pauses.unresolvedFrom !== null && Number.isFinite(end) && end >= pauses.unresolvedFrom) return false
+      data = queueGapAgainstPauses(spooled, pauses.intervals)
+    }
     if (!data) return true
-    if (observedInRecordedPause(data, clock())) return { outcome: 'rejected', reason: 'paused' }
+    const inPause = observedInRecordedPause(data, pauses, clock())
+    if (inPause === 'unknown') return false
+    if (inPause) return { outcome: 'rejected', reason: 'paused' }
     // Through ingest(), like every other producer. Spooling is not rare — the
     // built-in terminal sources its adapter into a fresh pty within a second of
     // the pane opening, which is exactly when the API may not be up yet — so
@@ -148,12 +249,13 @@ export function drainSpoolOnce(
     // `dedup` means the row is already there. Both mean this file is done.
     return true
   }
-  const run = replaySpoolDirectory(directory, opening, emit, limit, after, options)
+  const run = replaySpoolDirectory(directory, opening, emit, limit, after, sliceOptions)
   if (migrated) {
     run.losses = [...migrated.losses, ...run.losses]
+    run.retries = [...migrated.retries, ...run.retries]
     run.outcomes = { ...migrated.outcomes, ...run.outcomes }
   }
-  own.add(run.losses)
+  own.add(run.losses, run.retries)
   if (!session) Object.assign(run.outcomes, own.commit())
   return run
 }
@@ -166,13 +268,12 @@ function describeLoss(loss: SpoolLoss): string {
     : loss.reason === 'kind-not-allowed' ? 'named a kind the spool may not write'
     : loss.reason === 'malformed' ? 'could not be read'
     : loss.reason === 'legacy-bad' ? 'had been set aside as unreadable by an earlier version'
-    : loss.reason === 'unreadable' ? 'could not be opened, after repeated tries'
     : loss.reason === 'failed' ? 'could not be written, after repeated tries'
     : `(${loss.reason})`
   const notKept = loss.count - loss.kept
   const where = loss.intentional ? '' : loss.kept > 0 ? `; kept in ~/.redlog/pending/quarantine` : ''
   const lost = !loss.intentional && notKept > 0 ? `; content not kept for ${notKept} (quarantine full)` : ''
-  const owner = loss.owner === 'unknown' ? '; which project it belonged to is unknown' : ''
+  const owner = loss.owners.unknown > 0 ? `; which project ${loss.owners.unknown} of them belonged to is unknown` : ''
   return `${loss.count} spooled event(s) not recorded: ${what}${where}${lost}${owner}`
 }
 
@@ -180,7 +281,7 @@ function describeLoss(loss: SpoolLoss): string {
  *  the first of them was observed so it stands in its place on the Timeline.
  *  False when the row is not there — refused, deduplicated or thrown — and the
  *  failure is reported where capture-write failures are. */
-function recordLoss(loss: SpoolLoss, opening: SpoolDrainIdentity): boolean {
+function recordLoss(loss: SpoolLoss, opening: SpoolDrainIdentity, part: { part: number; parts: number } | null): boolean {
   try {
     const result = ingest({
       agentType: 'system', engagementId: opening.engagementId, operatorId: opening.operatorId,
@@ -191,8 +292,10 @@ function recordLoss(loss: SpoolLoss, opening: SpoolDrainIdentity): boolean {
         skipped_units: loss.count,
         quarantined: loss.kept,
         ...(!loss.intentional && loss.kept < loss.count ? { content_not_kept: loss.count - loss.kept } : {}),
-        ...(loss.owner === 'unknown' ? { owner: 'unknown' } : {}),
+        ...(loss.owners.unknown > 0 ? { by_owner: { this: loss.owners.this, unknown: loss.owners.unknown } } : {}),
         gap_started_at: loss.firstAt, gap_ended_at: loss.lastAt,
+        files: loss.files.map((f) => f.name),
+        ...(part ?? {}),
         description: describeLoss(loss)
       }
     })

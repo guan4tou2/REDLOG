@@ -23,7 +23,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { requires } from './helpers/requires'
-import { replaySpoolDirectory, applySpoolLosses, summarizeUnattributedSpool, clearUnattributedSpool } from '../src/core/spool-replay'
+import { replaySpoolDirectory, applySpoolActions, summarizeUnattributedSpool, clearUnattributedSpool } from '../src/core/spool-replay'
 
 const sqlite = requires('better-sqlite3')
 
@@ -70,7 +70,7 @@ describe('a spool file that can never be written (T011)', () => {
     expect(r.invalid).toBe(1)
     // Only planned: nothing moves until the gap row that counts it is in.
     expect(fs.existsSync(file)).toBe(true)
-    expect(applySpoolLosses(r.losses)).toEqual({ '0001.json': 'quarantined' })
+    expect(applySpoolActions(r.losses.flatMap((l) => l.files))).toEqual({ '0001.json': 'quarantined' })
     expect(fs.existsSync(file)).toBe(false)
     expect(quarantined(d, '_unknown')).toEqual(['malformed--0001.json', 'malformed--0001.json.why'])
     expect(why(d, '_unknown', 'malformed--0001.json')).toMatchObject({ reason: 'malformed', receiver: expect.any(String), at: expect.any(Number) })
@@ -86,13 +86,19 @@ describe('a spool file that can never be written (T011)', () => {
     expect(fs.existsSync(file)).toBe(true)
   })
 
+  it('keeps a just-written file whose mtime reads a moment ahead of the clock', () => {
+    const d = tmp('young-ahead')
+    put(d, '0001.json', '{"agent_type":"shell"', Date.now() + 500)
+    expect(replaySpoolDirectory(d, ACTIVE, () => true).outcomes['0001.json']).toBe('deferred')
+  })
+
   it('quarantines what the emitter refused as invalid in the project it names', () => {
     const d = tmp('refused')
     put(d, '0001.json', shell('id'))
     const r = replaySpoolDirectory(d, ACTIVE, () => ({ outcome: 'invalid', reason: 'kind-not-allowed', detail: 'agent_type "system"' }))
     expect(r.invalid).toBe(1)
-    expect(r.losses).toEqual([expect.objectContaining({ reason: 'kind-not-allowed', intentional: false, count: 1, kept: 1, owner: 'this' })])
-    applySpoolLosses(r.losses)
+    expect(r.losses).toEqual([expect.objectContaining({ reason: 'kind-not-allowed', intentional: false, count: 1, kept: 1, owners: { this: 1, unknown: 0 } })])
+    applySpoolActions(r.losses.flatMap((l) => l.files))
     expect(quarantined(d, ACTIVE.engagementId)).toEqual(['kind-not-allowed--0001.json', 'kind-not-allowed--0001.json.why'])
   })
 })
@@ -175,15 +181,13 @@ sqlite.describe('through the drain, in the open project (T010–T012)', () => {
     expect(quarantined(spool, '_no-project')).toEqual(['no-project--0004.json', 'no-project--0004.json.why'])
     // Another project's file is that project's to count, when it opens.
     expect(fs.existsSync(path.join(spool, '0003.json.bad'))).toBe(true)
-    // One row per reason and owner: the unreadable one says its project is unknown.
+    // One row per reason, naming its files; whose they are is in its numbers.
     expect(gaps()).toEqual([
-      expect.objectContaining({ reason: 'legacy-bad', skipped_units: 1, quarantined: 1, chained: true }),
-      expect.objectContaining({ reason: 'legacy-bad', skipped_units: 1, quarantined: 1, owner: 'unknown', chained: true })
+      expect.objectContaining({ reason: 'legacy-bad', skipped_units: 2, quarantined: 2, by_owner: { this: 1, unknown: 1 }, files: ['0001.json.bad', '0002.json.bad'], chained: true })
     ])
-    expect(gaps()[0].owner).toBeUndefined()
     expect(summarizeUnattributedSpool(spool)).toEqual({ count: 1, oldestAt: t, newestAt: t })
     // Once: a second drain finds nothing left to move or count.
     drain.drainSpoolAsMain(spool, ACTIVE)
-    expect(gaps()).toHaveLength(2)
+    expect(gaps()).toHaveLength(1)
   })
 })

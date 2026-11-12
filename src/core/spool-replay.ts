@@ -1,6 +1,8 @@
 import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
+import { retryBusy } from './private-fs'
+import { sourceTimeRejection } from './db/event-write'
 
 // Replaying ~/.redlog/pending, one file at a time, for the open project.
 //
@@ -8,19 +10,23 @@ import path from 'path'
 //   - ingested:    its event was handed to the pipeline and handled (written,
 //                  or deliberately not: the 2 s dedup, RedLog's own plumbing);
 //                  the file is removed.
-//   - deferred:    left where it is for later — another project's, a write or
-//                  read that failed this time, a file whose owner cannot be
-//                  read when there is no room to set it aside.
+//   - deferred:    left where it is for later — another project's, one that
+//                  cannot be read now, one whose write failed this time, one
+//                  that cannot be judged yet, one whose owner cannot be read
+//                  when there is no room to set it aside.
 //   - quarantined: moved under pending/quarantine/<project>/ (or _unknown/,
 //                  _no-project/) as <reason>--<name>, a .why beside it.
 //   - dropped:     removed without being written, and counted — observed
 //                  during a recorded pause, or the open project's own file
 //                  when that project's quarantine is full.
 //
-// A file that is counted (quarantined or dropped) is not moved or removed by
-// the replay. The replay returns the plan; the drain commits the chained gap
-// row that counts it, and only then applies the plan (applySpoolLosses). A gap
-// row that cannot be written leaves every file it would have counted in place.
+// A file is COUNTED at most once. The replay only plans: the drain commits the
+// chained gap row that counts the file — the row names it — and only then
+// moves or removes it (applySpoolActions). A row that cannot be written leaves
+// every file it would have counted in place, uncounted. A file a committed row
+// already names is not counted again; only its move or removal is retried
+// (`retries`). The chain is the record of what was counted, so this holds
+// across a crash between the commit and the move.
 //
 // A file that belongs to another project, or whose owner cannot be read, is
 // never deleted.
@@ -33,7 +39,7 @@ export interface SpoolReplayEvent {
 }
 
 /** Why a file was set aside or dropped (Spec 071 FR-050 / FR-066). */
-export type QuarantineReason = 'malformed' | 'kind-not-allowed' | 'no-project' | 'legacy-bad' | 'unreadable' | 'failed'
+export type QuarantineReason = 'malformed' | 'kind-not-allowed' | 'no-project' | 'legacy-bad' | 'failed'
 
 /** What became of one replayed event, as the emitter reports it.
  *
@@ -60,21 +66,25 @@ type FileAction =
 export interface PlannedFile {
   /** Path of the file now. */
   file: string
-  /** Its name in the spool directory, the key of `outcomes`. */
+  /** Its name in the spool directory: the key of `outcomes`, and what a gap
+   *  row names. */
   name: string
   action: FileAction
+  /** Set on a counted file: whose it is, and the time it is placed at. */
+  owner?: 'this' | 'unknown'
+  at?: number
 }
 
-/** Files counted together, by reason and owner: one gap row each. */
+/** Files counted together, by reason: one gap row each (chunked). */
 export interface SpoolLoss {
   reason: string
   intentional: boolean
-  /** `unknown` when the file could not be read far enough to say which
-   *  project it belonged to. */
-  owner: 'this' | 'unknown'
   count: number
   /** How many of `count` go to quarantine; the rest are dropped. */
   kept: number
+  /** How many belong to the open project, and how many could not be read far
+   *  enough to say whose they are. */
+  owners: { this: number; unknown: number }
   /** Earliest and latest time among them: a usable source time, else the
    *  time the replay saw the file. */
   firstAt: number
@@ -91,7 +101,8 @@ export interface SpoolReplayResult {
   unattributed: number
   /** Counted as never writable (to be quarantined or dropped). */
   invalid: number
-  /** Not written this time, to be retried; includes those inside a back-off. */
+  /** Not written or not read this time, to be retried; includes those inside a
+   *  back-off. */
   failed: number
   /** The last file name looked at, replayed or not, or null when there was none.
    *  Pass it back as `after` to carry on from there. Files left in place count:
@@ -99,16 +110,68 @@ export interface SpoolReplayResult {
   last: string | null
   /** What to count, and what to do with each counted file once counted. */
   losses: SpoolLoss[]
+  /** Files a committed gap row already counted: their move or removal only. */
+  retries: PlannedFile[]
   /** Every file looked at, by name. A counted file reads as it will end once
-   *  its gap row is committed; `applySpoolLosses` corrects that if it is not. */
+   *  its gap row is committed; the drain corrects that if it is not. */
   outcomes: Record<string, FileOutcome>
+}
+
+/** FR-066: per quarantine directory, 1000 files or 256 MiB. */
+const QUARANTINE_MAX_FILES = 1000
+const QUARANTINE_MAX_BYTES = 256 * 1024 * 1024
+const WHY_SUFFIX = '.why'
+const SEPARATOR = '--'
+
+/** Room in the quarantine, measured once per drain and reserved as the drain
+ *  plans — across every slice of it and the legacy migration, so one drain
+ *  cannot overfill a bound by planning in pieces. */
+export class QuarantineLedger {
+  private readonly spaces = new Map<string, { files: number; bytes: number }>()
+  constructor(private readonly maxFiles = QUARANTINE_MAX_FILES, private readonly maxBytes = QUARANTINE_MAX_BYTES) {}
+  reserve(dir: string, size: number): boolean {
+    let space = this.spaces.get(dir)
+    if (!space) {
+      space = { files: 0, bytes: 0 }
+      let names: string[] = []
+      try { names = fs.readdirSync(dir) } catch { /* not made yet */ }
+      for (const name of names) {
+        try { space.bytes += fs.statSync(path.join(dir, name)).size } catch { continue }
+        if (!name.endsWith(WHY_SUFFIX)) space.files++
+      }
+      this.spaces.set(dir, space)
+    }
+    if (space.files + 1 > this.maxFiles || space.bytes + size > this.maxBytes) return false
+    space.files++
+    space.bytes += size + 256
+    return true
+  }
 }
 
 export interface SpoolReplayOptions {
   /** The clock: back-off, the age of an unparseable file, a loss's window. */
   now?: () => number
+  /** Shorthands for a ledger with these bounds, when `ledger` is not given. */
   quarantineMaxFiles?: number
   quarantineMaxBytes?: number
+  /** The drain's ledger, shared by its slices. */
+  ledger?: QuarantineLedger
+  /** True for a file a committed gap row of this project already names. */
+  /** The reason a committed gap row of this project counted the file under,
+   *  or null when none did. */
+  countedAs?: (name: string) => string | null
+}
+
+const INTENTIONAL_REASONS = new Set(['paused', 'terminal-not-recording'])
+const QUARANTINE_REASONS = new Set<string>(['malformed', 'kind-not-allowed', 'no-project', 'legacy-bad', 'failed'])
+
+function countedOf(options: SpoolReplayOptions): (name: string) => boolean {
+  const countedAs = options.countedAs
+  return countedAs ? (name) => countedAs(name) !== null : () => false
+}
+
+function ledgerOf(options: SpoolReplayOptions): QuarantineLedger {
+  return options.ledger ?? new QuarantineLedger(options.quarantineMaxFiles, options.quarantineMaxBytes)
 }
 
 /** Where the drain sets aside what it will never write: beside the waiting
@@ -130,11 +193,10 @@ function projectQuarantineName(engagementId: string): string {
     : `p-${crypto.createHash('sha256').update(engagementId).digest('hex').slice(0, 16)}`
 }
 
-/** FR-066: per quarantine directory, 1000 files or 256 MiB. */
-const QUARANTINE_MAX_FILES = 1000
-const QUARANTINE_MAX_BYTES = 256 * 1024 * 1024
-const WHY_SUFFIX = '.why'
-const SEPARATOR = '--'
+function quarantineDirFor(spoolDirectory: string, owner: { engagementId: string } | 'unknown' | 'no-project'): string {
+  const name = owner === 'unknown' ? UNKNOWN_OWNER_DIR : owner === 'no-project' ? NO_PROJECT_DIR : projectQuarantineName(owner.engagementId)
+  return path.join(quarantineDirectory(spoolDirectory), name)
+}
 
 /** What an earlier version renamed a file to when it carried no project
  *  identity (#255), or could not be read. Replay makes `.unattributed` only
@@ -144,103 +206,76 @@ const LEGACY_BAD_SUFFIX = '.bad'
 
 /** A file that does not parse and was written less than this long ago may still
  *  be being written: the shell hooks do not write through a temp file. It is
- *  tried again rather than set aside. A file written "in the future" is not
- *  young. */
+ *  tried again rather than set aside. The mtime is used for this and for
+ *  nothing else, and never for the pause decision; a file written "in the
+ *  future" is not young, beyond MTIME_SLACK_MS — a just-written file's mtime
+ *  can read a millisecond ahead of the clock that compares it. */
 const YOUNG_FILE_MS = 10_000
+const MTIME_SLACK_MS = 1_000
 
 const RECEIVER = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'
 
-/** Files that could not be read or written, and when each may be tried again. */
+/** Files that could not be read or written, and when each may be tried again.
+ *  In memory and keyed by path: a restart forgets it, which only means more
+ *  tries. */
 const backoff = new Map<string, { attempts: number; at: number }>()
 const BACKOFF_FIRST_MS = 30_000
 const BACKOFF_MAX_MS = 30 * 60_000
-/** After this many failed tries a file is quarantined instead of retried. */
+/** After this many failed writes the open project's file is quarantined
+ *  instead of retried. A file that cannot be READ is never given up on: whose
+ *  it is cannot be told, so it is not this project's to count. */
 const MAX_ATTEMPTS = 5
 
-/** Room in one quarantine directory, measured once and reserved as the replay
- *  plans. */
-class QuarantineSpace {
-  private files = 0
-  private bytes = 0
-  private measured = false
-  constructor(readonly dir: string, private readonly maxFiles: number, private readonly maxBytes: number) {}
-  reserve(size: number): boolean {
-    if (!this.measured) {
-      this.measured = true
-      let names: string[] = []
-      try { names = fs.readdirSync(this.dir) } catch { /* not made yet */ }
-      for (const name of names) {
-        try { this.bytes += fs.statSync(path.join(this.dir, name)).size } catch { continue }
-        if (!name.endsWith(WHY_SUFFIX)) this.files++
-      }
-    }
-    if (this.files + 1 > this.maxFiles || this.bytes + size > this.maxBytes) return false
-    this.files++
-    this.bytes += size + 256
-    return true
-  }
-}
-
-class Quarantines {
-  private readonly spaces = new Map<string, QuarantineSpace>()
-  constructor(private readonly root: string, private readonly options: SpoolReplayOptions) {}
-  dirFor(owner: { engagementId: string } | 'unknown' | 'no-project'): string {
-    const name = owner === 'unknown' ? UNKNOWN_OWNER_DIR : owner === 'no-project' ? NO_PROJECT_DIR : projectQuarantineName(owner.engagementId)
-    return path.join(this.root, name)
-  }
-  reserve(dir: string, size: number): boolean {
-    let space = this.spaces.get(dir)
-    if (!space) {
-      space = new QuarantineSpace(dir, this.options.quarantineMaxFiles ?? QUARANTINE_MAX_FILES, this.options.quarantineMaxBytes ?? QUARANTINE_MAX_BYTES)
-      this.spaces.set(dir, space)
-    }
-    return space.reserve(size)
-  }
-}
-
-/** Move `file` into `dir` as `<reason>--<base>`, with a `.why` beside it. */
+/** Move `file` into `dir` as `<reason>--<name>`, with a `.why` beside it. */
 function moveIntoQuarantine(file: string, dir: string, target: string, reason: QuarantineReason, detail: string, now: number): boolean {
   try {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
     let to = path.join(dir, `${reason}${SEPARATOR}${target}`)
     for (let n = 1; fs.existsSync(to); n++) to = path.join(dir, `${reason}${SEPARATOR}${target}.${n}`)
-    fs.renameSync(file, to)
-    try { fs.writeFileSync(`${to}${WHY_SUFFIX}`, JSON.stringify({ reason, detail, at: now, receiver: RECEIVER }), { mode: 0o600 }) } catch { /* the name still says why */ }
+    const destination = to
+    retryBusy(() => fs.renameSync(file, destination))
+    try { fs.writeFileSync(`${destination}${WHY_SUFFIX}`, JSON.stringify({ reason, detail, at: now, receiver: RECEIVER }), { mode: 0o600 }) } catch { /* the name still says why */ }
     return true
   } catch {
     return false
   }
 }
 
-/** Groups what is to be counted by reason and owner. */
+/** Groups what is to be counted by reason. */
 class LossPlan {
   private readonly groups = new Map<string, SpoolLoss>()
-  add(reason: string, intentional: boolean, owner: SpoolLoss['owner'], at: number, planned: PlannedFile): void {
-    const key = `${reason}\u0000${owner}`
-    const row = this.groups.get(key) ?? { reason, intentional, owner, count: 0, kept: 0, firstAt: at, lastAt: at, files: [] }
+  readonly retries: PlannedFile[] = []
+  constructor(private readonly counted: (name: string) => boolean) {}
+  /** False when the file was already counted: only its action is retried. */
+  add(reason: string, intentional: boolean, owner: 'this' | 'unknown', at: number, planned: PlannedFile): boolean {
+    if (this.counted(planned.name)) { this.retries.push(planned); return false }
+    planned.owner = owner
+    planned.at = at
+    const row = this.groups.get(reason) ?? { reason, intentional, count: 0, kept: 0, owners: { this: 0, unknown: 0 }, firstAt: at, lastAt: at, files: [] }
     row.count++
+    row.owners[owner]++
     if (planned.action.kind === 'quarantine') row.kept++
     if (at < row.firstAt) row.firstAt = at
     if (at > row.lastAt) row.lastAt = at
     row.files.push(planned)
-    this.groups.set(key, row)
+    this.groups.set(reason, row)
+    return true
   }
   list(): SpoolLoss[] { return [...this.groups.values()] }
 }
 
-/** Carry out a loss's plan, once its gap row is committed. Returns what each
+/** Carry out planned moves and removals — once the gap row that counts them is
+ *  committed, or for files a committed row already counted. Returns what each
  *  file became: a move or removal that fails leaves the file where it was. */
-export function applySpoolLosses(losses: readonly SpoolLoss[], now = Date.now()): Record<string, FileOutcome> {
+export function applySpoolActions(files: readonly PlannedFile[], now = Date.now()): Record<string, FileOutcome> {
   const out: Record<string, FileOutcome> = {}
-  for (const loss of losses) {
-    for (const { file, name, action } of loss.files) {
-      if (action.kind === 'unlink') {
-        try { fs.unlinkSync(file); out[name] = 'dropped' } catch { out[name] = 'deferred' }
-      } else {
-        out[name] = moveIntoQuarantine(file, action.dir, action.target, action.reason, action.detail, now) ? 'quarantined' : 'deferred'
-      }
-      backoff.delete(file)
+  for (const { file, name, action } of files) {
+    if (action.kind === 'unlink') {
+      try { retryBusy(() => fs.unlinkSync(file)); out[name] = 'dropped' } catch { out[name] = 'deferred' }
+    } else {
+      out[name] = moveIntoQuarantine(file, action.dir, action.target, action.reason, action.detail, now) ? 'quarantined' : 'deferred'
     }
+    if (out[name] !== 'deferred') backoff.delete(file)
   }
   return out
 }
@@ -256,7 +291,7 @@ export interface UnattributedSpoolSummary {
  *  an earlier version's `*.unattributed` not yet moved. Paths. */
 function unattributedFiles(directory: string): string[] {
   const out: string[] = []
-  const q = path.join(quarantineDirectory(directory), NO_PROJECT_DIR)
+  const q = quarantineDirFor(directory, 'no-project')
   try {
     for (const name of fs.readdirSync(q)) {
       if (name.startsWith(`no-project${SEPARATOR}`) && !name.endsWith(WHY_SUFFIX)) out.push(path.join(q, name))
@@ -330,6 +365,15 @@ function namedEngagement(payload: unknown): string | null {
   return typeof engagementId === 'string' && engagementId ? engagementId : null
 }
 
+/** The project a file that does not parse still names in its text — a
+ *  truncated payload keeps the identity the hook wrote. The first
+ *  `"engagementId":"…"` is the one; null when there is none. */
+function engagementInText(text: string): string | null {
+  const m = /"engagementId"\s*:\s*"((?:[^"\\]|\\.){1,256})"/.exec(text)
+  if (!m) return null
+  try { return JSON.parse(`"${m[1]}"`) as string } catch { return null }
+}
+
 function identityOf(payload: unknown): { engagementId: string; operatorId: string } | null {
   const identity = (payload as { _identity?: { engagementId?: unknown; operatorId?: unknown } } | null)?._identity
   if (typeof identity?.engagementId !== 'string' || !identity.engagementId ||
@@ -337,17 +381,18 @@ function identityOf(payload: unknown): { engagementId: string; operatorId: strin
   return { engagementId: identity.engagementId, operatorId: identity.operatorId }
 }
 
-/** A producer's time on the payload, or null. Used only to place a loss in
- *  time; whether it is believed for the pause is the drain's question. */
-function claimedTime(data: Record<string, unknown> | null): number | null {
+/** A producer's time on the payload, if it passes the rule the row's
+ *  timestamp uses (FR-004); null otherwise. Places a loss in time only. */
+function claimedTime(data: Record<string, unknown> | null, now: number): number | null {
   const t = data?.source_timestamp
-  return typeof t === 'number' && Number.isFinite(t) && t > 0 ? t : null
+  return t !== undefined && t !== null && sourceTimeRejection(t, now) === null ? t as number : null
 }
 
 export interface LegacySpoolMigration {
   legacyBad: number
   noProject: number
   losses: SpoolLoss[]
+  retries: PlannedFile[]
   outcomes: Record<string, FileOutcome>
 }
 
@@ -365,12 +410,12 @@ export function migrateLegacySpoolFiles(
   active: { engagementId: string },
   options: SpoolReplayOptions = {}
 ): LegacySpoolMigration {
-  const result: LegacySpoolMigration = { legacyBad: 0, noProject: 0, losses: [], outcomes: {} }
+  const result: LegacySpoolMigration = { legacyBad: 0, noProject: 0, losses: [], retries: [], outcomes: {} }
   let names: string[]
   try { names = fs.readdirSync(directory) } catch { return result }
   const now = (options.now ?? Date.now)()
-  const quarantines = new Quarantines(quarantineDirectory(directory), options)
-  const plan = new LossPlan()
+  const ledger = ledgerOf(options)
+  const plan = new LossPlan(countedOf(options))
   for (const name of names.sort()) {
     const unattributed = name.endsWith(LEGACY_UNATTRIBUTED_SUFFIX)
     if (!unattributed && !name.endsWith(LEGACY_BAD_SUFFIX)) continue
@@ -380,8 +425,8 @@ export function migrateLegacySpoolFiles(
     try { size = fs.statSync(file).size } catch { continue }
     if (unattributed) {
       // Not counted in any project: the #255 line is its trace. A move.
-      const dir = quarantines.dirFor('no-project')
-      if (quarantines.reserve(dir, size) && moveIntoQuarantine(file, dir, base, 'no-project', 'set aside as .unattributed by an earlier version', now)) {
+      const dir = quarantineDirFor(directory, 'no-project')
+      if (ledger.reserve(dir, size) && moveIntoQuarantine(file, dir, base, 'no-project', 'set aside as .unattributed by an earlier version', now)) {
         result.noProject++
         result.outcomes[name] = 'quarantined'
       } else {
@@ -389,28 +434,35 @@ export function migrateLegacySpoolFiles(
       }
       continue
     }
-    let owner: SpoolLoss['owner'] = 'unknown'
+    let text: string
+    try { text = fs.readFileSync(file, 'utf8') } catch { result.outcomes[name] = 'deferred'; continue }
+    let owner: 'this' | 'unknown' = 'unknown'
     let at = now
     try {
-      const payload = JSON.parse(fs.readFileSync(file, 'utf8')) as { data?: Record<string, unknown> }
+      const payload = JSON.parse(text) as { data?: Record<string, unknown> }
       const named = namedEngagement(payload)
       if (named && named !== active.engagementId) { result.outcomes[name] = 'deferred'; continue }
       if (named) owner = 'this'
-      at = claimedTime(payload?.data && typeof payload.data === 'object' ? payload.data : null) ?? now
-    } catch { /* unreadable: owner unknown */ }
-    const dir = quarantines.dirFor(owner === 'this' ? active : 'unknown')
-    if (!quarantines.reserve(dir, size)) { result.outcomes[name] = 'deferred'; continue }
+      at = claimedTime(payload?.data && typeof payload.data === 'object' ? payload.data : null, now) ?? now
+    } catch {
+      const named = engagementInText(text)
+      if (named && named !== active.engagementId) { result.outcomes[name] = 'deferred'; continue }
+      if (named) owner = 'this'
+    }
+    const dir = quarantineDirFor(directory, owner === 'this' ? active : 'unknown')
+    if (!ledger.reserve(dir, size)) { result.outcomes[name] = 'deferred'; continue }
     plan.add('legacy-bad', false, owner, at, { file, name, action: { kind: 'quarantine', dir, target: base, reason: 'legacy-bad', detail: 'set aside as .bad by an earlier version' } })
     result.legacyBad++
     result.outcomes[name] = 'quarantined'
   }
   result.losses = plan.list()
+  result.retries = plan.retries
   return result
 }
 
 /** Replay only files attributable to the active engagement. Mismatches remain
  * byte-for-byte in place so opening their owning project can recover them.
- * Counted files are only planned here: see applySpoolLosses. */
+ * Counted files are only planned here: see applySpoolActions. */
 export function replaySpoolDirectory(
   directory: string,
   active: { engagementId: string; operatorId: string },
@@ -419,23 +471,25 @@ export function replaySpoolDirectory(
   after = '',
   options: SpoolReplayOptions = {}
 ): SpoolReplayResult {
-  const result: SpoolReplayResult = { replayed: 0, deferred: 0, unattributed: 0, invalid: 0, failed: 0, last: null, losses: [], outcomes: {} }
+  const result: SpoolReplayResult = { replayed: 0, deferred: 0, unattributed: 0, invalid: 0, failed: 0, last: null, losses: [], retries: [], outcomes: {} }
   if (!fs.existsSync(directory)) return result
   const clock = options.now ?? Date.now
-  const quarantines = new Quarantines(quarantineDirectory(directory), options)
-  const plan = new LossPlan()
+  const ledger = ledgerOf(options)
+  const counted = countedOf(options)
+  const plan = new LossPlan(counted)
   const files = fs.readdirSync(directory).filter((name) => name.endsWith('.json') && name > after).sort().slice(0, limit)
 
   const defer = (name: string): void => { result.outcomes[name] = 'deferred' }
   /** Count `file` as never writable: to quarantine, or — only the open
-   *  project's own, when its quarantine is full — to be dropped. A file whose
-   *  owner is unknown and finds no room stays where it is. */
-  const setAside = (file: string, name: string, size: number, reason: QuarantineReason, detail: string, owner: SpoolLoss['owner'], at: number): void => {
-    const dir = quarantines.dirFor(owner === 'this' ? active : 'unknown')
-    if (quarantines.reserve(dir, size)) {
+   *  project's own, when its quarantine is full and it has not been counted
+   *  before — to be dropped. A file whose owner is unknown and finds no room
+   *  stays where it is. */
+  const setAside = (file: string, name: string, size: number, reason: QuarantineReason, detail: string, owner: 'this' | 'unknown', at: number): void => {
+    const dir = quarantineDirFor(directory, owner === 'this' ? active : 'unknown')
+    if (ledger.reserve(dir, size)) {
       plan.add(reason, false, owner, at, { file, name, action: { kind: 'quarantine', dir, target: name, reason, detail } })
       result.outcomes[name] = 'quarantined'
-    } else if (owner === 'this') {
+    } else if (owner === 'this' && !counted(name)) {
       plan.add(reason, false, owner, at, { file, name, action: { kind: 'unlink' } })
       result.outcomes[name] = 'dropped'
     } else {
@@ -444,14 +498,17 @@ export function replaySpoolDirectory(
     }
     result.invalid++
   }
-  /** A try that did not get the file written. After MAX_ATTEMPTS, set aside. */
-  const failed = (file: string, name: string, size: number, reason: 'unreadable' | 'failed', detail: string, owner: SpoolLoss['owner']): void => {
+  /** A write that did not happen. After MAX_ATTEMPTS, set aside. */
+  const failed = (file: string, name: string, size: number, detail: string): void => {
     const attempts = (backoff.get(file)?.attempts ?? 0) + 1
     if (attempts >= MAX_ATTEMPTS) {
-      setAside(file, name, size, reason, `${detail} (after ${attempts} tries)`, owner, clock())
+      setAside(file, name, size, 'failed', `${detail} (after ${attempts} tries)`, 'this', clock())
       if (result.outcomes[name] === 'deferred') backoff.set(file, { attempts, at: clock() + BACKOFF_MAX_MS })
       return
     }
+    retryLater(file, name, attempts)
+  }
+  const retryLater = (file: string, name: string, attempts: number): void => {
     backoff.set(file, { attempts, at: clock() + Math.min(BACKOFF_FIRST_MS * 2 ** (attempts - 1), BACKOFF_MAX_MS) })
     result.failed++
     defer(name)
@@ -471,16 +528,17 @@ export function replaySpoolDirectory(
       stat = fs.statSync(file)
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === 'ENOENT') { backoff.delete(file); continue } // gone since the listing
-      failed(file, name, 0, 'unreadable', (e as Error).message, 'unknown')
+      retryLater(file, name, (held?.attempts ?? 0) + 1)
       continue
     }
     // A read error — permissions, too many open files, an I/O error, a file
-    // held open — says nothing about the content. Retry it.
+    // held open — says nothing about the content, nor about whose it is. Retry
+    // it, for as long as it takes; it is never this project's to count.
     let text: string
     try {
       text = fs.readFileSync(file, 'utf8')
-    } catch (e) {
-      failed(file, name, stat.size, 'unreadable', (e as Error).message, 'unknown')
+    } catch {
+      retryLater(file, name, (held?.attempts ?? 0) + 1)
       continue
     }
     let payload: { agent_type?: unknown; data?: unknown }
@@ -488,8 +546,11 @@ export function replaySpoolDirectory(
       payload = JSON.parse(text) as typeof payload
     } catch (e) {
       const age = clock() - Math.round(stat.mtimeMs)
-      if (age >= 0 && age < YOUNG_FILE_MS) { result.failed++; defer(name); continue }
-      setAside(file, name, stat.size, 'malformed', (e as Error).message, 'unknown', clock())
+      if (age > -MTIME_SLACK_MS && age < YOUNG_FILE_MS) { result.failed++; defer(name); continue }
+      // Unparseable, but the identity the hook wrote may still be there.
+      const named = engagementInText(text)
+      if (named && named !== active.engagementId) { result.deferred++; defer(name); continue }
+      setAside(file, name, stat.size, 'malformed', (e as Error).message, named ? 'this' : 'unknown', clock())
       continue
     }
     const named = namedEngagement(payload)
@@ -510,8 +571,8 @@ export function replaySpoolDirectory(
     // leaves it beside the waiting files as an earlier version did, still kept
     // and still counted by the card. Not counted in any project.
     if (!identity) {
-      const dir = quarantines.dirFor('no-project')
-      const moved = quarantines.reserve(dir, stat.size) &&
+      const dir = quarantineDirFor(directory, 'no-project')
+      const moved = ledger.reserve(dir, stat.size) &&
         moveIntoQuarantine(file, dir, name, 'no-project', 'no engagement identity: no project was open when it was written', clock())
       if (!moved) { try { fs.renameSync(file, `${file}${LEGACY_UNATTRIBUTED_SUFFIX}`) } catch { /* left for the next pass */ } }
       result.unattributed++
@@ -522,7 +583,20 @@ export function replaySpoolDirectory(
       setAside(file, name, stat.size, 'malformed', 'no agent_type or no data object', 'this', clock())
       continue
     }
-    const at = claimedTime(data) ?? clock()
+    const at = claimedTime(data, clock()) ?? clock()
+    // Counted by a committed row and still here: its move or removal failed.
+    // It is not offered to the pipeline again — a loss already on the record
+    // must not also become a row — only that step is retried.
+    const countedAs = options.countedAs?.(name) ?? null
+    if (countedAs !== null) {
+      if (INTENTIONAL_REASONS.has(countedAs)) {
+        plan.add(countedAs, true, 'this', at, { file, name, action: { kind: 'unlink' } })
+        result.outcomes[name] = 'dropped'
+      } else {
+        setAside(file, name, stat.size, QUARANTINE_REASONS.has(countedAs) ? countedAs as QuarantineReason : 'failed', 'counted earlier; the move did not happen then', 'this', at)
+      }
+      continue
+    }
     let outcome: boolean | SpoolOutcome
     try {
       outcome = emit({
@@ -544,7 +618,7 @@ export function replaySpoolDirectory(
     }
     const decided: SpoolOutcome = outcome === true ? { outcome: 'done' } : outcome
     if (decided.outcome === 'failed') {
-      failed(file, name, stat.size, 'failed', decided.detail, 'this')
+      failed(file, name, stat.size, decided.detail)
       continue
     }
     backoff.delete(file)
@@ -561,11 +635,12 @@ export function replaySpoolDirectory(
     // within two seconds of the first row the dedup window drops a repeated
     // shell or agent command, but after that, or for any other kind, the
     // replay writes a second row. Spec 071 Phase 5's event_id is the fix.
-    try { fs.unlinkSync(file) } catch { /* see above */ }
+    try { retryBusy(() => fs.unlinkSync(file)) } catch { /* see above */ }
     result.replayed++
     result.outcomes[name] = 'ingested'
   }
   result.losses = plan.list()
+  result.retries = plan.retries
   return result
 }
 

@@ -301,7 +301,7 @@ sqlite.describe('the pause rule and the spool drain after review', () => {
     const run = drain.drainSpoolOnce(spool, id)!
     expect(run.outcomes['0001.json']).toBe('quarantined')
     expect(walk(spool).filter((n) => !n.endsWith('.why'))).toEqual(['quarantine/_unknown/malformed--0001.json'])
-    expect(gaps()).toEqual([expect.objectContaining({ reason: 'malformed', owner: 'unknown', skipped_units: 1 })])
+    expect(gaps()).toEqual([expect.objectContaining({ reason: 'malformed', by_owner: { this: 0, unknown: 1 }, skipped_units: 1 })])
   })
 
   sqlite.it('F10: every file ends in exactly one outcome, never none', () => {

@@ -60,7 +60,7 @@ import {
   killAllTerminals, detachTerminalRecordings, resumeTerminalRecordings, setTerminalWindow, configureTerminal, configureTerminalProxy, recoverOrphanSessions, discoverShells,
   getCastPosition, listTerminals, countProxiedTerminals
 } from './terminal-manager'
-import { markerForOpen } from '../core/recording-state-marker'
+import { markerForOpen, writeMarkerWithRetry } from '../core/recording-state-marker'
 import { quitImpact, quitDialog, defaultQuitText, parseQuitText, allowQuit, isQuitAllowed, type QuitText } from './quit-guard'
 import { runPreflight, type PreflightCommand } from '../core/runtime-preflight'
 import { readExecutionPolicy } from '../core/powershell-policy'
@@ -1948,16 +1948,23 @@ app.whenReady().then(() => {
     // Bypass the paused gate for this one write: pause events must always land.
     const open = projectRuntime.current()
     if (open) {
-      try {
-        const ev = insertEvent('system', {
-          subtype: recording ? 'recording_resumed' : 'recording_paused',
-          description: recording ? 'Recording resumed' : 'Recording paused',
-          // v0.9.5: who flipped it. With pause now actually suppressing
-          // capture, these two rows are the entire record of the gap.
-          source: source || 'unknown'
-        }, open)
-        if (ev) eventBus.publish(ev, { bypassPause: true })
-      } catch { /* additive */ }
+      // These two rows are the entire record of the gap, and the spool drain
+      // reads them: one that fails is reported and retried at its own time.
+      const at = Date.now()
+      writeMarkerWithRetry({
+        write: (retry) => {
+          const ev = insertEvent('system', {
+            subtype: recording ? 'recording_resumed' : 'recording_paused',
+            description: recording ? 'Recording resumed' : 'Recording paused',
+            // v0.9.5: who flipped it.
+            source: source || 'unknown'
+          }, retry ? { ...open, occurredAt: at } : open)
+          if (ev) eventBus.publish(ev, { bypassPause: true })
+        },
+        onError: (error) => noteDbError('recording-marker', error),
+        schedule: (retry, ms) => projectRuntime.setTimeout(open, retry, ms),
+        isCurrent: () => projectRuntime.isCurrent(open)
+      })
     }
   })
 
