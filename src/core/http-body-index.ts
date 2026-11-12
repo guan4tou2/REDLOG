@@ -20,6 +20,9 @@ function getIndex(projectDir = getProjectDir()): Database.Database {
   closeHttpBodyIndex()
   index = new Database(path.join(projectDir, 'http-body-index.db'))
   index.pragma('journal_mode = WAL')
+  // `synchronous` stays at the WAL default (NORMAL), unlike timeline.db: a
+  // row lost to an OS crash here is linked again by the first search after
+  // launch, which walks every content-ref event (see the backfill note below).
   // Rebuild only this disposable index, never a source Event or sidecar.
   // v7 added the verification columns below; an older index is rebuilt once.
   if (index.pragma('user_version', { simple: true }) !== 7)
