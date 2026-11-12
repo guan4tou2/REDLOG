@@ -24,7 +24,9 @@ import {
   type IPVerdict,
   type ObservationLogRow,
   type AdherenceRow,
-  type TargetHitSignal
+  type TargetHitSignal,
+  shownIpSafety,
+  ipReadMaxAgeMs
 } from '../../core/alert'
 import { IPSignalProducer } from './producers/ip-signal-producer'
 
@@ -63,6 +65,7 @@ export class AlertRuntime {
   readonly adherenceCounter: AdherenceCounter
   readonly observationLog: ObservationLog
   readonly ipProducer: IPSignalProducer
+  private ipReadMaxAge = ipReadMaxAgeMs(10, 3)
 
   constructor(initial: { engagementId: string; operatorId: string }) {
     this.bus = new AlertBus()
@@ -107,10 +110,13 @@ export class AlertRuntime {
     })
 
 
+    const checkIntervalSec = cfg.network?.checkInterval ?? 10
+    const confirmations = cfg.network?.confirmations ?? 3
+    if (checkIntervalSec > 0 && confirmations > 0) this.ipReadMaxAge = ipReadMaxAgeMs(checkIntervalSec, confirmations)
     this.ipProducer.configure({
-      checkIntervalSec: cfg.network?.checkInterval ?? 10,
+      checkIntervalSec,
       providers: cfg.network?.providers ?? [],
-      confirmations: cfg.network?.confirmations ?? 3,
+      confirmations,
       ipMode: (cfg.network?.ipMode ?? 'auto') as 'dns' | 'http' | 'auto',
       offline: cfg.network?.offline === true
     })
@@ -138,10 +144,14 @@ export class AlertRuntime {
   /** IPC-compat: what the StatusBar / IPStatusCard have always read. */
   ipStatus(): IPStatusShape {
     const st = this.ipProducer.getState()
+    const ipSafety = shownIpSafety(
+      { ipSafety: verdictToSafety(this.badgeSurface.get()), externalIP: st.external, error: st.error, externalReadAt: st.externalReadAt },
+      { now: Date.now(), maxAgeMs: this.ipReadMaxAge }
+    )
     return {
       externalIP: st.external,
       internalIP: st.internal,
-      ipSafety: verdictToSafety(this.badgeSurface.get()),
+      ipSafety,
       lastCheck: st.lastCheck,
       error: st.error,
       settling: st.settling,
@@ -165,6 +175,8 @@ export class AlertRuntime {
    *  log and the adherence counts; the chain-persisted history stays. */
   resetOnProjectSwitch(): void {
     this.bus.resetPolicies()
+    // The badge was judged against the previous project's lists.
+    this.badgeSurface.reset()
     this.observationLog.reset()
     this.adherenceCounter.reset()
   }

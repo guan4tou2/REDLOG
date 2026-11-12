@@ -12,6 +12,7 @@ import { settingsTarget } from '../lib/navigation'
 import { useNarrowViewport } from '../hooks/useNarrowViewport'
 import { useCaptureHealthState } from '../lib/useCaptureHealth'
 import { captureUnknownLine } from '../lib/captureUnknown'
+import { shownIpSafety } from '../../../core/alert/ip-safety'
 
 function Sep({ narrow }: { narrow: boolean }): JSX.Element | null {
   return narrow ? null : <span className="text-redlog-text-faint select-none">|</span>
@@ -204,7 +205,7 @@ export default function StatusBar(): JSX.Element {
 
   const handleToggleRecording = (): void => { void toggleRecordingWithFeedback(t) }
 
-  const safety = ipStatus?.ipSafety ?? 'unknown'
+  const safety = shownIpSafety(ipStatus)
   const safetyDot = safety === 'safe' ? 'bg-emerald-500' : safety === 'exposed' ? 'bg-redlog-danger' : 'bg-amber-500'
   const safetyLabel = safety === 'safe' ? t('statusBar.safeIp') : safety === 'exposed' ? t('statusBar.exposedIp') : t('statusBar.ipUnknown')
 

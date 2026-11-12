@@ -140,6 +140,12 @@ export class BadgeSurface implements Surface {
 
   get(): (IPVerdict & { kind: 'ip' }) | null { return this.current }
 
+  /** Back to "no verdict" until the next IP signal is judged. */
+  reset(): void {
+    this.current = null
+    for (const l of this.listeners) { try { l(null) } catch { /* listener bug — drop */ } }
+  }
+
   subscribe(fn: (v: IPVerdict | null) => void): () => void {
     this.listeners.add(fn)
     return () => this.listeners.delete(fn)

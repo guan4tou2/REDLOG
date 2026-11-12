@@ -5,6 +5,18 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Removed `hooks/vps-deploy.sh`. It was already disabled, but it still shipped
+  in every package with the steps that copied the API token, which can read
+  every event, export, sanitise and switch recording, to a remote host. Remote
+  capture is not supported until append-only credentials exist (Spec 071). The
+  package check now refuses the file, and a source scan fails if a shipped
+  script, UI string or doc again copies the token to another host.
+- IP status: SAFE now needs an address that was read and is still being read.
+  A status with no address, a failed lookup, an address not re-read within
+  (confirmations + 1) polls plus 30 s (a pool that never confirms a new
+  address used to keep the old one SAFE indefinitely), or a verdict from the
+  previous project's lists reads as unknown. The status bar, the dashboard card
+  and the HUD take this from one function (`core/alert/ip-safety.ts`).
 - Settings ▸ Capture sources: the native/PTY command lists are replaced by one
   card per tool profile (shipped or a plugin's). Each card keeps four things
   apart: where the profile comes from; whether each environment (the app, and

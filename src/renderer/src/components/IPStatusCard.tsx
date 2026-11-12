@@ -4,6 +4,7 @@ import { usePivotRead, type ActivePivot } from '../lib/usePivots'
 import { formatFreshness, formatTime } from '../lib/time'
 import { Button } from './Button'
 import { useTick } from '../lib/useTick'
+import { shownIpSafety } from '../../../core/alert/ip-safety'
 
 /** Mirrors the main-process limit in active-pivots.ts. */
 const PIVOT_LIST_CAP = 5
@@ -118,7 +119,7 @@ export default function IPStatusCard(): JSX.Element {
     )
   }
 
-  const safety = status.ipSafety
+  const safety = shownIpSafety(status)
   const lookupFailed = !!status.error
   // The tag says how far the answer goes. A match against the operator's own
   // lists is a match, not a safety verdict; no match is "unconfirmed".

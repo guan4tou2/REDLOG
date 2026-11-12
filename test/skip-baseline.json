@@ -52,7 +52,7 @@
     }
   },
   "win32": {
-    "skippedCases": 760,
+    "skippedCases": 759,
     "mustRun": [
       "test/csp-production.test.ts",
       "test/bundle-requires.test.ts",
@@ -114,7 +114,7 @@
       "test/shell-quiet-init.test.ts": 6,
       "test/shell-status.test.ts": 4,
       "test/shell-terminal-app.test.ts": 14,
-      "test/shell-token-not-in-argv.test.ts": 7,
+      "test/shell-token-not-in-argv.test.ts": 6,
       "test/shell-unsaved-notice.test.ts": 14,
       "test/shell-wsl-directory.test.ts": 10,
       "test/tailer-sidecar-acl.test.ts": 1,
