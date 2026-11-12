@@ -160,6 +160,30 @@ describe('limit and time query parameters', () => {
   })
 })
 
+// #695: both ran on the main thread with nothing bounding the input. A 5 MB
+// loot scan stalled the app for minutes; a pasted query of thousands of terms
+// ran one FTS lookup per term.
+describe('input caps on main-thread work', () => {
+  it('a loot scan over the cap is a 413 and is never handed to the detector', async () => {
+    const before = lootCalls.length
+    const r = await call('POST', '/api/loot/scan', JSON.stringify({ text: 'x'.repeat(16 * 1024 + 1) }))
+    expect(r.status).toBe(413)
+    expect(r.json()).toEqual({ error: 'text exceeds 16384 characters' })
+    expect(lootCalls.length).toBe(before)
+  })
+  it('a loot scan at the cap reaches the detector', async () => {
+    const before = lootCalls.length
+    await call('POST', '/api/loot/scan', JSON.stringify({ text: 'x'.repeat(16 * 1024) }))
+    expect(lootCalls.length).toBe(before + 1)
+  })
+  it('a search query over 1000 characters is a 400 naming the reason', async () => {
+    const r = await call('GET', `/api/events/search?q=${encodeURIComponent('a '.repeat(500) + 'a')}`)
+    expect(r.status).toBe(400)
+    expect(r.json()).toMatchObject({ reason: 'too-long', token: '1000' })
+    expect((await call('GET', `/api/events/search?q=${'a'.repeat(1000)}`)).status).toBe(200)
+  })
+})
+
 describe('POST /api/marker text limits', () => {
   it('cuts title and notes like the app does', async () => {
     const r = await call('POST', '/api/marker', JSON.stringify({ title: 't'.repeat(1 << 20), notes: 'n'.repeat(1 << 20) }))

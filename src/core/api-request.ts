@@ -84,6 +84,13 @@ export function parseTimeParam(raw: string | null, name: string): IntParam {
   return { ok: true, value: n }
 }
 
+/** Longest `text` `POST /api/loot/scan` takes (docs/api-reference.md); longer
+ *  is a 413. The scan runs on the main thread, and two built-in JWT shapes
+ *  re-read a long unbroken token run from every `eyJ` in it — quadratic in
+ *  the run. At this length that worst case measured 78 ms; at 32 Ki it was
+ *  311 ms and at 128 Ki 5.2 s, freezing capture and the UI (#695). */
+export const LOOT_SCAN_MAX_CHARS = 16 * 1024
+
 /** Documented maxima for `limit` (docs/api-reference.md). */
 export const API_LIMITS = {
   events: { fallback: 100, max: 1000 },

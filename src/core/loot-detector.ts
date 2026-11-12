@@ -202,10 +202,11 @@ export class LootDetector {
    */
   findMatches(text: string): LootMatch[] {
     const matches: LootMatch[] = []
+    const extractLine = lineExtractor(text)
     // Built-in patterns carry no plugin attribution; only external ones do.
     for (const { type, pattern, confidence, group } of LOOT_PATTERNS) {
       for (const { value, index } of execAll(pattern, text, group)) {
-        matches.push({ ruleId: type, type, value: value.slice(0, 500), line: extractLine(text, index), confidence })
+        matches.push({ ruleId: type, type, value: value.slice(0, 500), line: extractLine(index), confidence })
       }
     }
     // Plugin rules are declared by third parties and run under a time bound in
@@ -215,7 +216,7 @@ export class LootDetector {
       for (const { value, index } of found) {
         matches.push({
           ruleId: pluginRuleId(pluginId, patternName), type, value: value.slice(0, 500),
-          line: extractLine(text, index), confidence, pluginId, patternName
+          line: extractLine(index), confidence, pluginId, patternName
         })
       }
     }
@@ -333,8 +334,29 @@ function execAll(pattern: RegExp, text: string, group: number): Array<{ value: s
   return out
 }
 
-function extractLine(text: string, matchIndex: number): string {
-  const lineStart = text.lastIndexOf('\n', matchIndex) + 1
-  const lineEnd = text.indexOf('\n', matchIndex)
-  return text.slice(lineStart, lineEnd === -1 ? undefined : lineEnd).trim().slice(0, 200)
+/** The trimmed first 200 characters of the line holding a match, for each
+ *  match in `text`. Finding the line by searching outward from every match
+ *  re-read the whole line once per match: a long line full of matches — one
+ *  pasted blob with no newline — made a scan quadratic, 13 s for 1 MB and
+ *  minutes for 5 MB on the main thread (#695). Newlines are found once, a
+ *  match's line by binary search, and each line is cut once. */
+function lineExtractor(text: string): (matchIndex: number) => string {
+  const breaks: number[] = []
+  for (let i = text.indexOf('\n'); i !== -1; i = text.indexOf('\n', i + 1)) breaks.push(i)
+  const cut = new Map<number, string>()
+  return (matchIndex) => {
+    // A match that starts on a newline gets an empty line, as it did before.
+    if (text.charCodeAt(matchIndex) === 0x0a) return ''
+    // The first newline at or after the match ends its line.
+    let lo = 0, hi = breaks.length
+    while (lo < hi) { const mid = (lo + hi) >>> 1; if (breaks[mid] < matchIndex) lo = mid + 1; else hi = mid }
+    let line = cut.get(lo)
+    if (line === undefined) {
+      const lineStart = lo === 0 ? 0 : breaks[lo - 1] + 1
+      const lineEnd = lo < breaks.length ? breaks[lo] : text.length
+      line = text.slice(lineStart, lineEnd).trim().slice(0, 200)
+      cut.set(lo, line)
+    }
+    return line
+  }
 }

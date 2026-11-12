@@ -154,6 +154,13 @@ describe('query parse — writing a recognised prefix as text (FR-006)', () => {
     if (outcome.ok) return
     expect(outcome.reason).toBe('unterminated-quote')
   })
+
+  // #695: every surface parses before it searches, so the limit is one place.
+  it('refuses a query over 1000 characters and names the limit', () => {
+    expect(parseQuery('a'.repeat(1000)).ok).toBe(true)
+    const outcome = parseQuery('a '.repeat(500) + 'a')
+    expect(outcome).toEqual({ ok: false, reason: 'too-long', token: '1000' })
+  })
 })
 
 describe('query parse — field names ignore case (FR-007)', () => {
