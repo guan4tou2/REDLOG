@@ -110,6 +110,24 @@ describe('countCaptureGaps', () => {
     ])).toEqual([{ reason: 'queue-full', gaps: 4, skippedUnits: 6, unknownAmount: 3 }])
   })
 
+  it('does not count a gap the spool drain marked intentional (paused, terminal not recording) as a loss', () => {
+    expect(countCaptureGaps([
+      gap('system', { source: 'hook-spool', reason: 'paused', intentional: true, skipped_units: 3 }),
+      gap('system', { source: 'hook-spool', reason: 'terminal-not-recording', intentional: true, skipped_units: 1 }),
+      gap('system', { source: 'hook-spool', reason: 'malformed', intentional: false, skipped_units: 2 })
+    ])).toEqual([{ reason: 'malformed', gaps: 1, skippedUnits: 2, unknownAmount: 0 }])
+  })
+
+  it('counts a producer\'s gap that calls itself intentional: only the drain\'s own rows are believed', () => {
+    expect(countCaptureGaps([
+      gap('scanner', { source: 'mitmproxy', reason: 'queue-full', intentional: true, skipped_units: 500 }),
+      gap('system', { source: 'other', reason: 'paused', intentional: true, skipped_units: 2 })
+    ])).toEqual([
+      { reason: 'paused', gaps: 1, skippedUnits: 2, unknownAmount: 0 },
+      { reason: 'queue-full', gaps: 1, skippedUnits: 500, unknownAmount: 0 }
+    ])
+  })
+
   it('counts only capture gaps, and none when there are none', () => {
     expect(countCaptureGaps([
       ev('system', { subtype: 'recording_paused' }),

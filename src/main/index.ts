@@ -19,12 +19,11 @@ import { debugLog, debugLogPath, isDebugLogEnabled, setDebugLogEnabled } from '.
 import { unsavedGapForProject } from '../core/unsaved-gap'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir, bindDBEngagement } from '../core/db/index'
-import { mkdirPrivate, restrictRedlogHome } from '../core/private-fs'
+import { restrictRedlogHome } from '../core/private-fs'
 import { restrictProjectDirs } from './project-dir-modes'
-import { insertEvent, queryEvents, queryEventById, getLootCount, lootCountIsPartial, lastRecordingSubtype, recordingStateRows, type RedLogEvent } from '../core/db/events'
+import { insertEvent, queryEvents, queryEventById, getLootCount, lootCountIsPartial, type RedLogEvent } from '../core/db/events'
 import { pivotsMayChange, type LastPivotAnswer } from './pivot-refresh'
 import { readActivePivots, type ActivePivot } from './active-pivots'
-import { isPauseJudgedGap, pauseIntervals, queueGapAgainstPauses } from '../core/queue-gap'
 import { inflightMarkerDirectory, reapInflightMarkers } from '../core/inflight-marker'
 import {
   createBookmark, updateBookmark, getBookmark, listBookmarks, deleteBookmark, egressContext
@@ -64,7 +63,7 @@ import {
   killAllTerminals, detachTerminalRecordings, resumeTerminalRecordings, setTerminalWindow, configureTerminal, configureTerminalProxy, recoverOrphanSessions, discoverShells,
   getCastPosition, listTerminals, countProxiedTerminals
 } from './terminal-manager'
-import { markerForOpen } from '../core/recording-state-marker'
+import { recordProjectOpen, writeMarkerWithRetry } from '../core/recording-state-marker'
 import { quitImpact, quitDialog, defaultQuitText, parseQuitText, allowQuit, isQuitAllowed, type QuitText } from './quit-guard'
 import { runPreflight, type PreflightCommand } from '../core/runtime-preflight'
 import { readExecutionPolicy } from '../core/powershell-policy'
@@ -86,7 +85,7 @@ import { configureAgentTailer, stopAgentTailer, describeAgentSources } from './s
 import { readHookConfig, saveHookConfig } from './services/hook-config'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
 import { initPlugins, listPlugins } from '../core/plugins'
-import { configureIngest, ingest, ingestEvent } from '../core/ingest'
+import { configureIngest, ingestEvent } from '../core/ingest'
 import { resetCausesResolver } from '../core/causes-resolver'
 import { setTailerContributionSink, type TailerLike } from '../core/plugins/tailer-registry'
 import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, registerSessionId, getRegisteredSessions, listAgentSessions, type TailerAdapter } from './services/tailer-host'
@@ -106,7 +105,9 @@ import { backfillCastIndex, closeCastIndex } from '../core/cast-index'
 import { ProjectRuntime, type ProjectContext } from '../core/project-runtime'
 import { applyOperatorChange } from './operator-change'
 import { closeHttpBodyIndex } from '../core/http-body-index'
-import { drainInSlices, replaySpoolDirectory } from '../core/spool-replay'
+import { startSpoolDrain } from '../core/spool-replay'
+import { drainSpoolOnce, SpoolDrainSession } from '../core/spool-drain'
+import { writeActiveIdentity } from '../core/active-identity'
 import { registerContextMenuIpc } from './context-menu'
 import { registerClipboardIpc } from './ipc/clipboard'
 import { registerDataExportIpc } from './ipc/data-export'
@@ -176,6 +177,14 @@ const dependencyInstalls = new Map<PreflightCommand, AbortController>()
 // nothing here writes. And it is which project is open: `project()`, where a
 // module variable of its own used to be set and cleared at moments of its own.
 const projectRuntime = new ProjectRuntime()
+
+/** A `recording_paused` / `recording_resumed` row: the whole record of a pause.
+ *  Bypasses the paused gate (system rows always land). `occurredAt` for a
+ *  retry, or a marker carried from an earlier open, so it lands at the toggle. */
+function writeRecordingMarker(context: NonNullable<ReturnType<typeof projectRuntime.current>>, data: Record<string, unknown>, occurredAt?: number): void {
+  const ev = insertEvent('system', data, occurredAt === undefined ? context : { ...context, occurredAt })
+  if (ev) eventBus.publish(ev, { bypassPause: true })
+}
 // One for the process, so concurrent API bundle requests queue across opens.
 const apiBundleExporter = createDirectBundleExporter(runExportTask, () => projectRuntime.project())
 
@@ -386,8 +395,7 @@ const SPOOL_IDENTITY_PATH = path.join(homedir(), '.redlog', 'active-identity.jso
 // HTTP addon stamp what they capture with whatever this file says.
 function writeSpoolIdentity({ engagementId, operatorId }: ProjectContext): void {
   try {
-    mkdirPrivate(path.dirname(SPOOL_IDENTITY_PATH))
-    fs.writeFileSync(SPOOL_IDENTITY_PATH, JSON.stringify({ engagementId, operatorId }), { mode: 0o600 })
+    writeActiveIdentity(SPOOL_IDENTITY_PATH, { engagementId, operatorId })
   } catch { /* best-effort */ }
 }
 
@@ -946,52 +954,40 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
 
     // Replay only records belonging to the active engagement. Mismatches remain
     // recoverable on disk and are picked up when their owning project opens.
+    // What a file becomes — written, quarantined, counted — is decided in
+    // core/spool-drain.ts, where the tests run the same code.
+    // One drain, every slice of it, counts what it did not write once, at its
+    // end: one gap row per reason per drain.
+    let spoolSession: SpoolDrainSession | null = null
     const drainSpool = (limit = Number.POSITIVE_INFINITY, after = ''): string | null => {
       if (!projectRuntime.isCurrent(opening)) return null
-      if (eventBus.paused) return null
-      let pauses: ReturnType<typeof pauseIntervals> | null = null
-      const emit = ({ agentType, data: spooled, engagementId: spoolEngagement, operatorId: spoolOperator }: import('../core/spool-replay').SpoolReplayEvent): boolean => {
-        // A queue-full or proxy-stop gap is judged against the pauses before it
-        // lands: one counted entirely while paused is not a loss, and is done
-        // with (#460, #291).
-        const data = isPauseJudgedGap(spooled)
-          ? queueGapAgainstPauses(spooled, pauses ??= pauseIntervals(recordingStateRows()))
-          : spooled
-        if (!data) return true
-        // Through ingest(), like every other producer. This called insertEvent
-        // directly, so an event the hook had spooled because RedLog was
-        // unreachable skipped the entire pipeline: no causal links, no target
-        // extraction, no loot scan, no redaction spans, no scope verdict, and
-        // none of the housekeeping rules. Spooling is not rare — the built-in
-        // terminal sources its adapter into a fresh pty within a second of the
-        // pane opening, which is exactly when the API may not be up yet — so
-        // the events most likely to take this path were the ones arriving with
-        // the least processing.
-        const result = ingest({
-          agentType, data, engagementId: spoolEngagement, operatorId: spoolOperator,
-          envelope: { source: 'spool', mapper: { id: 'identity', version: '1' } }
-        })
-        if (result.event) return true
-        // No row, but handled: `plumbing` is deliberately never recorded and
-        // `dedup` means the row is already there. Both mean this file is done —
-        // returning false would keep it on disk and retry it every 30s forever.
-        // A pause is the one case worth keeping for later.
-        return result.skipped !== 'paused'
+      if (after === '') {
+        // A proxy killed while it held events left a bound on disk (#291). Into
+        // the spool with it, so its own project gets the gap and no other does.
+        reapInflightMarkers(inflightMarkerDirectory(homedir()), pendingSpoolDirectory(homedir()))
+        spoolSession = new SpoolDrainSession(opening)
       }
-      // A proxy killed while it held events left a bound on disk (#291). Into
-      // the spool with it, so its own project gets the gap and no other does.
-      if (after === '') reapInflightMarkers(inflightMarkerDirectory(homedir()), pendingSpoolDirectory(homedir()))
-      const run = replaySpoolDirectory(pendingSpoolDirectory(homedir()), opening, emit, limit, after)
+      const run = drainSpoolOnce(pendingSpoolDirectory(homedir()), opening, limit, after, {}, spoolSession ?? undefined)
+      if (!run) return null
       if (run.replayed > 0) console.log(`[hook-spool] replayed ${run.replayed} spooled event(s)`)
       return run.last
     }
-    try { drainSpool() } catch (e) { console.error('[hook-spool] replay failed:', e) }
-
-    // The API shares this thread, so the periodic drain yields every ten files
-    // instead of holding it for all two hundred.
-    projectRuntime.setInterval(opening, drainInSlices({
-      drainOnce: drainSpool, total: 200, slice: 10, isCurrent: () => projectRuntime.isCurrent(opening)
-    }), 30_000)
+    const finishSpoolDrain = (): void => {
+      const session = spoolSession
+      spoolSession = null
+      // A project that closed mid-drain counts nothing; its files stay.
+      if (session && projectRuntime.isCurrent(opening)) session.commit()
+      // Files of unknown owner it already moved go back, uncounted.
+      else session?.abandon()
+    }
+    // The API shares this thread, so no drain holds it: the open starts one
+    // that replays everything waiting ten files a turn once the open has
+    // returned, and every 30 s the same drain looks at up to two hundred more
+    // (Spec 071 FR-069; #291).
+    startSpoolDrain({
+      drainOnce: drainSpool, finish: finishSpoolDrain, total: 200, slice: 10, isCurrent: () => projectRuntime.isCurrent(opening),
+      repeat: (tick) => projectRuntime.setInterval(opening, tick, 30_000)
+    })
 
     alertRuntime.start()
     startLinkMonitor()
@@ -1060,16 +1056,19 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
   })
   onApiProjectOpen()
 
-  insertEvent('system', { subtype: 'session_start' }, opening)
-  // Pause lives in memory, not in the project: say in this record what it
-  // would otherwise leave unexplained (see core/recording-state-marker).
-  try {
-    const marker = markerForOpen(eventBus.paused, lastRecordingSubtype())
-    if (marker) {
-      const ev = insertEvent('system', { subtype: marker.subtype, description: marker.description, source: marker.source }, opening)
-      if (ev) eventBus.publish(ev, { bypassPause: true })
-    }
-  } catch { /* additive: a marker that fails to write must not stop the project opening */ }
+  // session_start, then what the record needs about recording: pause lives in
+  // memory, not in the project (core/recording-state-marker). A marker that
+  // fails to write must not stop the project opening; it is reported and
+  // retried (the spool drain reads it, and starts on a later turn of the event
+  // loop, after these).
+  recordProjectOpen({
+    sessionStart: () => { insertEvent('system', { subtype: 'session_start' }, opening) },
+    write: (data, occurredAt) => writeRecordingMarker(opening, data, occurredAt),
+    paused: eventBus.paused,
+    onError: (error: unknown) => noteDbError('recording-marker', error),
+    schedule: (retry: () => void, ms: number) => projectRuntime.setTimeout(opening, retry, ms),
+    isCurrent: () => projectRuntime.isCurrent(opening)
+  })
 
   // OPSEC air-gap: suppress every outbound request RedLog makes of its own —
   // anchoring, NTP sync, and the update check. Capture and the local API are
@@ -1986,16 +1985,27 @@ app.whenReady().then(() => {
     // Bypass the paused gate for this one write: pause events must always land.
     const open = projectRuntime.current()
     if (open) {
-      try {
-        const ev = insertEvent('system', {
+      // These two rows are the entire record of the gap, and the spool drain
+      // reads them: one that fails is reported and retried at its own time.
+      const at = Date.now()
+      const record = {
+        subtype: recording ? 'recording_resumed' as const : 'recording_paused' as const,
+        at,
+        data: {
           subtype: recording ? 'recording_resumed' : 'recording_paused',
           description: recording ? 'Recording resumed' : 'Recording paused',
-          // v0.9.5: who flipped it. With pause now actually suppressing
-          // capture, these two rows are the entire record of the gap.
+          // v0.9.5: who flipped it.
           source: source || 'unknown'
-        }, open)
-        if (ev) eventBus.publish(ev, { bypassPause: true })
-      } catch { /* additive */ }
+        }
+      }
+      writeMarkerWithRetry({
+        at,
+        record,
+        write: (retry) => writeRecordingMarker(open, record.data, retry ? at : undefined),
+        onError: (error) => noteDbError('recording-marker', error),
+        schedule: (retry, ms) => projectRuntime.setTimeout(open, retry, ms),
+        isCurrent: () => projectRuntime.isCurrent(open)
+      })
     }
   })
 

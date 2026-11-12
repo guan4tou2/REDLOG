@@ -40,6 +40,12 @@ export function dbEngagement(): string | null { return boundEngagement }
 let generation = 0
 export function dbGeneration(): number { return generation }
 
+// When the open database was opened, ms since the epoch; 0 while none is. A
+// pause recorded in a project with no resume after it ended, at the latest,
+// when the project was next opened while recording (core/recording-state.ts).
+let openedAt = 0
+export function dbOpenedAt(): number { return openedAt }
+
 
 // Every nullable column of the two event tables, added to an older project
 // that predates it.
@@ -133,6 +139,7 @@ export function initDB(projectDir: string): Database.Database {
 
   const dbPath = path.join(projectDir, 'timeline.db')
   currentDbPath = dbPath
+  openedAt = Date.now()
   // SQLite gives -wal and -shm the mode of the main file, so it is made first.
   ensurePrivateFile(dbPath)
   db = new Database(dbPath)
@@ -555,6 +562,7 @@ export function closeDB(): void {
   roDb = null
   boundEngagement = null
   generation++
+  openedAt = 0
   currentProjectDir = null
   currentDbPath = null
   try { writable?.close() } finally { if (readonly !== writable) readonly?.close() }

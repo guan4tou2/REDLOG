@@ -96,7 +96,9 @@ for (const fault of ['config-write', 'db-open', 'db-pragma', 'source-config'] as
       const inA = await page.evaluate(() => window.redlog.events.query({ agentType: 'shell' }))
       expect(inA.filter(e => e.data.command === 'echo rollback-proof')).toHaveLength(0)
       await page.evaluate(id => window.redlog.project.open(id), b.id)
-      expect(existsSync(spoolPath)).toBe(false)
+      // The open starts the spool drain; it runs once the open has returned
+      // (Spec 071 FR-069), so the file goes a moment later, not during it.
+      await expect.poll(() => existsSync(spoolPath)).toBe(false)
       const reopenedEvents = await page.evaluate(() => window.redlog.events.query({}))
       for (const event of originalEvents) expect(reopenedEvents.find(row => row.id === event.id)).toEqual(event)
       const afterFirst = await page.evaluate(() => window.redlog.events.query({ agentType: 'shell' }))

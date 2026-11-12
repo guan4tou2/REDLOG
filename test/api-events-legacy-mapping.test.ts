@@ -142,6 +142,15 @@ const CASES: Case[] = [
     status: 200, json: { ok: true, recording: false, skipped: 'recording paused' }, landed: [0, 0]
   },
   {
+    // Spec 071 FR-082 as revised 2026-11-13: a live door is judged by receipt
+    // time. A source time from before the pause does not let it in.
+    name: 'paused: recording is paused, and the event claims a time before the pause',
+    setup: () => bus.eventBus.pause('ui'),
+    teardown: () => bus.eventBus.resume('ui'),
+    body: { agent_type: 'shell', data: { subtype: 'command_start', command: 'ls -l', terminalId: 'leg-t7b', pid: 117, source_timestamp: Date.now() - 60_000 } },
+    status: 200, json: { ok: true, recording: false, skipped: 'recording paused' }, landed: [0, 0]
+  },
+  {
     name: 'unrecorded: the terminal is not recording',
     setup: () => ingest.configureIngest({ terminalLifecycle: { prepare: () => false, recorded: () => undefined } }),
     teardown: () => ingest.configureIngest({ terminalLifecycle: null }),

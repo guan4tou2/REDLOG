@@ -882,7 +882,7 @@
   "capture.passive": "auto",
   "capture.dbGaps": "{{count}} write failure(s) this session, first at {{since}} — the record has gaps",
   "capture.unattributedSpool": "{{count}} temp file(s) from shell commands typed while no project was open ({{range}}). They are not part of any project's record.",
-  "capture.unattributedSpoolWhere": "Kept as *.unattributed files in ~/.redlog/pending — no project could claim them. Dates are file write times.",
+  "capture.unattributedSpoolWhere": "Kept in ~/.redlog/pending/quarantine/_no-project — no project could claim them. Dates are file write times.",
   "capture.unattributedClear": "Clear…",
   "capture.unattributedClearTitle": "Delete {{count}} unrecorded command file(s)?",
   "capture.unattributedClearMessage": "These are commands typed while no project was open. No project's record has them, and once the files are deleted they cannot be recovered.",

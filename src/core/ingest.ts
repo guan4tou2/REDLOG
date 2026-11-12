@@ -103,6 +103,18 @@ export interface IngestInput {
   /** A companion emitted by the pipeline itself. Skips enrichment so a
    *  derived row cannot derive further rows (no pivot-of-a-pivot). */
   derived?: boolean
+  /** Set by the spool drain only: the file was judged against the project's
+   *  recorded pause intervals before it got here (Spec 071 FR-082 as revised
+   *  2026-11-13). The pause in effect now still refuses it. */
+  spoolJudged?: boolean
+}
+
+/** The row an error was thrown after: ingest committed it, then a step after
+ *  the commit (publish, scope dispatch, companions, bookkeeping) threw. A
+ *  caller that retries on a throw must not retry this one — the row is there.
+ *  Null for an error thrown before anything was written. */
+export function committedEventOf(error: unknown): RedLogEvent | null {
+  return (error as { committedEvent?: RedLogEvent } | null)?.committedEvent ?? null
 }
 
 export interface IngestResult {
@@ -161,7 +173,10 @@ export function ingest(input: IngestInput): IngestResult {
     ? data.output_started_at : data.source_timestamp
   const delayedCapture = (agentType === 'shell' && ['command_output', 'session_output', 'command_end'].includes(String(data.subtype)))
     || (agentType === 'scanner' && ['http_response_chunk', 'ws_message', 'tcp_message'].includes(String(data.subtype)))
-  if (delayedCapture && !input.bypassPause
+  // The spool drain has already judged its file against the recorded pause
+  // intervals (core/spool-drain.ts); this "older than the last resume" rule
+  // is what left a command_end observed before a pause stuck there forever.
+  if (delayedCapture && !input.bypassPause && !input.spoolJudged
       && typeof outputAt === 'number' && Number.isFinite(outputAt)
       && outputAt <= Math.max(eventBus.resumedAt, lastRecordingResumeTime())) {
     return { event: null, skipped: 'paused', companions: [] }
@@ -265,6 +280,17 @@ export function ingest(input: IngestInput): IngestResult {
     occurredAt: input.occurredAt
   })
   if (!event) return { event: null, skipped: 'dedup', companions: [] }
+  // Everything after the commit. A throw from here still propagates, but
+  // carries the committed row (committedEventOf), so a caller that retries on
+  // failure — the spool drain — does not write it a second time.
+  try {
+    return afterCommit(event)
+  } catch (error) {
+    const marked = error !== null && typeof error === 'object' ? error : new Error(String(error))
+    throw Object.assign(marked, { committedEvent: event })
+  }
+
+  function afterCommit(event: RedLogEvent): IngestResult {
   if (agentType === 'shell' && !input.derived) terminalLifecycle?.recorded(event)
   if (agentType === 'shell' && !input.derived && data.subtype === 'command_output' && (data.late === true || data.streamed === true)
       && typeof data.command_id === 'string' && typeof data.seq === 'number') {
@@ -372,6 +398,7 @@ export function ingest(input: IngestInput): IngestResult {
   }
 
   return { event, companions }
+  }
 }
 
 // ── Enrichment ──────────────────────────────────────────────────────────────

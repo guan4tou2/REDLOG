@@ -133,8 +133,15 @@ def _send_to_redlog(payload: dict) -> None:
 
 def _emit(subtype: str, dst_ip: str, data: dict) -> None:
     """POST one pcap event. target_id = dst_ip so scope classification and the
-    Targets aggregate treat a sniffed host like any other target."""
-    payload = {"agent_type": "pcap", "target_id": dst_ip, "data": {"subtype": subtype, **data}}
+    Targets aggregate treat a sniffed host like any other target.
+
+    `source_timestamp` is when the packet was seen — `at`, or a scan's
+    `first_at` — so a payload that reaches RedLog late, through the spool, is
+    placed and judged against a pause by when it happened, not by when it
+    arrived."""
+    seen = data.get("at", data.get("first_at"))
+    source_timestamp = seen if isinstance(seen, int) and not isinstance(seen, bool) else _now_ms()
+    payload = {"agent_type": "pcap", "target_id": dst_ip, "data": {"subtype": subtype, "source_timestamp": source_timestamp, **data}}
     _send_to_redlog(payload)
     if VERBOSE:
         print(f"[redlog-pcap] {subtype} {dst_ip} {json.dumps(data)}", file=sys.stderr)
