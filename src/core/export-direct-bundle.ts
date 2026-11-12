@@ -23,7 +23,11 @@ export type DirectBundleExporter = (engagementId: string, opts: { scope?: ScopeF
  *  2. main:   insert the chained digest event (synchronous, as before) and,
  *             in the same tick, capture the chained tier's highest rowid;
  *  3. worker: the bundle, bounded on both tiers by those two rowids, with the
- *             stage-1 digest recorded in the manifest and nothing inserted.
+ *             stage-1 digest recorded in the manifest. Its one chained row,
+ *             the export seal, is inserted by main at the worker's request
+ *             once every file is written (export-runner.ts), and appended as
+ *             the last line; rows recorded after the stage-2 boundary are
+ *             not in the bundle even though the seal follows them.
  *
  *  Rows written between the stages land above a boundary and are not in the
  *  bundle; chained rows written before the digest event are below it and are.

@@ -85,23 +85,31 @@ export default function IntegrityPanel({ t }: { t: (key: string, vars?: Record<s
           <div className="flex items-center gap-2 text-sm font-semibold">
             <span className={fullVerify.ok ? 'text-emerald-400' : 'text-red-400'}>
               <span aria-hidden="true">{fullVerify.ok ? '✓' : '✗'} </span>
-              <span>{t(fullVerify.ok ? 'settings.integrityFullOk' : 'settings.integrityFullBroken')}</span>
+              <span>{t(fullVerify.ok ? 'settings.integrityFullOk'
+                : fullVerify.authentication === 'failed' && !fullVerify.brokenAtEventId ? 'settings.integrityFullAuthFailed'
+                : 'settings.integrityFullBroken')}</span>
             </span>
           </div>
           <div className="text-redlog-text-dim">
             {t('settings.integrityFullWalked', { n: String(fullVerify.walked ?? 0) })}
           </div>
+          {fullVerify.signedCount !== undefined && (
+            <div className={fullVerify.authentication === 'verified' ? 'text-redlog-text-dim' : 'text-amber-400'}>
+              {t('settings.integrityFullSignatures', {
+                signed: String(fullVerify.signedCount),
+                unchecked: String((fullVerify.unsignedCount ?? 0) + (fullVerify.noPubKeyCount ?? 0))
+              })}
+            </div>
+          )}
           {!fullVerify.ok && fullVerify.brokenAtEventId && (
-            <>
-              <div className="text-red-400 break-all">
-                {t('settings.integrityFullBrokenAt')}: {fullVerify.brokenAtEventId}
-              </div>
-              {fullVerify.brokenReason && (
-                <div className="text-redlog-text-dim break-all">
-                  {t('settings.integrityFullReason')}: {fullVerify.brokenReason}
-                </div>
-              )}
-            </>
+            <div className="text-red-400 break-all">
+              {t('settings.integrityFullBrokenAt')}: {fullVerify.brokenAtEventId}
+            </div>
+          )}
+          {!fullVerify.ok && fullVerify.brokenReason && (
+            <div className="text-redlog-text-dim break-all">
+              {t('settings.integrityFullReason')}: {fullVerify.brokenReason}
+            </div>
           )}
           {fullVerify.currentHead && (
             <div className="text-redlog-text-dim break-all">

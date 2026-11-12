@@ -61,12 +61,14 @@ describeDB('bundle export — two tiers (v0.13.0)', () => {
     const logged = fs.readFileSync(path.join(bundleDir, 'events_logged.jsonl'), 'utf-8')
       .split('\n').filter(Boolean)
     // shell command_start + the export's logged_tier_digest snapshot: an
-    // export over a non-empty logged tier appends one chained digest (§7.5).
-    expect(chained).toHaveLength(2)
+    // export over a non-empty logged tier appends one chained digest (§7.5);
+    // then the export's seal, always the last line (v4).
+    expect(chained).toHaveLength(3)
+    expect(JSON.parse(JSON.parse(chained[2]).data).subtype).toBe('export_sealed')
     expect(logged).toHaveLength(2)   // dns + scanner
   })
 
-  it('manifest bundleVersion === 3 and tiers has correct counts', () => {
+  it('manifest bundleVersion === 4 and tiers has correct counts', () => {
     events.insertEvent('shell', { subtype: 'command_start', command: 'a' }, { operatorId })
     events.insertEvent('shell', { subtype: 'command_end', command: 'a', duration_sec: 1 }, { operatorId })
     events.insertEvent('dns', { subtype: 'dns_query', query_name: 'x.test' }, { operatorId })
@@ -75,13 +77,14 @@ describeDB('bundle export — two tiers (v0.13.0)', () => {
 
     const { outDir: bundleDir } = exportBundle('test-engagement', { outRoot: outDir })
     const manifest = JSON.parse(fs.readFileSync(path.join(bundleDir, 'manifest.json'), 'utf-8'))
-    // v3 dropped quickmarks.json; the tier split it was introduced for is
-    // unchanged.
-    expect(manifest.bundleVersion).toBe(3)
+    // v3 dropped quickmarks.json; v4 added the export seal. The tier split
+    // is unchanged.
+    expect(manifest.bundleVersion).toBe(4)
     expect(manifest.tiers).toBeDefined()
     // +1 chained: an export over a non-empty logged tier appends one
-    // system.logged_tier_digest snapshot into the chain (§7.5).
-    expect(manifest.tiers.chained).toBe(3)  // 2 shell + logged_tier_digest
+    // system.logged_tier_digest snapshot into the chain (§7.5). +1 more: the
+    // seal, the last line of events.jsonl.
+    expect(manifest.tiers.chained).toBe(4)  // 2 shell + logged_tier_digest + seal
     expect(manifest.tiers.logged).toBe(3)
   })
 
@@ -106,10 +109,12 @@ describeDB('bundle export — two tiers (v0.13.0)', () => {
 
   it('empty tiers still produce a bundle with well-formed manifest', () => {
     // No events inserted → both tables empty. Bundle should still be
-    // written; manifest.tiers should show 0/0; empty events_logged.jsonl.
+    // written; manifest.tiers should show 0/0 apart from the seal, which an
+    // empty chain gets too; empty events_logged.jsonl.
     const { outDir: bundleDir } = exportBundle('test-engagement', { outRoot: outDir })
     const manifest = JSON.parse(fs.readFileSync(path.join(bundleDir, 'manifest.json'), 'utf-8'))
-    expect(manifest.tiers.chained).toBe(0)
+    expect(manifest.tiers.chained).toBe(1)
+    expect(manifest.chainHead).toBeNull()
     expect(manifest.tiers.logged).toBe(0)
     const logged = fs.readFileSync(path.join(bundleDir, 'events_logged.jsonl'), 'utf-8')
     expect(logged).toBe('')

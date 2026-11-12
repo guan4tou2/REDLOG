@@ -419,8 +419,10 @@ describe('export plan IPC contract', () => {
     const executed = await handlers.get('data:executeExportPlan')?.({}, {
       planId: resolved.plan.id
     } as never) as { ok: true; artifactPath: string }
-    const row = JSON.parse(fs.readFileSync(path.join(executed.artifactPath, 'events.jsonl'), 'utf8').trim()) as { data: string }
+    // The approved row, then the export's seal (bundle version 4).
+    const [row, seal] = fs.readFileSync(path.join(executed.artifactPath, 'events.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as { data: string })
     expect(JSON.parse(row.data).command).toBe('curl https://outside.test/private')
+    expect(JSON.parse(seal.data).subtype).toBe('export_sealed')
   })
 
   it('keeps HAR inside the approved target, time and snapshot bounds', async () => {

@@ -314,10 +314,16 @@ describeDB('evidence bundle export', () => {
     expect(listed.some((p) => p.includes('term.cast'))).toBe(true)
   })
 
-  it('two exports of an unchanged chain agree on the head', () => {
+  // An export seals itself into the chain (v4), so the chain the next export
+  // sees has moved by exactly that one row, and it is the first one's seal.
+  it('a second export\'s head moves by exactly the first export\'s seal', () => {
     const a = exportBundle('eng', { outRoot: path.join(dir, 'e1') })
     const b = exportBundle('eng', { outRoot: path.join(dir, 'e2') })
-    expect(a.manifest.chainHead).toEqual(b.manifest.chainHead)
+    expect(b.manifest.chainHead!.eventCount).toBe(a.manifest.chainHead!.eventCount + 1)
+    const rowsA = fs.readFileSync(path.join(a.outDir, 'events.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l))
+    const rowsB = fs.readFileSync(path.join(b.outDir, 'events.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l))
+    expect(rowsB[a.manifest.chainHead!.eventCount]).toEqual(rowsA.at(-1))
+    expect(rowsB.at(-1).id).not.toBe(rowsA.at(-1).id)
   })
 })
 
@@ -441,11 +447,15 @@ describeDB('the chain head a recipient verifies', () => {
   afterEach(() => { closeDB(); fs.rmSync(dir, { recursive: true, force: true }) })
 
   it('a planned export records the same chain head as an unplanned one, in the verifier\'s form', () => {
-    const planned = exportBundle('eng', { snapshot: takeExportSnapshot(), outRoot: path.join(dir, 'planned') })
+    // Snapshot first: each export appends its own seal, and the planned one
+    // must describe the chain as it was when its snapshot was taken.
+    const snapshot = takeExportSnapshot()
     const unplanned = exportBundle('eng', { outRoot: path.join(dir, 'unplanned') })
+    const planned = exportBundle('eng', { snapshot, outRoot: path.join(dir, 'planned') })
     expect(planned.manifest.chainHead).toEqual(unplanned.manifest.chainHead)
 
-    const lines = fs.readFileSync(path.join(planned.outDir, 'events.jsonl'), 'utf-8').trim().split('\n').map((l) => JSON.parse(l))
+    // chainHead describes the delivered chain before the seal (the last line).
+    const lines = fs.readFileSync(path.join(planned.outDir, 'events.jsonl'), 'utf-8').trim().split('\n').map((l) => JSON.parse(l)).slice(0, -1)
     const last = lines[lines.length - 1]
     const recomputed = crypto.createHash('sha256').update(last.hash).update(String(lines.length)).digest('hex')
     expect(planned.manifest.chainHead).toEqual({ hash: recomputed, eventCount: lines.length })
@@ -455,8 +465,9 @@ describeDB('the chain head a recipient verifies', () => {
     const child = require('node:child_process') as typeof import('node:child_process')
     const python = findPython(child)
     if (!python) return // no usable Python on this runner — skip
+    const snapshot = takeExportSnapshot()
     for (const [label, opts] of [
-      ['planned', { snapshot: takeExportSnapshot(), outRoot: path.join(dir, 'planned') }],
+      ['planned', { snapshot, outRoot: path.join(dir, 'planned') }],
       ['unplanned', { outRoot: path.join(dir, 'unplanned') }]
     ] as const) {
       const { outDir } = exportBundle('eng', opts)
@@ -466,7 +477,10 @@ describeDB('the chain head a recipient verifies', () => {
       const run = child.spawnSync(python, [verifier, '--hash-only', outDir], { encoding: 'utf-8', timeout: SPAWN_MS })
       expect(run.error, String(run.error)).toBeUndefined()
       expect(run.stdout, label).toContain('NOT AUTHENTICATED')
-      expect(run.stdout, label).toMatch(/Events walked\s+:\s+3/)
+      // Three rows and this export's seal; the unplanned one, made second,
+      // also carries the planned export's seal as an ordinary row.
+      expect(run.stdout, label).toMatch(label === 'planned' ? /Events walked\s+:\s+4/ : /Events walked\s+:\s+5/)
+      expect(run.stdout, label).toMatch(/Seal\s+:\s+SEALED/)
       expect(run.stdout, label).toMatch(/Chain-head match\s+:\s+yes/)
       expect(run.status, `${label}: ${run.stdout}${run.stderr}`).toBe(0)
     }

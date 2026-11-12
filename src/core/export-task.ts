@@ -4,7 +4,7 @@ import type { ProjectMeta } from './project-manager'
 import type { ExportPlan, ExportRequest } from './export-plan'
 import { exportAttachmentDigest } from './export-attachments'
 import { buildExportPlan, validateExportSources } from './export-planning'
-import { exportBundle, type ExportBundleOpts, type LoggedTierDigest } from './bundle-export'
+import { exportBundle, type ExportBundleOpts, type LoggedTierDigest, type SealWriter } from './bundle-export'
 import { loggedTierDigest } from './db/events'
 import type { exportHar } from './har-export'
 import { writeApprovedHar } from './har-export-stream'
@@ -25,16 +25,18 @@ export type ExportTask =
 export type ExportTaskResult = { plan: ExportPlan } | { validation: ReturnType<typeof validateExportSources> } | { loggedDigest: LoggedTierDigest } | { artifactPath: string }
 
 /** Core-only kernel: production runs this against a worker-owned read-only DB.
- * Tests may inject this same kernel at the IPC seam without changing policy. */
-export function executeExportTask(task: ExportTask): ExportTaskResult {
+ * Tests may inject this same kernel at the IPC seam without changing policy.
+ * A bundle's seal is the one chained write an export makes; the worker passes
+ * `sealWriter` to have main make it. In-process the default writes it here. */
+export function executeExportTask(task: ExportTask, env: { sealWriter?: SealWriter } = {}): ExportTaskResult {
   if (task.kind === 'plan') return { plan: buildExportPlan(task.project, task.request) }
   if (task.kind === 'validate') return { validation: validateExportSources(task.project, task.plan) }
   if (task.kind === 'logged-digest') return { loggedDigest: loggedTierDigest(task.loggedMaxRowId) }
   if (task.kind === 'direct-bundle') {
     // Bounded on both tiers, with the digest main already chained: this
-    // (read-only) side never inserts.
+    // (read-only) side inserts nothing itself; the seal goes through main.
     if (!task.options.snapshot || !task.options.loggedDigest) throw new Error('Direct bundle task requires a snapshot and its logged-tier digest')
-    return { artifactPath: exportBundle(task.engagementId, task.options).outDir }
+    return { artifactPath: exportBundle(task.engagementId, { ...task.options, sealWriter: env.sealWriter }).outDir }
   }
   if (task.kind === 'events') {
     if (task.file === undefined || task.fd === undefined) throw new Error('Export task requires a staged file')
@@ -47,7 +49,7 @@ export function executeExportTask(task: ExportTask): ExportTaskResult {
   }
   if (!task.options.snapshot || !task.options.includeEventIds) throw new Error('Export task requires an approved snapshot')
   if (task.kind === 'bundle') {
-    const artifactPath = exportBundle(task.engagementId, task.options).outDir
+    const artifactPath = exportBundle(task.engagementId, { ...task.options, sealWriter: env.sealWriter }).outDir
     if (exportAttachmentDigest(artifactPath, task.options.attachments ?? []) !== task.attachmentDigest) throw new Error('source-unavailable')
     return { artifactPath }
   }
