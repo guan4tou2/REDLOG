@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import { requires } from './helpers/requires'
 
 // Four boundaries of the plugin system (docs/records/2026-11-12/root-cause/
 // 08-plugin-system.md F3, F4, F7):
@@ -243,7 +244,9 @@ describe('3. commands are shown only for the content that was approved', () => {
   })
 })
 
-describe.skipIf(process.platform === 'win32')('4. a hook can be removed after its plugin stops loading', () => {
+// rc-file hooks exist only where the shell model is POSIX (hooks-manager
+// refuses shell-source install on Windows), so there is nothing to remove there.
+requires('posix-shell').describe('4. a hook can be removed after its plugin stops loading', () => {
   const shellCap = { id: 'sh', name: 'Acme shell', description: 'd', agentType: 'shell', hookFile: 'hook.sh', installMethod: 'shell-source', shellRcFile: '.zshrc' }
   const claudeCap = { id: 'cc', name: 'Acme claude', description: 'd', agentType: 'agent', hookFile: 'hook.sh', installMethod: 'claude-settings' }
   const rc = () => fs.readFileSync(path.join(home, '.zshrc'), 'utf-8')
