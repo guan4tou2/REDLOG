@@ -89,7 +89,9 @@ function IssueRow({ issue, onNavigate }: { issue: Issue; onNavigate: (v: string)
             {busy ? t('issues.fixRunning') : t(FIX_LABEL[issue.fix])}
           </Button>
         )}
-        {issue.view && (
+        {/* This list is drawn on the dashboard, so a link to the dashboard
+            would go nowhere. */}
+        {issue.view && issue.view !== 'dashboard' && (
           <Button level="quiet" onClick={() => onNavigate(issue.view as string)}>
             {t('issues.goThere')}
           </Button>
