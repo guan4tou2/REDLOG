@@ -72,6 +72,33 @@ rather than a regression.
 On a PR a new push cancels the run in progress. On `main` it does not: each
 merge gets its own run, so every commit on `main` has been checked whole.
 
+### A skipped test is counted, per OS
+
+A skip reports green. `test/csp-production.test.ts` checked the built renderer
+and skipped on every leg for as long as the build ran after Vitest; 78 files
+caught *any* import error and skipped, so a `ReferenceError` in a src module
+turned a whole file grey. Both were green runs that had checked less than they
+said.
+
+So each unit leg now builds first, then after Vitest runs a sixth gate,
+`scripts/verify-skip-baseline.mjs`, against the leg's JUnit report — also when
+Vitest failed. It fails when that OS skips more than `test/skip-baseline.json`
+records, when a new file starts skipping, or when a `mustRun` file skips. Fewer
+skips print a notice: lower the baseline in the same change.
+
+Unlike `verify:i18n` it compares against a file in the repository, not another
+ref, so it means the same on `main` as on a branch. It is a CI step, not one of
+the five above: the counts are per runner image, and a laptop skips a
+different set. To see what it will say, run Vitest with `CI=1` and then
+`node scripts/verify-skip-baseline.mjs --platform <linux|darwin|win32>`.
+
+A new test that needs something from the machine asks
+`requires('<capability>')` (`test/helpers/requires.ts`) instead of wrapping its
+imports in a `try`. Locally a missing capability skips and says why; in CI
+(`REDLOG_CI_CAPABILITIES=1`) one that `test/capabilities.json` marks
+`required` fails the file. Keep the import of the code under test outside any
+`try` — an import that throws is a failure, not a skip.
+
 ### The known flake
 
 The unit suite has an intermittent failure that lands on a **different file each
