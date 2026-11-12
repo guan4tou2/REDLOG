@@ -1120,7 +1120,6 @@
   "issues.captureDetail": "Events are still being written, but at least one source has stopped producing — the gap will be in the timeline, not in an error.",
   "issues.chainBroken": "The evidence chain does not verify",
   "issues.chainBrokenDetail": "A row between the anchor and now does not hash to its successor. Export a bundle before doing anything else.",
-  "issues.chainUnsignedDetail": "Signing is in use, but some rows carry no signature or have no key to check it against. A bundle exported now fails verification.",
   "issues.chainAnchorMismatchDetail": "Every row hashes to its successor, but the chain no longer matches its latest anchor: it was rewritten or cut short after it was anchored. Export a bundle before doing anything else.",
   "timeline.dropMarkerHere": "Drop a marker at {{time}}",
   "fatal.title": "{{view}} stopped working",

@@ -30,6 +30,8 @@ export interface FullVerifyResult {
   unsignedCount?: number
   noPubKeyCount?: number
   authentication?: 'verified' | 'none' | 'failed'
+  authenticationReasons?: string[]
+  firstUncheckedEventId?: string | null
   badSignatureAtEventId?: string | null
 }
 
@@ -99,8 +101,7 @@ export async function verifyChainWithFeedback(t: T): Promise<FullVerifyResult> {
   else {
     raiseIssue({
       id: 'chain', tier: 'attention', title: t('issues.chainBroken'),
-      detail: t(r.ok ? 'issues.chainAnchorMismatchDetail'
-        : r.authentication === 'failed' && !r.brokenAtEventId ? 'issues.chainUnsignedDetail' : 'issues.chainBrokenDetail'),
+      detail: t(r.ok ? 'issues.chainAnchorMismatchDetail' : 'issues.chainBrokenDetail'),
       view: settingsTarget('integrity'), fix: 'verify-chain'
     })
   }

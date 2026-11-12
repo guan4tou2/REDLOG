@@ -447,15 +447,23 @@ export interface FullVerifyResult {
   //   authentication — 'verified': signing in use and every row checked;
   //                   'none': nothing in this chain is signed (consistent,
   //                   but not authenticated); 'failed': signing is in use and
-  //                   some row is unsigned or uncheckable, which also sets
-  //                   ok=false. A bundle exported from such a chain fails its
-  //                   verifier the same way.
+  //                   some row is unsigned or uncheckable. This does NOT set
+  //                   ok=false: `ok` here means the chain is intact (every
+  //                   row hashes, links, and no present signature is bad).
+  //                   Authentication is a separate fact, so a project with one
+  //                   historic unsigned row is not reported as tampered. A
+  //                   bundle exported from such a chain fails the standalone
+  //                   verifier unless it is run with --hash-only.
+  //   authenticationReasons — why authentication is 'failed' (empty otherwise).
+  //   firstUncheckedEventId — first unsigned or uncheckable row, or null.
   //   badSignatureAtEventId — first row whose signature is present but does
   //                   NOT verify. That IS a tamper signal; also causes ok=false.
   signedCount: number
   unsignedCount: number
   noPubKeyCount: number
   authentication: 'verified' | 'none' | 'failed'
+  authenticationReasons: string[]
+  firstUncheckedEventId: string | null
   badSignatureAtEventId: string | null
 }
 
@@ -518,6 +526,8 @@ function brokenResult(state: WalkerState, eventId: string, reason: string, curre
     unsignedCount: state.unsignedCount,
     noPubKeyCount: state.noPubKeyCount,
     authentication: 'failed',
+    authenticationReasons: [],
+    firstUncheckedEventId: state.firstUncheckedEventId,
     badSignatureAtEventId: state.badSignatureAtEventId
   }
 }
@@ -680,14 +690,14 @@ function finaliseWalk(state: WalkerState, anchor: ChainAnchor | null, currentHea
     unsigned: state.unsignedCount,
     noPubKey: state.noPubKeyCount
   })
-  const failed = auth.state === 'failed'
   return {
-    ok: !failed,
+    // Intact: every row hashes to the next and no present signature is bad.
+    // Authentication is reported beside it, never folded into it: ok:false
+    // with brokenAtEventId:null reads as tampering to most callers.
+    ok: true,
     walked: state.walked,
-    // Nothing is broken: every row hashes to the next. brokenAtEventId stays
-    // for a row that does not, which is what the Timeline marks.
     brokenAtEventId: null,
-    brokenReason: failed ? `${auth.reasons.join('; ')}; first: ${state.firstUncheckedEventId}` : null,
+    brokenReason: null,
     currentHead: currentHead?.hash ?? null,
     anchor,
     anchorMatchesWalkedHead,
@@ -696,6 +706,8 @@ function finaliseWalk(state: WalkerState, anchor: ChainAnchor | null, currentHea
     unsignedCount: state.unsignedCount,
     noPubKeyCount: state.noPubKeyCount,
     authentication: auth.state,
+    authenticationReasons: auth.reasons,
+    firstUncheckedEventId: state.firstUncheckedEventId,
     badSignatureAtEventId: state.badSignatureAtEventId
   }
 }

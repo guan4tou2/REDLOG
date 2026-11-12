@@ -85,9 +85,7 @@ export default function IntegrityPanel({ t }: { t: (key: string, vars?: Record<s
           <div className="flex items-center gap-2 text-sm font-semibold">
             <span className={fullVerify.ok ? 'text-emerald-400' : 'text-red-400'}>
               <span aria-hidden="true">{fullVerify.ok ? '✓' : '✗'} </span>
-              <span>{t(fullVerify.ok ? 'settings.integrityFullOk'
-                : fullVerify.authentication === 'failed' && !fullVerify.brokenAtEventId ? 'settings.integrityFullAuthFailed'
-                : 'settings.integrityFullBroken')}</span>
+              <span>{t(fullVerify.ok ? 'settings.integrityFullOk' : 'settings.integrityFullBroken')}</span>
             </span>
           </div>
           <div className="text-redlog-text-dim">
@@ -99,6 +97,13 @@ export default function IntegrityPanel({ t }: { t: (key: string, vars?: Record<s
                 signed: String(fullVerify.signedCount),
                 unchecked: String((fullVerify.unsignedCount ?? 0) + (fullVerify.noPubKeyCount ?? 0))
               })}
+            </div>
+          )}
+          {fullVerify.authentication === 'failed' && (
+            <div className="text-amber-400 break-all">
+              <div>{t('settings.integrityFullAuthFailed')}</div>
+              {fullVerify.authenticationReasons?.map(r => <div key={r}>{r}</div>)}
+              {fullVerify.firstUncheckedEventId && <div>{fullVerify.firstUncheckedEventId}</div>}
             </div>
           )}
           {!fullVerify.ok && fullVerify.brokenAtEventId && (

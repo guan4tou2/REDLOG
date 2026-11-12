@@ -19,6 +19,8 @@ export interface FullVerifyResult {
   unsignedCount?: number
   noPubKeyCount?: number
   authentication?: 'verified' | 'none' | 'failed'
+  authenticationReasons?: string[]
+  firstUncheckedEventId?: string | null
   badSignatureAtEventId?: string | null
 }
 

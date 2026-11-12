@@ -395,7 +395,10 @@ describe('golden evidence vectors: tools/redlog-verify.py and the app agree', ()
 })
 
 describe('the Integrity walk over the project database agrees', () => {
-  const category = (w: typeof walkA): VerifyCategory => !w.ok ? 'failed' : w.authentication === 'none' ? 'notAuthenticated' : 'verified'
+  // ok is the chain's integrity; authentication is judged beside it. The
+  // bundle verifier folds both into one category, so this does too.
+  const category = (w: typeof walkA): VerifyCategory =>
+    !w.ok || w.authentication === 'failed' ? 'failed' : w.authentication === 'none' ? 'notAuthenticated' : 'verified'
   it('signed project: verified, as its bundle', () => {
     expect(category(walkA)).toBe('verified')
     expect(walkA.signedCount).toBe(walkA.walked)
@@ -407,8 +410,12 @@ describe('the Integrity walk over the project database agrees', () => {
   it('an unsigned row in a signed chain fails, as its bundle does', () => {
     expect(category(walkC)).toBe('failed')
     expect(walkC.authentication).toBe('failed')
+    // the chain itself is intact; only authentication fails
+    expect(walkC.ok).toBe(true)
     expect(walkC.brokenAtEventId).toBeNull()
-    expect(walkC.brokenReason).toMatch(/1 event\(s\) carry no signature although signing was in use/)
+    expect(walkC.brokenReason).toBeNull()
+    expect(walkC.authenticationReasons.join('; ')).toMatch(/1 event\(s\) carry no signature although signing was in use/)
+    expect(walkC.firstUncheckedEventId).toEqual(expect.any(String))
   })
   it('a signer key swapped in the database fails, as a swapped operators.json does', () => {
     expect(category(walkWrongKey)).toBe('failed')
