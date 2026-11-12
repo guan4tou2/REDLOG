@@ -138,6 +138,18 @@ export function initDB(projectDir: string): Database.Database {
   db = new Database(dbPath)
 
   db.pragma('journal_mode = WAL')
+  // Spec 071 FR-032/FR-062: a producer is told `accepted`, and deletes its
+  // handoff file, only after the commit. FULL syncs the WAL on every commit, so
+  // that commit survives an OS crash as well as an app crash; NORMAL, which
+  // better-sqlite3 builds in as the WAL default, syncs only at checkpoints and
+  // can lose the newest commits. Set explicitly, before the first write: SQLite
+  // keeps an explicit setting when it finds the file in WAL mode.
+  // `fullfsync` stays off: on macOS a plain fsync does not flush the drive's
+  // cache, so a power cut can still take the newest commits, but F_FULLFSYNC
+  // measured ~6 ms a commit, 18-24x today (spec 071 Q6).
+  // Only this writer: the read-only connections never commit, and the derived
+  // indexes (http-body-index.db, cast index) are rebuilt from evidence.
+  db.pragma('synchronous = FULL')
   restrictFile(`${dbPath}-wal`)
   restrictFile(`${dbPath}-shm`)
   db.pragma('foreign_keys = ON')

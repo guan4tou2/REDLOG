@@ -36,6 +36,13 @@ Every rule below is one of these two applied somewhere specific.
 A source's progress marker — a cursor, a count, an index of processed files —
 may advance past an item only after that item's event is durably written.
 
+"Durably written" means committed on the project database's writer
+connection, which runs WAL with `synchronous = FULL`: the WAL is synced after
+every commit. A committed event survives an app crash and an OS crash. Across
+a power loss it survives on Linux and Windows when the drive honours a flush;
+on macOS it may not, because `fsync()` there does not flush the drive's write
+cache and `fullfsync` is off (spec 071 FR-062, Q6).
+
 1. **Commit after the write, not before.** A marker written first turns a failed
    or interrupted write into a permanent skip: the source looks healthy and the
    item never appears.

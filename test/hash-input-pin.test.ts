@@ -152,32 +152,84 @@ sqlite.describe('hash input of a chained row', () => {
   })
 })
 
-// FR-062 relies on every commit reaching the disk before the API answers
-// (spec.md "SQLite 維持 WAL 且每次 commit 同步落盤"). Nothing in db/index.ts sets
-// `synchronous`; it is whatever the connection starts with.
+// FR-032 / FR-062: `accepted` is answered, and a handoff file deleted, only
+// after the row's commit has been synced (spec 071 Q6, owner's answer). That is
+// `synchronous = FULL` on the writer connection, set by initDB.
+//
+// Why each case writes before it reads the pragma: better-sqlite3 compiles
+// SQLite with SQLITE_DEFAULT_WAL_SYNCHRONOUS=1 (node_modules/better-sqlite3/
+// deps/defines.gypi), and SQLite drops a connection to that NORMAL default
+// when it first finds the file in WAL mode — unless the connection has set
+// `synchronous` explicitly. Read before a commit, the pragma can show a value
+// the commit will not use.
 sqlite.describe('PRAGMA synchronous on the project database', () => {
+  const FULL = 2
+  const NORMAL = 1
   let dir = ''
-  beforeAll(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-sync-')) })
-  afterAll(() => { dbMod.closeDB(); fs.rmSync(dir, { recursive: true, force: true }) })
-
-  // FINDING (Spec 071 T005): it is NORMAL, not FULL, on every project
-  // connection once it has written anything. better-sqlite3 compiles SQLite
-  // with SQLITE_DEFAULT_WAL_SYNCHRONOUS=1 (node_modules/better-sqlite3/deps/
-  // defines.gypi), and SQLite applies that default when the connection first
-  // opens the WAL — on its first write, which for a new project is the schema
-  // transaction inside initDB itself. db/index.ts:140 sets journal_mode = WAL
-  // and never sets `synchronous`. Under NORMAL a commit already acknowledged to
-  // a producer can be lost on power failure or an OS crash (not on an app
-  // crash). Flip both to `it` when db/index.ts sets `synchronous = FULL`.
-  it.fails('is FULL on a new project once it has been written to', () => {
-    dbMod.initDB(dir)
-    dbMod.getDB().prepare('SELECT COUNT(*) FROM events').get()
-    expect(dbMod.getDB().pragma('synchronous', { simple: true })).toBe(2)
+  let other = ''
+  const level = (db: { pragma: (s: string, o: { simple: true }) => unknown }): unknown => db.pragma('synchronous', { simple: true })
+  /** A commit on the writer connection. */
+  const write = (): void => {
+    dbMod.getDB().prepare('INSERT INTO bookmarks (id, title, created_at) VALUES (?, ?, ?)').run(crypto.randomUUID(), 'sync', Date.now())
+  }
+  beforeAll(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-sync-'))
+    other = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-sync-other-'))
+  })
+  afterAll(() => {
+    dbMod.closeDB()
+    fs.rmSync(dir, { recursive: true, force: true })
+    fs.rmSync(other, { recursive: true, force: true })
   })
 
-  it.fails('is FULL on a reopened project', () => {
+  it('is FULL on a new project once it has been written to', () => {
+    dbMod.initDB(dir)
+    write()
+    expect(level(dbMod.getDB())).toBe(FULL)
+  })
+
+  it('is FULL on a reopened project', () => {
     dbMod.closeDB()
     dbMod.initDB(dir)
-    expect(dbMod.getDB().pragma('synchronous', { simple: true })).toBe(2)
+    write()
+    expect(level(dbMod.getDB())).toBe(FULL)
+  })
+
+  it('is FULL after a project switch', () => {
+    dbMod.initDB(dir)
+    dbMod.initDB(other)
+    write()
+    expect(level(dbMod.getDB())).toBe(FULL)
+  })
+
+  // The readers never commit, so there is nothing for them to sync. They keep
+  // SQLite's WAL default; a reader at NORMAL is not a weaker guarantee.
+  it('leaves the read-only connections at the WAL default', () => {
+    dbMod.initDB(dir)
+    write()
+    const cached = dbMod.getReadonlyDB()
+    const fresh = dbMod.openReadOnlyDB()
+    try {
+      for (const ro of [cached, fresh]) {
+        expect((ro.prepare('SELECT COUNT(*) AS n FROM bookmarks').get() as { n: number }).n).toBeGreaterThan(0)
+        expect(level(ro)).toBe(NORMAL)
+      }
+      expect(level(dbMod.getDB())).toBe(FULL)
+    } finally { fresh.close() }
+  })
+
+  it("leaves the export worker's read-only connection at the WAL default", () => {
+    dbMod.initDB(dir)
+    write()
+    // The worker's own sequence (src/main/services/export-worker.ts).
+    dbMod.openReadonlyProjectDB(dir, 'eng-sync')
+    const db = dbMod.getDB()
+    expect(db.readonly).toBe(true)
+    db.exec('BEGIN')
+    try {
+      expect((db.prepare('SELECT COUNT(*) AS n FROM bookmarks').get() as { n: number }).n).toBeGreaterThan(0)
+      expect(level(db)).toBe(NORMAL)
+    } finally { db.exec('ROLLBACK') }
+    dbMod.closeDB()
   })
 })
