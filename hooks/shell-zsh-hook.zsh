@@ -33,7 +33,7 @@ if ! _redlog_terminal_allowed; then
   add-zsh-hook precmd _redlog_refused_at_prompt
   return 0
 fi
-# Allowed after all (a re-source once the selection changed): the pending
+# Allowed after all (a re-source once the selection changed): the deferred
 # notice is no longer true.
 if (( ${+precmd_functions} )) && (( ${precmd_functions[(I)_redlog_refused_at_prompt]} )); then
   add-zsh-hook -d precmd _redlog_refused_at_prompt

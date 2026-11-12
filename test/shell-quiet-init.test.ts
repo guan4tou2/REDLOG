@@ -16,7 +16,9 @@ import { requires } from './helpers/requires'
 // itself says (`no job control`, `exit`, `logout`) is not counted as ours.
 
 const zsh = requires('zsh')
-const bash = requires('bash')
+// The rc-file adapters are POSIX-only; on Windows `bash` is Git Bash, which
+// this install path does not serve.
+const bash = requires('posix-shell')
 
 const REFUSED = '[redlog] this terminal is not recorded — RedLog is set to record only in'
 

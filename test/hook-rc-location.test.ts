@@ -18,7 +18,10 @@ import { requires } from './helpers/requires'
 // startup files and runs one command.
 
 const zsh = requires('zsh')
-const bash = requires('bash')
+// rc-file install is POSIX-only (hooks-manager refuses it on Windows, where
+// Git Bash also answers to `bash`), so the requirement is the platform's shell
+// model, not the binary.
+const bash = requires('posix-shell')
 
 let home: string
 let hooks: typeof import('../src/core/hooks-manager')
