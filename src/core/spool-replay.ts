@@ -39,7 +39,7 @@ export interface SpoolReplayEvent {
 }
 
 /** Why a file was set aside or dropped (Spec 071 FR-050 / FR-066). */
-export type QuarantineReason = 'malformed' | 'kind-not-allowed' | 'no-project' | 'legacy-bad' | 'failed'
+export type QuarantineReason = 'malformed' | 'kind-not-allowed' | 'no-project' | 'legacy-bad' | 'failed' | 'pause-end-unknown'
 
 /** What became of one replayed event, as the emitter reports it.
  *
@@ -62,7 +62,7 @@ export type FileOutcome = 'ingested' | 'deferred' | 'quarantined' | 'dropped'
 type FileAction =
   | { kind: 'unlink' }
   /** Already moved into `_unknown` before it was counted: see moveUnknownFirst. */
-  | { kind: 'moved' }
+  | { kind: 'moved'; to: string }
   | { kind: 'quarantine'; dir: string; target: string; reason: QuarantineReason; detail: string }
 
 export interface PlannedFile {
@@ -165,10 +165,10 @@ export interface SpoolReplayOptions {
 }
 
 const INTENTIONAL_REASONS = new Set(['paused', 'terminal-not-recording'])
-/** Refused, and removed once counted: the intentional reasons, and a pause
- *  whose end the record does not show (counted as a loss, not as a pause). */
-const REFUSED_REASONS = new Set([...INTENTIONAL_REASONS, 'pause-end-unknown'])
-const QUARANTINE_REASONS = new Set<string>(['malformed', 'kind-not-allowed', 'no-project', 'legacy-bad', 'failed'])
+/** Kept in quarantine once counted. `pause-end-unknown` among them: observed
+ *  after a pause whose end the record does not show, so not written to the
+ *  record, but kept, and counted as a loss rather than as a pause. */
+const QUARANTINE_REASONS = new Set<string>(['malformed', 'kind-not-allowed', 'no-project', 'legacy-bad', 'failed', 'pause-end-unknown'])
 
 function countedOf(options: SpoolReplayOptions): (name: string) => boolean {
   const countedAs = options.countedAs
@@ -232,7 +232,7 @@ const BACKOFF_MAX_MS = 30 * 60_000
 const MAX_ATTEMPTS = 5
 
 /** Move `file` into `dir` as `<reason>--<name>`, with a `.why` beside it. */
-function moveIntoQuarantine(file: string, dir: string, target: string, reason: QuarantineReason, detail: string, now: number): boolean {
+function moveIntoQuarantine(file: string, dir: string, target: string, reason: QuarantineReason, detail: string, now: number): string | null {
   try {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
     let to = path.join(dir, `${reason}${SEPARATOR}${target}`)
@@ -240,10 +240,29 @@ function moveIntoQuarantine(file: string, dir: string, target: string, reason: Q
     const destination = to
     retryBusy(() => fs.renameSync(file, destination))
     try { fs.writeFileSync(`${destination}${WHY_SUFFIX}`, JSON.stringify({ reason, detail, at: now, receiver: RECEIVER }), { mode: 0o600 }) } catch { /* the name still says why */ }
-    return true
+    return destination
   } catch {
-    return false
+    return null
   }
+}
+
+/** Put back files moved ahead of a count that was not written (the gap row
+ *  failed, or recording paused before the drain could commit), so they are
+ *  where their outcome says — waiting — and the next drain counts them. What
+ *  cannot be put back stays in quarantine, uncounted. */
+export function unmoveSpoolFiles(files: readonly PlannedFile[]): Record<string, FileOutcome> {
+  const out: Record<string, FileOutcome> = {}
+  for (const { file, name, action } of files) {
+    if (action.kind !== 'moved') { out[name] = 'deferred'; continue }
+    try {
+      retryBusy(() => fs.renameSync(action.to, file))
+      try { fs.unlinkSync(`${action.to}${WHY_SUFFIX}`) } catch { /* none */ }
+      out[name] = 'deferred'
+    } catch {
+      out[name] = 'quarantined'
+    }
+  }
+  return out
 }
 
 /** A file whose owner cannot be read is moved into `_unknown` BEFORE it is
@@ -254,7 +273,8 @@ function moveIntoQuarantine(file: string, dir: string, target: string, reason: Q
  *  every project; one moved whose gap row then fails is kept in `_unknown` but
  *  not counted (Spec 071 FR-066). */
 function moveUnknownFirst(file: string, dir: string, target: string, reason: QuarantineReason, detail: string, now: number): PlannedFile['action'] | null {
-  return moveIntoQuarantine(file, dir, target, reason, detail, now) ? { kind: 'moved' } : null
+  const to = moveIntoQuarantine(file, dir, target, reason, detail, now)
+  return to ? { kind: 'moved', to } : null
 }
 
 /** Groups what is to be counted by reason. */
@@ -616,8 +636,8 @@ export function replaySpoolDirectory(
     // must not also become a row — only that step is retried.
     const countedAs = options.countedAs?.(name) ?? null
     if (countedAs !== null) {
-      if (REFUSED_REASONS.has(countedAs)) {
-        plan.add(countedAs, INTENTIONAL_REASONS.has(countedAs), 'this', at, { file, name, action: { kind: 'unlink' } })
+      if (INTENTIONAL_REASONS.has(countedAs)) {
+        plan.add(countedAs, true, 'this', at, { file, name, action: { kind: 'unlink' } })
         result.outcomes[name] = 'dropped'
       } else {
         setAside(file, name, stat.size, QUARANTINE_REASONS.has(countedAs) ? countedAs as QuarantineReason : 'failed', 'counted earlier; the move did not happen then', 'this', at)
@@ -653,8 +673,12 @@ export function replaySpoolDirectory(
       setAside(file, name, stat.size, decided.reason, decided.detail, 'this', at)
       continue
     }
+    if (decided.outcome === 'rejected' && decided.reason === 'pause-end-unknown') {
+      setAside(file, name, stat.size, 'pause-end-unknown', 'observed after a pause whose end was not recorded; recording may have resumed', 'this', at)
+      continue
+    }
     if (decided.outcome === 'rejected') {
-      plan.add(decided.reason, INTENTIONAL_REASONS.has(decided.reason), 'this', at, { file, name, action: { kind: 'unlink' } })
+      plan.add(decided.reason, true, 'this', at, { file, name, action: { kind: 'unlink' } })
       result.outcomes[name] = 'dropped'
       continue
     }

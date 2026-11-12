@@ -28,7 +28,10 @@
 //     been written yet. Files the answer bears on wait.
 //   - 'recording': anything else.
 
-import { dbOpenedAt, getDB } from './db/index'
+import fs from 'fs'
+import path from 'path'
+import { dbGeneration, dbOpenedAt, getDB, getProjectDir } from './db/index'
+import { writePrivateFileAtomic } from './private-fs'
 import { recordingStateRows } from './db/events'
 import { noteDbError } from './capture-health'
 
@@ -46,16 +49,73 @@ export interface RecordedPauses {
 /** Markers of this session whose write failed and is being retried. */
 const pending = new Map<object, { at: number; opened: number }>()
 
-/** Note that the marker for a toggle at `at` is not written yet. Returns the
- *  call that says it is settled (written, or given up with its project). */
-export function markerPending(at: number): () => void {
+/** A marker as main writes it, kept beside the project database while its
+ *  write keeps failing, so a quit does not lose it (Spec 071 FR-082). */
+export interface PersistedMarker {
+  subtype: 'recording_paused' | 'recording_resumed'
+  at: number
+  data: Record<string, unknown>
+}
+
+const PENDING_FILE = 'recording-markers-pending.json'
+
+function pendingFile(): string | null {
+  try { return path.join(getProjectDir(), PENDING_FILE) } catch { return null }
+}
+
+function readPersisted(file: string): PersistedMarker[] {
+  let parsed: unknown
+  try { parsed = JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return [] }
+  if (!Array.isArray(parsed)) return []
+  return parsed.filter((m): m is PersistedMarker =>
+    !!m && (m.subtype === 'recording_paused' || m.subtype === 'recording_resumed') &&
+    typeof m.at === 'number' && Number.isFinite(m.at) && !!m.data && typeof m.data === 'object')
+}
+
+function writePersisted(file: string, markers: PersistedMarker[]): void {
+  if (markers.length === 0) { try { fs.unlinkSync(file) } catch { /* none */ } return }
+  writePrivateFileAtomic(file, JSON.stringify(markers))
+}
+
+const sameMarker = (a: PersistedMarker, b: PersistedMarker): boolean => a.subtype === b.subtype && a.at === b.at
+
+/** Note that the marker for a toggle at `at` is not written yet; with
+ *  `record`, keep it on disk too. Returns the call that takes it off the
+ *  in-memory list (written, or given up with its project — the disk copy then
+ *  waits for the project's next open). */
+export function markerPending(at: number, record?: PersistedMarker): () => void {
   const key = {}
-  pending.set(key, { at, opened: dbOpenedAt() })
+  pending.set(key, { at, opened: dbGeneration() })
+  const file = record ? pendingFile() : null
+  if (record && file) {
+    try {
+      const kept = readPersisted(file)
+      if (!kept.some((m) => sameMarker(m, record))) writePersisted(file, [...kept, record])
+    } catch (error) { noteDbError('recording-marker', error) }
+  }
   return () => { pending.delete(key) }
 }
 
+/** The marker is in the chain: forget its disk copy. */
+export function markerLanded(record: PersistedMarker): void {
+  const file = pendingFile()
+  if (!file) return
+  try {
+    const kept = readPersisted(file)
+    const rest = kept.filter((m) => !sameMarker(m, record))
+    if (rest.length !== kept.length) writePersisted(file, rest)
+  } catch (error) { noteDbError('recording-marker', error) }
+}
+
+/** Markers an earlier open could not write, oldest first. Main writes each at
+ *  its own time when the project opens, before the drain can run. */
+export function persistedMarkers(): PersistedMarker[] {
+  const file = pendingFile()
+  return file ? readPersisted(file).sort((a, b) => a.at - b.at) : []
+}
+
 function pendingFrom(): number | null {
-  const opened = dbOpenedAt()
+  const opened = dbGeneration() // the database this is, not when it opened: two can open in one ms
   let from: number | null = null
   for (const [key, entry] of pending) {
     if (entry.opened !== opened) { pending.delete(key); continue } // another database's
@@ -88,9 +148,13 @@ function pausesFromRecord(record: PauseRecord, sessionOpenedAt: number, pendingS
   for (const row of record.markers) {
     if (row.subtype === 'recording_paused') {
       if (paused === null) { paused = row.timestamp; continue }
-      // A second pause with no resume between: the resume was lost.
+      // A second pause with no resume between: the resume was lost. What lies
+      // in an ended open is a loss; from this open's start on, it waits.
       if (paused >= sessionOpenedAt) unknownSince ??= paused
-      else if (row.timestamp > paused) spans.push({ start: paused, end: row.timestamp, state: 'pause-end-unknown' })
+      else if (row.timestamp >= sessionOpenedAt) {
+        spans.push({ start: paused, end: sessionOpenedAt, state: 'pause-end-unknown' })
+        unknownSince ??= sessionOpenedAt
+      } else if (row.timestamp > paused) spans.push({ start: paused, end: row.timestamp, state: 'pause-end-unknown' })
       paused = row.timestamp
     } else if (row.subtype === 'recording_resumed' && paused !== null) {
       const resumed = row.timestamp

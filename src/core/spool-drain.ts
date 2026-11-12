@@ -30,7 +30,7 @@
 // of a loss is never refused as paused.
 
 import {
-  replaySpoolDirectory, migrateLegacySpoolFiles, applySpoolActions, QuarantineLedger,
+  replaySpoolDirectory, migrateLegacySpoolFiles, applySpoolActions, unmoveSpoolFiles, QuarantineLedger,
   type PlannedFile, type SpoolLoss, type SpoolOutcome, type SpoolReplayEvent, type SpoolReplayOptions, type SpoolReplayResult
 } from './spool-replay'
 import { isKindAllowed } from './external-event-policy'
@@ -100,7 +100,9 @@ export class SpoolDrainSession {
   /** Write each gap row; apply its files' plan only once the row is there.
    *  Returns what each counted file became. While recording is paused nothing
    *  is written or moved: the plan is dropped and every file stays, to be
-   *  judged again by a drain after the pause. */
+   *  judged again by a drain after the pause. A file whose owner cannot be
+   *  read was moved ahead of its count; when the count is not written it is
+   *  put back (unmoveSpoolFiles), so it is counted once, by a later drain. */
   commit(): Record<string, 'quarantined' | 'dropped' | 'deferred'> {
     const out: Record<string, 'quarantined' | 'dropped' | 'deferred'> = {}
     const groups = [...this.groups.values()]
@@ -108,7 +110,8 @@ export class SpoolDrainSession {
     this.groups.clear()
     this.retries = []
     if (eventBus.paused) {
-      for (const f of [...groups.flatMap((g) => g.files), ...retries]) out[f.name] = 'deferred'
+      for (const f of retries) out[f.name] = 'deferred'
+      Object.assign(out, unmoveSpoolFiles(groups.flatMap((g) => g.files)))
       return out
     }
     Object.assign(out, applySpoolActions(retries))
@@ -120,7 +123,7 @@ export class SpoolDrainSession {
           for (const f of files) this.counted?.set(f.name, loss.reason)
           Object.assign(out, applySpoolActions(files))
         } else {
-          for (const f of files) out[f.name] = 'deferred'
+          Object.assign(out, unmoveSpoolFiles(files))
         }
       })
     }
@@ -216,9 +219,10 @@ export function drainSpoolOnce(
     // pause the record has not closed: one that reaches into it waits.
     let data: Record<string, unknown> | null = spooled
     if (isPauseJudgedGap(spooled)) {
-      const start = Number(spooled.gap_started_at)
       const end = Number(spooled.gap_ended_at ?? spooled.gap_started_at)
-      if (Number.isFinite(start) && Number.isFinite(end) && reachesUnknown(pauses, start, end)) return false
+      const given = Number(spooled.gap_started_at)
+      const start = Number.isFinite(given) ? given : end
+      if (Number.isFinite(end) && reachesUnknown(pauses, start, end)) return false
       data = queueGapAgainstPauses(spooled, pausedIntervals(pauses))
     }
     if (!data) return true
@@ -267,10 +271,8 @@ export function drainSpoolOnce(
 /** Words for the gap row. The row carries the numbers; this is what a reader
  *  of the Timeline or an export sees without opening it. */
 function describeLoss(loss: SpoolLoss): string {
-  if (loss.reason === 'pause-end-unknown') {
-    return `${loss.count} spooled event(s) not recorded: observed after a pause whose end was not recorded — recording may have resumed; content not kept`
-  }
   const what = loss.reason === 'paused' ? 'observed while recording was paused'
+    : loss.reason === 'pause-end-unknown' ? 'observed after a pause whose end was not recorded — recording may have resumed'
     : loss.reason === 'terminal-not-recording' ? 'from a terminal that was not recording'
     : loss.reason === 'kind-not-allowed' ? 'named a kind the spool may not write'
     : loss.reason === 'malformed' ? 'could not be read'

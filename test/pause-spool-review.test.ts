@@ -202,7 +202,9 @@ sqlite.describe('the pause rule and the spool drain after review', () => {
     expect(commands()).toEqual(['typed-after-the-reopen'])
     // Spec 071 FR-082 (review round 3): the record does not show the pause
     // ending, so the operator may have resumed and the marker been lost.
-    expect(gaps()).toEqual([expect.objectContaining({ reason: 'pause-end-unknown', intentional: false, skipped_units: 1 })])
+    // Not written to the record; kept in quarantine (coordinator's ruling).
+    expect(gaps()).toEqual([expect.objectContaining({ reason: 'pause-end-unknown', intentional: false, skipped_units: 1, quarantined: 1 })])
+    expect(walk(spool).filter((n) => !n.endsWith('.why'))).toEqual([`quarantine/${ENG}/pause-end-unknown--0001.json`])
   })
 
   sqlite.it('F4: when the gap row cannot be committed, the file it counts stays where it is', () => {

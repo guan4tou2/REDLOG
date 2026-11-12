@@ -60,7 +60,7 @@ import {
   killAllTerminals, detachTerminalRecordings, resumeTerminalRecordings, setTerminalWindow, configureTerminal, configureTerminalProxy, recoverOrphanSessions, discoverShells,
   getCastPosition, listTerminals, countProxiedTerminals
 } from './terminal-manager'
-import { markerForOpen, writeMarkerWithRetry } from '../core/recording-state-marker'
+import { markerForOpen, writeMarkerWithRetry, writePersistedMarkers } from '../core/recording-state-marker'
 import { quitImpact, quitDialog, defaultQuitText, parseQuitText, allowQuit, isQuitAllowed, type QuitText } from './quit-guard'
 import { runPreflight, type PreflightCommand } from '../core/runtime-preflight'
 import { readExecutionPolicy } from '../core/powershell-policy'
@@ -174,6 +174,14 @@ const dependencyInstalls = new Map<PreflightCommand, AbortController>()
 // nothing here writes. And it is which project is open: `project()`, where a
 // module variable of its own used to be set and cleared at moments of its own.
 const projectRuntime = new ProjectRuntime()
+
+/** A `recording_paused` / `recording_resumed` row: the whole record of a pause.
+ *  Bypasses the paused gate (system rows always land). `occurredAt` for a
+ *  retry, or a marker carried from an earlier open, so it lands at the toggle. */
+function writeRecordingMarker(context: NonNullable<ReturnType<typeof projectRuntime.current>>, data: Record<string, unknown>, occurredAt?: number): void {
+  const ev = insertEvent('system', data, occurredAt === undefined ? context : { ...context, occurredAt })
+  if (ev) eventBus.publish(ev, { bypassPause: true })
+}
 // One for the process, so concurrent API bundle requests queue across opens.
 const apiBundleExporter = createDirectBundleExporter(runExportTask, () => projectRuntime.project())
 
@@ -1030,22 +1038,24 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
   // Pause lives in memory, not in the project: say in this record what it
   // would otherwise leave unexplained (see core/recording-state-marker).
   // A marker that fails to write must not stop the project opening; it is
-  // reported and retried like a toggle's (the spool drain reads it).
+  // reported and retried like a toggle's (the spool drain reads it). First the
+  // markers an earlier open could not write, each at its own time — the drain
+  // starts on a later turn of the event loop, after these.
+  const markerRetry = {
+    onError: (error: unknown) => noteDbError('recording-marker', error),
+    schedule: (retry: () => void, ms: number) => projectRuntime.setTimeout(opening, retry, ms),
+    isCurrent: () => projectRuntime.isCurrent(opening)
+  }
+  writePersistedMarkers({ ...markerRetry, write: (marker) => writeRecordingMarker(opening, marker.data, marker.at) })
   let openMarker: ReturnType<typeof markerForOpen> = null
   try { openMarker = markerForOpen(eventBus.paused, lastRecordingSubtype()) } catch (error) { noteDbError('recording-marker', error) }
   if (openMarker) {
-    const marker = openMarker
     const at = Date.now()
-    writeMarkerWithRetry({
-      at,
-      write: (retry) => {
-        const ev = insertEvent('system', { subtype: marker.subtype, description: marker.description, source: marker.source }, retry ? { ...opening, occurredAt: at } : opening)
-        if (ev) eventBus.publish(ev, { bypassPause: true })
-      },
-      onError: (error) => noteDbError('recording-marker', error),
-      schedule: (retry, ms) => projectRuntime.setTimeout(opening, retry, ms),
-      isCurrent: () => projectRuntime.isCurrent(opening)
-    })
+    const record = {
+      subtype: openMarker.subtype, at,
+      data: { subtype: openMarker.subtype, description: openMarker.description, source: openMarker.source }
+    }
+    writeMarkerWithRetry({ ...markerRetry, at, record, write: (retry) => writeRecordingMarker(opening, record.data, retry ? at : undefined) })
   }
 
   // OPSEC air-gap: suppress every outbound request RedLog makes of its own —
@@ -1962,17 +1972,20 @@ app.whenReady().then(() => {
       // These two rows are the entire record of the gap, and the spool drain
       // reads them: one that fails is reported and retried at its own time.
       const at = Date.now()
+      const record = {
+        subtype: recording ? 'recording_resumed' as const : 'recording_paused' as const,
+        at,
+        data: {
+          subtype: recording ? 'recording_resumed' : 'recording_paused',
+          description: recording ? 'Recording resumed' : 'Recording paused',
+          // v0.9.5: who flipped it.
+          source: source || 'unknown'
+        }
+      }
       writeMarkerWithRetry({
         at,
-        write: (retry) => {
-          const ev = insertEvent('system', {
-            subtype: recording ? 'recording_resumed' : 'recording_paused',
-            description: recording ? 'Recording resumed' : 'Recording paused',
-            // v0.9.5: who flipped it.
-            source: source || 'unknown'
-          }, retry ? { ...open, occurredAt: at } : open)
-          if (ev) eventBus.publish(ev, { bypassPause: true })
-        },
+        record,
+        write: (retry) => writeRecordingMarker(open, record.data, retry ? at : undefined),
         onError: (error) => noteDbError('recording-marker', error),
         schedule: (retry, ms) => projectRuntime.setTimeout(open, retry, ms),
         isCurrent: () => projectRuntime.isCurrent(open)
