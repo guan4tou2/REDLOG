@@ -278,34 +278,64 @@ describeDB('ingest', () => {
     expect(result.event!.data.output_body).toBeUndefined()
   })
 
-  it('never saves delayed stream or inline bytes from a closed pause interval after resume', async () => {
-    const { eventBus } = await import('../src/core/event-bus')
-    const observedBeforeResume = Date.now() - 10000
-    eventBus.pause('api'); eventBus.resume('api')
+  // Spec 071 T015: delayed output is judged by when it was observed against the
+  // pause it may have been observed in — not refused for being older than the
+  // latest resume, which also refused output observed before the pause.
+  /** A recorded pause from t0+10 s to t0+20 s, a minute ago; returns t0. The
+   *  rows are placed with `occurredAt`, so the chain's receipt order is kept. */
+  let pauseSeq = 0
+  const closedPause = async (): Promise<number> => {
+    const t0 = Date.now() - 120_000 + (pauseSeq++) * 25_000
+    events.insertEvent('system', { subtype: 'recording_paused', source: 'test' }, { ...base, occurredAt: t0 + 10_000 })
+    events.insertEvent('system', { subtype: 'recording_resumed', source: 'test' }, { ...base, occurredAt: t0 + 20_000 })
+    return t0
+  }
+
+  it('never saves delayed stream or inline bytes observed inside a closed pause interval, and saves those observed before it', async () => {
+    const t0 = await closedPause()
     for (const subtype of ['command_output', 'session_output', 'command_end']) {
       const bytes = Buffer.from('private delayed ' + subtype)
+      const observedInside = t0 + 15_000
       const data = { subtype, command_id: 'closed-' + subtype, streamed: subtype === 'command_output', seq: 1,
-        source_timestamp: observedBeforeResume, output_started_at: observedBeforeResume,
+        source_timestamp: observedInside, output_started_at: observedInside,
         stdout: bytes.toString(), output_body: { data: bytes.toString('base64'), encoding: 'base64', size: bytes.length, sha256: '' } }
       const denied = ingestMod.ingest({ ...base, agentType: 'shell', data })
       expect(denied.skipped, subtype).toBe('paused')
       expect(fs.existsSync(path.join(tmpDir, 'http-bodies', crypto.createHash('sha256').update(bytes).digest('hex') + '.body'))).toBe(false)
     }
-    const accepted = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'session_output', terminalId: 'new-interval', stdout: 'after resume', source_timestamp: Date.now() + 1 } })
-    expect(accepted.event).not.toBeNull()
+    // A command end whose output began before the pause and ended inside it.
+    const spanning = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_end', command_id: 'spanning', stdout: 'x',
+      output_started_at: t0 + 5_000, source_timestamp: t0 + 12_000 } })
+    expect(spanning.skipped).toBe('paused')
+    const before = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'session_output', terminalId: 'before-pause', stdout: 'before the pause', source_timestamp: t0 + 5_000 } })
+    expect(before.event).not.toBeNull()
+    const after = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'session_output', terminalId: 'new-interval', stdout: 'after resume', source_timestamp: t0 + 25_000 } })
+    expect(after.event).not.toBeNull()
   })
 
-  it.each(['http_response_chunk', 'ws_message', 'tcp_message'])('refuses delayed %s bytes before creating any body sidecar', async (subtype) => {
-    const { eventBus } = await import('../src/core/event-bus')
-    eventBus.pause('api'); eventBus.resume('api')
+  it.each(['http_response_chunk', 'ws_message', 'tcp_message'])('refuses delayed %s bytes observed in a pause before creating any body sidecar', async (subtype) => {
+    const t0 = await closedPause()
     const bytes = Buffer.from('private SSE bytes')
     const before = fs.existsSync(path.join(tmpDir, 'http-bodies')) ? fs.readdirSync(path.join(tmpDir, 'http-bodies')).sort() : []
     const result = ingestMod.ingest({ ...base, agentType: 'scanner', data: {
-      subtype, flow_id: 'delayed-stream', source_timestamp: Date.now() - 10000,
+      subtype, flow_id: 'delayed-stream', source_timestamp: t0 + 15_000,
       response_body: { data: bytes.toString('base64'), encoding: 'base64', size: bytes.length }
     } })
     expect(result.skipped).toBe('paused')
     expect(fs.readdirSync(path.join(tmpDir, 'http-bodies')).sort()).toEqual(before)
+  })
+
+  it('writes an item observed before the pause in effect now, while it lasts', async () => {
+    const { eventBus } = await import('../src/core/event-bus')
+    const observedBefore = Date.now() - 5_000
+    eventBus.pause('api')
+    try {
+      const r = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'id', terminalId: 'pre-pause', pid: 31, source_timestamp: observedBefore } })
+      expect(r.event).not.toBeNull()
+      expect(r.event!.timestamp).toBe(observedBefore)
+    } finally {
+      eventBus.resume('api')
+    }
   })
 
   it('a paused recording writes nothing and derives nothing', async () => {

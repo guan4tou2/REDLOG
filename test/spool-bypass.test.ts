@@ -12,7 +12,8 @@
 // lastRecordingResumeTime() and with it the pause gate for delayed output.
 //
 // Phase 2 (T010) routes the spool through the same per-source kind policy and
-// quarantines the file; then the `it.fails` below becomes `it`.
+// quarantines the file (src/core/spool-drain.ts, `legacy-handoff`); the test
+// below was `it.fails` until then.
 
 import fs from 'node:fs'
 import os from 'node:os'
@@ -74,10 +75,13 @@ sqlite.describe('a spool file naming a kind the API refuses', () => {
     expect(policy.isExternalEventAllowed('system', forged)).toBe(false)
   })
 
-  sqlite.it.fails('is not written to the chain by the spool drain', () => {
-    writeSpool()
+  sqlite.it('is not written to the chain by the spool drain', () => {
+    const file = writeSpool()
     const run = drain.drainSpoolAsMain(spool, { engagementId: ENG, operatorId: OP })
-    expect(run?.invalid).toBe(0)
     expect(chainedForged(), 'a system row the API would refuse reached the chain through the spool').toEqual([])
+    // Not written, not deleted: set aside under its reason (T010).
+    expect(run?.invalid).toBe(1)
+    expect(fs.existsSync(file)).toBe(false)
+    expect(fs.readdirSync(path.join(spool, 'quarantine')).sort()).toEqual(['kind-not-allowed--0001-forged.json', 'kind-not-allowed--0001-forged.json.why'])
   })
 })

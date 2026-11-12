@@ -22,7 +22,7 @@ describe('spool replay isolation', () => {
     const d = dir(); const file = write(d, 'secret-a', 'project-a'); const before = fs.readFileSync(file)
     const emitted: SpoolReplayEvent[] = []
     expect(replaySpoolDirectory(d, { engagementId: 'project-b', operatorId: 'op-b' }, e => { emitted.push(e); return true }))
-      .toEqual({ replayed: 0, deferred: 1, unattributed: 0, invalid: 0, last: 'secret-a.json' })
+      .toEqual({ replayed: 0, deferred: 1, unattributed: 0, invalid: 0, failed: 0, last: 'secret-a.json', losses: [] })
     expect(emitted).toEqual([])
     expect(fs.readFileSync(file)).toEqual(before)
   })
@@ -31,7 +31,7 @@ describe('spool replay isolation', () => {
     const d = dir(); const file = write(d, 'secret-a', 'project-a'); const emitted: SpoolReplayEvent[] = []
     replaySpoolDirectory(d, { engagementId: 'project-b', operatorId: 'op-b' }, e => { emitted.push(e); return true })
     expect(replaySpoolDirectory(d, { engagementId: 'project-a', operatorId: 'op-new' }, e => { emitted.push(e); return true }))
-      .toEqual({ replayed: 1, deferred: 0, unattributed: 0, invalid: 0, last: 'secret-a.json' })
+      .toEqual({ replayed: 1, deferred: 0, unattributed: 0, invalid: 0, failed: 0, last: 'secret-a.json', losses: [] })
     expect(emitted[0]).toMatchObject({ engagementId: 'project-a', operatorId: 'op-a', data: { command: 'secret-a', recovered_from_spool: true } })
     expect(fs.existsSync(file)).toBe(false)
   })
@@ -40,16 +40,17 @@ describe('spool replay isolation', () => {
     const d = dir(); const file = write(d, 'unknown')
     const emitted: SpoolReplayEvent[] = []
     expect(replaySpoolDirectory(d, { engagementId: 'project-b', operatorId: 'op-b' }, e => { emitted.push(e); return true }))
-      .toEqual({ replayed: 0, deferred: 0, unattributed: 1, invalid: 0, last: 'unknown.json' })
+      .toEqual({ replayed: 0, deferred: 0, unattributed: 1, invalid: 0, failed: 0, last: 'unknown.json', losses: [] })
     expect(emitted).toEqual([])
     expect(fs.existsSync(file)).toBe(false)
-    expect(fs.existsSync(`${file}.unattributed`)).toBe(true)
+    // Spec 071 T012: set aside in the quarantine, under its reason.
+    expect(fs.existsSync(path.join(d, 'quarantine', 'no-project--unknown.json'))).toBe(true)
   })
 
   it('keeps an attributable item pending until the write is accepted', () => {
     const d = dir(); const file = write(d, 'during-pause', 'project-a')
     expect(replaySpoolDirectory(d, { engagementId: 'project-a', operatorId: 'op-a' }, () => false))
-      .toEqual({ replayed: 0, deferred: 1, unattributed: 0, invalid: 0, last: 'during-pause.json' })
+      .toEqual({ replayed: 0, deferred: 1, unattributed: 0, invalid: 0, failed: 0, last: 'during-pause.json', losses: [] })
     expect(fs.existsSync(file)).toBe(true)
   })
 })
@@ -88,6 +89,10 @@ describe('resuming a replay after a name', () => {
     write(d, 'a-other', 'project-b')
     write(d, 'b-nobody')
     fs.writeFileSync(path.join(d, 'c-garbage.json'), '{')
+    // Written an hour ago: a younger unparseable file may still be being
+    // written, and is retried instead (test/spool-quarantine.test.ts).
+    const hourAgo = (Date.now() - 3600_000) / 1000
+    fs.utimesSync(path.join(d, 'c-garbage.json'), hourAgo, hourAgo)
     write(d, 'd-mine', 'project-a')
     const emitted: SpoolReplayEvent[] = []
     const emit = (e: SpoolReplayEvent): boolean => { emitted.push(e); return true }

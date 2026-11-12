@@ -8,9 +8,12 @@ export type RecordingToggleSource = 'ui' | 'api' | 'mcp' | 'unknown'
 
 class RedLogEventBus extends EventEmitter {
   private _paused = false
+  private _pausedAt = 0
   private _resumedAt = 0
 
   get paused(): boolean { return this._paused }
+  /** When the latest pause began, ms since the epoch; 0 before any. */
+  get pausedAt(): number { return this._pausedAt }
   get resumedAt(): number { return this._resumedAt }
 
   // v0.9.5: `source` rides along so the recording_paused / recording_resumed
@@ -22,6 +25,7 @@ class RedLogEventBus extends EventEmitter {
   pause(source: RecordingToggleSource = 'unknown'): void {
     if (this._paused) return
     this._paused = true
+    this._pausedAt = Date.now()
     this.emit('recording', false, source)
   }
 

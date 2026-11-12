@@ -18,10 +18,9 @@ import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir, bindDBEngagement } from '../core/db/index'
 import { restrictRedlogHome } from '../core/private-fs'
 import { restrictProjectDirs } from './project-dir-modes'
-import { insertEvent, queryEvents, queryEventById, getLootCount, lastRecordingSubtype, recordingStateRows, type RedLogEvent } from '../core/db/events'
+import { insertEvent, queryEvents, queryEventById, getLootCount, lastRecordingSubtype, type RedLogEvent } from '../core/db/events'
 import { pivotsMayChange, type LastPivotAnswer } from './pivot-refresh'
 import { readActivePivots, type ActivePivot } from './active-pivots'
-import { isPauseJudgedGap, pauseIntervals, queueGapAgainstPauses } from '../core/queue-gap'
 import { inflightMarkerDirectory, reapInflightMarkers } from '../core/inflight-marker'
 import {
   createBookmark, updateBookmark, getBookmark, listBookmarks, deleteBookmark, egressContext
@@ -83,7 +82,7 @@ import { configureAgentTailer, stopAgentTailer, describeAgentSources } from './s
 import { readHookConfig, saveHookConfig } from './services/hook-config'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
 import { initPlugins, listPlugins } from '../core/plugins'
-import { configureIngest, ingest, ingestEvent } from '../core/ingest'
+import { configureIngest, ingestEvent } from '../core/ingest'
 import { resetCausesResolver } from '../core/causes-resolver'
 import { setTailerContributionSink, type TailerLike } from '../core/plugins/tailer-registry'
 import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, registerSessionId, getRegisteredSessions, listAgentSessions, type TailerAdapter } from './services/tailer-host'
@@ -103,7 +102,8 @@ import { backfillCastIndex, closeCastIndex } from '../core/cast-index'
 import { ProjectRuntime, type ProjectContext } from '../core/project-runtime'
 import { applyOperatorChange } from './operator-change'
 import { closeHttpBodyIndex } from '../core/http-body-index'
-import { drainInSlices, replaySpoolDirectory } from '../core/spool-replay'
+import { startSpoolDrain } from '../core/spool-replay'
+import { drainSpoolOnce } from '../core/spool-drain'
 import { writeActiveIdentity } from '../core/active-identity'
 import { registerContextMenuIpc } from './context-menu'
 import { registerClipboardIpc } from './ipc/clipboard'
@@ -926,52 +926,26 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
 
     // Replay only records belonging to the active engagement. Mismatches remain
     // recoverable on disk and are picked up when their owning project opens.
+    // What a file becomes — written, quarantined, counted — is decided in
+    // core/spool-drain.ts, where the tests run the same code.
     const drainSpool = (limit = Number.POSITIVE_INFINITY, after = ''): string | null => {
       if (!projectRuntime.isCurrent(opening)) return null
-      if (eventBus.paused) return null
-      let pauses: ReturnType<typeof pauseIntervals> | null = null
-      const emit = ({ agentType, data: spooled, engagementId: spoolEngagement, operatorId: spoolOperator }: import('../core/spool-replay').SpoolReplayEvent): boolean => {
-        // A queue-full or proxy-stop gap is judged against the pauses before it
-        // lands: one counted entirely while paused is not a loss, and is done
-        // with (#460, #291).
-        const data = isPauseJudgedGap(spooled)
-          ? queueGapAgainstPauses(spooled, pauses ??= pauseIntervals(recordingStateRows()))
-          : spooled
-        if (!data) return true
-        // Through ingest(), like every other producer. This called insertEvent
-        // directly, so an event the hook had spooled because RedLog was
-        // unreachable skipped the entire pipeline: no causal links, no target
-        // extraction, no loot scan, no redaction spans, no scope verdict, and
-        // none of the housekeeping rules. Spooling is not rare — the built-in
-        // terminal sources its adapter into a fresh pty within a second of the
-        // pane opening, which is exactly when the API may not be up yet — so
-        // the events most likely to take this path were the ones arriving with
-        // the least processing.
-        const result = ingest({
-          agentType, data, engagementId: spoolEngagement, operatorId: spoolOperator,
-          envelope: { source: 'spool', mapper: { id: 'identity', version: '1' } }
-        })
-        if (result.event) return true
-        // No row, but handled: `plumbing` is deliberately never recorded and
-        // `dedup` means the row is already there. Both mean this file is done —
-        // returning false would keep it on disk and retry it every 30s forever.
-        // A pause is the one case worth keeping for later.
-        return result.skipped !== 'paused'
-      }
       // A proxy killed while it held events left a bound on disk (#291). Into
       // the spool with it, so its own project gets the gap and no other does.
       if (after === '') reapInflightMarkers(inflightMarkerDirectory(homedir()), pendingSpoolDirectory(homedir()))
-      const run = replaySpoolDirectory(pendingSpoolDirectory(homedir()), opening, emit, limit, after)
+      const run = drainSpoolOnce(pendingSpoolDirectory(homedir()), opening, limit, after)
       if (run.replayed > 0) console.log(`[hook-spool] replayed ${run.replayed} spooled event(s)`)
+      if (run.invalid > 0 || run.unattributed > 0) console.log(`[hook-spool] set aside ${run.invalid + run.unattributed} spooled file(s) in quarantine`)
       return run.last
     }
-    try { drainSpool() } catch (e) { console.error('[hook-spool] replay failed:', e) }
-
-    // The API shares this thread, so the periodic drain yields every ten files
-    // instead of holding it for all two hundred.
-    projectRuntime.setInterval(opening, drainInSlices({
-      drainOnce: drainSpool, total: 200, slice: 10, isCurrent: () => projectRuntime.isCurrent(opening)
-    }), 30_000)
+    // The API shares this thread, so no drain holds it: the open starts one
+    // that replays everything waiting ten files a turn once the open has
+    // returned, and every 30 s the same drain looks at up to two hundred more
+    // (Spec 071 FR-069; #291).
+    startSpoolDrain({
+      drainOnce: drainSpool, total: 200, slice: 10, isCurrent: () => projectRuntime.isCurrent(opening),
+      repeat: (tick) => projectRuntime.setInterval(opening, tick, 30_000)
+    })
 
     alertRuntime.start()
     startLinkMonitor()

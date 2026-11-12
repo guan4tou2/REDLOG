@@ -27,8 +27,10 @@
 //     (returns false) and retries it every 30 s, and the command_start already
 //     in the record never gets its end.
 //
-// Phase 2 (T015) judges by the persisted pause intervals; then both
-// `it.fails` below become `it`.
+// Phase 2 (T015) judges by the persisted pause intervals
+// (src/core/recording-state.ts) and the drain runs while paused; both tests
+// below were `it.fails` until then. The rule itself is property-tested in
+// test/pause-interval-property.test.ts.
 
 import fs from 'node:fs'
 import os from 'node:os'
@@ -102,7 +104,7 @@ sqlite.describe('the pause boundary on spool replay', () => {
   })
 
   // (a)
-  sqlite.it.fails('a crash during a pause: nothing the hook spooled inside the pause is replayed', () => {
+  sqlite.it('a crash during a pause: nothing the hook spooled inside the pause is replayed', () => {
     const pausedAt = T0 + 10 * SEC
     stateRow('recording_paused', pausedAt)
     // Typed while paused, with RedLog down: the hook could not POST, so it
@@ -121,10 +123,22 @@ sqlite.describe('the pause boundary on spool replay', () => {
     expect(run).not.toBeNull()
     const insidePause = shellRows().filter((r) => r.timestamp >= pausedAt)
     expect(insidePause, 'shell rows timestamped inside the pause reached the chain').toEqual([])
+    // Refused for good, not left to be retried; and counted, intentionally, in
+    // a chained gap row at the time they were observed (Spec 071 T011/T015).
+    expect(fs.readdirSync(spool)).toEqual([])
+    const gaps = (db.getDB().prepare(`SELECT timestamp, data, hash FROM events WHERE subtype = 'capture_gap'`).all() as Array<{ timestamp: number; data: string; hash: string | null }>)
+    expect(gaps.map((g) => ({ ...JSON.parse(g.data) as Record<string, unknown>, at: g.timestamp, chained: g.hash !== null })))
+      .toEqual([expect.objectContaining({ reason: 'paused', intentional: true, skipped_units: 2, at: typedAt, chained: true })])
+    // And a later drain, after the reopen marker, does not change its mind.
+    at(pausedAt + 61 * SEC)
+    events.insertEvent('system', { subtype: 'recording_resumed', source: 'project-open' }, opening)
+    spoolFile({ subtype: 'command_start', command: 'id', terminalId: 'tA', pid: 4242, command_id: 'cA2', source_timestamp: typedAt + 5 * SEC })
+    drain.drainSpoolAsMain(spool, opening)
+    expect(shellRows().filter((r) => r.timestamp >= pausedAt)).toEqual([])
   })
 
   // (b)
-  sqlite.it.fails('a command_end observed before a pause is written once recording has resumed', () => {
+  sqlite.it('a command_end observed before a pause is written once recording has resumed', () => {
     // Recorded live: the command starts at T0+1s.
     at(T0 + SEC)
     const start = ingest.ingest({ agentType: 'shell', engagementId: ENG, operatorId: OP,

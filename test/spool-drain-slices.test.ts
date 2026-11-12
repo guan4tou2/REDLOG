@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { drainInSlices, replaySpoolDirectory } from '../src/core/spool-replay'
+import { drainInSlices, replaySpoolDirectory, startSpoolDrain } from '../src/core/spool-replay'
 
 // The 30-second spool drain used to replay up to 200 files in one synchronous
 // call. At ~20 ms a file through ingest() that is a 4 s block of the main
@@ -145,5 +145,48 @@ describe('draining the spool in slices', () => {
     h.run()
     expect(h.emitted.map((e) => e.name)).toEqual(Array.from({ length: 15 }, (_, n) => `cmd-${n + 10}`))
     expect(fs.readdirSync(dir)).toHaveLength(10)
+  })
+})
+
+// Spec 071 T013 (FR-069): opening a project used to replay the whole spool in
+// one synchronous call before the open returned — however many files were
+// waiting, up to the hooks' 5000. The open now starts the same sliced drain on
+// a later turn of the event loop and lets it run to the end, ten at a time, and
+// the 30 s tick shares it: one is a no-op while the other is working.
+describe('the drain a project open starts', () => {
+  let dir: string
+  beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-spool-open-')) })
+  afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }) })
+
+  it('replays nothing during the open, then everything waiting, never more than ten in one turn', () => {
+    for (let n = 0; n < 230; n++) {
+      fs.writeFileSync(path.join(dir, `${String(n).padStart(4, '0')}.json`), JSON.stringify({
+        agent_type: 'shell', data: { command: `cmd-${n}` }, _identity: ACTIVE
+      }))
+    }
+    const queue: Array<() => void> = []
+    let turn = 0
+    const emitted: number[] = []
+    let repeat: (() => void) | null = null
+    startSpoolDrain({
+      drainOnce: (limit, after) => replaySpoolDirectory(dir, ACTIVE, () => { emitted.push(turn); return true }, limit, after).last,
+      total: 200, slice: 10, isCurrent: () => true,
+      schedule: (next) => { queue.push(next) },
+      repeat: (tick) => { repeat = tick }
+    })
+    expect(emitted, 'the open itself replays nothing').toEqual([])
+    for (turn = 1; queue.length > 0; turn++) queue.shift()!()
+    expect(emitted).toHaveLength(230)
+    const perTurn = new Map<number, number>()
+    for (const t of emitted) perTurn.set(t, (perTurn.get(t) ?? 0) + 1)
+    expect(Math.max(...perTurn.values())).toBe(10)
+    expect(fs.readdirSync(dir)).toEqual([])
+    expect(repeat).not.toBeNull()
+  })
+
+  it('is what the project open in main runs: no synchronous drain in the open', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'index.ts'), 'utf8')
+    expect(src).not.toMatch(/try \{ drainSpool\(\) \}/)
+    expect(src).toMatch(/startSpoolDrain\(\{\s*drainOnce: drainSpool,/)
   })
 })
