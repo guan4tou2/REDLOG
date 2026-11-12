@@ -5,6 +5,8 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Removed `redlog-share-worker/`. Nothing in the app called it, and the
+  Settings ▸ Cloud share page the README pointed to no longer exists.
 - Removed `hooks/vps-deploy.sh`. It was already disabled, but it still shipped
   in every package with the steps that copied the API token, which can read
   every event, export, sanitise and switch recording, to a remote host. Remote

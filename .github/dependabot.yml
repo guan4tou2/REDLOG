@@ -1,8 +1,7 @@
 version: 2
 
 updates:
-  # The app's own dependencies. redlog-share-worker/ has its own package.json
-  # and is not covered here.
+  # The app's own dependencies.
   - package-ecosystem: npm
     directory: /
     schedule:

@@ -138,10 +138,6 @@ export interface RedLogConfig {
     entropyThreshold: number
     minLength: number
   }
-  /** Cloud-share bundle backend (spec: docs/CLOUD_SHARE_BUNDLE.md).
-   *  Nothing here is auto-populated — the operator BYO-buckets by pointing at
-   *  their own redlog-share-worker deploy. Empty endpoint = fall back to the
-   *  local file:// stub uploader. */
   /** v0.6.92 W-project: file-watcher (chokidar). Opt-in — file activity is
    *  noisy without a well-scoped watchPaths list. Emits `file_transfer`
    *  events with subtype `file_created/modified/deleted`. */
