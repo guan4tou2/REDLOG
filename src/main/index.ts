@@ -1,5 +1,5 @@
-import { resolveAgentCapture, agentTranscriptRoot } from '../core/agent-capture-policy'
 import { createOfficialAgentPluginManager } from '../core/plugins/official-agents'
+import { createConfigApplier } from './config-apply'
 import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, dialog, screen, session, shell, protocol, powerMonitor } from 'electron'
 import { electronApp, is } from '@electron-toolkit/utils'
 import path from 'path'
@@ -11,7 +11,6 @@ import { createTray, refreshTrayMenu, setTrayRecording, setTrayText } from './tr
 import { AlertRuntime, type IPStatusShape } from './services/alert-runtime'
 import { exportableProfile, writeProfileFile } from '../core/profile-export'
 import { loadConfig, saveConfig, snapshotScope, readScopeFile, mergeInitialConfig, DEFAULT_CONFIG, RedLogConfig } from '../core/config'
-import { isPackMemberOn, isPackOn } from '../core/capture-packs'
 import { debugLog, debugLogPath, isDebugLogEnabled, setDebugLogEnabled } from '../core/debug-log'
 import { unsavedGapForProject } from '../core/unsaved-gap'
 import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
@@ -533,40 +532,78 @@ screenshotAgent.setWindowHider(async () => {
 })
 const lootDetector = new LootDetector()
 
-/** Start or stop every optional capture source from the project's packs
- *  (Spec 035): a pack runs only when the project turns it on and its bundled
- *  plugin is active. Called on project open, on config save, and when a pack
- *  plugin is enabled or disabled. Agent transcripts can hold unrelated work
- *  from the operator's home directory, so nothing here defaults a pack on. */
-function applyCapturePacks(cfg: RedLogConfig): void {
-  const plugins = listPlugins()
-  // Per member, not per pack: the pack switch is the preset and `packMembers`
-  // records where the operator departed from it. An operator who wants process
-  // and connection monitoring but not their clipboard sampled all day should
-  // not have to choose between all four and none.
-  const on = (member: Parameters<typeof isPackMemberOn>[1]): boolean => isPackMemberOn(cfg, member, plugins)
-  configureClipboardMonitor({ enabled: on('clipboard') })
-  void configureFileWatcher({ enabled: on('fileWatcher') })
-  configureConnectionMonitor({ enabled: on('connectionMonitor') })
-  configureProcessMonitor({ enabled: on('processMonitor') })
-  void configurePowershellTranscript({ enabled: on('powershellTranscript') })
-  const manager = createOfficialAgentPluginManager(path.join(homedir(), '.redlog', 'plugins'))
-  const catalog = manager.list()
-  const agents = resolveAgentCapture(cfg, catalog, plugins)
-  configureAgentTailer({
-    integrations: agents.flatMap(a => {
-      const entry = catalog.find(p => p.agentKind === a.agentKind)!
-      const modulePath = manager.modulePath(a.agentKind)
-      return modulePath ? [{ agentKind: a.agentKind, modulePath, root: agentTranscriptRoot(entry, homedir(), cfg.agentTailer?.sources?.[a.agentKind]) }] : []
-    }),
-    enabled: agents.length > 0, enabledAgents: agents.map(a => a.agentKind),
-    ...(projectRuntime.current() ? { identity: projectRuntime.current()! } : {}), emitThinking: cfg.agentTailer?.emitThinking ?? false,
-    watchPathsByAgent: Object.fromEntries(agents.map(a => [a.agentKind, a.workPaths])),
-    activationStarts: Object.fromEntries(agents.map(a => [a.agentKind, a.startedAt])),
-    excludedSessionsByAgent: Object.fromEntries(agents.map(a => [a.agentKind, cfg.agentTailer?.sources?.[a.agentKind]?.excludedSessions ?? []])),
-    sessionStartsByAgent: Object.fromEntries(agents.map(a => [a.agentKind, cfg.agentTailer?.sources?.[a.agentKind]?.sessionStarts ?? {}])),
-    excludedPaths: readHookConfig().excludedPaths })
+/** The one way a config takes effect (main/config-apply.ts). Open, every save,
+ *  plugin and hook-exclusion changes and the current-target switch call it with
+ *  their reason; it reconfigures only what the change touches. */
+const configApplier = createConfigApplier({
+  isCurrent: (identity) => projectRuntime.isCurrent(identity),
+  getShowWifiName: () => showWifiName,
+  setShowWifiName: (on) => { showWifiName = on },
+  publishLink: () => publishLink(),
+  broadcastIPStatus: () => broadcastIPStatus(alertRuntime.ipStatus()),
+  screenshotConfigure: (opts) => screenshotAgent.configure(opts),
+  alertResetOnProjectSwitch: () => alertRuntime.resetOnProjectSwitch(),
+  alertConfigure: (cfg, identity, targets) => alertRuntime.configure(cfg, identity, targets),
+  lootConfigure: (opts) => lootDetector.configure(opts),
+  configureCaptureHealth,
+  configureRedaction,
+  setVpnAdapters,
+  configureTerminal,
+  ingestCollaborators: () => ({
+    // The unified ingest() pipeline (used by /api/events and the in-process
+    // producers) needs the loot detector, the alert runtime for scope
+    // dispatch, and the cast probe for bracketing built-in-terminal output.
+    lootDetector,
+    alertRuntime: { dispatchTargetHit: (input: Parameters<AlertRuntime['dispatchTargetHit']>[0]) => alertRuntime.dispatchTargetHit(input) },
+    castProbe: getCastPosition
+  }),
+  configureIngest,
+  configureClipboardMonitor,
+  startClipboardMonitor,
+  configureFileWatcher,
+  configureConnectionMonitor,
+  configurePowershellTranscript,
+  configureProcessMonitor,
+  configureAgentTailer,
+  logConfigDiff,
+  proxyEndpoint: managedProxyEndpoint,
+  proxyRunning: () => ['running', 'starting'].includes(managedHttpProxy.status().state),
+  stopManagedHttpCapture: () => { stopManagedHttpCapture() },
+  startManagedHttpCapture: () => { void startManagedHttpCapture() },
+  scheduleScopeRecompute,
+  apiPort: getApiPort,
+  lootDetector,
+  // v0.12.0: agent tool_call events reach the alert subsystem, so a Claude /
+  // Codex session hitting an out-of-scope host registers a scope_violation
+  // the same way a shell command would.
+  scopeDispatch: (input: Parameters<AlertRuntime['dispatchTargetHit']>[0]) => alertRuntime.dispatchTargetHit(input),
+  hookExcludedPaths: () => readHookConfig().excludedPaths,
+  listPlugins,
+  agentCatalog: () => {
+    const manager = createOfficialAgentPluginManager(path.join(homedir(), '.redlog', 'plugins'))
+    return { catalog: manager.list(), modulePath: (kind) => manager.modulePath(kind) }
+  },
+  homedir
+})
 
+/** The writer of a project's config.yaml once it exists: Settings, the
+ *  Targets view, the current-target switch and project creation all write
+ *  here, and everything but `create` applies what it wrote. (Opening a
+ *  project rewrites its file in `startProject` and applies it through the
+ *  open sequence.) */
+function commitProjectConfig(projectDir: string, next: RedLogConfig,
+  how: { reason: 'create' } | { reason: 'save' | 'target-context'; identity: ProjectContext; diskPrev: RedLogConfig }): void {
+  saveConfig(projectDir, next)
+  if (how.reason === 'create') return
+  configApplier.apply({ reason: how.reason, identity: how.identity, next, diskPrev: how.diskPrev })
+}
+
+/** Something the config diff cannot see changed (plugins, hook exclusions):
+ *  re-apply the open project's config for that reason. */
+function reapplyOpenConfig(reason: 'plugins-changed' | 'hook-config'): void {
+  const dir = openProjectDir()
+  const open = projectRuntime.current()
+  if (dir && open) configApplier.apply({ reason, identity: open, next: loadConfig(dir) })
 }
 
 // Which command_ends need a recompute at all: see pivot-refresh.ts.
@@ -762,34 +799,20 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
   // block in its config.yaml seeds them if there are none yet, and is
   // otherwise ignored. Applied below, once the HUD window exists.
   const hud = openHudPrefs((config as { overlay?: unknown }).overlay)
-  showWifiName = config.network?.showWifiName === true
-  screenshotAgent.configure({
-    identity: opening,
-    quality: config.screenshot.quality,
-    intervalSec: config.screenshot.intervalSec ?? 0,
-    diffThreshold: config.screenshot.diffThreshold ?? 5,
-    captureOnCommand: config.screenshot.captureOnCommand ?? false
-  })
-
-  invalidateObservationCount()
-  resetVisibilitySignalsCache()
-  recomputePending = null
-  const scopeTargets = snapshotScope(config).targets
-  // v0.12.0: one configure call for the whole alert subsystem. Drops correlation/
-  // burst history on every project open (resetOnProjectSwitch) so a stale
-  // Combined verdict from the previous engagement can't fire when the new
-  // one's first IP tick lands.
-  alertRuntime.resetOnProjectSwitch()
-  alertRuntime.configure(config, opening, scopeTargets)
-  lootDetector.configure({ identity: opening, disabledRules: config.loot?.disabledRules ?? [] })
-  configureCaptureHealth(config as unknown as Record<string, unknown>)
-  configureRedaction(config.redaction)
-  // v0.8.2: wire the `tailers` plugin contribution to the tailer host so
-  // bundled plugins can register `TailerAdapter`s via plugin.json instead
-  // of hard-coded main-init calls. Duck-typed on the core side to avoid
-  // pulling main → services into core; the cast here is safe because the
-  // contributor loader already validates `adapter.agentKind: string`.
-  {
+  // The open's own work between config steps. The config steps themselves —
+  // what each subsystem is given, and in which order — are in
+  // main/config-apply.ts, shared with every later save.
+  const resetProjectCaches = (): void => {
+    invalidateObservationCount()
+    resetVisibilitySignalsCache()
+    recomputePending = null
+  }
+  const loadPlugins = (): void => {
+    // v0.8.2: wire the `tailers` plugin contribution to the tailer host so
+    // bundled plugins can register `TailerAdapter`s via plugin.json instead
+    // of hard-coded main-init calls. Duck-typed on the core side to avoid
+    // pulling main → services into core; the cast here is safe because the
+    // contributor loader already validates `adapter.agentKind: string`.
     const kindByPlugin = new Map<string, string>()
     setTailerContributionSink(
       (pluginId: string, adapter: TailerLike) => {
@@ -804,214 +827,172 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
         }
       }
     )
-  }
-  // Load plugins after core config so their 🟢 contributions (loot/redaction/
-  // target/event-type/capture) layer on top. 🔴 code plugins only start if the
-  // trust gate already passed.
-  try {
-    const psum = initPlugins()
-    if (psum.total > 0) console.log(`[plugins] ${psum.active} active, ${psum.needsConsent} need consent, ${psum.errors} errors`)
-  } catch (e) { console.error('[plugins] init failed:', e) }
-  setVpnAdapters(config.network.vpnAdapters)
-
-  configureTerminal({ identity: opening, maxCastBytes: config.terminal?.maxCastBytes })
-  configureTerminalProxy(() => {
-    const status = managedHttpProxy.status()
-    return loadConfig(getProjectDir()).httpCapture?.routeTerminals === true && status.state === 'running' ? status.url : null
-  })
-  // v0.9.6 (T2): core/ can't import main/, so hand the live cast position in.
-  setCastProbe(getCastPosition)
-  // The unified ingest() pipeline (used by /api/events and, going forward, the
-  // in-process producers) needs the same collaborators the api-server had: the
-  // loot detector, the alert runtime for scope dispatch, and the cast probe for
-  // bracketing built-in-terminal output.
-  configureIngest({
-    lootDetector,
-    alertRuntime: { dispatchTargetHit: (input) => alertRuntime.dispatchTargetHit(input) },
-    castProbe: getCastPosition,
-    activeTarget: config.engagement.activeTarget ?? null
-  })
-
-  // Retention sweeps for every store under `config.retention` (Spec 028).
-  // All default to 0 (keep forever); a positive `keepDays` / `maxBytes` makes
-  // the sweep run on every project open and append an audit event per deletion.
-  try {
-    // v0.9.4 P0-4: statically imported. This used to be a runtime
-    // `require('../core/retention')`, which rollup cannot see through — the
-    // module was never bundled and the literal require survived into
-    // out/main/index.js, where it resolved against a non-existent out/core/.
-    // Every packaged build threw MODULE_NOT_FOUND into the catch below, so
-    // cast and screenshot keep-days silently did nothing and the
-    // cast_pruned / screenshot_pruned audit events were never written. Unit
-    // tests missed it because they import core/retention directly.
-    const swept = sweepRetention(config, opening)
-    if (swept.cast > 0 || swept.screenshots > 0 || swept.httpBodies > 0) {
-      console.log(`[retention] pruned ${swept.cast} .cast file(s) + ${swept.screenshots} screenshot(s) + ${swept.httpBodies} http body file(s)`)
-    }
-    const bookmarksPruned = sweepBookmarks(config.retention?.bookmarks, opening)
-    if (bookmarksPruned > 0) console.log(`[retention] pruned ${bookmarksPruned} bookmark(s)`)
-    // Size-pressure eviction of the body store, after the age sweep — whatever
-    // aged out has already gone, so this only reaches live-but-cold bodies.
-    const evicted = sweepBodyStore(config, opening)
-    if (evicted.evicted > 0 || evicted.shortfallBytes > 0) {
-      console.log(`[retention] evicted ${evicted.evicted} body file(s) under disk pressure` +
-        (evicted.shortfallBytes > 0 ? ` (still ${evicted.shortfallBytes} bytes over budget; in-scope bodies kept)` : ''))
-    }
-    // §3b: same scope-pinned size-pressure eviction for the cast + screenshot
-    // stores. Off by default (budget 0); when set, out-of-scope recordings go
-    // before in-scope evidence instead of purely by age.
-    for (const kind of ['cast', 'screenshot'] as const) {
-      const ev = sweepArtifactStore(kind, config, opening)
-      if (ev.evicted > 0 || ev.shortfallBytes > 0) {
-        console.log(`[retention] evicted ${ev.evicted} ${kind} file(s) under disk pressure` +
-          (ev.shortfallBytes > 0 ? ` (still ${ev.shortfallBytes} bytes over budget; in-scope ${kind}s kept)` : ''))
-      }
-    }
-    // v0.13.0: row-level logged-tier sweep (docs/design/DESIGN-logged-tier-retention.md).
-    // Runs on project open AND periodically — see the interval below.
-    const loggedSwept = sweepLoggedTier(config.retention?.loggedTier, opening)
-    if (loggedSwept.deleted > 0) {
-      console.log(`[retention] pruned ${loggedSwept.deleted} logged-tier row(s), freed ~${(loggedSwept.bytesFreed / 1024 / 1024).toFixed(1)} MB`)
-    }
-    // Periodic timer — the design doc's §5.1 rationale: cast/screenshot
-    // sweep runs only on project open because operators close/reopen
-    // during a long engagement, but logged-tier can grow 20-40 GB DURING
-    // a nine-hour engagement day. Every N hours we re-sweep in-process.
-    const sweepIntervalHours = config.retention?.loggedTier?.sweepIntervalHours ?? 24
-    if (sweepIntervalHours > 0) {
-      projectRuntime.setInterval(opening, () => {
-        try {
-          const tick = sweepLoggedTier(config.retention?.loggedTier, opening)
-          if (tick.deleted > 0) {
-            console.log(`[retention] periodic sweep: ${tick.deleted} logged-tier row(s) pruned, freed ~${(tick.bytesFreed / 1024 / 1024).toFixed(1)} MB`)
-          }
-        } catch (e) { console.error('[retention] periodic sweep failed:', e) }
-      }, sweepIntervalHours * 3600 * 1000)
-    }
-  } catch (e) { console.error('[retention] sweep failed:', e) }
-
-  // Recover any terminal sessions from a prior app run whose session_end never
-  // landed (crash / kill / disk full mid-write). Writes a synthetic session_end
-  // tagged recovered=true so the audit chain gets its close signal and the
-  // Timeline no longer shows a terminal that "never closed" (v0.6.86 P3).
-  try {
-    const n = recoverOrphanSessions()
-    if (n > 0) console.log(`[terminal] recovered ${n} orphan session(s)`)
-  } catch (e) { console.error('[terminal] orphan recovery failed:', e) }
-  resumeTerminalRecordings()
-
-  // Fill the shell catalog in the background so the picker opens instantly.
-  // Not awaited: on Windows it enumerates WSL, and nothing here depends on
-  // the answer (#100 is the reason that distinction matters).
-  void discoverShells().catch(() => { /* probing is best effort */ })
-
-  // Replay only records belonging to the active engagement. Mismatches remain
-  // recoverable on disk and are picked up when their owning project opens.
-  const drainSpool = (limit = Number.POSITIVE_INFINITY, after = ''): string | null => {
-    if (!projectRuntime.isCurrent(opening)) return null
-    if (eventBus.paused) return null
-    let pauses: ReturnType<typeof pauseIntervals> | null = null
-    const emit = ({ agentType, data: spooled, engagementId: spoolEngagement, operatorId: spoolOperator }: import('../core/spool-replay').SpoolReplayEvent): boolean => {
-      // A queue-full or proxy-stop gap is judged against the pauses before it
-      // lands: one counted entirely while paused is not a loss, and is done
-      // with (#460, #291).
-      const data = isPauseJudgedGap(spooled)
-        ? queueGapAgainstPauses(spooled, pauses ??= pauseIntervals(recordingStateRows()))
-        : spooled
-      if (!data) return true
-      // Through ingest(), like every other producer. This called insertEvent
-      // directly, so an event the hook had spooled because RedLog was
-      // unreachable skipped the entire pipeline: no causal links, no target
-      // extraction, no loot scan, no redaction spans, no scope verdict, and
-      // none of the housekeeping rules. Spooling is not rare — the built-in
-      // terminal sources its adapter into a fresh pty within a second of the
-      // pane opening, which is exactly when the API may not be up yet — so
-      // the events most likely to take this path were the ones arriving with
-      // the least processing.
-      const result = ingest({
-        agentType, data, engagementId: spoolEngagement, operatorId: spoolOperator,
-        envelope: { source: 'spool', mapper: { id: 'identity', version: '1' } }
-      })
-      if (result.event) return true
-      // No row, but handled: `plumbing` is deliberately never recorded and
-      // `dedup` means the row is already there. Both mean this file is done —
-      // returning false would keep it on disk and retry it every 30s forever.
-      // A pause is the one case worth keeping for later.
-      return result.skipped !== 'paused'
-    }
-    // A proxy killed while it held events left a bound on disk (#291). Into
-    // the spool with it, so its own project gets the gap and no other does.
-    if (after === '') reapInflightMarkers(inflightMarkerDirectory(homedir()), pendingSpoolDirectory(homedir()))
-    const run = replaySpoolDirectory(pendingSpoolDirectory(homedir()), opening, emit, limit, after)
-    if (run.replayed > 0) console.log(`[hook-spool] replayed ${run.replayed} spooled event(s)`)
-    return run.last
-  }
-  try { drainSpool() } catch (e) { console.error('[hook-spool] replay failed:', e) }
-
-  // The API shares this thread, so the periodic drain yields every ten files
-  // instead of holding it for all two hundred.
-  projectRuntime.setInterval(opening, drainInSlices({
-    drainOnce: drainSpool, total: 200, slice: 10, isCurrent: () => projectRuntime.isCurrent(opening)
-  }), 30_000)
-
-  alertRuntime.start()
-  startLinkMonitor()
-  configureOpsecMonitor((delta, current) => {
-    if (!projectRuntime.isCurrent(opening)) return
+    // Load plugins after core config so their 🟢 contributions (loot/redaction/
+    // target/event-type/capture) layer on top. 🔴 code plugins only start if the
+    // trust gate already passed.
     try {
-      const ev = insertEvent('system', {
-        subtype: 'opsec_state_changed',
-        changed: delta,
-        current: { vpnInterfaces: current.vpnInterfaces, primaryMac: current.primaryMac, hostname: current.hostname, dnsServers: current.dnsServers },
-        description: describeOpsecDelta(delta)
-      }, opening)
-      if (ev) eventBus.publish(ev)
-    } catch { /* additive */ }
-  })
-  startOpsecMonitor()
-  configureClipboardMonitor({
-    pollMs: config.clipboard?.pollMs ?? 1500,
-    storePreview: config.clipboard?.storePreview ?? false,
-    identity: opening, lootDetector
-  })
-  startClipboardMonitor()
-
-  // v0.6.92 W-project — file watcher + process monitor. Both opt-in; the
-  // producers just no-op when disabled so the wiring is unconditional.
-  configureFileWatcher({
-    watchPaths: config.fileWatcher?.watchPaths ?? [],
-    ignorePatterns: config.fileWatcher?.ignorePatterns ?? [],
-    identity: opening
-  })
-  configureConnectionMonitor({
-    pollMs: config.connectionMonitor?.pollMs,
-    identity: opening,
-    selfPorts: [getApiPort()]
-  })
-  configurePowershellTranscript({
-    identity: opening
-  })
-  configureProcessMonitor({
-    pollMs: config.processMonitor?.pollMs,
-    ignoreCommands: config.processMonitor?.ignoreCommands ?? [],
-    identity: opening
-  })
-  // AI capture is separately installed and authorized by this project.
-  // Shared exclusions remain local; allowed directories are per source/project.
-  {
-    const { excludedPaths } = readHookConfig()
-    configureAgentTailer({
-      identity: opening,
-      excludedPaths,
-      emitThinking: config.agentTailer?.emitThinking ?? false,
-      // v0.12.0: route agent tool_call events through the alert subsystem
-      // so a Claude / Codex session hitting an out-of-scope host
-      // registers a scope_violation the same way a shell command would.
-      scopeDispatch: (input) => alertRuntime.dispatchTargetHit(input)
-    })
+      const psum = initPlugins()
+      if (psum.total > 0) console.log(`[plugins] ${psum.active} active, ${psum.needsConsent} need consent, ${psum.errors} errors`)
+    } catch (e) { console.error('[plugins] init failed:', e) }
   }
-  // Spec 035: which optional sources run is decided by packs alone.
-  applyCapturePacks(config)
+
+  const wireTerminalIngest = (): void => {
+    configureTerminalProxy(() => {
+      const status = managedHttpProxy.status()
+      return loadConfig(getProjectDir()).httpCapture?.routeTerminals === true && status.state === 'running' ? status.url : null
+    })
+    // v0.9.6 (T2): core/ can't import main/, so hand the live cast position in.
+    setCastProbe(getCastPosition)
+  }
+
+  const startProjectServices = (): void => {
+    // Retention sweeps for every store under `config.retention` (Spec 028).
+    // All default to 0 (keep forever); a positive `keepDays` / `maxBytes` makes
+    // the sweep run on every project open and append an audit event per deletion.
+    try {
+      // v0.9.4 P0-4: statically imported. This used to be a runtime
+      // `require('../core/retention')`, which rollup cannot see through — the
+      // module was never bundled and the literal require survived into
+      // out/main/index.js, where it resolved against a non-existent out/core/.
+      // Every packaged build threw MODULE_NOT_FOUND into the catch below, so
+      // cast and screenshot keep-days silently did nothing and the
+      // cast_pruned / screenshot_pruned audit events were never written. Unit
+      // tests missed it because they import core/retention directly.
+      const swept = sweepRetention(config, opening)
+      if (swept.cast > 0 || swept.screenshots > 0 || swept.httpBodies > 0) {
+        console.log(`[retention] pruned ${swept.cast} .cast file(s) + ${swept.screenshots} screenshot(s) + ${swept.httpBodies} http body file(s)`)
+      }
+      const bookmarksPruned = sweepBookmarks(config.retention?.bookmarks, opening)
+      if (bookmarksPruned > 0) console.log(`[retention] pruned ${bookmarksPruned} bookmark(s)`)
+      // Size-pressure eviction of the body store, after the age sweep — whatever
+      // aged out has already gone, so this only reaches live-but-cold bodies.
+      const evicted = sweepBodyStore(config, opening)
+      if (evicted.evicted > 0 || evicted.shortfallBytes > 0) {
+        console.log(`[retention] evicted ${evicted.evicted} body file(s) under disk pressure` +
+          (evicted.shortfallBytes > 0 ? ` (still ${evicted.shortfallBytes} bytes over budget; in-scope bodies kept)` : ''))
+      }
+      // §3b: same scope-pinned size-pressure eviction for the cast + screenshot
+      // stores. Off by default (budget 0); when set, out-of-scope recordings go
+      // before in-scope evidence instead of purely by age.
+      for (const kind of ['cast', 'screenshot'] as const) {
+        const ev = sweepArtifactStore(kind, config, opening)
+        if (ev.evicted > 0 || ev.shortfallBytes > 0) {
+          console.log(`[retention] evicted ${ev.evicted} ${kind} file(s) under disk pressure` +
+            (ev.shortfallBytes > 0 ? ` (still ${ev.shortfallBytes} bytes over budget; in-scope ${kind}s kept)` : ''))
+        }
+      }
+      // v0.13.0: row-level logged-tier sweep (docs/design/DESIGN-logged-tier-retention.md).
+      // Runs on project open AND periodically — see the interval below.
+      const loggedSwept = sweepLoggedTier(config.retention?.loggedTier, opening)
+      if (loggedSwept.deleted > 0) {
+        console.log(`[retention] pruned ${loggedSwept.deleted} logged-tier row(s), freed ~${(loggedSwept.bytesFreed / 1024 / 1024).toFixed(1)} MB`)
+      }
+      // Periodic timer — the design doc's §5.1 rationale: cast/screenshot
+      // sweep runs only on project open because operators close/reopen
+      // during a long engagement, but logged-tier can grow 20-40 GB DURING
+      // a nine-hour engagement day. Every N hours we re-sweep in-process.
+      const sweepIntervalHours = config.retention?.loggedTier?.sweepIntervalHours ?? 24
+      if (sweepIntervalHours > 0) {
+        projectRuntime.setInterval(opening, () => {
+          try {
+            const tick = sweepLoggedTier(config.retention?.loggedTier, opening)
+            if (tick.deleted > 0) {
+              console.log(`[retention] periodic sweep: ${tick.deleted} logged-tier row(s) pruned, freed ~${(tick.bytesFreed / 1024 / 1024).toFixed(1)} MB`)
+            }
+          } catch (e) { console.error('[retention] periodic sweep failed:', e) }
+        }, sweepIntervalHours * 3600 * 1000)
+      }
+    } catch (e) { console.error('[retention] sweep failed:', e) }
+
+    // Recover any terminal sessions from a prior app run whose session_end never
+    // landed (crash / kill / disk full mid-write). Writes a synthetic session_end
+    // tagged recovered=true so the audit chain gets its close signal and the
+    // Timeline no longer shows a terminal that "never closed" (v0.6.86 P3).
+    try {
+      const n = recoverOrphanSessions()
+      if (n > 0) console.log(`[terminal] recovered ${n} orphan session(s)`)
+    } catch (e) { console.error('[terminal] orphan recovery failed:', e) }
+    resumeTerminalRecordings()
+
+    // Fill the shell catalog in the background so the picker opens instantly.
+    // Not awaited: on Windows it enumerates WSL, and nothing here depends on
+    // the answer (#100 is the reason that distinction matters).
+    void discoverShells().catch(() => { /* probing is best effort */ })
+
+    // Replay only records belonging to the active engagement. Mismatches remain
+    // recoverable on disk and are picked up when their owning project opens.
+    const drainSpool = (limit = Number.POSITIVE_INFINITY, after = ''): string | null => {
+      if (!projectRuntime.isCurrent(opening)) return null
+      if (eventBus.paused) return null
+      let pauses: ReturnType<typeof pauseIntervals> | null = null
+      const emit = ({ agentType, data: spooled, engagementId: spoolEngagement, operatorId: spoolOperator }: import('../core/spool-replay').SpoolReplayEvent): boolean => {
+        // A queue-full or proxy-stop gap is judged against the pauses before it
+        // lands: one counted entirely while paused is not a loss, and is done
+        // with (#460, #291).
+        const data = isPauseJudgedGap(spooled)
+          ? queueGapAgainstPauses(spooled, pauses ??= pauseIntervals(recordingStateRows()))
+          : spooled
+        if (!data) return true
+        // Through ingest(), like every other producer. This called insertEvent
+        // directly, so an event the hook had spooled because RedLog was
+        // unreachable skipped the entire pipeline: no causal links, no target
+        // extraction, no loot scan, no redaction spans, no scope verdict, and
+        // none of the housekeeping rules. Spooling is not rare — the built-in
+        // terminal sources its adapter into a fresh pty within a second of the
+        // pane opening, which is exactly when the API may not be up yet — so
+        // the events most likely to take this path were the ones arriving with
+        // the least processing.
+        const result = ingest({
+          agentType, data, engagementId: spoolEngagement, operatorId: spoolOperator,
+          envelope: { source: 'spool', mapper: { id: 'identity', version: '1' } }
+        })
+        if (result.event) return true
+        // No row, but handled: `plumbing` is deliberately never recorded and
+        // `dedup` means the row is already there. Both mean this file is done —
+        // returning false would keep it on disk and retry it every 30s forever.
+        // A pause is the one case worth keeping for later.
+        return result.skipped !== 'paused'
+      }
+      // A proxy killed while it held events left a bound on disk (#291). Into
+      // the spool with it, so its own project gets the gap and no other does.
+      if (after === '') reapInflightMarkers(inflightMarkerDirectory(homedir()), pendingSpoolDirectory(homedir()))
+      const run = replaySpoolDirectory(pendingSpoolDirectory(homedir()), opening, emit, limit, after)
+      if (run.replayed > 0) console.log(`[hook-spool] replayed ${run.replayed} spooled event(s)`)
+      return run.last
+    }
+    try { drainSpool() } catch (e) { console.error('[hook-spool] replay failed:', e) }
+
+    // The API shares this thread, so the periodic drain yields every ten files
+    // instead of holding it for all two hundred.
+    projectRuntime.setInterval(opening, drainInSlices({
+      drainOnce: drainSpool, total: 200, slice: 10, isCurrent: () => projectRuntime.isCurrent(opening)
+    }), 30_000)
+
+    alertRuntime.start()
+    startLinkMonitor()
+    configureOpsecMonitor((delta, current) => {
+      if (!projectRuntime.isCurrent(opening)) return
+      try {
+        const ev = insertEvent('system', {
+          subtype: 'opsec_state_changed',
+          changed: delta,
+          current: { vpnInterfaces: current.vpnInterfaces, primaryMac: current.primaryMac, hostname: current.hostname, dnsServers: current.dnsServers },
+          description: describeOpsecDelta(delta)
+        }, opening)
+        if (ev) eventBus.publish(ev)
+      } catch { /* additive */ }
+    })
+    startOpsecMonitor()
+  }
+
+  // Everything the config decides, in the order open has always run it, with
+  // the work above slotted between: plugins load after loot and redaction so
+  // their contributions layer on top, and the capture packs (Spec 035) are
+  // decided after the plugins are listed.
+  configApplier.apply({
+    reason: 'open', identity: opening, next: config,
+    hooks: { resetProjectCaches, loadPlugins, wireTerminalIngest, startProjectServices }
+  })
 
   configureApi({
     engagementId: opening.engagementId,
@@ -1246,6 +1227,7 @@ function stopProject(): void {
   // First, so nothing this open started can begin anything new while the
   // rest of it is taken down: aborts its signal and stops its timers.
   clean(() => projectRuntime.close())
+  clean(() => configApplier.reset())
   clean(onApiProjectClose)
   clean(clearSpoolIdentity)
   // The capture browser's profile is this project's (`<project>/browser-profile`):
@@ -1479,7 +1461,7 @@ app.whenReady().then(() => {
     triggerBookmark,
     addHudMarker,
     hudMarkerBinding: () => (projectRuntime.project() ? projectRuntime.current()?.engagementId ?? null : null),
-    onPluginsChanged: () => { const dir = openProjectDir(); if (dir) applyCapturePacks(loadConfig(dir)) }
+    onPluginsChanged: () => reapplyOpenConfig('plugins-changed')
   }
   registerOverlayIpc(ipcMain, ipcCtx, {
     prefsDir: path.join(homedir(), '.redlog'),
@@ -1498,7 +1480,15 @@ app.whenReady().then(() => {
   registerEventsIpc(ipcMain, ipcCtx)
   registerChainIpc(ipcMain, ipcCtx)
   registerMarkersIpc(ipcMain, ipcCtx, screenshotAgent)
-  registerTargetContextIpc(ipcMain, ipcCtx)
+  registerTargetContextIpc(ipcMain, ipcCtx, {
+    commit: (next, prev) => {
+      const dir = openProjectDir()
+      const open = projectRuntime.current()
+      if (!dir || !open) return false
+      commitProjectConfig(dir, next, { reason: 'target-context', identity: open, diskPrev: prev })
+      return true
+    }
+  })
   registerArtifactsIpc(ipcMain, ipcCtx)
 
   // --- Project management ---
@@ -1514,7 +1504,9 @@ app.whenReady().then(() => {
     // on the box. Seed both from what the operator just typed; the advanced
     // setup (or a later edit) still overrides.
     const projectDir = getProjectPath(project)
-    saveConfig(projectDir, mergeInitialConfig(loadConfig(projectDir), project.id, initialConfig))
+    // Written, not applied: another project may still be open. The open below
+    // applies it.
+    commitProjectConfig(projectDir, mergeInitialConfig(loadConfig(projectDir), project.id, initialConfig), { reason: 'create' })
     startProject(project)
     return project
   })
@@ -1571,8 +1563,7 @@ app.whenReady().then(() => {
     try {
       // Live-reconfigure the tailer so the new gate takes effect immediately
       saveHookConfig(cfg)
-      const dir = openProjectDir()
-      if (dir) applyCapturePacks(loadConfig(dir))
+      reapplyOpenConfig('hook-config')
       return true
     } catch { return false }
   })
@@ -1605,8 +1596,6 @@ app.whenReady().then(() => {
     // latest stored value prevents that stale form from silently reverting
     // attribution context on its next auto-save.
     newConfig.engagement.activeTarget = oldConfig.engagement.activeTarget ?? null
-    // Captured BEFORE the save so the recompute can say what the boundary was.
-    const beforeScope = snapshotScope(oldConfig)
     // Before the save, so what is saved is the operator actually in effect (a
     // blank or refused id keeps the old one), and before anything below
     // writes, so the audit row and every source are already the new
@@ -1614,67 +1603,10 @@ app.whenReady().then(() => {
     const open = projectRuntime.current()!
     newConfig.operator = { ...newConfig.operator,
       ...applyOperatorChange(projectRuntime, open, oldConfig.operator, newConfig.operator, { writeSpoolIdentity, setPrimaryOperator }) }
-    saveConfig(projectDir, newConfig)
-    configureIngest({ activeTarget: newConfig.engagement.activeTarget ?? null })
-    // Audit trail — log security-relevant setting changes so a reviewer can see
-    // when scope loosened or the IP blacklist changed. Only diffs the fields
-    // that affect enforcement or attribution; cosmetic changes stay silent.
-    const configChangedId = logConfigDiff(oldConfig, newConfig)
-    // docs/TESTING.md §5.6: turning the SSID off applies now, not at the next poll.
-    if (showWifiName !== (newConfig.network?.showWifiName === true)) {
-      showWifiName = newConfig.network?.showWifiName === true
-      publishLink()
-      broadcastIPStatus(alertRuntime.ipStatus())
-    }
-    const targets = snapshotScope(newConfig).targets
-    alertRuntime.configure(newConfig, open, targets)
-    screenshotAgent.configure({
-      quality: newConfig.screenshot.quality,
-      intervalSec: newConfig.screenshot.intervalSec ?? 0,
-      diffThreshold: newConfig.screenshot.diffThreshold ?? 5,
-      captureOnCommand: newConfig.screenshot.captureOnCommand ?? false
-    })
-    // v0.9.7: refresh the snapshot capture-health reads its on/off switches
-    // from, so toggling a source updates the card on the next poll instead of
-    // at the next project open.
-    configureCaptureHealth(newConfig as unknown as Record<string, unknown>)
-    const oldEndpoint = managedProxyEndpoint(oldConfig)
-    const newEndpoint = managedProxyEndpoint(newConfig)
-    if ((oldEndpoint.port !== newEndpoint.port || oldEndpoint.host !== newEndpoint.host)
-      && ['running', 'starting'].includes(managedHttpProxy.status().state)) {
-      stopManagedHttpCapture()
-      void startManagedHttpCapture()
-    }
-    // Re-judge what is already recorded against the boundary that now applies.
-    // Scheduled rather than awaited: the renderer's save must not wait on a
-    // scan, and the debounce collapses an editing burst into one run.
-    scheduleScopeRecompute({
-      targets: beforeScope.targets,
-      excludeTargets: beforeScope.excludeTargets,
-      alertFloor: alertFloorFor(oldConfig.scope?.warnOnViolation)
-    }, configChangedId)
-    configureTerminal({ identity: open, maxCastBytes: newConfig.terminal?.maxCastBytes })
-    lootDetector.configure({ disabledRules: newConfig.loot?.disabledRules ?? [] })
-    configureClipboardMonitor({
-      pollMs: newConfig.clipboard?.pollMs ?? 1500,
-      storePreview: newConfig.clipboard?.storePreview ?? false,
-      lootDetector
-    })
-    configureFileWatcher({
-      watchPaths: newConfig.fileWatcher?.watchPaths ?? [],
-      ignorePatterns: newConfig.fileWatcher?.ignorePatterns ?? []
-    })
-    configureConnectionMonitor({
-      pollMs: newConfig.connectionMonitor?.pollMs,
-      selfPorts: [getApiPort()]
-    })
-    configureProcessMonitor({
-      pollMs: newConfig.processMonitor?.pollMs,
-      ignoreCommands: newConfig.processMonitor?.ignoreCommands ?? []
-    })
-    applyCapturePacks(newConfig)
-    if (newConfig.redaction) configureRedaction(newConfig.redaction)
-    setVpnAdapters(newConfig.network.vpnAdapters)
+    // Only what the change touches: a save that leaves capture settings alone
+    // starts and stops no capture source (main/config-apply.ts). The audit
+    // row and the scope recompute describe the change from the file as it was.
+    commitProjectConfig(projectDir, newConfig, { reason: 'save', identity: open, diskPrev: oldConfig })
     return true
   }
   ipcMain.handle('config:save', (_e, newConfig: RedLogConfig, opts?: { expectProjectId?: string }) =>

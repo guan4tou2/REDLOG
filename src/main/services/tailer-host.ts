@@ -411,8 +411,9 @@ function coalescedCatchUp(agentKind: string, sid: string): void {
 //
 // #686: the selection belongs to the engagement it was made in, so it is kept
 // per engagement id and read against `cfg.identity`. `stopHost()` does not
-// touch it: `configureHost()` stops the host on every settings save and plugin
-// change, and the selection has to survive those. Project close/switch clears
+// touch it: `configureHost()` stops the host whenever the AI sources, the hook
+// exclusions or the plugins change (main/config-apply.ts; other settings no
+// longer reach it), and the selection has to survive those. Project close/switch clears
 // it explicitly (`clearSessionRegistry`, from `stopAgentTailer`). Memory only:
 // a relaunch, or closing and reopening the project, starts with no selection.
 
