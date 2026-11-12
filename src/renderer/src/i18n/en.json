@@ -862,6 +862,8 @@
   "capture.clipboard": "Clipboard",
   "capture.state.off": "off",
   "capture.rogueHeadline": "{{count}} switched off and still writing",
+  "capture.unrecordedActivity": "In use, not recorded",
+  "capture.unrecordedDismiss": "Don't show again",
   "capture.rogueWhy": "Switching it off in RedLog does not stop it — it runs in your own shell. The teardown is under External capture sources, in Settings ▸ Other capture sources.",
   "capture.auditHint": "Every source, including the ones switched off, never installed, or brought by a plugin — for answering whether anything is recording that you did not put there.",
   "capture.manageWithHidden": "Other capture sources and status ({{count}})",
