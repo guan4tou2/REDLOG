@@ -18,7 +18,8 @@
 | 打包版 CSP | 以回應標頭送出，於未簽章 macOS app 實測在 `file://` 上生效（行內腳本與 `new Function` 被擋）；Windows、Linux 未實測 |
 | HUD 設定 | 全域偏好（`~/.redlog/hud-prefs.json`），不隨專案變動 |
 | AI session 選取 | 依 engagement 保存於記憶體，專案關閉時清除；設定儲存不再清掉（#686） |
-| 搜尋索引 | `http-body-index.db` `user_version` 7；驗證狀態隨索引列保存，回填為增量。放寬條件見收尾紀錄 §3 |
+| 搜尋索引 | `http-body-index.db` `user_version` 8（v7 原地遷移，不重讀 body）；驗證狀態、走訪水位、prune 後待重連的事件與 coverage 計數器（觸發器維護）都隨索引保存，啟動後第一次搜尋與 coverage 只做變動部分；每次搜尋仍對每個已驗證檔案 lstat 一次。放寬條件見收尾紀錄 §3 |
+| 戰利品單筆上限 | 一筆 loot 事件最多存 500 個 match，超過時加 `matches_truncated`／`matches_total`，其餘值留給下次出現時記錄（#695） |
 | API 上限 | `/api/loot/scan` 文字 128 KiB；查詢 1000 字元；JSON body 必須是物件且深度 ≤ 64（`src/core/api-request.ts`、`src/core/query/contract.ts`） |
 | 已知未完成 | 開啟後第一次搜尋的主行程停頓、8 MiB 相異雜湊輸出的擷取時間、時間軸刻度重疊等，見收尾紀錄 §4；排程在 [工作計畫](WORK-PLAN.md) |
 | 未驗證的環境 | Windows PowerShell 與 Git Bash、WSL、Linux 非 UTF-8 目錄、真實輸入法、多螢幕、簽章與公證 |

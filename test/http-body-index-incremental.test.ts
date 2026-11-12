@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { initDB, closeDB, getDB } from '../src/core/db/index'
-import { searchHttpBodyEventIds, bodySearchCoverage, closeHttpBodyIndex, linkHttpBodyEvent, pruneHttpBodyIndex, pruneSavedFileIndex } from '../src/core/http-body-index'
+import { searchHttpBodyEventIds, bodySearchCoverage, closeHttpBodyIndex, linkHttpBodyEvent, pruneHttpBodyIndex, pruneSavedFileIndex, eventIdsReferencingBody } from '../src/core/http-body-index'
 import type { ExportSnapshot } from '../src/core/export-plan'
 
 // #695: a text search used to re-walk every content-ref row and re-open and
@@ -46,28 +46,49 @@ function transcript(id: string, text: string): void {
   fs.writeFileSync(path.join(dir, 'agent-transcripts', 'conv.jsonl'), text)
   insert(id, { snapshot_path: 'agent-transcripts/conv.jsonl', cumulative_bytes: Buffer.byteLength(text), cumulative_sha256: sha(text) }, 'events', 'agent', 'transcript_snapshot')
 }
-function dump(): unknown {
+/** What a search under `snapshot` answers from: the index rows inside its
+ *  boundary. The index also keeps rows linked above an older boundary (a
+ *  bounded read leaves them out by position), so those are not part of what
+ *  two runs must agree on. */
+function dump(snapshot?: ExportSnapshot): unknown {
   const db = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
+  const within = `((r.tier='events' AND r."row"<=@c) OR (r.tier='events_logged' AND r."row"<=@l))`
+  const bound = { c: snapshot?.chainedMaxRowId ?? Number.MAX_SAFE_INTEGER, l: snapshot?.loggedMaxRowId ?? Number.MAX_SAFE_INTEGER }
   try {
     return {
-      // What a search answers from. The verification columns hold inode and
-      // mtime signatures, which differ between two runs by construction.
-      refs: db.prepare('SELECT event_id,sha256,file,size,encoding,status,indexed_bytes,reason,kind,available_bytes FROM body_event_refs ORDER BY event_id,sha256').all(),
-      fts: db.prepare('SELECT event_id,sha256,content FROM body_fts ORDER BY event_id,sha256,content').all(),
+      // The verification columns hold inode and mtime signatures, which differ
+      // between two runs by construction; everything else must agree.
+      refs: db.prepare(`SELECT event_id,sha256,file,size,encoding,status,indexed_bytes,reason,kind,available_bytes,tier,"row",engagement_id,refs,ref_bytes,c_idx,c_gn,c_gb,h1,h2
+        FROM body_event_refs r WHERE ${within} ORDER BY event_id,sha256`).all(bound),
+      fts: db.prepare(`SELECT event_id,sha256,content FROM body_fts f WHERE EXISTS(SELECT 1 FROM body_event_refs r WHERE r.event_id=f.event_id AND r.sha256=f.sha256 AND ${within})
+        ORDER BY event_id,sha256,content`).all(bound),
     }
   } finally { db.close() }
 }
 const QUERIES = ['alpha', 'marker3', 'marker9', 'transcriptword', 'artifactword', 'inlineword', 'zzznothing']
 /** incremental: one process throughout. restart: a new process before every
- *  search, the index DB kept. rebuild: a new process and no index DB. */
+ *  search, the index DB kept. rebuild: a new process and no index DB, once
+ *  per step. */
 type Mode = 'incremental' | 'restart' | 'rebuild'
 function observe(mode: Mode, snapshot?: ExportSnapshot): unknown {
+  // What the index holds depends on the project and the boundary, never on
+  // the query, so one rebuild per step is the from-scratch index every query
+  // is answered from. Rebuilding it before each of the fourteen searches cost
+  // fourteen index creations per step; on windows-latest that alone ran a step
+  // past its timeout. The dump check below holds the reference to that: the
+  // searches after the first must leave the rebuilt index exactly as it was.
+  if (mode !== 'incremental') closeHttpBodyIndex()
+  if (mode === 'rebuild') for (const suffix of ['', '-wal', '-shm']) fs.rmSync(path.join(dir, `http-body-index.db${suffix}`), { force: true })
+  let built: unknown
   const searches = QUERIES.flatMap(q => [false, true].map(excludeAiRaw => {
-    if (mode !== 'incremental') closeHttpBodyIndex()
-    if (mode === 'rebuild') for (const suffix of ['', '-wal', '-shm']) fs.rmSync(path.join(dir, `http-body-index.db${suffix}`), { force: true })
-    return [q, excludeAiRaw, searchHttpBodyEventIds(q, dir, excludeAiRaw, snapshot).sort()]
+    if (mode === 'restart') closeHttpBodyIndex()
+    const ids = searchHttpBodyEventIds(q, dir, excludeAiRaw, snapshot).sort()
+    if (mode === 'rebuild' && built === undefined) built = dump(snapshot)
+    return [q, excludeAiRaw, ids]
   }))
-  return { searches, coverage: bodySearchCoverage(snapshot), index: dump() }
+  const observed = { searches, coverage: bodySearchCoverage(snapshot), index: dump(snapshot) }
+  if (mode === 'rebuild') expect(observed.index, 'the searches after the rebuild changed the rebuilt index').toEqual(built)
+  return observed
 }
 
 /** What a step leaves behind for the steps after it. */
@@ -160,7 +181,9 @@ function play(mode: Mode): void {
         if (broken) ctx.skip(`an earlier step of the ${mode} run failed (${broken}); this step builds on its state`)
         if (mode !== 'rebuild' && !reference.has(step.name)) ctx.skip('the rebuild reference for this step was not recorded')
         try {
-          snapshot = step.apply(h) ?? (BOUNDED.has(step.name) ? snapshot : undefined)
+          // One commit for the step's source rows, as ingest batches them; a
+          // commit per row is a flush per row on a Windows runner.
+          snapshot = getDB().transaction(() => step.apply(h))() ?? (BOUNDED.has(step.name) ? snapshot : undefined)
           const observed = observe(mode, snapshot) as Observed
           if (mode === 'rebuild') reference.set(step.name, observed)
           else expect(observed, `${mode}: ${step.name}`).toEqual(reference.get(step.name))
@@ -199,7 +222,7 @@ describe('incremental body-search backfill', () => {
     const prepare = Database.prototype.prepare
     vi.spyOn(Database.prototype, 'prepare').mockImplementation(function (this: Database.Database, sql: string) {
       const s = prepare.call(this, sql)
-      if (/^SELECT id,data,agent_type FROM/.test(sql)) {
+      if (/^SELECT id,data,agent_type\b/.test(sql)) {
         const iterate = s.iterate.bind(s), get = s.get.bind(s)
         ;(s as unknown as { iterate: (...a: unknown[]) => unknown }).iterate = function* (...a: unknown[]) { for (const r of iterate(...a)) { rows++; yield r } }
         ;(s as unknown as { get: (...a: unknown[]) => unknown }).get = (...a: unknown[]) => { const r = get(...a); if (r) rows++; return r }
@@ -219,15 +242,148 @@ describe('incremental body-search backfill', () => {
     expect(work(() => searchHttpBodyEventIds('alpha', dir))).toEqual({ opens: 0, rows: 0 })
   })
 
-  it('after a restart with nothing changed, walks the rows but opens no file', () => {
+  it('after a restart with nothing changed, reads no row and opens no file', () => {
     seed(30)
     searchHttpBodyEventIds('alpha', dir)
     closeHttpBodyIndex()
-    expect(work(() => expect(searchHttpBodyEventIds('work7', dir)).toEqual(['w7']))).toEqual({ opens: 0, rows: 30 })
+    expect(work(() => expect(searchHttpBodyEventIds('work7', dir)).toEqual(['w7']))).toEqual({ opens: 0, rows: 0 })
     // A file changed while the app was closed is re-verified; nothing else is.
     fs.writeFileSync(path.join(dir, 'http-bodies', `${sha('alpha work4')}.body`), 'gamma work4 longer')
     closeHttpBodyIndex()
-    expect(work(() => expect(searchHttpBodyEventIds('work4', dir)).toEqual([]))).toEqual({ opens: 1, rows: 30 })
+    expect(work(() => expect(searchHttpBodyEventIds('work4', dir)).toEqual([]))).toEqual({ opens: 1, rows: 1 })
+  })
+
+  // Every search surface takes a dataset snapshot of the current rowids, so
+  // under live capture each search has a new boundary.
+  const snap = (): ExportSnapshot => {
+    const max = (t: string): number => (getDB().prepare(`SELECT coalesce(max(rowid),0) AS m FROM ${t}`).get() as { m: number }).m
+    return { chainedMaxRowId: max('events'), loggedMaxRowId: max('events_logged'), takenAt: 1 }
+  }
+  it('under a new snapshot after an append, links only the appended rows', () => {
+    seed(30)
+    searchHttpBodyEventIds('alpha', dir, false, snap())
+    for (let i = 30; i < 33; i++) bodyEvent(`w${i}`, `alpha work${i}`)
+    expect(work(() => expect(searchHttpBodyEventIds('work31', dir, false, snap())).toEqual(['w31']))).toEqual({ opens: 3, rows: 3 })
+  })
+
+  it('walks once after the watermark row is replaced, and not again', () => {
+    seed(0)
+    for (let i = 0; i < 5; i++) bodyEvent(`l${i}`, `alpha logged${i}`, 'events_logged')
+    searchHttpBodyEventIds('alpha', dir)
+    // Retention removes the highest logged row; the next insert reuses its
+    // rowid for another Event.
+    getDB().prepare("DELETE FROM events_logged WHERE id='l4'").run()
+    bodyEvent('reused', 'alpha reusedword', 'events_logged')
+    expect(work(() => expect(searchHttpBodyEventIds('reusedword', dir)).toEqual(['reused'])).rows).toBe(5)
+    expect(work(() => searchHttpBodyEventIds('alpha', dir))).toEqual({ opens: 0, rows: 0 })
+  })
+
+  it('computes coverage without reading a source row or opening a file', () => {
+    seed(30)
+    const s = snap()
+    searchHttpBodyEventIds('alpha', dir, false, s)
+    let coverage: ReturnType<typeof bodySearchCoverage> | undefined
+    expect(work(() => { coverage = bodySearchCoverage(s) })).toEqual({ opens: 0, rows: 0 })
+    expect(coverage).toMatchObject({ indexed: 30, missing: 0, pending: 0, failed: 0 })
+  })
+
+  it('pages an older snapshot after an append without walking or re-verifying, and still bounds it', () => {
+    seed(30)
+    const older = snap()
+    searchHttpBodyEventIds('alpha', dir, false, older)
+    for (let i = 30; i < 33; i++) bodyEvent(`w${i}`, `alpha work${i}`)
+    const newer = snap()
+    searchHttpBodyEventIds('alpha', dir, false, newer)
+    let ids: string[] = [], coverage: ReturnType<typeof bodySearchCoverage> | undefined
+    expect(work(() => { ids = searchHttpBodyEventIds('alpha', dir, false, older); coverage = bodySearchCoverage(older) })).toEqual({ opens: 0, rows: 0 })
+    expect(ids).toHaveLength(30)
+    expect(ids).not.toContain('w31')
+    expect(coverage).toMatchObject({ indexed: 30 })
+    expect(work(() => { ids = searchHttpBodyEventIds('alpha', dir, false, newer); coverage = bodySearchCoverage(newer) })).toEqual({ opens: 0, rows: 0 })
+    expect(ids).toHaveLength(33)
+    expect(coverage).toMatchObject({ indexed: 33 })
+  })
+
+  it('does not trust coverage sums that disagree with the rows: it recounts them', () => {
+    seed(10)
+    const s = snap()
+    searchHttpBodyEventIds('alpha', dir, false, s)
+    const honest = bodySearchCoverage(s)
+    const db = new Database(path.join(dir, 'http-body-index.db'))
+    try { db.prepare("UPDATE body_coverage SET rows=rows+1,n=n+5 WHERE kind='body' AND status='indexed'").run() } finally { db.close() }
+    expect(bodySearchCoverage(s)).toEqual(honest)
+    const check = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
+    try {
+      expect(check.prepare('SELECT (SELECT count(*) FROM body_event_refs) AS refs,(SELECT sum(rows) FROM body_coverage) AS counted').get()).toEqual({ refs: 10, counted: 10 })
+    } finally { check.close() }
+  })
+
+  it('does not re-read an evicted body on every search, and links it again when it comes back', () => {
+    seed(5)
+    searchHttpBodyEventIds('alpha', dir)
+    const file = path.join(dir, 'http-bodies', `${sha('alpha work1')}.body`)
+    fs.unlinkSync(file)
+    pruneHttpBodyIndex(sha('alpha work1'), dir)
+    // The prune's own Event is linked once, and found missing (before any open).
+    expect(work(() => searchHttpBodyEventIds('work1', dir))).toEqual({ opens: 0, rows: 1 })
+    expect(bodySearchCoverage().missing).toBe(1)
+    expect(work(() => searchHttpBodyEventIds('work1', dir))).toEqual({ opens: 0, rows: 0 })
+    fs.writeFileSync(file, 'alpha work1')
+    expect(work(() => expect(searchHttpBodyEventIds('work1', dir)).toEqual(['w1']))).toEqual({ opens: 1, rows: 1 })
+    expect(bodySearchCoverage().missing).toBe(0)
+  })
+
+  it('migrates a v7 index in place: no body is read again', () => {
+    seed(10)
+    searchHttpBodyEventIds('alpha', dir)
+    const before = bodySearchCoverage()
+    closeHttpBodyIndex()
+    // Take the v8 additions back out, leaving exactly the v7 layout.
+    const db = new Database(path.join(dir, 'http-body-index.db'))
+    try {
+      db.exec(`DROP TRIGGER body_coverage_insert; DROP TRIGGER body_coverage_delete; DROP TRIGGER body_coverage_update;
+        DROP INDEX body_event_refs_position; DROP INDEX body_event_refs_verified; DROP INDEX body_event_refs_unverified;
+        DROP INDEX body_event_refs_unplaced; DROP INDEX body_event_refs_ai_raw; DROP TABLE body_coverage; DROP TABLE body_relink;
+        DELETE FROM body_index_meta WHERE key='walk'`)
+      for (const column of ['engagement_id', 'row', 'refs', 'ref_bytes', 'c_idx', 'c_gn', 'c_gb', 'h1', 'h2']) db.exec(`ALTER TABLE body_event_refs DROP COLUMN "${column}"`)
+      db.pragma('user_version=7')
+      expect((db.prepare('PRAGMA table_info(body_event_refs)').all() as Array<{ name: string }>).map(c => c.name)).toEqual([
+        'event_id', 'sha256', 'file', 'size', 'encoding', 'status', 'indexed_bytes', 'reason', 'kind', 'available_bytes', 'tier', 'verified_desc', 'verified_file', 'verified_sig'])
+      expect((db.prepare("SELECT name FROM sqlite_master WHERE type IN ('table','trigger') AND name NOT LIKE 'body_fts_%' ORDER BY name").all() as Array<{ name: string }>).map(r => r.name))
+        .toEqual(['body_event_refs', 'body_fts', 'body_index_meta'])
+    } finally { db.close() }
+    // One walk to place each row; every body keeps its verification.
+    expect(work(() => expect(searchHttpBodyEventIds('work3', dir)).toEqual(['w3']))).toEqual({ opens: 0, rows: 10 })
+    expect(bodySearchCoverage()).toEqual(before)
+    expect(work(() => searchHttpBodyEventIds('work4', dir))).toEqual({ opens: 0, rows: 0 })
+    const after = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
+    try { expect(after.pragma('user_version', { simple: true })).toBe(8) } finally { after.close() }
+  })
+
+  /** Commit records appended to the index's WAL: each is a flush. */
+  function walCommits(): number {
+    const file = path.join(dir, 'http-body-index.db-wal')
+    if (!fs.existsSync(file)) return 0
+    const b = fs.readFileSync(file)
+    if (b.length < 32) return 0
+    const page = b.readUInt32BE(8)
+    let n = 0
+    for (let off = 32; off + 24 + page <= b.length; off += 24 + page) if (b.readUInt32BE(off + 4) !== 0) n++
+    return n
+  }
+  it('opens an index already at its version without a write, and creates one in a single commit', () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-body-open-'))
+    initDB(dir)
+    // A second handle keeps the WAL from being checkpointed away on close.
+    eventIdsReferencingBody('none', dir)
+    expect(walCommits()).toBe(1)
+    const holder = new Database(path.join(dir, 'http-body-index.db'))
+    try {
+      closeHttpBodyIndex()
+      const before = walCommits()
+      eventIdsReferencingBody('none', dir)
+      expect(walCommits() - before).toBe(0)
+    } finally { holder.close() }
   })
 
   it('re-verifies only the file that changed', () => {
@@ -238,11 +394,11 @@ describe('incremental body-search backfill', () => {
     expect(work(() => expect(searchHttpBodyEventIds('work4', dir)).toEqual([]))).toEqual({ opens: 1, rows: 1 })
   })
 
-  it('walks every row after a prune but re-verifies only the pruned ref', () => {
+  it('after a prune links again only the pruned ref\'s Event', () => {
     seed(10)
     searchHttpBodyEventIds('alpha', dir)
     pruneHttpBodyIndex(sha('alpha work2'), dir)
-    expect(work(() => expect(searchHttpBodyEventIds('work2', dir)).toEqual(['w2']))).toEqual({ opens: 1, rows: 10 })
+    expect(work(() => expect(searchHttpBodyEventIds('work2', dir)).toEqual(['w2']))).toEqual({ opens: 1, rows: 1 })
   })
 
   it('treats a row ingest already linked as a no-op at the next search', () => {

@@ -51,6 +51,9 @@ interface ExternalPattern {
 }
 const externalPatterns: ExternalPattern[] = []
 
+/** The most matches one loot event stores (#695). */
+const LOOT_MATCHES_PER_EVENT = 500
+
 export interface RuleRejection { name: string; reason: string }
 
 /** Register loot patterns from a plugin. Invalid regexes are skipped, not
@@ -239,18 +242,25 @@ export class LootDetector {
     // A Set, not an array searched per match: one text can hold tens of
     // thousands of distinct values, and `includes` made that quadratic.
     const keys = new Set<string>()
+    // The keys of the values this event keeps, in order.
+    const kept: string[] = []
     for (const m of matches) {
       if (!this.isReported(m)) continue
       const key = lootKey(m, opts.targetId)
       if (this.detectedHashes.has(key) || keys.has(key)) continue
       keys.add(key)
       fresh.push(m)
+      if (kept.length < LOOT_MATCHES_PER_EVENT) kept.push(key)
     }
     if (fresh.length === 0) return true
+    // #695: the row is chained, hashed and rendered whole, so it keeps the
+    // first LOOT_MATCHES_PER_EVENT new values and says how many there were.
+    // The others are not marked as recorded: a later sighting records them.
+    const stored = fresh.slice(0, LOOT_MATCHES_PER_EVENT)
     try {
       const evt = insertEvent('loot', {
         subtype: 'credential_detected',
-        matches: fresh.map((m) => ({
+        matches: stored.map((m) => ({
           type: m.type,
           confidence: m.confidence,
           preview: m.line,
@@ -259,7 +269,11 @@ export class LootDetector {
           // matches emit the same shape as before (chain-hash stable).
           ...(m.pluginId ? { plugin_id: m.pluginId, pattern_name: m.patternName } : {})
         })),
-        count: fresh.length,
+        // `count` is the number of matches in this row, as it always was.
+        count: stored.length,
+        // Only on a row that hit the limit, so every other row keeps the exact
+        // fields (and so the hash) it had before the limit existed.
+        ...(fresh.length > stored.length ? { matches_truncated: true, matches_total: fresh.length } : {}),
         // Optional provenance the caller can attach: the tool/command/host the
         // text came from. Trimmed + capped so a rogue caller can't bloat it.
         ...(opts.source && opts.source.trim() ? { source: opts.source.trim().slice(0, 200) } : {}),
@@ -273,7 +287,7 @@ export class LootDetector {
         targetId: opts.targetId
       })
       if (!evt) return false
-      for (const k of keys) this.detectedHashes.add(k)
+      for (const k of kept) this.detectedHashes.add(k)
       eventBus.publish(evt)
       return true
     } catch (e) {
