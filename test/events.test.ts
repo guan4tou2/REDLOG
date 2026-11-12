@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { requires } from './helpers/requires'
 import { parseQuery } from '../src/core/query/contract'
 import fs from 'fs'
 import path from 'path'
@@ -14,8 +15,8 @@ let getEventCount: typeof import('../src/core/db/events').getEventCount
 let executeEventQuery: typeof import('../src/core/db/events').executeEventQuery
 
 let dbAvailable = false
-try {
-  const dbMod = await import('../src/core/db/index')
+if (requires('better-sqlite3').ok) {
+  const dbMod =await import('../src/core/db/index')
   const eventsMod = await import('../src/core/db/events')
   initDB = dbMod.initDB
   closeDB = dbMod.closeDB
@@ -26,8 +27,6 @@ try {
   getEventCount = eventsMod.getEventCount
   executeEventQuery = eventsMod.executeEventQuery
   dbAvailable = true
-} catch {
-  // better-sqlite3 not compiled for this Node.js version
 }
 
 const insertEvent: typeof import('../src/core/db/events').insertEvent = (agentType, data, opts) =>

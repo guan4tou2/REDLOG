@@ -1,8 +1,8 @@
 import type { IpcMain } from 'electron'
 import type { IpcContext } from './types'
 import { getProjectDir } from '../../core/project-manager'
-import { loadConfig, saveConfig } from '../../core/config'
-import { configureIngest, ingestEvent } from '../../core/ingest'
+import { loadConfig, type RedLogConfig } from '../../core/config'
+import { ingestEvent } from '../../core/ingest'
 
 function cleanTarget(value: unknown): string | null {
   if (typeof value !== 'string') return null
@@ -10,7 +10,14 @@ function cleanTarget(value: unknown): string | null {
   return target ? target.slice(0, 253) : null
 }
 
-export function registerTargetContextIpc(ipcMain: IpcMain, ctx: IpcContext): void {
+export interface TargetContextDeps {
+  /** Writes the open project's config and applies it (main/config-apply.ts:
+   *  a changed current target reaches ingest, nothing else). False when no
+   *  project is open. */
+  commit: (next: RedLogConfig, prev: RedLogConfig) => boolean
+}
+
+export function registerTargetContextIpc(ipcMain: IpcMain, ctx: IpcContext, deps: TargetContextDeps): void {
   ipcMain.handle('targetContext:get', () => {
     const project = ctx.getActiveProject()
     if (!project) return null
@@ -24,14 +31,14 @@ export function registerTargetContextIpc(ipcMain: IpcMain, ctx: IpcContext): voi
     if (!project || !engagementId || !operatorId) return { ok: false, target: null }
 
     const projectDir = getProjectDir(project)
-    const config = loadConfig(projectDir)
-    const previous = cleanTarget(config.engagement.activeTarget)
+    const prev = loadConfig(projectDir)
+    const previous = cleanTarget(prev.engagement.activeTarget)
     const target = cleanTarget(requested)
     if (previous === target) return { ok: true, target }
 
-    config.engagement.activeTarget = target
-    saveConfig(projectDir, config)
-    configureIngest({ activeTarget: target })
+    const next = loadConfig(projectDir)
+    next.engagement.activeTarget = target
+    if (!deps.commit(next, prev)) return { ok: false, target: null }
     ingestEvent('system', {
       subtype: 'active_target_changed',
       previous_target: previous,

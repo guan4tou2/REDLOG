@@ -85,7 +85,7 @@ function restart(): void {
   const run = ++generation
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
   // Capture is off, so the next start is a capture start and says so again.
-  // While it stays on, a restart (every Settings save is one) does not.
+  // While it stays on, a restart (a change to its own settings) does not.
   if (!cfg.enabled || !supportedPlatform()) { announcedLimit = false; return }
 
   known = new Map()

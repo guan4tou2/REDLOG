@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -13,7 +14,7 @@ let getDB: typeof import('../src/core/db').getDB
 let closeHttpBodyIndex: typeof import('../src/core/http-body-index').closeHttpBodyIndex
 let available = false
 
-try {
+if (requires('better-sqlite3').ok) {
   const db = await import('../src/core/db')
   const events = await import('../src/core/db/events')
   initDB = db.initDB
@@ -24,7 +25,7 @@ try {
   getDB = db.getDB
   closeHttpBodyIndex = (await import('../src/core/http-body-index')).closeHttpBodyIndex
   available = true
-} catch { /* native SQLite unavailable */ }
+}
 
 const describeDB = available ? describe : describe.skip
 let dir: string

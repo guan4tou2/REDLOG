@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { requires } from './helpers/requires'
 import { parseQuery } from '../src/core/query/contract'
 import fs from 'fs'
 import os from 'os'
@@ -20,9 +21,7 @@ let amendMod: typeof import('../src/core/marker-amend') | null = null
 let chain: typeof import('../src/core/chain-anchor') | null = null
 let bus: typeof import('../src/core/event-bus') | null = null
 let redaction: typeof import('../src/core/redaction') | null = null
-try {
-  const D = (await import('better-sqlite3')).default
-  new D(':memory:').close()
+if (requires('better-sqlite3').ok) {
   events = await import('../src/core/db/events')
   dbmod = await import('../src/core/db/index')
   idxmod = await import('../src/core/http-body-index')
@@ -30,7 +29,7 @@ try {
   chain = await import('../src/core/chain-anchor')
   bus = await import('../src/core/event-bus')
   redaction = await import('../src/core/redaction')
-} catch { /* better-sqlite3 not built for this Node ABI */ }
+}
 
 const available = events !== null
 const OPTS = { engagementId: 'eng', operatorId: 'op' }

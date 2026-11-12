@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { requires } from './helpers/requires'
 import { request } from 'node:http'
 import fs from 'fs'
 import path from 'path'
@@ -32,7 +33,7 @@ const FAKE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-apihome-'))
 process.env.HOME = FAKE_HOME
 process.env.USERPROFILE = FAKE_HOME
 
-try {
+if (requires('better-sqlite3').ok) {
   const dbMod = await import('../src/core/db/index')
   initDB = dbMod.initDB
   closeDB = dbMod.closeDB
@@ -41,8 +42,6 @@ try {
   getEventCount = (await import('../src/core/db/events')).getEventCount
   queryEvents = (await import('../src/core/db/events')).queryEvents
   dbAvailable = true
-} catch {
-  // native module unavailable — skip
 }
 
 const describeDB = dbAvailable ? describe : describe.skip

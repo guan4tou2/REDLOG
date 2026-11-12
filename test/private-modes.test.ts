@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { requires } from './helpers/requires'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -37,7 +38,7 @@ afterEach(() => {
 })
 
 let dbAvailable = false
-try { await import('better-sqlite3').then((m) => new m.default(':memory:').close()); dbAvailable = true } catch { /* native module not built */ }
+dbAvailable = requires('better-sqlite3').ok
 const dbIt = it.skipIf(process.platform === 'win32' || !dbAvailable)
 
 describe('~/.redlog and the projects directory', () => {

@@ -12,6 +12,7 @@ import { Crosshair, ChevronRight, ChevronDown } from 'lucide-react'
 import { hostInScope, scopeConfigured } from '../lib/scope'
 import { useSharedFilter } from '../lib/FilterContext'
 import { createThrottledRead, type ThrottledRead } from '../lib/throttledRead'
+import { useLivePagedQuery } from '../hooks/useLivePagedQuery'
 
 interface TargetEntry {
   target: string
@@ -30,6 +31,9 @@ interface TargetViewProps {
 
 type Aggregate = Awaited<ReturnType<typeof window.redlog.events.aggregateTargets>>
 
+const EVIDENCE_PAGE_SIZE = 200
+const eventKey = (event: RedLogEvent): string => event.id
+
 export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Element {
   const { setTargetId } = useSharedFilter()
   const [rows, setRows] = useState<Omit<TargetEntry, 'inScope'>[]>([])
@@ -43,12 +47,22 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
   const [filter, setFilter] = useState<'all' | 'in_scope' | 'out_scope'>('all')
   const [selected, setSelected] = useState<string | null>(null)
   const [query, setQuery] = useState('')
-  const [evidence, setEvidence] = useState<RedLogEvent[]>([])
-  // The open target's first page: a failed read is not "no events".
-  const [evidencePhase, setEvidencePhase] = useState<'loading' | 'loaded' | 'failed'>('loaded')
-  const [hasMore, setHasMore] = useState(false)
-  const [nextCursor, setNextCursor] = useState<string | null>(null)
-  const [loadingMore, setLoadingMore] = useState(false)
+  // The open target's evidence. Housekeeping aside, as the count and the
+  // Timeline leave it (spec 038 SC-002). Opening another target is a new
+  // question: B never shows A's rows, and A's late reply is dropped. A failed
+  // first page is not "no events".
+  const evidenceRead = useLivePagedQuery<RedLogEvent>({
+    key: selected ?? '',
+    enabled: selected !== null,
+    fetch: async (cursor) => {
+      const page = await window.redlog.events.queryPage({ targetId: selected ?? '', excludeHousekeeping: true, limit: EVIDENCE_PAGE_SIZE, ...(cursor ? { cursor } : {}) })
+      return { rows: page.items, nextCursor: page.hasMore ? page.nextCursor : null }
+    },
+    rowKey: eventKey
+  })
+  const evidence = evidenceRead.rows
+  const evidencePhase = evidenceRead.state.phase
+  const { hasMore, loadingMore, loadMore, update: updateEvidence, refresh: refreshEvidence } = evidenceRead
   // Scope target list from project config — used to compute the inScope column
   // on each target. Empty when config isn't set (in which case every target
   // shows as "in-scope" since there's no rule to violate).
@@ -74,24 +88,11 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
   const selectedRef = useRef(selected)
   selectedRef.current = selected
   const { t } = useI18n()
-  // Re-read the selected target's first page, when a live row could not be
-  // checked against it. Declared above the effect that calls it.
-  // Only the newest first-page read is applied: a reply for a target that is
-  // no longer open, or for an earlier opening of it, is dropped.
-  const evidenceSeq = useRef(0)
-  const reloadEvidenceRef = useRef(async (target: string): Promise<void> => {
-    const mine = ++evidenceSeq.current
-    try {
-      const page = await window.redlog.events.queryPage({ targetId: target, excludeHousekeeping: true, limit: 200 })
-      if (mine !== evidenceSeq.current || selectedRef.current !== target) return
-      setEvidence(page.items)
-      setHasMore(page.hasMore)
-      setNextCursor(page.nextCursor)
-      setEvidencePhase('loaded')
-    } catch {
-      if (mine === evidenceSeq.current && selectedRef.current === target) setEvidencePhase('failed')
-    }
-  })
+  const moreFailed = evidenceRead.moreFailed
+  useEffect(() => {
+    if (moreFailed) toast(t('targets.evidenceFailed'), { type: 'error', detail: moreFailed.error })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moreFailed])
 
   useEffect(() => {
     // Scope on mount, on a save from Settings, and when the record says it
@@ -125,14 +126,15 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
         .then((ids) => {
           if (selectedRef.current !== sel || ids.length === 0) return
           const admitted = new Set(ids)
-          setEvidence((prev) => {
+          updateEvidence((prev) => {
             const known = new Set(prev.map((e) => e.id))
             return [...candidates.filter((e) => admitted.has(e.id) && !known.has(e.id)).reverse(), ...prev]
           })
         })
         // The header count is the aggregate, so a missed row shows as
-        // "loaded N of M" rather than as a complete list; re-read the page.
-        .catch(() => { if (selectedRef.current === sel) void reloadEvidenceRef.current(sel) })
+        // "loaded N of M" rather than as a complete list; re-read the pages
+        // loaded, not just the first — the operator's older pages stay.
+        .catch(() => { if (selectedRef.current === sel) refreshEvidence() })
     })
     void window.redlog.targetContext.get().then(setActiveTarget)
     const unsubTarget = window.redlog.targetContext.onChange(setActiveTarget)
@@ -220,48 +222,9 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
   }
 
 
-  const PAGE_SIZE = 200
-
-  // Housekeeping aside, as the count and the Timeline leave it (spec 038 SC-002).
-  // The previous target's rows go before the read starts, so B never shows A's.
-  const readEvidence = useCallback((target: string): void => {
-    setEvidence([])
-    setHasMore(false)
-    setNextCursor(null)
-    setEvidencePhase('loading')
-    selectedRef.current = target
-    void reloadEvidenceRef.current(target)
-  }, [])
-
   const loadEvidence = useCallback((target: string): void => {
-    if (selected === target) {
-      evidenceSeq.current++
-      setSelected(null)
-      setEvidence([])
-      setHasMore(false)
-      setNextCursor(null)
-      return
-    }
-    setSelected(target)
-    readEvidence(target)
-  }, [selected, readEvidence])
-
-  const loadMore = useCallback(async () => {
-    if (!selected || !nextCursor || loadingMore) return
-    setLoadingMore(true)
-    try {
-      const target = selected
-      const page = await window.redlog.events.queryPage({ targetId: target, excludeHousekeeping: true, limit: PAGE_SIZE, cursor: nextCursor })
-      if (selectedRef.current !== target) return
-      setEvidence((prev) => [...prev, ...page.items])
-      setHasMore(page.hasMore)
-      setNextCursor(page.nextCursor)
-    } catch (err) {
-      toast(t('targets.evidenceFailed'), { type: 'error', detail: err instanceof Error ? err.message : String(err) })
-    } finally {
-      setLoadingMore(false)
-    }
-  }, [selected, nextCursor, loadingMore, t])
+    setSelected(selected === target ? null : target)
+  }, [selected])
 
   // The filtered target list must be fully built BEFORE the keyboard hook
   // reads its length. These were interleaved — `listNav` sat inside the
@@ -402,7 +365,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                   ) : evidencePhase === 'failed' ? (
                     <div data-testid="target-evidence-failed" role="alert" className="flex flex-wrap items-center gap-2 text-xs text-red-400">
                       <span>{t('targets.evidenceFailed')}</span>
-                      <Button size="compact" level="quiet" onClick={() => readEvidence(tgt.target)}>{t('common.retry')}</Button>
+                      <Button size="compact" level="quiet" onClick={evidenceRead.retry}>{t('common.retry')}</Button>
                     </div>
                   ) : evidence.length === 0 ? (
                     <p className="text-redlog-text-faint text-xs">{t('targets.noEvidence')}</p>

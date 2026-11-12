@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -19,12 +20,12 @@ let getDB: typeof import('../src/core/db/index').getDB
 let insertEvent: typeof import('../src/core/db/events').insertEvent
 
 let dbAvailable = false
-try {
+if (requires('better-sqlite3').ok) {
   const d = await import('../src/core/db/index')
   const e = await import('../src/core/db/events')
   initDB = d.initDB; closeDB = d.closeDB; getDB = d.getDB; insertEvent = e.insertEvent
   dbAvailable = true
-} catch { /* better-sqlite3 not built for this Node */ }
+}
 
 const describeDB = dbAvailable ? describe : describe.skip
 let dir: string

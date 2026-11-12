@@ -7,18 +7,17 @@
 // the chain stops verifying.
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
 
 let dbmod: typeof import('../src/core/db/index') | null = null
 let notes: typeof import('../src/core/db/event-notes') | null = null
-try {
-  const D = (await import('better-sqlite3')).default
-  new D(':memory:').close()
+if (requires('better-sqlite3').ok) {
   dbmod = await import('../src/core/db/index')
   notes = await import('../src/core/db/event-notes')
-} catch { /* better-sqlite3 not built for this Node ABI */ }
+}
 
 describe.skipIf(!notes)('an event note', () => {
   let dir: string

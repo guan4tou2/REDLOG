@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -17,12 +18,11 @@ import path from 'path'
 
 let dbmod: typeof import('../src/core/db/index') | null = null
 let Database: typeof import('better-sqlite3') | null = null
-try {
+if (requires('better-sqlite3').ok) {
   const D = (await import('better-sqlite3')).default
-  new D(':memory:').close()
   Database = D as unknown as typeof import('better-sqlite3')
   dbmod = await import('../src/core/db/index')
-} catch { /* better-sqlite3 not built for this Node ABI */ }
+}
 
 const available = dbmod !== null
 

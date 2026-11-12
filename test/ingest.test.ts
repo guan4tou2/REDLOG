@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -17,8 +18,8 @@ let raw: typeof import('../src/core/raw-store')
 let chain: typeof import('../src/core/chain-anchor')
 let ops: typeof import('../src/core/db/operators')
 let dbAvailable = false
-try {
-  const dbMod = await import('../src/core/db/index')
+if (requires('better-sqlite3').ok) {
+  const dbMod =await import('../src/core/db/index')
   initDB = dbMod.initDB; closeDB = dbMod.closeDB
   ingestMod = await import('../src/core/ingest')
   events = await import('../src/core/db/events')
@@ -26,7 +27,7 @@ try {
   chain = await import('../src/core/chain-anchor')
   ops = await import('../src/core/db/operators')
   dbAvailable = true
-} catch { /* native module unavailable — skip */ }
+}
 
 const describeDB = dbAvailable ? describe : describe.skip
 

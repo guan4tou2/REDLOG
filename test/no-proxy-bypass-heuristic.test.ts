@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -9,14 +10,14 @@ let events: typeof import('../src/core/db/events')
 let ops: typeof import('../src/core/db/operators')
 let bus: typeof import('../src/core/event-bus')
 let dbAvailable = false
-try {
-  const dbMod = await import('../src/core/db/index')
+if (requires('better-sqlite3').ok) {
+  const dbMod =await import('../src/core/db/index')
   events = await import('../src/core/db/events')
   ops = await import('../src/core/db/operators')
   bus = await import('../src/core/event-bus')
   initDB = dbMod.initDB; closeDB = dbMod.closeDB
   dbAvailable = true
-} catch { /* better-sqlite3 not compiled */ }
+}
 const describeDB = dbAvailable ? describe : describe.skip
 
 type Detector = {

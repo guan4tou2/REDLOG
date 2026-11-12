@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -18,8 +19,8 @@ let causes: typeof import('../src/core/causes-resolver')
 let lootMod: typeof import('../src/core/loot-detector')
 let bus: typeof import('../src/core/event-bus')
 let dbAvailable = false
-try {
-  dbMod = await import('../src/core/db/index')
+if (requires('better-sqlite3').ok) {
+  dbMod =await import('../src/core/db/index')
   ingestMod = await import('../src/core/ingest')
   ops = await import('../src/core/db/operators')
   bodies = await import('../src/core/http-body-store')
@@ -28,7 +29,7 @@ try {
   lootMod = await import('../src/core/loot-detector')
   bus = await import('../src/core/event-bus')
   dbAvailable = true
-} catch { /* native module unavailable — skip */ }
+}
 
 const describeDB = dbAvailable ? describe : describe.skip
 
