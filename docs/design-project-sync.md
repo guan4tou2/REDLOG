@@ -1,5 +1,9 @@
 # Design project ↔ repo sync
 
+> **Status:** current  
+> **Scope:** which repo files each screen in the Claude Design project was drawn from  
+> **Last verified:** not re-verified in this pass; its own "Last sync" section is dated
+
 Mirror of `github.md` in the Claude Design project "RedLog 設計規範". That
 project is where `UIUX-STANDARD.md` and the phase PR templates are authored;
 this file records which repo files each design screen was drawn from, so a

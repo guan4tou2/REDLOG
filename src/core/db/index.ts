@@ -25,7 +25,7 @@ let boundEngagement: string | null = null
 /** Say which engagement the open database belongs to. From then until it
  *  closes, a row that names another engagement is refused at insertEvent —
  *  whichever path it came by. A database opened without this (tests, tools)
- *  checks nothing. docs/DESIGN-project-runtime.md. */
+ *  checks nothing. docs/design/DESIGN-project-runtime.md. */
 export function bindDBEngagement(engagementId: string): void {
   if (!db) throw new Error('Database not initialized')
   boundEngagement = engagementId

@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 
-// v0.13.0: the logged-tier insert path (docs/DESIGN-two-tier-chain.md §4.2).
+// v0.13.0: the logged-tier insert path (docs/design/DESIGN-two-tier-chain.md §4.2).
 // insertEvent dispatches to `events` or `events_logged` based on
 // classifyTier. Logged rows skip the chain machinery — no hash, no
 // signature, no prev_hash cache mutation, no clock-anomaly detector, no

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { parseStartTranscript } from '../src/core/start-transcript'
 
-// docs/DESIGN-core-and-capture.md §2.3. The parser must be conservative: a
+// docs/design/DESIGN-core-and-capture.md §2.3. The parser must be conservative: a
 // command it emits is one the operator actually typed. The tests lean on the
 // failure that matters — never fabricating a command from output text.
 

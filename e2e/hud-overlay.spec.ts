@@ -62,7 +62,7 @@ test.describe.serial('HUD overlay geometry', () => {
   // that the v0.9.3 HUD was correct and the new one was not, so the handler
   // was reverted verbatim. This test now records what v0.9.3 actually does, so
   // any future change to it is a deliberate one. The leftward drift it pins
-  // down is tracked in docs/AUDIT-2026-08-08.md rather than patched blind.
+  // down is tracked in docs/records/2026-08-08/AUDIT-2026-08-08.md rather than patched blind.
   test('v0.9.3 behaviour: widening slides x left and narrowing does not restore it', async () => {
     await parkAtRightEdge(app)
     const start = await bounds(app)

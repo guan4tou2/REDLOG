@@ -122,7 +122,7 @@ export function registerTerminalIpc(ipcMain: IpcMain, ctx: IpcContext): void {
   })
 
   // --- Cast search / index ---
-  // Full-text search over terminal recordings (docs/DESIGN-core-and-capture.md
+  // Full-text search over terminal recordings (docs/design/DESIGN-core-and-capture.md
   // §2.4). Separate from events:search because the two answer different
   // questions and have different completeness: an event either exists or does
   // not, whereas a recording may be on disk and not yet indexed. `casts:status`

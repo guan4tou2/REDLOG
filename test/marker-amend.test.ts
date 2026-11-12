@@ -4,7 +4,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 
-// docs/DESIGN-core-and-capture.md §1, design turn 8b. The fold is unit-tested in
+// docs/design/DESIGN-core-and-capture.md §1, design turn 8b. The fold is unit-tested in
 // marker-fold.test.ts; this drives the write path against a real database,
 // because the claim worth proving is not "a row lands" — it is that correcting a
 // finding leaves the original byte-for-byte intact and the chain still verifying.

@@ -318,7 +318,7 @@ test.describe.serial('timeline-encoding: timeline visual encoding', () => {
 
 })
 
-// docs/DESIGN-core-and-capture.md §6: the 18 lanes banded by capture group.
+// docs/design/DESIGN-core-and-capture.md §6: the 18 lanes banded by capture group.
 // The timeline opens as capture-group bands (collapsed), each expandable to its
 // lanes, instead of a wall of eighteen. This is the product's most complex
 // screen, so this verifies the real render: bands by default, expand reveals
@@ -630,7 +630,7 @@ test.describe.serial('timeline-standard-mode: timeline standard / swim-lane mode
   })
 })
 
-// docs/DESIGN-core-and-capture.md §6: the eight flat toolbar toggles grouped by
+// docs/design/DESIGN-core-and-capture.md §6: the eight flat toolbar toggles grouped by
 // effect. The low-frequency view controls (session dividers, timezone) moved
 // behind one "More" control so the row is scannable instead of a flat wall of
 // chips. This checks they are reachable there, not lost. The auditor view left

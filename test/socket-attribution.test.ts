@@ -4,7 +4,7 @@ import {
   portOfSourceAddr, socketCausesFor, _resetSocketAttribution
 } from '../src/core/socket-attribution'
 
-// Socket → pid → command attribution (docs/DESIGN-traffic-attribution.md §2.3).
+// Socket → pid → command attribution (docs/design/DESIGN-traffic-attribution.md §2.3).
 // Pure module: the join that lets a request cite the command that opened its
 // socket, without any DB or capture pipeline.
 

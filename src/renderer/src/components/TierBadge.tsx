@@ -4,7 +4,7 @@
 // same semantics and tooltip; `row` is icon-only for visual density, `detail`
 // is the full chip. Rendered for BOTH tiers by design — a reviewer needs to
 // see "this row is chained" as much as "this row is logged"; the design doc
-// (docs/DESIGN-two-tier-chain.md §9.1) calls out that dropping the chained
+// (docs/design/DESIGN-two-tier-chain.md §9.1) calls out that dropping the chained
 // glyph would hide the classifier from most of the timeline.
 
 export const TIER_TOOLTIPS = {

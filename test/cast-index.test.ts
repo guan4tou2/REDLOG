@@ -3,7 +3,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 
-// docs/DESIGN-core-and-capture.md §2.4. The claim being tested is not "rows
+// docs/design/DESIGN-core-and-capture.md §2.4. The claim being tested is not "rows
 // land in a table" — it is that a hit points back at bytes the operator can
 // actually read, which is the only thing that makes an unstructured `ssh`
 // session findable rather than merely counted.

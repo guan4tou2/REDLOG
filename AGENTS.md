@@ -5,14 +5,14 @@ The rules below are additional and apply to every agent working in this repo.
 
 ## Which document is authoritative
 
-- Product principles: `docs/DESIGN-PRINCIPLES.md`.
+- Product principles: `docs/design/DESIGN-PRINCIPLES.md`.
 - Global UI/UX rules, controls and copy, and confirmed design decisions
   (appendix UX-001…): `docs/UIUX-STANDARD.md`. It is the only global UI/UX
   standard; do not start a second one.
 - A feature's requirements and acceptance: its `specs/NNN-*/`. Technical and
-  data contracts: `docs/DESIGN-*.md`.
-- `docs/archive/`, `docs/records/` and dated audits (`docs/AUDIT-*`, `UIUX-*-2026-*`)
-  are history, not a basis for current design. A document headed
+  data contracts: `docs/design/DESIGN-*.md`.
+- `docs/archive/` and `docs/records/` (which holds the dated audits, rechecks and
+  plans) are history, not a basis for current design. A document headed
   `ARCHIVED — NOT AUTHORITATIVE` is never a source.
 - Design decisions go in `UIUX-STANDARD.md`; implementation detail goes in the
   spec. A finished audit is closed or deleted, not kept as a standing document.

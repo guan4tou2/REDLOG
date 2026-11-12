@@ -652,7 +652,7 @@ export function spawnTerminal(id: string, cols: number, rows: number, shellId?: 
   // Use os.homedir() only — it resolves via USERPROFILE on Windows. Reading
   // process.env.HOME first bit Git Bash / MSYS2 users where HOME is a
   // POSIX-shaped `/c/Users/foo` that pty.spawn rejects as invalid Win32.
-  // Audit P0-2 (docs/WINDOWS_COMPAT_AUDIT.md).
+  // Audit P0-2 (docs/records/2026-08-01/WINDOWS_COMPAT_AUDIT.md).
   const cwd = os.homedir()
 
   ensurePtyHelperOnce()

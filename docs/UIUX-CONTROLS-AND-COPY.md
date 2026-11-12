@@ -1,5 +1,9 @@
 # 控制項與文案規範
 
+> **狀態**：superseded-by [UIUX-STANDARD](UIUX-STANDARD.md) §25  
+> **範圍**：控制項與文案規則的原始論述；`src/` 註解與 agent 指示仍以此路徑引用，故留在根目錄  
+> **最後核對**：本次整理未重新核對（not re-verified in this pass）
+
 > **SUPERSEDED — NOT AUTHORITATIVE（2026-11-07）。** 仍有效的規則已併入 `UIUX-STANDARD.md` §25，現行以該節為準；本檔只保留當時的逐項盤點與修改前後例子作為歷史背景，之後的清理批次再決定去留。
 
 > 建立：2026-09-29。起因：首次安裝流程的文案審查，發現問題不在字句而在「每個畫面
@@ -249,6 +253,6 @@ blue / indigo 改成 `redlog-cyan`。
 
 ## 2026-10-26 全產品視覺改版
 
-[Forensic Editorial 規格](UIUX-FORENSIC-EDITORIAL.md) 定義整個 Electron App 的
+[Forensic Editorial 規格](design/UIUX-FORENSIC-EDITORIAL.md) 定義整個 Electron App 的
 階段、配色角色與逐頁驗收。沿用本文件的必要性測試；方向稿中的標語與說明不加入 UI。
 品牌紅、可讀文字、主要按鈕 hover 與危險紅分別核對，不能只驗證預設狀態。

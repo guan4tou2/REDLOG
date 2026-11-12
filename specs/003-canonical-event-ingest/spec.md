@@ -73,7 +73,7 @@ spans, scope dispatch, companion generation, pause behavior, or publication.
 - `.specify/memory/constitution.md`, especially Evidence Integrity, Canonical
   Domain Semantics, Explicit Failure, Evidence Provenance, and Risk-Based
   Test-First Verification.
-- `docs/DESIGN-plugin-kernel.md` section 3 for the canonical ingest order.
+- `docs/design/DESIGN-plugin-kernel.md` section 3 for the canonical ingest order.
 
 ## Out of Scope
 

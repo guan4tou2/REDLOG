@@ -372,7 +372,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       let targetId = (body.target_id || body.targetId || undefined) as string | undefined
 
       // Causal links, enrichment, redaction, insert, publish, scope and
-      // companions all run inside ingest() below (docs/DESIGN-plugin-kernel.md
+      // companions all run inside ingest() below (docs/design/DESIGN-plugin-kernel.md
       // §3) — the same pipeline the in-process producers use.
       // v0.6.88 P0-B: strip any caller-supplied operator id from body/data.
       // The operator was already resolved from the Bearer token above
@@ -907,7 +907,7 @@ export function startApiServer(port = 6660): Promise<number> {
 }
 
 export function onApiProjectOpen(): void {
-  // Per-project token isolation (docs/DESIGN-OPEN-ITEMS.md §2). Each engagement
+  // Per-project token isolation (docs/archive/DESIGN-OPEN-ITEMS.md §2). Each engagement
   // carries its own API secret under its project dir; it is mirrored to the
   // global ~/.redlog/api-token so the shell hook and CLI — which read that path
   // on every call — pick up the current project's token on a switch. A token

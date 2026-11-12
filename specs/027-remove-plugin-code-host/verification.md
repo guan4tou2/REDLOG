@@ -22,7 +22,7 @@ that `tailers` is privileged, passed and guards the gate that stays.
 - `searchEvents` is removed; `events.test.ts` and `marker-amend.test.ts` run
   their assertions unchanged against the query contract.
 - `plugins/types.ts`, `README.md`, `docs/plugin-development.md`,
-  `docs/ARCHITECTURE.md` and `docs/ROADMAP.md` no longer claim isolation or
+  `docs/ARCHITECTURE.md` and `docs/archive/ROADMAP.md` no longer claim isolation or
   document the `ctx` API.
 
 ## Evidence

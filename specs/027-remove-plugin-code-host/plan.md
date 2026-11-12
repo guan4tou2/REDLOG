@@ -21,5 +21,5 @@
    `PRIVILEGED_KEYS`; refuse them by name in `validateManifest`.
 4. Correct the plugin tier comment in `plugins/types.ts`.
 5. Correct `README.md`, `docs/plugin-development.md`, `docs/ARCHITECTURE.md`
-   and `docs/ROADMAP.md`. Dated audit documents are left as historical records.
+   and `docs/archive/ROADMAP.md`. Dated audit documents are left as historical records.
 6. Remove `searchEvents`; port its tests.

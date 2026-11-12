@@ -313,7 +313,7 @@ Timeline paging that US1 introduces. US5 is independent.
   - §6's view-mode divergence note: the zone moved to Settings ▸ General, and the auditor switch is the shared "Chained only" chip.
   - §7's target jump uses the shared target chip.
   - Any description of the Timeline's substring `/` filter.
-  Grep `docs/DESIGN-core-and-capture.md` for the target-focus design and mark it superseded by spec 038.
+  Grep `docs/design/DESIGN-core-and-capture.md` for the target-focus design and mark it superseded by spec 038.
 - [X] T053 Add a performance check, `test/timeline-query-perf.test.ts`, skipped unless `REDLOG_PERF=1`. On a 100,000-event fixture it times each of these (research R13):
   - `queryEventsPage` for each filter kind
   - `countEvents`

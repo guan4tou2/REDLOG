@@ -251,7 +251,7 @@ OpenTimestamps · CDP · WSL · hook · token · shell`。
    `xattr -dr com.apple.quarantine /Applications/RedLog.app`。
 5. **`nmap -sS` 的封包沒被記**：SYN 掃描不完成握手，socket 層看不到。指令有記，封包
    沒有，這是不裝 pcap 就無解的物理限制。見
-   [`DESIGN-traffic-attribution.md`](DESIGN-traffic-attribution.md)。
+   [`DESIGN-traffic-attribution.md`](design/DESIGN-traffic-attribution.md)。
 
 ### 準備工具與重新開啟擷取設定
 

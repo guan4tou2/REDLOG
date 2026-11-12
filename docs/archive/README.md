@@ -39,7 +39,7 @@ describing code that has since changed.
 | [Design-system refactor](DESIGN-SYSTEM-REFACTOR.md) | Four-phase visual-system plan (2026-08-20) | Largely executed; the standard is [UIUX-STANDARD](../UIUX-STANDARD.md) |
 
 Still live, and deliberately **not** archived: [`ALERT-ROLES.md`](../ALERT-ROLES.md)
-(cited by `src/core/alert/`), [`DESIGN-PRINCIPLES.md`](../DESIGN-PRINCIPLES.md)
+(cited by `src/core/alert/`), [`DESIGN-PRINCIPLES.md`](../design/DESIGN-PRINCIPLES.md)
 (§1 superseded, the rest in force) and [`TESTING.md`](../TESTING.md).
 
 ### Archived 2026-10-16 — historical test inventory
@@ -47,3 +47,10 @@ Still live, and deliberately **not** archived: [`ALERT-ROLES.md`](../ALERT-ROLES
 [The former test/config matrix](TEST-MATRIX-2026-10-16.md) preserves the old
 Part 1–6 and G-* audit references. Its listed gaps are historical; current test
 commands and coverage owners are in [Testing](../TESTING.md).
+
+### Archived 2026-11-11 — design backlog
+
+[Open items design](DESIGN-OPEN-ITEMS.md) (2026-09-06) is a backlog its own
+last section marks empty; it is kept for its reasoning. What is next lives in
+[WORK-PLAN](../WORK-PLAN.md) and the [Spec index](../../specs/README.md).
+`src/` and `test/` comments still cite its §2 by its new path.

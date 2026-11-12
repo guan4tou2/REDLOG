@@ -1,5 +1,9 @@
 # Testing RedLog
 
+> **Status:** current  
+> **Scope:** test layers, commands and who owns which coverage  
+> **Last verified:** not re-verified in this pass
+
 Use the smallest test layer that proves the behavior. The current suites are
 `test/` (Vitest) and `e2e/` (Playwright/Electron); installed-package journeys
 reuse `e2e/` against an actual executable. Historical results are not new runs.

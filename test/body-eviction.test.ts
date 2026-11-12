@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { planEviction, type BodyEntry } from '../src/core/body-eviction'
 
-// docs/DESIGN-core-and-capture.md §6. This is a policy for deleting captured
+// docs/design/DESIGN-core-and-capture.md §6. This is a policy for deleting captured
 // content under disk pressure, in a tool whose whole point is not losing it —
 // so the tests are mostly about what it must REFUSE to do.
 

@@ -143,7 +143,7 @@ describe('settings information architecture', () => {
     // Browsing a registry, pinning publishers by Ed25519 fingerprint, and
     // reading revocation lists are the machinery of distributing capture
     // code. The core is "nothing missing, findable afterwards"
-    // (docs/DESIGN-core-and-capture.md §1) — distribution serves
+    // (docs/design/DESIGN-core-and-capture.md §1) — distribution serves
     // extensibility, which is a different product.
     //
     // What stays is the installed list, because an operator does need to

@@ -1,5 +1,9 @@
 # RedLog REST API Reference
 
+> **Status:** current  
+> **Scope:** the REST API served by `src/core/api-server.ts`  
+> **Last verified:** not re-verified in this pass
+
 Complete reference for the HTTP API served by `src/core/api-server.ts`. The API binds `127.0.0.1` on the port written to `~/.redlog/api-port` (default 6660).
 
 ## Authentication

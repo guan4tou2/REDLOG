@@ -151,7 +151,7 @@ docs/domain/
 ├── SPEC-target-identity.md
 ├── SPEC-export-event-selection.md   # a target subset matches every casing
 └── INVENTORY-query-completeness.md
-docs/UIUX-STANDARD.md, docs/DESIGN-core-and-capture.md
+docs/UIUX-STANDARD.md, docs/design/DESIGN-core-and-capture.md
 test/                          # new and changed tests, per tasks.md
 e2e/target-focus.spec.ts (now in e2e/timeline-evidence.spec.ts), e2e/timeline-toolbar-overflow.spec.ts (now in e2e/timeline-track.spec.ts)
 ```

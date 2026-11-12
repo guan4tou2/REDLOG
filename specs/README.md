@@ -1,19 +1,19 @@
 # Spec 索引
 
-更新：2026-11-04；基準 `eaa40e46`。每個編號保留原目錄、tasks ID 與驗收歷史；本次不改 feature 狀態、不重新編號，也不以此索引代勾 tasks。
+更新：2026-11-04；基準 `eaa40e46`。2026-11-11 於 `9f60882d` 補列 067–070 並更新統計（只讀 `spec.md` 的 Status 行，未核對內容）。每個編號保留原目錄、tasks ID 與驗收歷史；本次不改 feature 狀態、不重新編號，也不以此索引代勾 tasks。
 
 下一批與依賴見 [工作計畫](../docs/WORK-PLAN.md)；領域語意見 [domain](../docs/domain/glossary.md)。
 
 ## 狀態如何讀
 
-目前 66 份：Verified 44、Implemented 5、Draft 15、Withdrawn 2。這是 spec.md 的宣告統計，不是重新驗證全部產品。
+目前 70 份：Verified 44、Implemented 5、Draft 19、Withdrawn 2。這是 spec.md 的宣告統計，不是重新驗證全部產品。
 
 - `spec.md`：需求與正式狀態；`plan.md`：實作安排；`tasks.md`：執行項；`verification.md`／acceptance：測試及原生證據。部分舊 Draft 沒有完整 plan／tasks，先按現況補足而非增加平行 spec。
 - Implemented 表示不能當成未實作重做；Draft 可包含已合併的局部實作。unchecked 代表整項尚未完成，不代表其中每個子步驟都沒有程式碼。
 - Verified 的適用版本、平台與限制以該 verification 為準，不移植到新 build 或新平台；Withdrawn 不列待辦。
 - 更新狀態須依專案 gate 及實際證據，僅有 CI 綠燈、文件整理或相關 issue 合併都不足以代替完整驗收。
 
-## 當前與待對帳（047–066）
+## 當前與待對帳（047–070）
 
 | Spec | 正式狀態 | 剩餘工作／接續方式 |
 |---|---|---|
@@ -37,6 +37,10 @@
 | [064 紀錄優先的工作區與操作流程](064-recording-first-workspace/spec.md) | Draft | 當前工作區整合；S1→S2→S3→S4，部分落地，跨閱讀面／導覽／平台 gate 尚未完成。 |
 | [065 統一探索與管理入口 — 插件列表與詳情](065-plugin-explore-and-manage/spec.md) | Draft | 設定→插件改為可搜尋列表＋詳情與「需處理」篩選,建立五維度 View Model;A 批次止於 Renderer,B 接官方整合統一入口與雙向定位。 |
 | [066 統一探索與管理入口 — 官方整合入口、雙向定位與擷取健康](066-plugin-integration-entry/spec.md) | Draft | 插件頁成為官方整合安裝／更新／解除安裝的唯一入口;移除 AgentsPanel 重複操作並改跳轉;插件與擷取來源雙向定位;衝突／錯誤進需處理;擷取健康維度接線。B 批次,C 另立。 |
+| [067 官方整合安裝邊界 — 目錄失敗隔離、收據與衝突恢復(C 批次)](067-plugin-install-boundary/spec.md) | Draft | 2026-11-11 補列；剩餘工作未在索引核對，見該 spec。 |
+| [068 專案選擇畫面 — 搜尋與範圍狀態徽章](068-project-picker-search-scope/spec.md) | Draft | 2026-11-11 補列；剩餘工作未在索引核對，見該 spec 與 verification。 |
+| [069 活動紀錄與時間軸 — 對齊 Stitch 設計決策](069-activity-timeline-alignment/spec.md) | Draft | 2026-11-11 補列；剩餘工作未在索引核對，見該 spec 與 tasks。 |
+| [070 截取來源、設定導航與外部工具整合](070-capture-sources-and-integrations/spec.md) | Draft | 2026-11-11 補列；剩餘工作未在索引核對，見該 spec 與 tasks。 |
 
 
 ## 交付版本、驗收與主要追蹤

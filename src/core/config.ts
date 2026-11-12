@@ -223,7 +223,7 @@ export interface RedLogConfig {
    *    `0` = unbounded.
    *  For file stores the event row and its sha256 attestation always survive;
    *  only the file goes, with a `system.*_pruned` / `*_evicted` audit row per
-   *  deletion. See docs/DESIGN-logged-tier-retention.md for the row tier. */
+   *  deletion. See docs/design/DESIGN-logged-tier-retention.md for the row tier. */
   retention?: {
     /** `.cast` terminal recordings (`casts/`). */
     casts?: { keepDays?: number; maxBytes?: number }

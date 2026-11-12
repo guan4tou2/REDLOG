@@ -10,7 +10,7 @@ import {
   type Connection
 } from '../../core/connection-table'
 
-// Connection-level network capture (docs/DESIGN-core-and-capture.md §2.1).
+// Connection-level network capture (docs/design/DESIGN-core-and-capture.md §2.1).
 //
 // The same shape as process-monitor: poll a table the OS already keeps, diff
 // against the last snapshot, emit on the change. Here the table is the socket

@@ -1,4 +1,4 @@
-// Connection-level network capture (docs/DESIGN-core-and-capture.md §2.1).
+// Connection-level network capture (docs/design/DESIGN-core-and-capture.md §2.1).
 //
 // mitmproxy only sees what is proxied. Scanning, SMB, LDAP, RDP, reverse
 // shells and C2 beacons produce none of it, so a timeline can show

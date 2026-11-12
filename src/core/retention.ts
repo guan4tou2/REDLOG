@@ -112,7 +112,7 @@ function sweepDir(
   return pruned
 }
 
-/** v0.13.0 (docs/DESIGN-logged-tier-retention.md): row-level sweep of the
+/** v0.13.0 (docs/design/DESIGN-logged-tier-retention.md): row-level sweep of the
  *  events_logged table. Age-based delete keyed on `created_at`
  *  (clock-drift-immune; see design §5.2). Fires one chained
  *  `system.retention_pruned_logged` summary event when count > 0

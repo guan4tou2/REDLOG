@@ -48,7 +48,7 @@ describe('the mitmproxy addon exposes the hooks mitmproxy actually calls', () =>
   })
 
   // The same shape as the dns_message bug above, one layer along: the consumer
-  // was written, documented (docs/DESIGN-traffic-attribution.md 2.3) and unit
+  // was written, documented (docs/design/DESIGN-traffic-attribution.md 2.3) and unit
   // tested, and the producer never sent the field it reads. `socketCausesFor`
   // joins source port -> pid -> the command_start that owns it, so without
   // `source_addr` on a request event it has nothing to look up and returns []

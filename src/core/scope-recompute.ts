@@ -1,4 +1,4 @@
-// What changes when the allowlist changes (docs/DESIGN-core-and-capture.md §1,
+// What changes when the allowlist changes (docs/design/DESIGN-core-and-capture.md §1,
 // design turn 8a).
 //
 // An operator adds a host to the exclude list on day four. Everything they did

@@ -1,5 +1,9 @@
 # 節省 token 的工具:評估與使用規則
 
+> **狀態**：current  
+> **範圍**：Claude Code 工作階段的工具使用規則；與產品無關（CLAUDE.md 以此路徑引用）  
+> **最後核對**：本次整理未重新核對（not re-verified in this pass）；評估日期見下文
+
 日期:2026-11-07。範圍:Claude Code 工作階段的 token 用量,與 RedLog 產品本身無關。
 
 ## 結論

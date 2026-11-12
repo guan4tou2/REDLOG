@@ -1,5 +1,5 @@
 // What a marker says now, given what it said when it was written and every
-// amendment since (docs/DESIGN-core-and-capture.md §1, design turn 8b).
+// amendment since (docs/design/DESIGN-core-and-capture.md §1, design turn 8b).
 //
 // The core promise is 紀錄可修、不可篡改 — a record can be corrected, and the
 // correction cannot hide the original. So there is no edit: an amendment is its

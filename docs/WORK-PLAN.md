@@ -1,8 +1,53 @@
 # 後續工作計畫
 
+> **狀態**：current — 「下一步做什麼」的唯一頁面；現況只在 [目前狀態](CURRENT-STATUS.md)  
+> **範圍**：執行順序、依賴與 issue 歸屬；功能契約與任務在各 `specs/NNN-slug/`  
+> **最後核對**：2026-11-12 補記一節依 `main@aaee01fd`，該節列到的 issue 於當日查詢；批次與 issue 表為 2026-10-30（`main@ae0544b5`，GitHub 19 個 open issues）；2026-11-11 補記一節依 `main@9f60882d` 的 git 紀錄，issue 狀態未重新查詢
+
 更新：2026-10-30。核對基準：`main@ae0544b5`，GitHub 19 個 open issues；本文件整理執行順序，不新增功能契約、升級 spec 狀態或宣告發版。上一批修復與驗證見 [2026-10-29 完成紀錄](records/2026-10-29/UIUX-COMPLETION-2026-10-29.md)。
 
 目前程式／CI／候選產物摘要見 [目前狀態](CURRENT-STATUS.md)。
+
+## 2026-11-12 補記：可用性審查之後的剩餘工作
+
+依 `main@aaee01fd`。來源與量測條件見 [可用性審查收尾](records/2026-11-12/USABILITY-AUDIT-CLOSEOUT.md) §4；這裡只排順序。issue 狀態為 2026-11-12 查詢：#685–#692 已關閉，#695 保留。
+
+先做（會卡住擷取或操作）：
+
+| 項目 | 追蹤 | 下一步 |
+|---|---|---|
+| 開啟後第一次搜尋的主行程停頓（約 7 萬筆時 4–5 秒） | #695 | 先在閒置機器上重跑負載腳本確認它是否就是活動頁那次停頓；再決定把首次走訪移到背景，或保存來源簽章以略過走訪 |
+| 單一戰利品事件的命中數沒有上限（8 MiB 相異雜湊輸出擷取約 8.5 秒） | #695 | 設上限並在事件上標明被截斷，連同遮蔽 denylist 的大小一起量測 |
+| 設定儲存失敗時表單內容未保留 | 無 | 重現後修正；屬寫入失敗處理的漏網 |
+| hook 另外四處（`redlog-run` 的 `mktemp -t`、Python 路徑失敗靜默丟棄、`redlog-send.sh` 無 `--max-time`、engagement id 截斷） | 無 | 各自補測試後修正 |
+
+再做（可見但不擋操作）：
+
+| 項目 | 下一步 |
+|---|---|
+| 時間軸刻度頭尾標籤重疊 | 首尾刻度改為靠邊對齊或在重疊時省略 |
+| 時間軸事件列表的「範圍未判定」逐列顯示；活動頁交錯出現時不收合 | 需在查詢層分組，先確認是否值得 |
+| HTTP 完整度訊息未含筆數、時間軸上匯出未指明範圍、三個頁面無共用篩選提示、戰利品頁無載入中狀態 | 逐項重現；其中半數走查失敗是腳本找不到元素，先修腳本再判定 |
+| 兩個因 1 秒等待而偶發失敗的元件測試 | 找出競賽點，不再只放寬等待 |
+
+等決定（不動手）：設定頁內容寬度標準、時間軸文字 13px 下限、`native`／`relayed` 與 tier 標章的用詞、lint 第六道 gate、統一鍵盤層、首次使用主要按鈕、時間軸右側停靠、縮放 1 倍是否一次載完歷史、另外兩個 fuse。
+
+需要其他環境：Windows PowerShell／Git Bash／WSL、Linux 非 UTF-8 目錄、真實輸入法、多螢幕、簽章與公證。沒有環境時保留 NOT RUN。
+
+## 2026-11-11 補記：併入 2026-11-04～07 的 UI/UX 計畫
+
+2026-11-04～07 寫在 `docs/` 根目錄的剩餘實作計畫、跨頁分析、重新核對與設計差異矩陣，已移入 [records/](records/README.md)，不再各自維護待辦。其中仍可能未完成的項目集中在下表；「git 紀錄」欄只列 `main@9f60882d` 上看得到的相關合併，不代表 issue 已關閉或驗收完成，動手前重新讀 issue 與程式。
+
+| 項目 | 原始紀錄 | 2026-11-11 git 紀錄 | 下一步 |
+|---|---|---|---|
+| 輸出完整性與閱讀（批次 A；#550、#546、#591） | [剩餘實作計畫](records/2026-11-04/UIUX-REMAINING-IMPLEMENTATION-PLAN.md) §2 | #546 修正（#671）、#591 修正（#676）；#550 無對應提交 | 依原計畫 A1 在實際來源重現 `ls`／`ls -al`，再判斷是否仍有缺口 |
+| 真實 HTTPS 客戶端→保存→閱讀（批次 B；#289、#435） | 同上 §3 | 只有文案調整（`90085f9a`）；無真實 HTTPS 驗收紀錄 | 需有 mitmdump 的環境，照原驗收條件執行 |
+| 設定資訊架構與插件邊界（批次 C；#435、#557、#568） | 同上 §4；[插件原始提案](records/2026-11-04/PLUGIN-MANAGEMENT-SPEC.md) | 設定單欄與首頁（#590）、來源警告直達設定列（#677）、來源頁跳轉連結（`7ea86a30`）；Spec 065–067、070 仍 Draft | 由 Spec 065–067、070 的 tasks 接續 |
+| 首次準備與大專案效能（批次 D；#587） | 同上 §5；[設計差異矩陣](records/2026-11-07/UIUX-DESIGN-IMPLEMENTATION-MATRIX.md) | #601、#657、#672、#673、#683 為效能修正 | 依原計畫同條件量測前後，未量測不宣稱改善 |
+| Windows Shell 真機（批次 E；#434） | 同上 §6 | 無 | 依批次 2，需 Windows 環境 |
+| 逐字稿入口收斂（#563、#589） | 設計差異矩陣「逐字稿」 | 逐字稿閱讀改經活動工作區（`a7935fa7`，#659），`e2e/app-shell.spec.ts` 已有經活動「輸入／輸出」分頁到達逐字稿的案例（非 `fixme`）；#589 時間軸往返保留位置（#596） | 重新讀 #563／#589，確認是否只剩關單或文件 |
+| 長期失敗的 `relay-contract`／`shell-token-not-in-argv` | [專案啟動驗證](records/2026-11-04/PROJECT-STARTUP-VERIFICATION-2026-11-04.md) | 兩檔於 `ea51d90b` 調整等待與憑證隔離 | 以完整 `npm test` 確認是否仍失敗 |
+| HTML 參考稿 | 剩餘實作計畫 §7 | `prototypes/app-reference/index.html`（`b4725847`） | 只作參考，不是產品來源 |
 
 ## 從哪裡接續
 
@@ -19,7 +64,8 @@
 | 功能契約、任務與 feature 狀態 | [Spec 索引](../specs/README.md) → 各 feature 的 spec／plan／tasks | 不因母單關閉就升 Verified |
 | 穩定領域語意 | [domain/](domain/glossary.md)；capture、scope、query、selection 契約 | 不由歷史審查重新定義 |
 | UI 標準與文案必要性 | [UIUX-STANDARD](UIUX-STANDARD.md)（含 §25 控制項與文案） | 視覺提案不能改保存／授權語意 |
-| 全產品視覺工作與頁面矩陣 | [Forensic Editorial](UIUX-FORENSIC-EDITORIAL.md)、Spec 062 T087–T092 | 不以本次局部 UI 修正代替 |
+| 全產品視覺工作與頁面矩陣 | [Forensic Editorial](design/UIUX-FORENSIC-EDITORIAL.md)、Spec 062 T087–T092 | 不以本次局部 UI 修正代替 |
+| 跨頁 Stitch 設計決策與 React 整合契約（2026-11-11 補列） | [UIUX-STITCH-DESIGN](design/UIUX-STITCH-DESIGN.md)（Draft，2026-11-06 快照） | 不是第二套 UI 標準；其狀態表是當日快照 |
 | 每次實測的版本、步驟、產物與限制 | 各 spec verification／acceptance；跨 feature 紀錄放 [records/](records/README.md) | 不把歷史產物 hash 移到新版本 |
 | 跨平台與五位使用者環境缺口 | [#457](https://github.com/guan4tou2/REDLOG/issues/457)，回填原驗收文件 | 不新增另一份完整測試矩陣 |
 | 測試命令與成品驗證 | [TESTING](TESTING.md)、[PACKAGED-SMOKE](PACKAGED-SMOKE.md)、[CLAUDE.md](../CLAUDE.md) | 不硬編寫會過期的測試總數 |

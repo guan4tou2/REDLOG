@@ -1,5 +1,9 @@
 # Audit trail: hash chain + OpenTimestamps
 
+> **Status:** current  
+> **Scope:** hash chain, signatures and OpenTimestamps anchoring  
+> **Last verified:** not re-verified in this pass
+
 RedLog's timeline is designed to be **tamper-evident**, not tamper-proof. Anyone with local root on the machine can rewrite the SQLite file — nothing stops that. But three layers make silent rewrites very hard to hide:
 
 1. **Per-event SHA-256 hash chain** — every event's hash covers the previous event's hash. Any single-row edit invalidates every event after it.

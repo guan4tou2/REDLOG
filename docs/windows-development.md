@@ -1,5 +1,9 @@
 # Windows：從原始碼開發
 
+> **狀態**：current  
+> **範圍**：Windows 上從原始碼開發與本機打包  
+> **最後核對**：本次整理未重新核對（not re-verified in this pass）
+
 只想安裝使用，請看 [Windows 安裝指南](windows-setup.md)。以下是開發與本機打包的工具，不是安裝包執行需求。
 
 ## 環境

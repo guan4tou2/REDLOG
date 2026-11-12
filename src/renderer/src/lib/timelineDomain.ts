@@ -16,7 +16,7 @@ import { compareMonotonicNs } from './eventOrder'
 export const LANES = ['shell', 'agent', 'http_navigation', 'scanner', 'browser', 'dns', 'pivot', 'screenshot', 'clipboard', 'file_transfer', 'credential_use', 'c2_checkin', 'marker', 'loot', 'cleanup', 'scope', 'process', 'system'] as const
 export type LaneId = (typeof LANES)[number]
 
-// Capture-group bands (docs/DESIGN-core-and-capture.md §6). Eighteen lanes is
+// Capture-group bands (docs/design/DESIGN-core-and-capture.md §6). Eighteen lanes is
 // past reliable scanning; most engagements touch three or four. The bands are
 // the same grouping the capture-readiness model uses (commands / traffic /
 // artifacts) plus a signals band for the derived/alert lanes — so the timeline

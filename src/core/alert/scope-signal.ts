@@ -1,5 +1,5 @@
 // Which stored rows the scope policy was ever able to judge, and what string it
-// judged (docs/DESIGN-core-and-capture.md §4b).
+// judged (docs/design/DESIGN-core-and-capture.md §4b).
 //
 // This lived inside api-server as a private helper for the live path. It moved
 // here when the recompute (design turn 8a) needed to ask the same question of

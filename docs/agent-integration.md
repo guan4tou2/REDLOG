@@ -1,5 +1,9 @@
 # RedLog AI Agent Integration
 
+> **Status:** current  
+> **Scope:** recording local AI agent transcripts and the agent-facing API  
+> **Last verified:** not re-verified in this pass
+
 RedLog records supported local AI transcripts separately from terminal commands.
 Start with Claude Code, then Codex; each capture integration is optional and
 requires project permission. No model API call is needed to record a transcript.

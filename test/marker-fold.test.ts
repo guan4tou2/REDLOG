@@ -7,7 +7,7 @@ import {
 } from '../src/renderer/src/lib/markerFold'
 import type { RedLogEvent } from '../src/core/db/events'
 
-// docs/DESIGN-core-and-capture.md §1, design turn 8b. The claim under test is
+// docs/design/DESIGN-core-and-capture.md §1, design turn 8b. The claim under test is
 // not "the last value wins" — it is that the effective marker can be derived
 // from the chain alone, that deriving it never touches what was written, and
 // that the count an operator reads never disagrees with the number of rows the

@@ -1,5 +1,9 @@
 # 安裝包人工驗收
 
+> **狀態**：current  
+> **範圍**：安裝包的人工驗收清單  
+> **最後核對**：本次整理未重新核對（not re-verified in this pass）
+
 這份清單補足自動測試碰不到的下載、桌面啟動、系統信任提示與操作摩擦。
 自動測試入口見 [TESTING.md](TESTING.md)，既有結果與未測範圍見
 [PACKAGED-SMOKE.md](PACKAGED-SMOKE.md)。不要把原始碼測試當成正式下載包驗收。
