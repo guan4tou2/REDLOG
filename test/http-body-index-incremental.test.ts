@@ -42,27 +42,32 @@ function dump(): unknown {
   const db = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
   try {
     return {
-      refs: db.prepare('SELECT * FROM body_event_refs ORDER BY event_id,sha256').all(),
+      // What a search answers from. The verification columns hold inode and
+      // mtime signatures, which differ between two runs by construction.
+      refs: db.prepare('SELECT event_id,sha256,file,size,encoding,status,indexed_bytes,reason,kind,available_bytes FROM body_event_refs ORDER BY event_id,sha256').all(),
       fts: db.prepare('SELECT event_id,sha256,content FROM body_fts ORDER BY event_id,sha256,content').all(),
     }
   } finally { db.close() }
 }
 const QUERIES = ['alpha', 'marker3', 'marker9', 'transcriptword', 'artifactword', 'inlineword', 'zzznothing']
-function observe(fresh: boolean, snapshot?: ExportSnapshot): unknown {
+/** incremental: one process throughout. restart: a new process before every
+ *  search, the index DB kept. rebuild: a new process and no index DB. */
+type Mode = 'incremental' | 'restart' | 'rebuild'
+function observe(mode: Mode, snapshot?: ExportSnapshot): unknown {
   const searches = QUERIES.flatMap(q => [false, true].map(excludeAiRaw => {
-    // A fresh process: the index on disk survives, nothing in memory does.
-    if (fresh) closeHttpBodyIndex()
+    if (mode !== 'incremental') closeHttpBodyIndex()
+    if (mode === 'rebuild') for (const suffix of ['', '-wal', '-shm']) fs.rmSync(path.join(dir, `http-body-index.db${suffix}`), { force: true })
     return [q, excludeAiRaw, searchHttpBodyEventIds(q, dir, excludeAiRaw, snapshot).sort()]
   }))
   return { searches, coverage: bodySearchCoverage(snapshot), index: dump() }
 }
 
 /** One scripted history. Every step ends with an observation. */
-function scenario(fresh: boolean): Array<[string, unknown]> {
+function scenario(mode: Mode): Array<[string, unknown]> {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-body-incremental-'))
   initDB(dir)
   const out: Array<[string, unknown]> = []
-  const step = (name: string, snapshot?: ExportSnapshot): void => { out.push([name, observe(fresh, snapshot)]) }
+  const step = (name: string, snapshot?: ExportSnapshot): void => { out.push([name, observe(mode, snapshot)]) }
   const refs: Record<string, ReturnType<typeof body>> = {}
   for (let i = 1; i <= 6; i++) refs[`e${i}`] = bodyEvent(`e${i}`, `alpha marker${i} chained`)
   for (let i = 1; i <= 4; i++) refs[`l${i}`] = bodyEvent(`l${i}`, `alpha marker${i + 10} logged`, 'events_logged')
@@ -134,9 +139,11 @@ function scenario(fresh: boolean): Array<[string, unknown]> {
 
 describe('incremental body-search backfill', () => {
   it('answers exactly what a fresh full walk answers, after every kind of change', () => {
-    const incremental = scenario(false), fresh = scenario(true)
+    const incremental = scenario('incremental'), restart = scenario('restart'), fresh = scenario('rebuild')
     expect(incremental.map(([name]) => name)).toEqual(fresh.map(([name]) => name))
+    expect(restart.map(([name]) => name)).toEqual(fresh.map(([name]) => name))
     for (const [i, [name, observed]] of incremental.entries()) expect(observed, name).toEqual(fresh[i][1])
+    for (const [i, [name, observed]] of restart.entries()) expect(observed, `restart: ${name}`).toEqual(fresh[i][1])
     // The scenario is not vacuous: each kind of change moves what is observed.
     const at = (name: string): { coverage: { missing: number; failed: number; indexed: number } } =>
       incremental.find(([n]) => n === name)![1] as { coverage: { missing: number; failed: number; indexed: number } }
@@ -179,6 +186,17 @@ describe('incremental body-search backfill', () => {
     for (let i = 30; i < 33; i++) bodyEvent(`w${i}`, `alpha work${i}`)
     expect(work(() => expect(searchHttpBodyEventIds('work31', dir)).toEqual(['w31']))).toEqual({ opens: 3, rows: 3 })
     expect(work(() => searchHttpBodyEventIds('alpha', dir))).toEqual({ opens: 0, rows: 0 })
+  })
+
+  it('after a restart with nothing changed, walks the rows but opens no file', () => {
+    seed(30)
+    searchHttpBodyEventIds('alpha', dir)
+    closeHttpBodyIndex()
+    expect(work(() => expect(searchHttpBodyEventIds('work7', dir)).toEqual(['w7']))).toEqual({ opens: 0, rows: 30 })
+    // A file changed while the app was closed is re-verified; nothing else is.
+    fs.writeFileSync(path.join(dir, 'http-bodies', `${sha('alpha work4')}.body`), 'gamma work4 longer')
+    closeHttpBodyIndex()
+    expect(work(() => expect(searchHttpBodyEventIds('work4', dir)).toEqual([]))).toEqual({ opens: 1, rows: 30 })
   })
 
   it('re-verifies only the file that changed', () => {

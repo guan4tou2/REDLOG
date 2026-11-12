@@ -25,7 +25,7 @@ The workflow has two phases:
    - **macOS**: `dmg` and `zip` for arm64 only — `electron-builder.yml` has said Apple Silicon only since v0.9.4, and says why in its own comment
    - **Windows**: `nsis` installer for x64 (no portable build)
    - **Linux**: `deb` for x64
-4. Run `npm run verify:package-resources` against the packaged output
+4. Run `npm run verify:package-resources` against the packaged output (release mode; see [Build variants](#build-variants))
 5. Upload the installers as workflow artifacts
 
 **release** (single job, after all builds):
@@ -34,6 +34,25 @@ The workflow has two phases:
 > The build jobs deliberately do NOT publish. Two concurrent `electron-builder --publish always` jobs race to create the release and produce two release objects for one tag — which is how v0.2.1 first shipped mac-only. Collecting artifacts and releasing once avoids the race entirely.
 
 Unsigned macOS/Windows binaries — no Apple/Microsoft cert configured.
+
+## Build variants
+
+A package is one of two variants, fixed when it is built. There is no run-time switch between them.
+
+| | **release** (default) | **smoke** |
+|---|---|---|
+| Built by | every build that does not opt out, including a plain local `npm run build && npx electron-builder …`, and `release.yml` | only `linux-install-smoke.yml` and `windows-install-smoke.yml` |
+| `npm run build` | as is | `REDLOG_SMOKE_BUILD=1 npm run build` |
+| electron-builder | as is | add `'--config.electronFuses.enableNodeCliInspectArguments=true'` |
+| `--inspect`, `--inspect-brk`, SIGUSR1 | refused by the `EnableNodeCliInspectArguments` fuse | accepted |
+| `--remote-debugging-port`, `--remote-debugging-address`, `--remote-allow-origins` | removed before the browser starts (`src/main/launch-policy.ts`) | accepted |
+| `REDLOG_E2E`, `REDLOG_E2E_*` | ignored (`src/main/test-hooks.ts`): no `/api/events/seed`, no hidden HUD, quit prompt kept | honoured |
+| Startup | — | prints `RedLog SMOKE BUILD: test hooks enabled …` on stderr |
+| Verify | `npm run verify:package-resources` | `npm run verify:package-resources:smoke` |
+
+Both steps of a smoke build are needed: the environment variable compiles the variant into the main bundle and writes `out/main/build-variant.json`; the electron-builder override turns the inspector fuse back on. Playwright's `electron.launch` needs all three smoke behaviours, so `e2e/packaged-*.spec.ts` and `npm run e2e:smoke` work only against a smoke package. An unpackaged build (`npm run build && npx playwright test`, and `npm run dev`) keeps test hooks in either variant.
+
+The release check fails when the binary's inspector fuse is on, or when `build-variant.json` inside `app.asar` says `smoke`. The smoke check fails on the reverse. In both, the fuse and the main bundle have to agree. `release.yml` must never set `REDLOG_SMOKE_BUILD` or override `electronFuses`; `test/build-variant.test.ts` checks this.
 
 ## Manual trigger
 

@@ -112,9 +112,10 @@ export default function HudPage({ t }: {
         </p>
         {prefs.passThrough && (
           <div className="mt-2 flex items-center gap-3 pl-6">
-            <span className="text-xs text-redlog-text-dim">{t('settings.overlayPassThroughOpacity')}</span>
+            <span id="hud-passthrough-opacity" className="text-xs text-redlog-text-dim">{t('settings.overlayPassThroughOpacity')}</span>
             <input
               type="range"
+              aria-labelledby="hud-passthrough-opacity"
               min="0.1"
               max="0.9"
               step="0.05"

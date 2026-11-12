@@ -46,7 +46,7 @@ interface Scenario {
 }
 
 interface Sent { subtype: string; command: string; engagement: string | undefined }
-interface Outcome { transcript: string; sent: Sent[]; raw: string }
+interface Outcome { transcript: string; sent: Sent[]; raw: string; adopts: number }
 
 function script(s: Scenario): string {
   const shellRun = s.shell === 'zsh'
@@ -67,7 +67,15 @@ cat > "$work/bin/curl" <<'FAKE'
 { cat; echo; } >> "$RCF.posts" 2>/dev/null
 exit "$(cat "$RCF")"
 FAKE
-chmod +x "$work/bin/curl"
+REALPY=$(command -v python3)
+# Logs each relay \`state\` action, then hands over to the real interpreter.
+cat > "$work/bin/python3" <<FAKE
+#!/bin/sh
+case " \\$* " in *" state "*) echo "\\$*" >> "$work/py.log" ;; esac
+exec "$REALPY" "\\$@"
+FAKE
+: > "$work/py.log"
+chmod +x "$work/bin/curl" "$work/bin/python3"
 export PATH="$work/bin:$PATH"
 unset _REDLOG_DIR _REDLOG_HOST WSL_DISTRO_NAME REDLOG_EXTERNAL_SESSION REDLOG_TERMINAL REDLOG_TERMINAL_ID REDLOG_PAYLOAD_BUILDER
 ${s.builtin ? 'export REDLOG_TERMINAL=1 REDLOG_TERMINAL_ID=pane-1' : ''}
@@ -80,6 +88,7 @@ CMDS
 ${shellRun}
 echo '@@OUT'; cat "$work/out"
 echo '@@POSTS'; cat "$RCF.posts"
+echo '@@PY'; cat "$work/py.log"
 echo '@@END'
 `
 }
@@ -93,11 +102,12 @@ const between = (text: string, start: string, end: string): string => {
 async function run(s: Scenario): Promise<Outcome> {
   const r = await runInShell(target!, script(s), { timeoutMs: 90_000 })
   const raw = r.stdout + r.stderr
-  const sent = between(r.stdout, '@@POSTS\n', '@@END').split('\n').filter((l) => l.trim()).map((l): Sent => {
+  const sent = between(r.stdout, '@@POSTS\n', '@@PY').split('\n').filter((l) => l.trim()).map((l): Sent => {
     const d = JSON.parse(l) as { data: Record<string, unknown>; _identity?: { engagementId?: string } }
     return { subtype: String(d.data.subtype), command: String(d.data.command ?? ''), engagement: d._identity?.engagementId }
   })
-  return { transcript: between(r.stdout, '@@OUT\n', '@@POSTS'), sent, raw }
+  const adopts = between(r.stdout, '@@PY\n', '@@END').split('\n').filter((l) => l.includes('--action adopt')).length
+  return { transcript: between(r.stdout, '@@OUT\n', '@@POSTS'), sent, raw, adopts }
 }
 
 const count = (text: string, needle: string): number => text.split(needle).length - 1
@@ -148,6 +158,40 @@ describeShell('a terminal opened with no project says when a project adopts it',
         expect(o.transcript).toContain('still-stopped')
         expect(count(o.transcript, ADOPTED), o.raw).toBe(0)
         expect(o.sent.filter((s) => s.engagement === 'eng-A'), o.raw).toEqual([])
+      }, 120_000)
+
+      // The adopted terminal records, so its own state has to say so: the
+      // state written as it loaded named no project, `redlog status` called it
+      // "not recording", and there was no pin for a switch to break.
+      it('(f) `redlog status` after adoption says it is recording into the project, and adoption is written once', async () => {
+        const o = await run({ shell, identity: false, commands: ['echo dropped-cmd', OPEN_A, 'echo after-open', 'echo later-cmd', 'redlog status'] })
+        expect(o.transcript, o.raw).toContain('recording enabled · mode auto · project eng-A')
+        expect(o.transcript).not.toContain('not recording (no project')
+        expect(o.adopts, o.raw).toBe(1)
+      }, 120_000)
+
+      it('(g) the same project written again is not a switch', async () => {
+        const o = await run({ shell, identity: false, commands: ['echo dropped-cmd', OPEN_A, 'echo after-open', OPEN_A, 'echo after-reopen'] })
+        expect(o.transcript, o.raw).not.toContain(SWITCHED)
+        expect(named(o, 'echo after-reopen').map((s) => s.engagement), o.raw).toEqual(['eng-A', 'eng-A'])
+      }, 120_000)
+
+      it('(h) a switch after adoption stops it as it stops a terminal loaded in the project, and `redlog start` cannot undo it', async () => {
+        const o = await run({ shell, identity: false, commands: ['echo dropped-cmd', OPEN_A, 'echo after-open', OPEN_B, 'echo after-switch', 'redlog status', 'redlog start', 'echo after-start'] })
+        expect(count(o.transcript, SWITCHED), o.raw).toBe(1)
+        expect(o.transcript).toContain('stopped (project-switched) · mode auto · project eng-A')
+        expect(named(o, 'echo after-switch'), o.raw).toEqual([])
+        expect(named(o, 'echo after-start'), o.raw).toEqual([])
+        expect(o.sent.filter((s) => s.subtype === 'capture_resumed'), o.raw).toEqual([])
+      }, 120_000)
+
+      it('(i) `redlog stop` and `redlog start` after adoption', async () => {
+        const o = await run({ shell, identity: false, commands: ['echo dropped-cmd', OPEN_A, 'echo after-open', 'redlog stop', 'echo while-stopped', 'redlog start', 'echo after-start'] })
+        expect(o.transcript, o.raw).toContain('recording stopped in this terminal')
+        expect(named(o, 'echo while-stopped'), o.raw).toEqual([])
+        expect(o.transcript).toContain('recording enabled · mode auto · project eng-A')
+        expect(o.sent.filter((s) => s.subtype === 'capture_resumed').map((s) => s.engagement), o.raw).toEqual(['eng-A'])
+        expect(named(o, 'echo after-start').map((s) => s.engagement), o.raw).toEqual(['eng-A', 'eng-A'])
       }, 120_000)
 
       it('(e) a built-in pane says nothing when its project opens', async () => {

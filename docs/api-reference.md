@@ -161,7 +161,7 @@ let any token holder put chosen provenance on screen.
 **Body:** `{ text, targetId?, source? }`
 
 **Response:** `{ findings: [{ type, value, confidence }] }` or `503` if detector unavailable.
-`413` when `text` is longer than 16 384 characters; nothing is scanned.
+`413` when `text` is longer than 131 072 characters; nothing is scanned.
 
 ---
 
@@ -291,7 +291,12 @@ Download `.ots` proof file.
 
 Produce signed evidence bundle in `<projectDir>/exports/`.
 
-**Response:** `201 { outDir, manifest }`
+Appends a chained `system.logged_tier_digest` event (when the logged tier has
+rows and a primary operator exists) and bundles both tiers as they stood at
+that event: rows recorded while the bundle is being written are not in it.
+Requests are handled one at a time; a second waits for the first.
+
+**Response:** `201 { outDir, manifest }`; `500 { error: "export failed" }`.
 
 ---
 

@@ -21,15 +21,18 @@ function getIndex(projectDir = getProjectDir()): Database.Database {
   index = new Database(path.join(projectDir, 'http-body-index.db'))
   index.pragma('journal_mode = WAL')
   // Rebuild only this disposable index, never a source Event or sidecar.
-  if (index.pragma('user_version', { simple: true }) !== 6)
-    index.exec('DROP TABLE IF EXISTS body_fts; DROP TABLE IF EXISTS body_event_refs; DROP TABLE IF EXISTS body_index_state')
+  // v7 added the verification columns below; an older index is rebuilt once.
+  if (index.pragma('user_version', { simple: true }) !== 7)
+    index.exec('DROP TABLE IF EXISTS body_fts; DROP TABLE IF EXISTS body_event_refs; DROP TABLE IF EXISTS body_index_state; DROP TABLE IF EXISTS body_index_meta')
   index.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS body_fts USING fts5(content,event_id UNINDEXED,sha256 UNINDEXED,tokenize='unicode61 remove_diacritics 2',prefix='2 3');
   CREATE TABLE IF NOT EXISTS body_event_refs (
    event_id TEXT NOT NULL,sha256 TEXT NOT NULL,file TEXT NOT NULL,size INTEGER NOT NULL,encoding TEXT NOT NULL,
-   status TEXT NOT NULL,indexed_bytes INTEGER NOT NULL,reason TEXT NOT NULL,kind TEXT NOT NULL,available_bytes INTEGER NOT NULL,PRIMARY KEY(event_id,sha256)
+   status TEXT NOT NULL,indexed_bytes INTEGER NOT NULL,reason TEXT NOT NULL,kind TEXT NOT NULL,available_bytes INTEGER NOT NULL,
+   tier TEXT,verified_desc TEXT,verified_file TEXT,verified_sig TEXT,PRIMARY KEY(event_id,sha256)
   );
   CREATE INDEX IF NOT EXISTS body_event_refs_sha256 ON body_event_refs(sha256);
-  PRAGMA user_version=6;
+  CREATE TABLE IF NOT EXISTS body_index_meta (key TEXT PRIMARY KEY,value TEXT NOT NULL);
+  PRAGMA user_version=7;
   CREATE TEMP TABLE body_seen(event_id TEXT NOT NULL,sha256 TEXT NOT NULL,PRIMARY KEY(event_id,sha256));`)
   indexDir = projectDir
   return index
@@ -42,40 +45,44 @@ export function closeHttpBodyIndex(): void { if (index) {
 } index = null; indexDir = null; resetSyncState() }
 
 // ── Incremental backfill state (#695) ─────────────────────────────────────
-// Everything below lives in memory, per open index, and is dropped with it:
-// the first search after launch (or a project switch) does one full walk.
-//
 // Verify once, then trust until the file changes. A ref linked with a final,
-// content-derived status is remembered with the lstat signature its file had
+// content-derived status is stored with the lstat signature its file had
 // when it was verified (the same dev:ino:size:mtime:ctime signature
-// body-source uses for its own cache). A later link of that ref whose event
-// data and index row are unchanged, and whose file still has that signature,
-// skips the open and the hash. Missing and failed refs are never trusted: they
-// are retried on every search, as before.
+// body-source uses for its own cache) in its own body_event_refs row:
+// `verified_desc` (what the event said about the ref), `verified_file` and
+// `verified_sig`. A later link of that ref whose event data is unchanged and
+// whose file still has that signature skips the open and the hash. Missing and
+// failed refs carry no verification (`verified_desc` NULL): they are retried on
+// every search, as before.
 //
-// The one relaxation: a search no longer notices a saved file whose bytes were
-// changed in place without changing its dev, inode, size, mtime or ctime. That
-// needs a clock or filesystem forged under it; it is caught at the next launch.
-// Reading a body for display still verifies it every time.
+// The verification is persisted, in the same transaction as the row it
+// describes, so it survives a restart and a rolled-back write takes it back
+// with the row. Only the walk watermark below lives in memory: the first
+// search after launch (or a project switch) walks every content-ref row again,
+// which reads rows and lstats files but opens and hashes only what changed.
+//
+// The relaxation: a search does not notice a saved file whose bytes were
+// changed in place without changing its dev, inode, size, mtime or ctime, and
+// because the signature is persisted that now holds across restarts too: a file
+// rewritten that way while the app is closed is never noticed by search
+// (previously it was re-verified at the next launch). It needs a clock or
+// filesystem forged under it. Reading a body for display still verifies it
+// every time.
 type Tier = 'events' | 'events_logged'
 const TIERS = ['events', 'events_logged'] as const
-interface KnownRef { tier: Tier | null; eventId: string; desc: string; status: string; file: string | null; sig: string | null }
-let known = new Map<string, KnownRef>()
-let retry = new Map<string, { tier: Tier | null; eventId: string }>()
 /** Events linked outside a walk (ingest) since the last walk. */
 let linkedOutsideWalk = new Set<string>()
 /** What the last walk covered; null means "walk everything next time". */
 let walked: { source: Database.Database; boundary: string; latest: string; tiers: Array<{ n: number; max: number; idAtMax: string | null }> } | null = null
 let dirty = true
-let directories = ''
 let statements = new Map<string, Database.Statement>()
 function resetSyncState(): void {
-  known = new Map(); retry = new Map(); linkedOutsideWalk = new Set(); walked = null; dirty = true; directories = ''; statements = new Map()
+  linkedOutsideWalk = new Set(); walked = null; dirty = true; statements = new Map()
 }
-/** A rolled-back transaction leaves memory describing rows that were never
- *  committed; distrust all of it. */
+/** A rolled-back transaction leaves the watermark describing rows that were
+ *  never committed; walk everything next time. */
 function forgetOnError(run: () => void): void {
-  try { run() } catch (error) { known.clear(); retry.clear(); walked = null; dirty = true; throw error }
+  try { run() } catch (error) { walked = null; dirty = true; throw error }
 }
 // Prepared once per index handle, lazily, so a statement is compiled the first
 // time a path needs it.
@@ -138,16 +145,15 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
   atomic(() => {
     for (const ref of refsOf(event)) {
       let status = 'indexed', bytes = 0, reason = '',availableBytes=0
-      const prior = stmt(db, 'SELECT status FROM body_event_refs WHERE event_id=? AND sha256=?').get(event.id, ref.sha256) as {
-        status: string
+      const prior = stmt(db, 'SELECT status,tier,verified_desc,verified_file,verified_sig FROM body_event_refs WHERE event_id=? AND sha256=?').get(event.id, ref.sha256) as {
+        status: string; tier: Tier | null; verified_desc: string | null; verified_file: string | null; verified_sig: string | null
       } | undefined
-      const key = `${event.id}\0${ref.sha256}`, file = refFile(ref, projectDir)
+      const file = refFile(ref, projectDir)
       const desc = JSON.stringify([ref.file, ref.size, ref.encoding ?? null, ref.kind, ref.kind !== 'body' && ref.pending === true, ref.kind === 'body' && ref.inline !== undefined])
-      const remembered = known.get(key)
       // Nothing that decides this row has changed since it was verified.
-      if (remembered && prior && remembered.desc === desc && remembered.status === prior.status
-        && (remembered.file === null || fileSignature(remembered.file) === remembered.sig)) {
-        remembered.tier = tier ?? remembered.tier
+      if (prior && prior.verified_desc === desc && FINAL_STATUSES.has(prior.status)
+        && (prior.verified_file === null || (prior.verified_file === file && fileSignature(prior.verified_file) === prior.verified_sig))) {
+        if (tier && prior.tier !== tier) stmt(db, 'UPDATE body_event_refs SET tier=? WHERE event_id=? AND sha256=?').run(tier, event.id, ref.sha256)
         continue
       }
       // Taken before reading: a change while reading leaves a stale signature,
@@ -214,18 +220,15 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
       }
       if (status !== 'indexed' && prior)
         stmt(db, 'DELETE FROM body_fts WHERE event_id=? AND sha256=?').run(event.id, ref.sha256)
-      stmt(db, `INSERT INTO body_event_refs VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(event_id,sha256) DO UPDATE SET
-    file=excluded.file,size=excluded.size,encoding=excluded.encoding,status=excluded.status,indexed_bytes=excluded.indexed_bytes,reason=excluded.reason,kind=excluded.kind,available_bytes=excluded.available_bytes`).run(event.id, ref.sha256, ref.file, Number.isSafeInteger(ref.size) ? ref.size : 0, String(ref.encoding ?? 'unknown'), status, bytes, reason, ref.kind,availableBytes)
       // pending/limited come from the event alone; indexed/binary from bytes
       // whose signature is recorded. missing/failed can change with no new
-      // row (a file restored or repaired), so they are retried every search.
-      if (FINAL_STATUSES.has(status)) {
-        known.set(key, { tier: tier ?? remembered?.tier ?? null, eventId: event.id, desc, status, file: status === 'pending' ? null : file, sig: status === 'pending' ? null : sig })
-        retry.delete(key)
-      } else {
-        known.delete(key)
-        retry.set(key, { tier: tier ?? retry.get(key)?.tier ?? null, eventId: event.id })
-      }
+      // row (a file restored or repaired), so they carry no verification and
+      // are retried every search.
+      const final = FINAL_STATUSES.has(status)
+      stmt(db, `INSERT INTO body_event_refs VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(event_id,sha256) DO UPDATE SET
+    file=excluded.file,size=excluded.size,encoding=excluded.encoding,status=excluded.status,indexed_bytes=excluded.indexed_bytes,reason=excluded.reason,kind=excluded.kind,available_bytes=excluded.available_bytes,
+    tier=coalesce(excluded.tier,body_event_refs.tier),verified_desc=excluded.verified_desc,verified_file=excluded.verified_file,verified_sig=excluded.verified_sig`).run(event.id, ref.sha256, ref.file, Number.isSafeInteger(ref.size) ? ref.size : 0, String(ref.encoding ?? 'unknown'), status, bytes, reason, ref.kind,availableBytes,
+        tier, final ? desc : null, final && status !== 'pending' ? file : null, final && status !== 'pending' ? sig : null)
     }
   })
 }
@@ -272,8 +275,11 @@ function rows(snapshot?: ExportSnapshot, projectId?: string, latest = latestSnap
  *  at or below it is unchanged" means the walked prefix is untouched. */
 function sync(projectDir: string, snapshot?: ExportSnapshot): void {
   const db = getIndex(projectDir), source = getDB()
+  // Persisted with the verifications it vouches for, so a directory replaced
+  // while the app was closed is noticed at the next search too.
   const dirs = directorySignature(projectDir)
-  if (dirs !== directories) { known.clear(); retry.clear(); dirty = true; directories = dirs }
+  const directoriesChanged = (stmt(db, "SELECT value FROM body_index_meta WHERE key='directories'").get() as { value: string } | undefined)?.value !== dirs
+  if (directoriesChanged) dirty = true
   const boundary = snapshot ? `${snapshot.chainedMaxRowId}:${snapshot.loggedMaxRowId}` : 'live'
   const latestIds = latestSnapshotIds(snapshot), latest = JSON.stringify(latestIds)
   const previous = walked && !dirty && walked.source === source && walked.boundary === boundary && walked.latest === latest ? walked : null
@@ -287,6 +293,10 @@ function sync(projectDir: string, snapshot?: ExportSnapshot): void {
     return { n: row.n, max: row.max, idAtMax: idAt(row.max), intact, after: before?.max ?? 0 }
   })
   forgetOnError(() => db.transaction(() => {
+    if (directoriesChanged) {
+      stmt(db, 'UPDATE body_event_refs SET verified_desc=NULL,verified_file=NULL,verified_sig=NULL').run()
+      stmt(db, "INSERT INTO body_index_meta VALUES('directories',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(dirs)
+    }
     let full = !previous || tiers.some(t => !t.intact)
     if (!full) {
       const seen = new Set<string>()
@@ -304,34 +314,32 @@ function sync(projectDir: string, snapshot?: ExportSnapshot): void {
 }
 function walkAll(db: Database.Database, projectDir: string, snapshot: ExportSnapshot | undefined, latest: string[], range: Array<{ after: number; upTo: number }>): void {
   stmt(db, 'DELETE FROM body_seen').run()
-  const seen = stmt(db, 'INSERT OR IGNORE INTO body_seen VALUES(?,?)'), keys = new Set<string>()
+  const seen = stmt(db, 'INSERT OR IGNORE INTO body_seen VALUES(?,?)')
   for (const [i, tier] of rows(snapshot, undefined, latest, range).entries())
     for (const row of tier) {
       const data = JSON.parse(row.data) as Record<string, unknown>
       linkEvent({ id: row.id, data, agentType: row.agent_type }, projectDir, TIERS[i])
-      for (const ref of refsOf({ data, agentType: row.agent_type })) {
-        seen.run(row.id, ref.sha256)
-        keys.add(`${row.id}\0${ref.sha256}`)
-      }
+      for (const ref of refsOf({ data, agentType: row.agent_type })) seen.run(row.id, ref.sha256)
     }
+  // The verification lives in the row, so a pruned ref takes it along.
   stmt(db, 'DELETE FROM body_event_refs WHERE NOT EXISTS(SELECT 1 FROM body_seen s WHERE s.event_id=body_event_refs.event_id AND s.sha256=body_event_refs.sha256)').run()
   stmt(db, "DELETE FROM body_fts WHERE NOT EXISTS(SELECT 1 FROM body_event_refs r WHERE r.event_id=body_fts.event_id AND r.sha256=body_fts.sha256 AND r.status='indexed')").run()
-  // A remembered ref the walk no longer reaches was just pruned; re-checking
-  // it later would bring it back.
-  for (const map of [known, retry]) for (const key of map.keys()) if (!keys.has(key)) map.delete(key)
 }
 /** Without a walk: re-link the events whose saved file no longer has the
  *  signature it was verified with, and every ref still missing or failed.
  *  False when a ref cannot be traced to its row, which only a full walk fixes. */
 function recheck(projectDir: string): boolean {
+  const db = getIndex(projectDir)
   const events = new Map<string, Tier | null>(), signatures = new Map<string, string>()
-  for (const ref of known.values()) {
-    if (ref.file === null) continue
-    let sig = signatures.get(ref.file)
-    if (sig === undefined) { sig = fileSignature(ref.file); signatures.set(ref.file, sig) }
-    if (sig !== ref.sig) events.set(ref.eventId, ref.tier)
+  const verified = stmt(db, 'SELECT event_id,tier,verified_file,verified_sig FROM body_event_refs WHERE verified_desc IS NOT NULL AND verified_file IS NOT NULL')
+    .all() as Array<{ event_id: string; tier: Tier | null; verified_file: string; verified_sig: string }>
+  for (const ref of verified) {
+    let sig = signatures.get(ref.verified_file)
+    if (sig === undefined) { sig = fileSignature(ref.verified_file); signatures.set(ref.verified_file, sig) }
+    if (sig !== ref.verified_sig) events.set(ref.event_id, ref.tier)
   }
-  for (const ref of retry.values()) events.set(ref.eventId, ref.tier)
+  for (const ref of stmt(db, 'SELECT event_id,tier FROM body_event_refs WHERE verified_desc IS NULL').all() as Array<{ event_id: string; tier: Tier | null }>)
+    events.set(ref.event_id, ref.tier)
   for (const [eventId, tier] of events) {
     const row = tier && getDB().prepare(`SELECT id,data,agent_type FROM ${tier} WHERE id=?`).get(eventId) as { id: string; data: string; agent_type: string } | undefined
     if (!tier || !row) return false

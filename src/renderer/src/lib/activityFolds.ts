@@ -13,9 +13,15 @@ export type ActivitySegment =
   | { kind: 'item'; item: ActivitySummary; at: number }
   | { kind: 'fold'; key: string; items: ActivitySummary[]; at: number }
 
-/** A RedLog state change. Scope observations are findings, not plumbing. */
+/** A RedLog state change. Scope observations are findings, not plumbing —
+ *  except a hit nobody could judge: with no scope configured the evaluator
+ *  files every observed host under `in_scope` with `authority: 'unknown'`
+ *  (範圍未判定), one row per host, and those buried the operator's actions. */
 export function isFoldableSystem(item: ActivitySummary): boolean {
-  return item.anchor.agentType === 'system' && item.anchor.data?.subtype !== SCOPE_VIOLATION_SUBTYPE
+  if (item.anchor.agentType !== 'system') return false
+  const d = item.anchor.data
+  if (d?.subtype !== SCOPE_VIOLATION_SUBTYPE) return true
+  return d.distance === 'in_scope' && d.authority === 'unknown'
 }
 
 /** The list as rows and folds, in order; `at` is each segment's first index. */

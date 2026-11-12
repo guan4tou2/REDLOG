@@ -258,6 +258,10 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
   // broken layout.
   const [zoom, setZoom] = useTimelineZoom(MIN_ZOOM)
   const [cluster, setCluster] = useState<{ x: number; y: number; events: RedLogEvent[] } | null>(null)
+  // The cluster popover is drawn on the track column and placed from the
+  // lanes' box (see the popover below).
+  const trackColumnRef = useRef<HTMLDivElement>(null)
+  const lanesAreaRef = useRef<HTMLDivElement>(null)
   const [drag, setDrag] = useState<{ x0: number; x1: number; w: number } | null>(null)
   // Where to put the view once a zoom from the minimap has re-rendered: a time
   // for a drag-to-zoom across the strip, a track fraction for a resized 重點視窗.
@@ -1914,7 +1918,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
               aria-expanded={moreOpen}
               aria-haspopup="menu"
               title={t('timeline.more.hint')}
-              className="whitespace-nowrap text-xs px-1.5 py-0.5 rounded font-mono text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.05] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
+              className="whitespace-nowrap text-xs px-1.5 py-0.5 min-h-7 rounded font-mono text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.05] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
             >⋯ {t('timeline.more.button')}</button>
             {moreOpen && (
               <>
@@ -2141,9 +2145,14 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
             onMouseDown={(e) => onWindowDown('move', e)}
             title={t('timeline.minimap.windowHint')}
           >
+            {/* The grips draw 8px wide; the ::after takes the grab past 27
+                CSS px. A wide frame reaches inward 19px, which is all that is
+                left at the strip's edge (the outside is clipped there, and
+                the whole-span view sits on both edges); a narrow frame reaches
+                only outward, so its body can still be grabbed to pan. */}
             <span
               data-testid="minimap-window-start"
-              className="h-full w-2 shrink-0 flex items-center justify-center cursor-ew-resize"
+              className={`relative h-full w-2 shrink-0 flex items-center justify-center cursor-ew-resize after:absolute after:inset-y-0 ${view.width >= 25 ? 'after:-left-[10px] after:-right-[19px]' : 'after:right-0 after:-left-[19px]'}`}
               onMouseDown={(e) => onWindowDown('start', e)}
             ><span className="w-1 h-4 rounded-full bg-redlog-cyan" /></span>
             {view.width >= 12 && (
@@ -2153,7 +2162,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
             )}
             <span
               data-testid="minimap-window-end"
-              className="h-full w-2 shrink-0 flex items-center justify-center cursor-ew-resize"
+              className={`relative h-full w-2 shrink-0 flex items-center justify-center cursor-ew-resize after:absolute after:inset-y-0 ${view.width >= 25 ? 'after:-left-[19px] after:-right-[10px]' : 'after:left-0 after:-right-[19px]'}`}
               onMouseDown={(e) => onWindowDown('end', e)}
             ><span className="w-1 h-4 rounded-full bg-redlog-cyan" /></span>
           </div>
@@ -2182,7 +2191,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
           rendering it twice would be two panes to keep in step and only one
           of them ever tested. */}
       <div ref={splitRef} data-testid="timeline-split" data-layout={layout} className={`flex-1 min-h-0 flex ${layout === 'right' ? 'flex-row' : 'flex-col'}`}>
-      <div className="flex-1 min-w-0 min-h-0 flex flex-col">
+      <div ref={trackColumnRef} className="relative flex-1 min-w-0 min-h-0 flex flex-col">
         {/* Swim lanes — one row of everything in standard mode (FR-008). */}
         {/* v0.9.4 P0-2: scrolls vertically. The lane labels are a sibling of
             the track, so the overflow has to live on this shared parent —
@@ -2221,6 +2230,9 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
           data-testid="timeline-lane-scroll"
           className="min-h-0 flex overflow-x-hidden overflow-y-auto"
           style={{ maxHeight: visibleRows.length * laneH + axisH }}
+          // The cluster popover is placed outside this scroller; a vertical
+          // scroll would leave it beside the wrong dot.
+          onScroll={() => setCluster(null)}
         >
           {/* Lane labels. The standard ruler has none; the swim lanes keep
               this as the scroller's first child (the geometry suite reads it). */}
@@ -2379,7 +2391,10 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
                         data-testid="timeline-marker-latest"
                         data-timeline-marker
                         onClick={() => { if (!didPan.current) resumeFollow() }}
-                        className={`absolute h-3.5 px-1 flex items-center whitespace-nowrap font-mono tabular-nums text-xs leading-none text-redlog-text-dim hover:text-redlog-text pointer-events-auto cursor-pointer border-redlog-border focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${
+                        // The chip draws 14px tall; the ::after reaches 13px up
+                        // (never down, where the axis clips and the dots sit),
+                        // for a 27 CSS px target.
+                        className={`absolute h-3.5 px-1 flex items-center whitespace-nowrap font-mono tabular-nums text-xs leading-none text-redlog-text-dim hover:text-redlog-text pointer-events-auto cursor-pointer border-redlog-border focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim after:absolute after:inset-x-0 after:bottom-0 after:-top-[13px] ${
                           rulerMarkers.latest.align === 'start' ? 'border-l' : 'border-r -translate-x-full'
                         }`}
                         style={{ left: rulerMarkers.latest.x, top: 20 + rulerMarkers.latest.row * 14 }}
@@ -2393,6 +2408,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
 
               {/* Lanes area */}
               <div
+                ref={lanesAreaRef}
                 data-testid={timelineMode === 'standard' ? 'timeline-standard-track' : undefined}
                 style={{ height: totalH, position: 'relative' }}
               >
@@ -2494,11 +2510,13 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
                   const dot = single
                     ? Math.round(9 * marks.scale)
                     : Math.min(24, 13 + Math.round(Math.log2(c.events.length) * 3))
-                  // 24, not 20: the dot is a button, and 20px is under the
-                  // floor the rest of the app now holds. The visual dot keeps
-                  // its own size (`dot`); this is only the transparent hit
-                  // area around it, so a small dot is still easy to click.
-                  const hit = Math.max(24, dot + 8)
+                  // 27, not 24: the dot is a button, and 24 CSS px renders at
+                  // 21.6 device px under `body { zoom: 0.9 }`. The visual dot
+                  // keeps its own size (`dot`); this is only the transparent
+                  // hit area around it, so a small dot is still easy to click.
+                  // Dots closer than CLUSTER_PX already overlapped at 24 and
+                  // still do: the later one (or the selected, z 10) wins.
+                  const hit = Math.max(27, dot + 8)
                   // v0.6.89.5: filter dimming. Focus-chain and filter query
                   // are mutually exclusive (enforced by the effects above), so
                   // at most one branch fires. A cluster is "active" (not
@@ -2622,7 +2640,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
                               : `0 0 6px ${LANE_COLORS[c.lane]}40`
                         }}
                       >
-                        {!single && <span style={{ fontSize: 9, fontWeight: 800, color: 'rgba(0,0,0,0.78)', lineHeight: 1 }}>{c.events.length}</span>}
+                        {!single && <span style={{ fontSize: 11, fontWeight: 800, color: 'rgba(0,0,0,0.78)', lineHeight: 1 }}>{c.events.length}</span>}
                       </div>
                       {/* v0.9.6 (T3): I/O texture on single shell command_end
                           dots. A 3px notch = output exists on disk; amber =
@@ -2671,40 +2689,60 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
                     </button>
                   )
                 })}
-                {/* Cluster contents popover */}
-                {cluster && (() => {
-                  // Popover width + cap: cluster popovers used to render EVERY event
-                  // in a burst (audit P2 — a 3000-event mitmproxy scan filled the
-                  // list with 3000 <button>s). Cap at 50 with a "+N more" footer;
-                  // operator can zoom in to see individually.
-                  const POPUP_W = 240
-                  const POPUP_MAX_H = 210
-                  const MAX_ITEMS = 50
-                  const capped = cluster.events.slice(0, MAX_ITEMS)
-                  const overflow = cluster.events.length - capped.length
-                  // Viewport-relative clamp: previous impl clamped only to TRACK_W,
-                  // so a popover on a wide-zoom track near the right of the visible
-                  // scroll port drew off-screen. Clamp against the visible window
-                  // (scrollLeft + clientWidth) instead.
-                  const el = scrollRef.current
-                  const visLeft = el ? el.scrollLeft : 0
-                  const visRight = el ? el.scrollLeft + el.clientWidth : TRACK_W
-                  const rawLeft = cluster.x + 10
-                  const left = Math.max(visLeft + 4, Math.min(rawLeft, visRight - POPUP_W - 4))
-                  const top = cluster.y + 12 + POPUP_MAX_H > totalH
-                    ? Math.max(0, cluster.y - POPUP_MAX_H - 4)
-                    : cluster.y + 12
-                  return (
+              </div>
+            </div>
+          </div>
+        </div>
+        </div>
+        {/* Cluster contents popover. Drawn here, on the track column, not in
+            the lanes: the track's scrollers clip vertically, and the standard
+            track is one 44px row, so a list drawn inside it showed its header
+            and nothing under it. Positioned from the lanes' on-screen box, so
+            it follows a horizontal scroll (which re-renders through
+            `updateView`). */}
+        {cluster && (() => {
+          // Popover width + cap: cluster popovers used to render EVERY event
+          // in a burst (audit P2 — a 3000-event mitmproxy scan filled the
+          // list with 3000 <button>s). Cap at 50 with a "+N more" footer;
+          // operator can zoom in to see individually.
+          const POPUP_W = 240
+          const POPUP_MAX_H = 210
+          const MAX_ITEMS = 50
+          const capped = cluster.events.slice(0, MAX_ITEMS)
+          const overflow = cluster.events.length - capped.length
+          // The lanes' offset inside the column, in CSS px. Both rects are in
+          // the same (zoomed) space; `k` takes their difference back to CSS
+          // px under `body { zoom }`, and is 1 where layout is not measured.
+          const col = trackColumnRef.current
+          const lanes = lanesAreaRef.current
+          let ox = 0
+          let oy = 0
+          if (col && lanes) {
+            const cr = col.getBoundingClientRect()
+            const lr = lanes.getBoundingClientRect()
+            const k = cr.width > 0 ? col.offsetWidth / cr.width : 1
+            ox = (lr.left - cr.left) * k
+            oy = (lr.top - cr.top) * k
+          }
+          const colW = col?.clientWidth ?? 0
+          const colH = col?.clientHeight ?? 0
+          const px = ox + cluster.x
+          const py = oy + cluster.y
+          const left = Math.max(4, Math.min(px + 10, colW - POPUP_W - 4))
+          const top = py + 12 + POPUP_MAX_H > colH && py - POPUP_MAX_H - 4 >= 0
+            ? py - POPUP_MAX_H - 4
+            : py + 12
+          return (
                   <div className="absolute z-30" data-timeline-popup style={{ left, top, width: POPUP_W }}>
                     <div className="rounded-md border border-redlog-border bg-redlog-surface/95 shadow-xl max-h-[210px] overflow-y-auto">
                       <div className="flex items-center justify-between px-2 py-1 border-b border-redlog-border sticky top-0 bg-redlog-surface/95">
                         <span className="text-xs text-redlog-text-dim font-mono">{cluster.events.length} {t('timeline.title')}</span>
-                        <button className="text-redlog-text-dim hover:text-redlog-text text-xs leading-none" onClick={() => setCluster(null)}>×</button>
+                        <button type="button" aria-label={t('common.close')} className="min-w-7 min-h-7 -my-1 -mr-1 flex items-center justify-center text-redlog-text-dim hover:text-redlog-text text-xs leading-none" onClick={() => setCluster(null)}>×</button>
                       </div>
                       {capped.map((evt) => (
                         <button
                           key={evt.id}
-                          className="w-full text-left px-2 py-1 hover:bg-white/5 flex items-center gap-2"
+                          className="w-full min-h-7 text-left px-2 py-1 hover:bg-white/5 flex items-center gap-2"
                           onClick={() => {
                             setSelectedEvent(evt)
                             setCluster(null)
@@ -2741,13 +2779,8 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
                       )}
                     </div>
                   </div>
-                  )
-                })()}
-              </div>
-            </div>
-          </div>
-        </div>
-        </div>
+          )
+        })()}
 
         {/* No split handle between the track and the rail any more: the
             standard track is one row sized to its content and the rail takes

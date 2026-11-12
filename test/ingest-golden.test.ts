@@ -82,7 +82,8 @@ describe('ingest write path, byte for byte', () => {
     const counted = index.prepare("SELECT (SELECT COUNT(*) FROM body_event_refs WHERE status='indexed') AS refs,(SELECT COUNT(*) FROM body_fts) AS fts").get() as { refs: number; fts: number }
     expect(counted.refs, 'the fixture must index saved bodies').toBeGreaterThan(40)
     expect(counted.fts).toBeGreaterThanOrEqual(counted.refs)
-    for (const row of index.prepare('SELECT * FROM body_event_refs ORDER BY event_id,sha256').all()) h.update(JSON.stringify(row) + '\n')
+    // The index's own verification columns (inode/mtime signatures) differ per run.
+    for (const row of index.prepare('SELECT event_id,sha256,file,size,encoding,status,indexed_bytes,reason,kind,available_bytes FROM body_event_refs ORDER BY event_id,sha256').all()) h.update(JSON.stringify(row) + '\n')
     for (const row of index.prepare('SELECT event_id,sha256,content FROM body_fts ORDER BY event_id,sha256,rowid').all()) h.update(JSON.stringify(row) + '\n')
     index.close()
     h.update(results.join(','))

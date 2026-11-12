@@ -38,7 +38,7 @@ export function saveHookConfig(cfg: Partial<HookConfig>, file = HOOK_CONFIG_PATH
   const next = {
     excludedPaths: cfg.excludedPaths === undefined ? current.excludedPaths : clean(cfg.excludedPaths)
   }
-  fs.mkdirSync(path.dirname(file), { recursive: true })
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
   fs.writeFileSync(file, JSON.stringify(next, null, 2) + '\n')
   return next
 }

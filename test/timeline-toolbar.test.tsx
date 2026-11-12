@@ -4,6 +4,8 @@ import { createRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { TimelineToolbar, formatSpan } from '../src/renderer/src/components/timeline/TimelineToolbar'
 import { I18nProvider, useI18n } from '../src/renderer/src/i18n'
+import en from '../src/renderer/src/i18n/en.json'
+import zh from '../src/renderer/src/i18n/zh-TW.json'
 
 type Props = Parameters<typeof TimelineToolbar>[0]
 
@@ -95,9 +97,23 @@ describe('TimelineToolbar', () => {
     expect(screen.getByTestId('timeline-anchor').textContent).toMatch(/\d{2}:\d{2}:05/)
   })
 
-  it('says Total only when nothing older remains', () => {
+  // Reported from the real app: the Timeline said "Total 170" while the status
+  // bar and the Activity status line said 171 for the same project. Both are
+  // right — the Timeline drops RedLog's own housekeeping rows (spec 038), the
+  // others count every recorded row — so the Timeline must not claim a total.
+  it('names its count as what it loaded, never as the project total', () => {
     draw()
-    expect(screen.getByTestId('timeline-range-status').textContent).toBe('Total 3 events')
+    expect(screen.getByTestId('timeline-range-status').textContent).toBe('3 events loaded')
+    for (const locale of [en, zh] as Array<Record<string, string>>) {
+      const own = locale['timeline.loadedEvents']
+      expect(own).toBeTruthy()
+      expect(own).not.toMatch(/total|總計/i)
+      for (const other of ['statusBar.events', 'targets.events', 'timeline.events']) expect(own).not.toBe(locale[other])
+    }
+  })
+
+  it('says how many of how many only while older events remain', () => {
+    draw()
     cleanup()
     draw({ hasMore: true, loadedCount: 2, total: { state: 'ok', value: 250 } })
     const text = screen.getByTestId('timeline-range-status').textContent ?? ''

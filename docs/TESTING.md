@@ -36,7 +36,7 @@ selection and headers before changing product code or skipping database tests.
 | Core source workflows | `npm run build` then `npm run e2e:core` | Export/delivery, evidence/query/Session/return and network recovery; 33 cases in 3 files. Other affected journeys must be selected explicitly. |
 | Whole source journey suite | `npm run e2e` | All source journeys; explicit platform/installed-only skips remain skips. |
 | Package contents/signature | `npm run verify:package-resources` after packaging | Shipped adapters, verifier, manifests and macOS resource seal. |
-| Installed app | Set `REDLOG_PACKAGED_APP` and run the relevant `e2e/packaged-*.spec.ts` | The actual installed executable and shipped resources. |
+| Installed app | Build the **smoke** variant ([releasing.md](releasing.md#build-variants)), set `REDLOG_PACKAGED_APP` and run the relevant `e2e/packaged-*.spec.ts` | The actual installed executable and shipped resources. A release package refuses Playwright's `--inspect` and remote debugging. |
 | Strict installation result | `node scripts/verify-smoke-report.mjs <report.json>` | Every selected test passed, with no skip, flaky result or `not-exercised` annotation. |
 | Release CI gate | `RELEASE_TAG=v<version> GITHUB_REPOSITORY=<owner/name> node scripts/verify-release-ci.mjs` (needs `gh` auth and a full clone) | The tagged commit is on main and its latest CI push run succeeded. |
 | Release asset contract | `RELEASE_TAG=v<version> node scripts/verify-release-assets.mjs <directory>` | All versioned installers and Windows updater metadata match the actual files. |

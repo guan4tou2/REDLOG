@@ -66,6 +66,15 @@ function hostOf(url: string): string {
   try { return new URL(url).hostname } catch { return '' }
 }
 
+/** Which columns fit the table's width (CSS px; null = not measured yet).
+ *  Time, method, status, host and path always show; type, size and duration
+ *  go first, and below that host and path share one cell. */
+function httpColumnsFor(width: number | null): { tier: 'wide' | 'medium' | 'narrow'; detail: boolean; hostApart: boolean; count: number } {
+  if (width === null || width >= 1000) return { tier: 'wide', detail: true, hostApart: true, count: 8 }
+  if (width >= 640) return { tier: 'medium', detail: false, hostApart: true, count: 5 }
+  return { tier: 'narrow', detail: false, hostApart: false, count: 4 }
+}
+
 function eventsToFlows(events: RedLogEvent[]): HttpFlow[] {
   const flowMap = new Map<string, { request: RedLogEvent | null; response: RedLogEvent | null }>()
   for (const evt of events) {
@@ -342,6 +351,10 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
   // mounted) is replaced by this.
   const scrollRef = useRef<HTMLDivElement | null>(null)
   useKeepScroll(scrollRef, active)
+  // The table's own width, not the window's or the panel's: docked beside the
+  // detail pane, or beside the Timeline, the table gets a fraction of either.
+  const [tableBoxRef, tableWidth] = useContainerWidth<HTMLDivElement>()
+  const columns = httpColumnsFor(tableWidth)
   const rowVirtualizer = useVirtualizer({
     count: filtered.length,
     getScrollElement: () => scrollRef.current,
@@ -522,26 +535,41 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
       </div>
 
       <div data-testid="http-workspace-split" data-layout={layout} className={`flex-1 min-h-48 flex ${layout === 'right' ? 'flex-row' : 'flex-col'}`}>
-        <div ref={scrollRef} className="flex-1 min-w-0 min-h-0 overflow-auto">
-          <table className="w-full text-xs font-mono">
+        <div
+          ref={(el) => { scrollRef.current = el; tableBoxRef(el) }}
+          data-testid="http-table-scroll"
+          data-columns={columns.tier}
+          className="flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden"
+        >
+          {/* Fixed layout: an auto table ignores a cell's max-width, so long
+              hosts and paths pushed the columns into each other instead of
+              truncating. Narrower, the table drops the low-priority columns
+              rather than scrolling sideways. */}
+          <table className="w-full table-fixed text-xs font-mono">
             <thead className="sticky top-0 whitespace-nowrap bg-redlog-surface/95 z-10">
               <tr className="text-redlog-text-dim uppercase tracking-wider text-left">
-                <th className="px-2 py-1.5 font-medium w-20" aria-sort={ariaSort('timestamp')}>
+                <th className="px-2 py-1.5 font-medium w-24" aria-sort={ariaSort('timestamp')}>
                   <Button level="quiet" size="compact" onClick={() => toggleSort('timestamp')}>{t('httpHistory.colWhen')}{sortArrow('timestamp')}</Button>
                 </th>
-                <th className="px-2 py-1.5 font-medium w-16">{t('httpHistory.colMethod')}</th>
-                <th className="px-2 py-1.5 font-medium w-14" aria-sort={ariaSort('status')}>
+                <th className="px-2 py-1.5 font-medium w-20">{t('httpHistory.colMethod')}</th>
+                <th className="px-2 py-1.5 font-medium w-24" aria-sort={ariaSort('status')}>
                   <Button level="quiet" size="compact" onClick={() => toggleSort('status')}>{t('httpHistory.colStatus')}{sortArrow('status')}</Button>
                 </th>
-                <th className="px-2 py-1.5 font-medium">{t('httpHistory.colHost')}</th>
-                <th className="px-2 py-1.5 font-medium">{t('httpHistory.colUrl')}</th>
-                <th className="px-2 py-1.5 font-medium w-28">{t('httpHistory.colType')}</th>
-                <th className="px-2 py-1.5 font-medium w-20 text-right" aria-sort={ariaSort('size')}>
-                  <Button level="quiet" size="compact" onClick={() => toggleSort('size')}>{t('httpHistory.colSize')}{sortArrow('size')}</Button>
-                </th>
-                <th className="px-2 py-1.5 font-medium w-16 text-right" aria-sort={ariaSort('durationMs')}>
-                  <Button level="quiet" size="compact" onClick={() => toggleSort('durationMs')}>{t('httpHistory.colTime')}{sortArrow('durationMs')}</Button>
-                </th>
+                {columns.hostApart
+                  ? <>
+                    <th className={`px-2 py-1.5 font-medium ${columns.tier === 'wide' ? 'w-[25%]' : 'w-[30%]'}`}>{t('httpHistory.colHost')}</th>
+                    <th className="px-2 py-1.5 font-medium">{t('httpHistory.colUrl')}</th>
+                  </>
+                  : <th className="px-2 py-1.5 font-medium truncate" title={`${t('httpHistory.colHost')} / ${t('httpHistory.colUrl')}`}>{t('httpHistory.colHost')} / {t('httpHistory.colUrl')}</th>}
+                {columns.detail && <>
+                  <th className="px-2 py-1.5 font-medium w-28">{t('httpHistory.colType')}</th>
+                  <th className="px-2 py-1.5 font-medium w-20 text-right" aria-sort={ariaSort('size')}>
+                    <Button level="quiet" size="compact" onClick={() => toggleSort('size')}>{t('httpHistory.colSize')}{sortArrow('size')}</Button>
+                  </th>
+                  <th className="px-2 py-1.5 font-medium w-20 text-right" aria-sort={ariaSort('durationMs')}>
+                    <Button level="quiet" size="compact" onClick={() => toggleSort('durationMs')}>{t('httpHistory.colTime')}{sortArrow('durationMs')}</Button>
+                  </th>
+                </>}
               </tr>
             </thead>
             <tbody {...rowNav.containerProps}>
@@ -551,7 +579,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
                 const padBottom = items.length ? rowVirtualizer.getTotalSize() - items[items.length - 1].end : 0
                 return (
                   <>
-                    {padTop > 0 && <tr aria-hidden="true"><td colSpan={8} style={{ height: padTop, padding: 0, border: 0 }} /></tr>}
+                    {padTop > 0 && <tr aria-hidden="true"><td colSpan={columns.count} style={{ height: padTop, padding: 0, border: 0 }} /></tr>}
                     {items.map((vi) => {
                 const f = filtered[vi.index]
                 const rowIndex = vi.index
@@ -579,25 +607,33 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
                     className="border-b border-redlog-border-subtle/30 hover:bg-redlog-elevated/30 cursor-pointer focus-visible:outline-none focus-visible:bg-redlog-elevated/50"
                     onClick={() => { rowProps.onClick(); openDetail(eventId) }}
                   >
-                    <td className="px-2 py-1 text-redlog-text-faint tabular-nums">{formatTime(f.timestamp, { seconds: true })}</td>
-                    <td className={`px-2 py-1 font-semibold ${methodClass}`}>{f.method}</td>
-                    <td className={`px-2 py-1 ${statusClass}`}>{f.status ?? '—'}</td>
-                    <td className="px-2 py-1 text-redlog-text-dim max-w-[160px]">
-                      <span className="block truncate" title={f.host}>{f.host}</span>
-                      {/* No scope at all is a fact about the project, not the row: the
-                          status bar's scope chip says it on every page. */}
-                      {scopeState !== 'in-scope' && scopeState !== 'no-scope' && <span data-testid="http-scope-state" data-scope={scopeState} className={`text-xs ${scopeState === 'out-of-scope' ? 'text-amber-400' : 'text-redlog-text-faint'}`}>{t(`httpScope.${scopeState}`)}</span>}
+                    <td className="px-2 py-1 text-redlog-text-faint tabular-nums truncate" title={formatTime(f.timestamp, { seconds: true })}>{formatTime(f.timestamp, { seconds: true })}</td>
+                    <td className={`px-2 py-1 font-semibold truncate ${methodClass}`} title={f.method}>{f.method}</td>
+                    <td className={`px-2 py-1 truncate ${statusClass}`} title={String(f.status ?? '—')}>{f.status ?? '—'}</td>
+                    <td className="px-2 py-1 text-redlog-text-dim">
+                      {/* Host apart: host over its scope word. Host and path in
+                          one cell: host and scope word share the first line,
+                          so the row keeps its fixed 42px for the virtualizer. */}
+                      <span className={columns.hostApart ? 'block' : 'flex min-w-0 items-baseline gap-2'}>
+                        <span className="block min-w-0 truncate" title={f.host}>{f.host}</span>
+                        {/* No scope at all is a fact about the project, not the row: the
+                            status bar's scope chip says it on every page. */}
+                        {scopeState !== 'in-scope' && scopeState !== 'no-scope' && <span data-testid="http-scope-state" data-scope={scopeState} className={`block shrink-0 text-xs ${scopeState === 'out-of-scope' ? 'text-amber-400' : 'text-redlog-text-faint'}`}>{t(`httpScope.${scopeState}`)}</span>}
+                      </span>
+                      {!columns.hostApart && <span className="block truncate text-redlog-text" title={f.url}>{urlPath}</span>}
                     </td>
-                    <td className="px-2 py-1 text-redlog-text max-w-[400px] truncate" title={f.url}>{urlPath}</td>
-                    <td className="px-2 py-1 text-redlog-text-dim max-w-[120px] truncate" title={f.contentType}>
-                      {f.contentType.replace(/^application\//, '').replace(/;.*/, '')}
-                    </td>
-                    <td className="px-2 py-1 text-redlog-text-dim text-right">{f.size !== null ? formatBytes(f.size) : '—'}</td>
-                    <td className="px-2 py-1 text-redlog-text-dim text-right">{f.durationMs !== null ? `${f.durationMs}ms` : '—'}</td>
+                    {columns.hostApart && <td className="px-2 py-1 text-redlog-text truncate" title={f.url}>{urlPath}</td>}
+                    {columns.detail && <>
+                      <td className="px-2 py-1 text-redlog-text-dim truncate" title={f.contentType}>
+                        {f.contentType.replace(/^application\//, '').replace(/;.*/, '')}
+                      </td>
+                      <td className="px-2 py-1 text-redlog-text-dim text-right truncate" title={f.size !== null ? formatBytes(f.size) : '—'}>{f.size !== null ? formatBytes(f.size) : '—'}</td>
+                      <td className="px-2 py-1 text-redlog-text-dim text-right truncate" title={f.durationMs !== null ? `${f.durationMs}ms` : '—'}>{f.durationMs !== null ? `${f.durationMs}ms` : '—'}</td>
+                    </>}
                   </tr>
                 )
                     })}
-                    {padBottom > 0 && <tr aria-hidden="true"><td colSpan={8} style={{ height: padBottom, padding: 0, border: 0 }} /></tr>}
+                    {padBottom > 0 && <tr aria-hidden="true"><td colSpan={columns.count} style={{ height: padBottom, padding: 0, border: 0 }} /></tr>}
                   </>
                 )
               })()}

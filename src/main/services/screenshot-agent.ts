@@ -246,7 +246,7 @@ export class ScreenshotAgent {
       this.lastHash = dedupKey
 
       const dir = path.join(getProjectDir(), 'screenshots')
-      fs.mkdirSync(dir, { recursive: true })
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
       const ts = new Date().toISOString().replace(/[:.]/g, '-')
       // The name carries milliseconds, which is not enough: two deliberate
       // captures inside the same millisecond produced the same name and the

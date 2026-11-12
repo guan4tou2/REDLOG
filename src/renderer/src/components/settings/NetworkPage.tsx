@@ -65,7 +65,7 @@ function VpnAdaptersField({ config, setConfig }: { config: ConfigState; setConfi
             />
             <span className="text-xs text-redlog-text-faint font-mono truncate max-w-[240px]" title={a.pattern}>{a.pattern}</span>
             {!builtinPatterns.has(a.pattern) && (
-              <button onClick={() => remove(i)} className="text-redlog-text-faint hover:text-red-400 text-xs">&times;</button>
+              <IconButton label={t('common.removeItem', { item: a.name })} onClick={() => remove(i)} className="text-redlog-text-faint hover:text-red-400 text-xs">&times;</IconButton>
             )}
           </div>
         ))}
@@ -77,6 +77,7 @@ function VpnAdaptersField({ config, setConfig }: { config: ConfigState; setConfi
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder={t('settings.vpnNamePlaceholder')}
+            aria-label={t('settings.vpnNamePlaceholder')}
             className="min-w-0 basis-40 flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text focus:outline-none focus:border-red-500"
           />
           <input
@@ -84,6 +85,7 @@ function VpnAdaptersField({ config, setConfig }: { config: ConfigState; setConfi
             onChange={(e) => setNewPattern(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !isComposing(e)) addCustom() }}
             placeholder={t('settings.vpnPatternPlaceholder')}
+            aria-label={t('settings.vpnPatternPlaceholder')}
             className="min-w-0 basis-40 flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500"
           />
           <IconButton label={t('common.addItem')} onClick={addCustom} className="px-2 py-1 bg-redlog-elevated text-redlog-text-dim text-xs hover:bg-redlog-elevated-hover">+</IconButton>

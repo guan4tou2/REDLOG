@@ -20,10 +20,12 @@ export function formatSpan(ms: number): string {
   return `${h}h ${String(m).padStart(2, '0')}m`
 }
 
+// 28 CSS px, the compact Button's floor (UIUX §4): 24 rendered at 21.6 device
+// px under `body { zoom: 0.9 }`.
 const chip = (active: boolean): string =>
-  `px-2 h-6 text-xs whitespace-nowrap transition-colors focus-visible:outline focus-visible:outline-red-400 ${active ? 'bg-redlog-elevated text-redlog-text font-medium' : 'text-redlog-text-dim hover:text-redlog-text'}`
+  `px-2 h-7 text-xs whitespace-nowrap transition-colors focus-visible:outline focus-visible:outline-red-400 ${active ? 'bg-redlog-elevated text-redlog-text font-medium' : 'text-redlog-text-dim hover:text-redlog-text'}`
 
-const ghost = 'px-2 h-6 text-xs whitespace-nowrap rounded border border-redlog-border text-redlog-text-dim hover:text-redlog-text transition-colors focus-visible:outline focus-visible:outline-red-400'
+const ghost = 'px-2 h-7 text-xs whitespace-nowrap rounded border border-redlog-border text-redlog-text-dim hover:text-redlog-text transition-colors focus-visible:outline focus-visible:outline-red-400'
 
 /** Stitch 05's two rows. Row 1 chooses what is drawn (the shared time range
  *  and the zoom); row 2 says where the operator is and switches the reading.
@@ -112,7 +114,7 @@ export function TimelineToolbar({
               onClick={onZoomOut}
               // 100% is the whole span; there is nothing further out to show.
               disabled={zoom <= 1.001}
-              className="w-6 h-6 flex items-center justify-center text-xs text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors disabled:cursor-default disabled:opacity-50 disabled:hover:text-redlog-text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
+              className="w-7 h-7 flex items-center justify-center text-xs text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors disabled:cursor-default disabled:opacity-50 disabled:hover:text-redlog-text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
               title={t('timeline.zoomOut')}
               aria-label={t('timeline.zoomOut')}
             >−</button>
@@ -120,7 +122,7 @@ export function TimelineToolbar({
             <button
               type="button"
               onClick={onZoomIn}
-              className="w-6 h-6 flex items-center justify-center text-xs text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
+              className="w-7 h-7 flex items-center justify-center text-xs text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
               title={t('timeline.zoomIn')}
               aria-label={t('timeline.zoomIn')}
             >+</button>
@@ -129,7 +131,7 @@ export function TimelineToolbar({
               onClick={onResetZoom}
               data-testid="timeline-zoom-reset"
               disabled={Math.abs(zoom - 1) < 0.01}
-              className="px-1.5 h-6 text-xs text-redlog-text-dim hover:text-redlog-text disabled:cursor-default disabled:opacity-50 disabled:hover:text-redlog-text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim rounded"
+              className="px-1.5 h-7 text-xs text-redlog-text-dim hover:text-redlog-text disabled:cursor-default disabled:opacity-50 disabled:hover:text-redlog-text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim rounded"
             >{t('timeline.resetZoom')}</button>
           </div>
         </div>
@@ -139,7 +141,7 @@ export function TimelineToolbar({
           <button
             type="button"
             onClick={onHelp}
-            className="w-6 h-6 flex items-center justify-center text-xs text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
+            className="w-7 h-7 flex items-center justify-center text-xs text-redlog-text-dim hover:text-redlog-text bg-redlog-elevated/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
             title={t('timeline.help.title')}
             aria-label={t('timeline.help.title')}
           >?</button>
@@ -161,12 +163,14 @@ export function TimelineToolbar({
           </span>
           {/* FR-003: while older admitted rows exist, the line says how many
               are drawn of how many there are. N counts the rows held, M the
-              rows the same filter admits; a total that failed says so. "Total"
-              is claimed only when nothing older is left to load. */}
+              rows the same filter admits; a total that failed says so. With
+              nothing older to load the line says "loaded", not "total": the
+              Timeline leaves out RedLog's own housekeeping rows, which the
+              status bar's count of recorded events includes. */}
           <span aria-hidden="true">/</span>
           <span data-testid="timeline-range-status" className="font-mono tabular-nums whitespace-nowrap">
             {!hasMore
-              ? t('timeline.events', { count: loadedCount })
+              ? t('timeline.loadedEvents', { count: loadedCount })
               : total.state === 'ok'
                 ? t('timeline.rangeOfTotal', { shown: loadedCount, total: total.value })
                 : total.state === 'pending'

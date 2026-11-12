@@ -15,9 +15,18 @@ _REDLOG_ADOPTED=""
 # Results that helpers on the per-command path leave in a variable instead of
 # printing, because capturing output is a fork. Made here, at load, so zsh's
 # WARN_CREATE_GLOBAL has nothing to say when a function first assigns them.
-_redlog_id="" _redlog_ns="" _redlog_text="" _redlog_path="" _redlog_count=0
+_redlog_id="" _redlog_ns="" _redlog_text="" _redlog_path="" _redlog_count=0 _redlog_json=""
 _REDLOG_SESSION_HELPER="${_redlog_adapter_dir:-}/redlog-session.py"
 _REDLOG_RELAY="${_redlog_adapter_dir:-}/redlog-relay.py"
+# Resolved here because the adapters unset `_redlog_adapter_dir` as soon as
+# this file is sourced; reading it later asked for `/terminal_app.py`, which
+# failed, so a restricted terminal-app setting refused every terminal.
+_REDLOG_TERMINAL_APP="${_redlog_adapter_dir:-}/terminal_app.py"
+# Which restricted selections this terminal satisfies, attested once per shell
+# (`_redlog_terminal_allowed`). Unset first so a value inherited from the
+# environment is neither trusted nor exported to children.
+unset _REDLOG_TERMINAL_ALLOWS _REDLOG_TERMINAL_ATTESTED
+_REDLOG_TERMINAL_ALLOWS="" _REDLOG_TERMINAL_ATTESTED=""
 
 redlog-session() {
   python3 "$_REDLOG_SESSION_HELPER" "$@"
@@ -80,18 +89,46 @@ _redlog_resolve_dir() {
 
 # Application selection is independent of Bash/Zsh. Re-read before each command
 # and send so narrowing the preference also stops already loaded adapters.
+#
+# The selection is a file read by `read`; the origin is not re-observed. Only
+# the OS-origin resolver can attest a restricted source — no inherited
+# TERM_PROGRAM / WT_SESSION / REDLOG_TERMINAL flag is a proof of ownership —
+# and it costs a python3 and a `ps`. A shell does not change terminals, so it
+# is asked once, the first time a restricted selection is in force (normally
+# as the hook loads), and its answer kept for the life of the shell. A failed
+# attestation is kept too: it fails closed, and asking again at every command
+# would put the python3 back on the prompt.
 _redlog_terminal_allowed() {
   if [[ -z "${_REDLOG_DIR:-}" && -n "${WSL_DISTRO_NAME:-}" ]]; then
     _REDLOG_DIR=$(_redlog_resolve_dir) || return 1
     export _REDLOG_DIR
   fi
-  local dir="${_REDLOG_DIR:-$HOME/.redlog}" wanted
+  local dir="${_REDLOG_DIR:-$HOME/.redlog}" wanted=""
   [[ -e "$dir/terminal-app" ]] || return 0
-  { wanted=$(<"$dir/terminal-app"); } 2>/dev/null || return 1
+  [[ -r "$dir/terminal-app" ]] || return 1
+  # Ends at EOF, which is `read`'s status 1; what it read is the answer. Not
+  # `$(<file)`, which bash runs in a fork.
+  { IFS= read -r -d '' wanted <"$dir/terminal-app"; } 2>/dev/null
+  # Surrounding whitespace dropped, as terminal_app.py's `strip()` does.
+  wanted=${wanted#"${wanted%%[![:space:]]*}"}
+  wanted=${wanted%"${wanted##*[![:space:]]}"}
   [[ "$wanted" == all ]] && return 0
-  # Only the OS-origin resolver can attest a restricted source. No inherited
-  # TERM_PROGRAM / WT_SESSION / REDLOG_TERMINAL flag is a proof of ownership.
-  python3 "${_redlog_adapter_dir:-}/terminal_app.py" "$dir" >/dev/null 2>&1
+  [[ -n "$wanted" && "$wanted" != *[[:space:]]* ]] || return 1
+  if [[ -z "$_REDLOG_TERMINAL_ATTESTED" ]]; then
+    _REDLOG_TERMINAL_ALLOWS=" $(python3 "$_REDLOG_TERMINAL_APP" --allows 2>/dev/null) "
+    _REDLOG_TERMINAL_ATTESTED=1
+  fi
+  [[ "$_REDLOG_TERMINAL_ALLOWS" == *" $wanted "* ]]
+}
+
+# Said once, by an adapter that is not loading because of the selection above.
+# Without it a terminal outside the chosen app looked like a broken install.
+_redlog_announce_terminal_refused() {
+  local dir="${_REDLOG_DIR:-$HOME/.redlog}" wanted=""
+  { IFS= read -r -d '' wanted <"$dir/terminal-app"; } 2>/dev/null
+  wanted=${wanted#"${wanted%%[![:space:]]*}"}
+  wanted=${wanted%"${wanted##*[![:space:]]}"}
+  printf '%s\n' "[redlog] this terminal is not recorded — RedLog is set to record only in ${wanted:-another terminal app}" >&2
 }
 
 # --- Resolve reachable host ---
@@ -312,10 +349,14 @@ _redlog_check_project() {
   # The first sight of the file is the pin itself, not a switch. The adapter
   # seeds the stamp as it loads, so arriving here means this terminal loaded
   # with no project open and is adopted by the one RedLog opened since: said
-  # at the next prompt (`_redlog_announce_adoption`).
+  # at the next prompt (`_redlog_announce_adoption`). The state written at load
+  # names no project, so the adoption is written into it here — the pin that
+  # `redlog status` reports and a later switch is measured against. Once per
+  # shell: the stamp is never empty again.
   if [[ -z "${_REDLOG_IDENTITY_SEEN:-}" ]]; then
     _REDLOG_IDENTITY_SEEN=$_redlog_stamp
     _REDLOG_ADOPTED=1
+    _redlog_state --action adopt >/dev/null
     return 0
   fi
   _REDLOG_IDENTITY_SEEN=$_redlog_stamp
@@ -338,8 +379,11 @@ _redlog_check_project() {
     \"*) pinned=${pinned#\"}; pinned=${pinned%%\"*} ;;
     *) pinned="" ;;
   esac
+  # `pinned` is cut from the relay's JSON, so it is already escaped.
+  local sid
+  _redlog_json_escape "$_REDLOG_SESSION_ID"; sid=$_redlog_json
   _redlog_send_event "session_end" "" \
-    "{\"session_id\":\"$_REDLOG_SESSION_ID\",\"reason\":\"project-switched\",\"engagement_id\":\"$pinned\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
+    "{\"session_id\":\"$sid\",\"reason\":\"project-switched\",\"engagement_id\":\"$pinned\",\"source\":\"$_REDLOG_EVENT_SOURCE\"}"
   printf '%s\n' "[redlog] the project changed — this terminal stopped recording; open a new terminal for the new project" >&2
 }
 
@@ -352,6 +396,61 @@ _redlog_json_quote() {
   s=${s//\\/\\\\}
   s=${s//\"/\\\"}
   _redlog_json=$s
+}
+
+# The same, for any string the operator controls — a working directory, a
+# terminal id — which the adapters splice into an event's `extra` by hand. A
+# directory named with a tab put a raw tab inside a JSON string, the python
+# builder's `json.loads` refused it, and both events of every command run
+# there were dropped without a word. Control characters are written as JSON
+# escapes; everything else, UTF-8 or not, is left as bytes for the builders,
+# which decide what an invalid sequence becomes (`_redlog_build_payload_fast`).
+#
+# No process: a string without a control character, the usual case, is the two
+# substitutions above; one with them is walked a control character at a time.
+_redlog_json_escape() {
+  local LC_ALL=C
+  local s="$1" out="" head c n
+  s=${s//\\/\\\\}
+  s=${s//\"/\\\"}
+  while [[ "$s" == *[[:cntrl:]]* ]]; do
+    head=${s%%[[:cntrl:]]*}
+    s=${s#"$head"}
+    c=${s%"${s#?}"}
+    s=${s#?}
+    case "$c" in
+      $'\t') c='\t' ;;
+      $'\n') c='\n' ;;
+      $'\r') c='\r' ;;
+      *) printf -v n '%d' "'$c"; printf -v c '\\u%04x' "$n" ;;
+    esac
+    out+="$head$c"
+  done
+  _redlog_json=$out$s
+}
+
+# Whether a string is well-formed UTF-8, without a process. Each well-formed
+# sequence (the table in Unicode §3.9: no overlongs, no surrogates, nothing past
+# U+10FFFF) is replaced by an ASCII byte, which cannot start or finish another
+# match; any byte above 0x7F left over was not part of one.
+_REDLOG_U8_SEQS=(
+  $'\xf0[\x90-\xbf][\x80-\xbf][\x80-\xbf]'
+  $'[\xf1-\xf3][\x80-\xbf][\x80-\xbf][\x80-\xbf]'
+  $'\xf4[\x80-\x8f][\x80-\xbf][\x80-\xbf]'
+  $'\xe0[\xa0-\xbf][\x80-\xbf]'
+  $'[\xe1-\xec\xee\xef][\x80-\xbf][\x80-\xbf]'
+  $'\xed[\x80-\x9f][\x80-\xbf]'
+  $'[\xc2-\xdf][\x80-\xbf]'
+)
+_redlog_utf8_ok() {
+  local LC_ALL=C
+  # zsh treats an expanded variable as a pattern only under GLOB_SUBST.
+  [[ -n "${ZSH_VERSION:-}" ]] && setopt localoptions globsubst
+  local s="$1" seq
+  for seq in "${_REDLOG_U8_SEQS[@]}"; do
+    s=${s//$seq/x}
+  done
+  [[ "$s" != *[^\ -~]* ]]
 }
 
 # Adapter identity is process-local; $SHELL describes the login shell.
@@ -428,6 +527,13 @@ _redlog_build_payload_fast() {
   [[ "$subtype$command$shell_name$tid$wsl" == *[^\ -~]* ]] && return 1
   (( ${#command} + ${#extra} > 32768 )) && return 1
   [[ "$extra" == *[[:cntrl:]]* ]] && return 1
+  # Bytes that are not UTF-8 (a directory named in another encoding) go to
+  # python, which writes U+FFFD for each bad sequence. Copied as they are, the
+  # body would not be text, and what became of them would be the receiver's
+  # choice.
+  if [[ "$extra" == *[^\ -~]* ]]; then
+    _redlog_utf8_ok "$extra" || return 1
+  fi
 
   # WHEN the command ran, not when someone next looked (Domain Invariant #8):
   # the same millisecond epoch the python builder takes with time.time().
@@ -642,19 +748,28 @@ _redlog_send_event() {
      && _redlog_build_payload_fast "$subtype" "$command" "$extra" "" "$shell_name"; then
     payload=$_redlog_payload
   else
-  work=$(mktemp -d -t redlog-send.XXXXXX 2>/dev/null) || return 0
+  # A full template in $TMPDIR, not `-t`: BSD mktemp's `-t` ignores $TMPDIR,
+  # and where the per-user default is not writable every event this builder
+  # handles was dropped.
+  local tmp="${TMPDIR:-/tmp}"
+  work=$(mktemp -d "${tmp%/}/redlog-send.XXXXXX" 2>/dev/null) || return 0
   payload_file="$work/payload.json"
   printf '%s' "$extra" > "$work/extra.json" 2>/dev/null || { rm -rf "$work"; return 0; }
 
   python3 -c "
 import json, sys, os, pathlib, time
+# Arguments and the environment arrive as bytes. A sequence that is not UTF-8
+# becomes U+FFFD, as it does in extra.json below, rather than a lone surrogate
+# escape that is not text.
+def text(value):
+    return os.fsencode(value).decode('utf-8', 'replace')
 d = {
     'agent_type': 'shell',
     'data': {
-        'subtype': sys.argv[1],
-        'command': sys.argv[2],
+        'subtype': text(sys.argv[1]),
+        'command': text(sys.argv[2]),
         # Runtime identity is an argument, not interpolated login metadata.
-        'shell': sys.argv[4],
+        'shell': text(sys.argv[4]),
         'pid': $$,
         # WHEN, not when someone next looked.
         #
@@ -680,10 +795,10 @@ if os.environ.get('REDLOG_TERMINAL') == '1':
     d['data']['source'] = 'builtin-terminal'
 tid = os.environ.get('REDLOG_TERMINAL_ID') or os.environ.get('_REDLOG_SESSION_ID')
 if tid:
-    d['data']['terminalId'] = tid
+    d['data']['terminalId'] = text(tid)
 wsl = os.environ.get('WSL_DISTRO_NAME')
 if wsl:
-    d['data']['wsl_distro'] = wsl
+    d['data']['wsl_distro'] = text(wsl)
 extra = pathlib.Path(sys.argv[3]).read_text(encoding='utf-8', errors='replace')
 if extra.strip():
     d['data'].update(json.loads(extra))
@@ -840,8 +955,9 @@ redlog-run() {
   command_id=$(_redlog_new_command_id)
 
   # Emit command_start so the timeline shows the row entering flight.
+  _redlog_json_escape "$PWD"
   _redlog_send_event "command_start" "$cmd_string" \
-    "{\"cwd\":\"${PWD//\"/\\\"}\",\"captured_by\":\"redlog-run\",\"command_id\":\"$command_id\"}"
+    "{\"cwd\":\"$_redlog_json\",\"captured_by\":\"redlog-run\",\"command_id\":\"$command_id\"}"
 
   # A builtin, function or keyword has to run in THIS shell or it does
   # nothing: `redlog-run cd /tmp` through a relay would change a directory
@@ -853,8 +969,9 @@ redlog-run() {
     command "$@"
     local builtin_code=$?
     local builtin_duration=$(( ${EPOCHSECONDS:-$(date +%s)} - start_ts ))
+    _redlog_json_escape "$PWD"
     _redlog_send_event "command_end" "$cmd_string" \
-      "{\"exit_code\":$builtin_code,\"duration_sec\":$builtin_duration,\"cwd\":\"${PWD//\"/\\\"}\",\"captured_by\":\"redlog-run\",\"command_id\":\"$command_id\",\"completeness\":\"metadata-only\",\"output_disposition\":\"not-captured\"}"
+      "{\"exit_code\":$builtin_code,\"duration_sec\":$builtin_duration,\"cwd\":\"$_redlog_json\",\"captured_by\":\"redlog-run\",\"command_id\":\"$command_id\",\"completeness\":\"metadata-only\",\"output_disposition\":\"not-captured\"}"
     return $builtin_code
   fi
 
@@ -890,7 +1007,8 @@ redlog-run() {
     # The relay ran the command but could not write the event — fall back to
     # bare metadata so the row still lands with the right exit code.
     local duration=$(( ${EPOCHSECONDS:-$(date +%s)} - start_ts ))
-    extra="{\"exit_code\":$exit_code,\"duration_sec\":$duration,\"cwd\":\"${PWD//\"/\\\"}\",\"captured_by\":\"redlog-run\",\"command_id\":\"$command_id\",\"completeness\":\"metadata-only\",\"output_disposition\":\"not-captured\"}"
+    _redlog_json_escape "$PWD"
+    extra="{\"exit_code\":$exit_code,\"duration_sec\":$duration,\"cwd\":\"$_redlog_json\",\"captured_by\":\"redlog-run\",\"command_id\":\"$command_id\",\"completeness\":\"metadata-only\",\"output_disposition\":\"not-captured\"}"
   fi
 
   _redlog_send_event "command_end" "$cmd_string" "$extra"

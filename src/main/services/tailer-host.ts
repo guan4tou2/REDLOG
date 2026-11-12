@@ -408,24 +408,50 @@ function coalescedCatchUp(agentKind: string, sid: string): void {
 // ALL sessions pass until a session is explicitly selected. Once any session registers, ONLY
 // registered session IDs are captured. This gives the operator session-level
 // precision while keeping automatic discovery useful by default.
+//
+// #686: the selection belongs to the engagement it was made in, so it is kept
+// per engagement id and read against `cfg.identity`. `stopHost()` does not
+// touch it: `configureHost()` stops the host on every settings save and plugin
+// change, and the selection has to survive those. Project close/switch clears
+// it explicitly (`clearSessionRegistry`, from `stopAgentTailer`). Memory only:
+// a relaunch, or closing and reopening the project, starts with no selection.
 
-const sessionRegistry = new Set<string>()
+const sessionRegistryByEngagement = new Map<string, Set<string>>()
 
+function currentSessionRegistry(): Set<string> | undefined {
+  const engagementId = cfg.identity?.engagementId
+  return engagementId ? sessionRegistryByEngagement.get(engagementId) : undefined
+}
+
+/** Ignored with no engagement identity: a selection made outside a project
+ *  would otherwise apply to whichever project opens next. */
 export function registerSessionId(sessionId: string): void {
-  sessionRegistry.add(sessionId)
+  const engagementId = cfg.identity?.engagementId
+  if (!engagementId) return
+  let registry = sessionRegistryByEngagement.get(engagementId)
+  if (!registry) sessionRegistryByEngagement.set(engagementId, registry = new Set())
+  registry.add(sessionId)
 }
 
 export function isSessionRegistered(sessionId: string): boolean {
-  return sessionRegistry.size === 0 || sessionRegistry.has(sessionId)
+  const registry = currentSessionRegistry()
+  return !registry || registry.size === 0 || registry.has(sessionId)
 }
 
 export function getRegisteredSessions(): string[] {
-  return [...sessionRegistry]
+  return [...(currentSessionRegistry() ?? [])]
+}
+
+/** Drops the selection of `engagementId` (default: the current one). */
+export function clearSessionRegistry(engagementId: string | undefined = cfg.identity?.engagementId): void {
+  if (engagementId) sessionRegistryByEngagement.delete(engagementId)
 }
 
 export interface AgentSessionInfo { agentKind: string; sessionId: string; cwd?: string; recording: boolean }
 export function listAgentSessions(): AgentSessionInfo[] {
-  const result = [...sessions.values()].map(s => ({ agentKind: s.agentKind, sessionId: s.sessionId, cwd: s.transcriptCwd, recording: cfg.enabled && !eventBus.paused })) as AgentSessionInfo[]
+  // A session already tailing when another one is selected stays in `sessions`
+  // but its turns are dropped, so it is not recording.
+  const result = [...sessions.values()].map(s => ({ agentKind: s.agentKind, sessionId: s.sessionId, cwd: s.transcriptCwd, recording: cfg.enabled && !eventBus.paused && sessionAllowed(s.agentKind, s.sessionId) })) as AgentSessionInfo[]
   for (const [agentKind, ids] of Object.entries(cfg.excludedSessionsByAgent ?? {})) for (const sessionId of ids) {
     if (!result.some(s => s.agentKind === agentKind && s.sessionId === sessionId)) result.push({ agentKind, sessionId, recording: false })
   }
@@ -1437,7 +1463,6 @@ export function stopHost(): void {
   coalesceTimers.clear()
   for (const [key] of sessions) unregisterSession(key)
   sessions.clear()
-  sessionRegistry.clear()
   // The seed index is keyed by session, not by project, and holds event ids
   // from whichever database was open when it was built. Closing the host is
   // the boundary — dropping it here means a project switch can never hand the

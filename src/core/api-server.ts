@@ -31,6 +31,7 @@ import { getNtpOffsetMs, getLastNtpQuery } from './clock'
 import { redact, getRules } from './redaction'
 import { sanitize } from './sanitize'
 import { exportBundle } from './bundle-export'
+import type { DirectBundleExporter } from './export-direct-bundle'
 import { parseVerifyReport, type HttpVerifyReport } from './http-verify'
 import { exportHar, bodyDeliverableUnderScope } from './har-export'
 import { getCaptureHealth, getCaptureError, noteDbError } from './capture-health'
@@ -91,6 +92,9 @@ let alertRuntimeRef: AlertRuntimeSlice | null = null
 /** Where the mitmproxy addon's capture checks go (#220). Main forwards them
  *  to the renderer; nothing here writes them to the record. */
 let httpVerifySinkRef: ((report: HttpVerifyReport) => void) | null = null
+/** #695: main runs the bundle's scans in its export worker. Without one (CLI,
+ *  tests) the bundle is built in-process. */
+let bundleExporterRef: DirectBundleExporter | null = null
 
 /** Shape a scope-check signal from an incoming event by (agentType, subtype).
  *  Returns null when the event doesn't carry a checkable target — most
@@ -111,26 +115,35 @@ export function setCastProbe(fn: CastProbe | null): void { castProbe = fn }
 // needs no eviction beyond dropping the key when the pair completes.
 const castOffsetAtStart = new Map<string, number>()
 
+// Main's test-hooks decision, handed in rather than read here: core runs
+// outside Electron too (CLI, tests) and has no build variant of its own.
+let testHooksEnabled = false
+
 export function configureApi(opts: {
   engagementId: string
   operatorId: string
   operatorName?: string
+  /** e2e fixture routes (`/api/events/seed`). Kept as it was when omitted; off until set. */
+  testHooks?: boolean
   configLoader?: typeof configLoaderRef
   lootDetector?: typeof lootDetectorRef
   screenshotAgent?: typeof screenshotAgentRef
   alertRuntime?: AlertRuntimeSlice
   sessionRegistry?: typeof sessionRegistryRef
   httpVerifySink?: typeof httpVerifySinkRef
+  bundleExporter?: typeof bundleExporterRef
 }): void {
   engagementId = opts.engagementId
   primaryOperatorId = opts.operatorId
   if (opts.operatorName) primaryOperatorName = opts.operatorName
+  if (opts.testHooks !== undefined) testHooksEnabled = opts.testHooks
   if (opts.configLoader) configLoaderRef = opts.configLoader
   if (opts.lootDetector) lootDetectorRef = opts.lootDetector
   if (opts.screenshotAgent) screenshotAgentRef = opts.screenshotAgent
   if (opts.alertRuntime) alertRuntimeRef = opts.alertRuntime
   if (opts.sessionRegistry) sessionRegistryRef = opts.sessionRegistry
   if (opts.httpVerifySink) httpVerifySinkRef = opts.httpVerifySink
+  if (opts.bundleExporter) bundleExporterRef = opts.bundleExporter
 }
 
 /** Settings changed the operator while the project stays open. The token is
@@ -290,7 +303,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     }
 
     // `/api/events/seed` is the E2E fixture door: same handler, allowlist
-    // skipped, and it does not exist unless REDLOG_E2E=1. Specs need to plant
+    // skipped, and it does not exist unless main configured test hooks on
+    // (src/main/test-hooks.ts; never in a packaged release build). Off, it
+    // answers exactly like any other unknown route. Specs need to plant
     // derived rows (pivot, cleanup, a scope violation, eighteen lanes' worth
     // of types) that in production only RedLog's own analysis writes.
     //
@@ -299,8 +314,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     // (e2e/recording-pause.spec.ts, "a forged system event is refused"), and a
     // bypass reachable on the same route would have made that test pass while
     // the door stood open.
-    const e2eSeed = route === '/api/events/seed' && req.method === 'POST'
-    if (e2eSeed && process.env.REDLOG_E2E !== '1') { json(res, 404, { error: 'not found' }); return }
+    const e2eSeed = testHooksEnabled && route === '/api/events/seed' && req.method === 'POST'
     if ((route === '/api/events' || e2eSeed) && req.method === 'POST') {
       const pinnedEngagement = req.headers['x-redlog-engagement']
       if (pinnedEngagement != null && pinnedEngagement !== engagementId) {
@@ -743,7 +757,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         // PRD A2: mask out-of-scope events in the bundle when scope is known.
         const scopeTargets = configLoaderRef?.getTargets?.() ?? []
         const excludeTargets = configLoaderRef?.getExcludeTargets?.() ?? []
-        const bundle = exportBundle(engagementId, { scope: { targets: scopeTargets, excludeTargets } })
+        const scope = { targets: scopeTargets, excludeTargets }
+        const bundle = bundleExporterRef ? await bundleExporterRef(engagementId, { scope }) : exportBundle(engagementId, { scope })
         json(res, 201, { outDir: bundle.outDir, manifest: bundle.manifest })
       } catch (e) {
         const err = e as Error

@@ -140,7 +140,13 @@ export interface ExportBundleOpts {
   /** The approved preview's attachment rows, recorded in the manifest so a
    *  recipient can see which targets each cast spans. */
   attachments?: readonly ExportAttachment[]
+  /** The logged-tier digest, already computed by the caller over
+   *  `snapshot.loggedMaxRowId` and already appended to the chain below
+   *  `snapshot.chainedMaxRowId` (export-direct-bundle.ts). Recorded in the
+   *  manifest as given; no digest is computed and no event is inserted. */
+  loggedDigest?: LoggedTierDigest
 }
+export type LoggedTierDigest = ReturnType<typeof loggedTierDigest>
 
 /** Copy the first `limit` bytes of `src` (all of it when `limit` is not smaller). */
 function copyPrefix(src: string, dst: string, limit: number): void {
@@ -239,7 +245,8 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   // bundle is unsigned and the snapshot is skipped, not force-attributed.
   const primary = getPrimaryOperator()
 
-  const loggedDigest = loggedTierDigest(opts.snapshot?.loggedMaxRowId)
+  if (opts.loggedDigest && !opts.snapshot) throw new Error('A precomputed logged-tier digest needs the snapshot it was taken under')
+  const loggedDigest = opts.loggedDigest ?? loggedTierDigest(opts.snapshot?.loggedMaxRowId)
   if (!opts.snapshot && loggedDigest.count > 0 && primary) {
     const ev = insertEvent('system', {
       subtype: 'logged_tier_digest',
