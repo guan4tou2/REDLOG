@@ -10,7 +10,9 @@
 // once ran: the hyphen makes it throw, so every same-millisecond pair silently
 // fell through to comparing UUIDs. That is invisible — the events are ordered,
 // just not in the order they happened — which is why this now lives in one
-// place with a test, rather than being written out twice.
+// place with a test, rather than being written out twice. The timeline has
+// since moved to core/event-order (timestamp, rowid, tier): logged rows carry
+// no stamp at all. Marker amendments still order by this.
 
 /** Split `bootMs-ns` into its two numbers. Rows written before the boot prefix
  *  landed carry the padded nanoseconds alone; they take boot 0 so they sort

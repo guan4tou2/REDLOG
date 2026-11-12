@@ -6,6 +6,7 @@ import { restrictToOwner } from './fs-acl'
 import { isExternalEventAllowed } from './external-event-policy'
 import { mkdirPrivate } from './private-fs'
 import { queryEvents, queryEventById, queryBuiltinTerminalSessionStart, getEventCount, executeEventQuery, PAUSE_EXEMPT_AGENT_TYPES } from './db/events'
+import { withoutRowId } from './db/event-types'
 import { parseQuery } from './query/contract'
 import { decodeCursor } from './query-page'
 import { createBookmark, listBookmarks } from './db/bookmarks'
@@ -411,7 +412,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         json(res, 409, { error: 'Duplicate event (dedup window)' })
         return
       }
-      json(res, 201, result.event)
+      json(res, 201, withoutRowId(result.event))
       return
     }
     if (route === '/api/events' && req.method === 'GET') {
@@ -422,7 +423,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       for (const p of [limit, since, before]) if (!p.ok) { json(res, 400, { error: p.error }); return }
       const targetId = url.searchParams.get('target_id') || undefined
       const events = queryEvents({ agentType, limit: limit.ok ? limit.value : undefined, since: since.ok ? since.value : undefined, before: before.ok ? before.value : undefined, targetId })
-      json(res, 200, { count: events.length, events })
+      json(res, 200, { count: events.length, events: events.map(withoutRowId) })
       return
     }
 
@@ -456,7 +457,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         const page = executeEventQuery({ parsed: outcome.parsed, limit, cursor })
         json(res, 200, {
           count: page.items.length,
-          events: page.items,
+          events: page.items.map(withoutRowId),
           hasMore: page.hasMore,
           nextCursor: page.nextCursor,
           ...(page.toolSession ? { toolSession: page.toolSession } : {})
@@ -522,7 +523,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       }, engagementId, operatorId: operator.id,
       targetId: (body.target_id || body.targetId) as string | undefined,
       envelope: { source: 'api', mapper: { id: 'identity', version: '1' } } }).event
-      json(res, 201, event)
+      json(res, 201, event && withoutRowId(event))
       return
     }
 

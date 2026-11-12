@@ -7,7 +7,7 @@
 
 import { SCOPE_VIOLATION_SUBTYPE } from '../../../core/scope-vocabulary'
 import { formatTime, formatDate, formatDateTime } from './time'
-import { compareMonotonicNs } from './eventOrder'
+import { compareEventOrder } from '../../../core/event-order'
 
 // ── Lane / band topology ────────────────────────────────────────────
 // v0.6.92 W-project: added `browser` (CDP console) between scanner and dns,
@@ -158,16 +158,10 @@ export function toLane(agentType: string, subtype?: string, pluginTypes?: Plugin
   return 'system'
 }
 
-// Comparator: primary sort by wall-clock, tiebreak by monotonic_ns when
-// two events share the same ms. monotonic_ns comes from Node's process.hrtime
-// (or its equivalent) and is captured as a string of digits — compare as
-// BigInt so we don't collapse 40-digit values into Number precision.
-export function eventCompare(a: RedLogEvent, b: RedLogEvent): number {
-  if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp
-  const mono = compareMonotonicNs(a.monotonicNs, b.monotonicNs)
-  if (mono !== 0) return mono
-  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
-}
+// The display order the queries page in (core/event-order), so a page merged
+// into the store and a live row inserted into it land where a fresh read would
+// put them.
+export const eventCompare: (a: RedLogEvent, b: RedLogEvent) => number = compareEventOrder
 
 // v0.6.95 P1-12: keep the events array sorted incrementally rather than
 // re-sorting on every batch. Full sort of 100k events is O(n log n) ~ 1.7M

@@ -11,6 +11,7 @@ import {
   TIER_RANK_CHAINED, TIER_RANK_LOGGED, CANONICAL_ORDER,
   type QueryPage, type CursorKey
 } from '../query-page'
+import { compareEventOrder, eventOrderBy } from '../event-order'
 import type { ExportSnapshot } from '../export-plan'
 import type { StreamSegments } from '../stream-completion'
 import { evaluateScope, type ScopePolicy } from '../scope-evaluator'
@@ -340,7 +341,7 @@ export function queryHttpFlowPage(opts: HttpFlowQueryOptions): HttpFlowPage {
   const hasMore = heads.length > limit
   const pageHeads = heads.slice(0, limit)
   if (!pageHeads.length) return { items: [], flowCount: 0, hasMore: false, nextCursor: null }
-  const rows = db.prepare(`SELECT *, 'logged' AS tier FROM events_logged
+  const rows = db.prepare(`SELECT *, rowid AS _row, 'logged' AS tier FROM events_logged
     WHERE agent_type='scanner' AND subtype IN ('http_request_start','http_response') AND rowid <= ?
     AND json_extract(data,'$.flow_id') IN (SELECT value FROM json_each(?)) ORDER BY timestamp DESC, rowid DESC
   `).all(boundary, JSON.stringify(pageHeads.map(row => row.flow_id))) as Array<Record<string, unknown>>
@@ -396,7 +397,7 @@ export function queryEvents(opts: EventQueryOptions): RedLogEvent[] {
     SELECT rowid AS _row,
            id, timestamp, engagement_id, session_id, operator_id, agent_type,
            hostname, source_ip, target_id, data, hash, prev_hash, created_at,
-           monotonic_ns, ntp_offset_ms, signature, 'chained' AS tier
+           monotonic_ns, ntp_offset_ms, signature, 'chained' AS tier, ${TIER_RANK_CHAINED}
     FROM events ${chainedWhere}
   `
   const loggedSelect = `
@@ -405,7 +406,7 @@ export function queryEvents(opts: EventQueryOptions): RedLogEvent[] {
            hostname, source_ip, target_id, data,
            NULL AS hash, NULL AS prev_hash, created_at,
            NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS signature,
-           'logged' AS tier
+           'logged' AS tier, ${TIER_RANK_LOGGED}
     FROM events_logged ${loggedWhere}
   `
 
@@ -422,7 +423,7 @@ export function queryEvents(opts: EventQueryOptions): RedLogEvent[] {
              SELECT * FROM (${chainedSelect} ORDER BY timestamp ${order}, _row ${order} LIMIT ?)
              UNION ALL
              SELECT * FROM (${loggedSelect} ORDER BY timestamp ${order}, _row ${order} LIMIT ?)
-           ) ORDER BY timestamp ${order}, _row ${order} LIMIT ?`
+           ) ORDER BY ${eventOrderBy(order)} LIMIT ?`
     bind = [...chainedParams, limit, ...loggedParams, limit, limit]
   }
 
@@ -790,10 +791,10 @@ export function queryScreenshotPage(opts: {
 // answer when there's ambiguity.
 export function queryEventById(id: string): RedLogEvent | null {
   const db = getDB()
-  const chained = db.prepare('SELECT * FROM events WHERE id = ? LIMIT 1').get(id) as
+  const chained = db.prepare('SELECT *, rowid AS _row FROM events WHERE id = ? LIMIT 1').get(id) as
     Record<string, unknown> | undefined
   if (chained) return rowToEvent({ ...chained, tier: 'chained' })
-  const logged = db.prepare('SELECT * FROM events_logged WHERE id = ? LIMIT 1').get(id) as
+  const logged = db.prepare('SELECT *, rowid AS _row FROM events_logged WHERE id = ? LIMIT 1').get(id) as
     Record<string, unknown> | undefined
   return logged ? rowToEvent({ ...logged, tier: 'logged' }) : null
 }
@@ -829,12 +830,12 @@ function queryEventsByIds(ids: string[]): RedLogEvent[] {
   const db = getDB()
   const json = JSON.stringify(ids)
   const rows = db.prepare(`
-    SELECT id,timestamp,engagement_id,session_id,operator_id,agent_type,subtype,
+    SELECT rowid AS _row,id,timestamp,engagement_id,session_id,operator_id,agent_type,subtype,
            hostname,source_ip,target_id,data,hash,prev_hash,created_at,
            monotonic_ns,ntp_offset_ms,signature,'chained' AS tier
     FROM events WHERE id IN (SELECT value FROM json_each(?))
     UNION ALL
-    SELECT id,timestamp,engagement_id,session_id,operator_id,agent_type,subtype,
+    SELECT rowid AS _row,id,timestamp,engagement_id,session_id,operator_id,agent_type,subtype,
            hostname,source_ip,target_id,data,NULL AS hash,NULL AS prev_hash,created_at,
            NULL AS monotonic_ns,NULL AS ntp_offset_ms,NULL AS signature,'logged' AS tier
     FROM events_logged WHERE id IN (SELECT value FROM json_each(?))
@@ -848,24 +849,24 @@ function queryEffectsOf(ids: string[], limit: number): { events: RedLogEvent[]; 
   const json = JSON.stringify(ids)
   const rows = db.prepare(`
     SELECT * FROM (
-      SELECT e.id,e.timestamp,e.engagement_id,e.session_id,e.operator_id,e.agent_type,e.subtype,
+      SELECT e.rowid AS _row,e.id,e.timestamp,e.engagement_id,e.session_id,e.operator_id,e.agent_type,e.subtype,
              e.hostname,e.source_ip,e.target_id,e.data,e.hash,e.prev_hash,e.created_at,
-             e.monotonic_ns,e.ntp_offset_ms,e.signature,'chained' AS tier
+             e.monotonic_ns,e.ntp_offset_ms,e.signature,'chained' AS tier,${TIER_RANK_CHAINED}
       FROM events e
       WHERE EXISTS (
         SELECT 1 FROM json_each(json_extract(e.data, '$._causes')) c
         WHERE c.type = 'text' AND c.value IN (SELECT value FROM json_each(?))
       )
       UNION ALL
-      SELECT e.id,e.timestamp,e.engagement_id,e.session_id,e.operator_id,e.agent_type,e.subtype,
+      SELECT e.rowid AS _row,e.id,e.timestamp,e.engagement_id,e.session_id,e.operator_id,e.agent_type,e.subtype,
              e.hostname,e.source_ip,e.target_id,e.data,NULL AS hash,NULL AS prev_hash,e.created_at,
-             NULL AS monotonic_ns,NULL AS ntp_offset_ms,NULL AS signature,'logged' AS tier
+             NULL AS monotonic_ns,NULL AS ntp_offset_ms,NULL AS signature,'logged' AS tier,${TIER_RANK_LOGGED}
       FROM events_logged e
       WHERE EXISTS (
         SELECT 1 FROM json_each(json_extract(e.data, '$._causes')) c
         WHERE c.type = 'text' AND c.value IN (SELECT value FROM json_each(?))
       )
-    ) ORDER BY timestamp, created_at, id LIMIT ?
+    ) ORDER BY ${eventOrderBy('ASC')} LIMIT ?
   `).all(json, json, limit + 1) as Array<Record<string, unknown>>
   return { events: rows.slice(0, limit).map(rowToEvent), overflow: rows.length > limit }
 }
@@ -948,7 +949,7 @@ export function queryEventCausalChain(
     if (truncated && found.size >= eventLimit) break
   }
 
-  const events = [...found.values()].sort((a, b) => a.timestamp - b.timestamp || a.createdAt - b.createdAt || a.id.localeCompare(b.id))
+  const events = [...found.values()].sort(compareEventOrder)
   const visibleIds = new Set(events.map((event) => event.id))
   const edges = [...edgeMap.values()].filter((edge) => visibleIds.has(edge.effectId))
   return {
@@ -1012,10 +1013,10 @@ export function queryMarkerAmendments(markerIds: string[]): RedLogEvent[] {
 export function queryByFlowId(flowId: string): RedLogEvent[] {
   const db = getDB()
   const rows = db.prepare(
-    `SELECT *, 'logged' AS tier FROM events_logged
+    `SELECT *, rowid AS _row, 'logged' AS tier FROM events_logged
      WHERE agent_type = 'scanner' AND json_extract(data, '$.flow_id') = ?
        AND COALESCE(subtype, '') NOT IN ('http_response_chunk', 'ws_message', 'websocket_end')
-     ORDER BY timestamp ASC LIMIT 10`
+     ORDER BY timestamp ASC, rowid ASC LIMIT 10`
   ).all(flowId) as Array<Record<string, unknown>>
   return rows.map(rowToEvent)
 }
@@ -1056,15 +1057,15 @@ export function* iterateCommandOutput(commandId: string, limit = 2000, snapshot?
   // Export passes -1 with its frozen snapshot before retries are deduplicated.
   const fields = 'id, timestamp, engagement_id, session_id, operator_id, agent_type, hostname, source_ip, target_id, data, created_at'
   const rows = db.prepare(`WITH chunks AS (
-    SELECT ${fields}, monotonic_ns, ntp_offset_ms, hash, prev_hash, signature, 'chained' AS tier FROM events WHERE ${where} AND rowid <= ?
-    UNION ALL SELECT ${fields}, NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS hash, NULL AS prev_hash, NULL AS signature, 'logged' AS tier FROM events_logged WHERE ${where} AND rowid <= ?
+    SELECT ${fields}, monotonic_ns, ntp_offset_ms, hash, prev_hash, signature, 'chained' AS tier, rowid AS _row, ${TIER_RANK_CHAINED} FROM events WHERE ${where} AND rowid <= ?
+    UNION ALL SELECT ${fields}, NULL AS monotonic_ns, NULL AS ntp_offset_ms, NULL AS hash, NULL AS prev_hash, NULL AS signature, 'logged' AS tier, rowid AS _row, ${TIER_RANK_LOGGED} FROM events_logged WHERE ${where} AND rowid <= ?
   ), ranked AS (
     SELECT *, ROW_NUMBER() OVER (
       PARTITION BY CASE WHEN json_type(data, '$.seq') IN ('integer', 'real') THEN json_extract(data, '$.seq') ELSE id END
-      ORDER BY timestamp, created_at, id
+      ORDER BY timestamp, created_at, _row, tier_rank
     ) AS chunk_rank FROM chunks
   ) SELECT * FROM ranked WHERE chunk_rank = 1
-    ORDER BY COALESCE(json_extract(data, '$.seq'), 0), timestamp, id LIMIT ?`)
+    ORDER BY COALESCE(json_extract(data, '$.seq'), 0), ${eventOrderBy('ASC')} LIMIT ?`)
     .iterate(commandId, snapshot?.chainedMaxRowId ?? Number.MAX_SAFE_INTEGER, commandId, snapshot?.loggedMaxRowId ?? Number.MAX_SAFE_INTEGER, limit < 0 ? -1 : limit) as IterableIterator<Record<string, unknown>>
   for (const row of rows) yield rowToEvent(row)
 
@@ -1084,8 +1085,8 @@ export function queryCommandEnds(commandIds: string[]): RedLogEvent[] {
   const marks = ids.map(() => '?').join(',')
   const where = `agent_type = 'shell' AND subtype = 'command_end' AND json_extract(data, '$.command_id') IN (${marks})`
   return [
-    ...(db.prepare(`SELECT *, 'chained' AS tier FROM events WHERE ${where}`).all(...ids) as Array<Record<string, unknown>>),
-    ...(db.prepare(`SELECT *, 'logged' AS tier FROM events_logged WHERE ${where}`).all(...ids) as Array<Record<string, unknown>>)
+    ...(db.prepare(`SELECT *, rowid AS _row, 'chained' AS tier FROM events WHERE ${where}`).all(...ids) as Array<Record<string, unknown>>),
+    ...(db.prepare(`SELECT *, rowid AS _row, 'logged' AS tier FROM events_logged WHERE ${where}`).all(...ids) as Array<Record<string, unknown>>)
   ].map(rowToEvent)
 }
 

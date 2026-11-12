@@ -39,14 +39,14 @@ export function writeApprovedHar(file: string, opts: NonNullable<Parameters<type
   // lists this scanned every scanner row once per flow, and a whole-project
   // HAR went quadratic (#695). The two lists together cover every subtype
   // createHarDocument reads.
-  const flowRows = getReadonlyDB().prepare(`SELECT *, 'logged' AS tier FROM events_logged
+  const flowRows = getReadonlyDB().prepare(`SELECT *, rowid AS _row, 'logged' AS tier FROM events_logged
       WHERE agent_type='scanner' AND subtype IN ('http_request_start', 'http_response')
         AND json_extract(data,'$.flow_id')=? AND rowid<=?
     UNION ALL
-    SELECT *, 'logged' AS tier FROM events_logged
+    SELECT *, rowid AS _row, 'logged' AS tier FROM events_logged
       WHERE agent_type='scanner' AND subtype IN ('http_response_chunk', 'ws_message', 'websocket_end', 'http_error', 'tcp_message', 'tcp_end')
         AND json_extract(data,'$.flow_id')=? AND rowid<=?
-    ORDER BY timestamp DESC,id DESC`)
+    ORDER BY timestamp DESC,_row DESC`)
   const readFlow = (id: string) => {
     const max = opts.snapshot!.loggedMaxRowId
     const rows = flowRows.iterate(id, max, id, max) as IterableIterator<Record<string, unknown>>

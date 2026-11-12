@@ -1,6 +1,7 @@
 import { getSanitizedFields } from './sanitize'
 import { scopeMaskReplacements, isOutOfScope, isUnclassifiedScope, isPersonalDomain, type ScopeForSanitize } from './scope-sanitize'
 import type { RedLogEvent } from './db/events'
+import { withoutRowId } from './db/event-types'
 
 // The redaction every export MUST funnel through before event data leaves
 // RedLog. Until now only the evidence bundle (bundle-export.ts) applied it, so
@@ -108,7 +109,8 @@ export function redactEventForExport(e: RedLogEvent, scopeOrOpts?: ScopeForSanit
     delete data.output_body
     delete data.output_body_ref
   }
-  return data === e.data ? e : { ...e, data }
+  const record = withoutRowId(e)
+  return data === e.data ? record : { ...record, data }
 }
 
 /** Redact a whole list for export (map of the above, filtering out nulls). */

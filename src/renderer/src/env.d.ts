@@ -108,6 +108,7 @@ interface RedLogEvent {
   monotonicNs?: string | null
   ntpOffsetMs?: number | null
   tier: 'chained' | 'logged'
+  rowId?: number
 }
 
 type BookmarkContext = import('../../core/db/bookmarks').BookmarkContext
