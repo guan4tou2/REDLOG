@@ -29,7 +29,9 @@ function mount(kind: 'shell' | 'http' | 'ai' | 'ai-timeline', descriptor: Conten
     events: { activityMembers: vi.fn().mockResolvedValue({ items: [{ event, matched: true }], hasMore: false, sourceCount: 1, matchedCount: 1 }) }
   }
   const reader = { mode: 'inline' as const, setMode: vi.fn() }
-  if (kind === 'shell') render(<CommandEndDetail projectId="p" eventId="e" data={{ subtype: 'command_end' }} reader={reader} />)
+  // A confirmed empty run: zero saved bytes alone no longer reads as "nothing
+  // produced" for a command (report 10, A.4 #1).
+  if (kind === 'shell') render(<CommandEndDetail projectId="p" eventId="e" data={{ subtype: 'command_end', stdout: '', completeness: 'complete', output_disposition: 'captured' }} reader={reader} />)
   else if (kind === 'http') render(<HttpDetail projectId="p" eventId="e" data={{ subtype: 'http_response' }} reader={reader} />)
   else if (kind === 'ai-timeline') render(<AgentTurnDetail projectId="p" eventId="e" data={{ subtype: 'assistant_message' }} reader={reader} />)
   else render(<ActivityReader items={[{ id: 'e', kind: 'message', provider: 'test-provider', firstAt: 1, anchor: event,

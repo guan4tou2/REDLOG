@@ -6,7 +6,9 @@ import type { ActivityAction, ActivityKind, ToolAction } from './activity-contra
 type Source = Pick<RedLogEvent, 'id' | 'engagementId' | 'sessionId' | 'agentType' | 'data'>
 const SHELL = new Set(['command_start', 'command_end', 'command_output', 'command'])
 const TOOLS = new Set(['tool_call', 'tool_result', 'tool_interrupted'])
-const HTTP = new Set(['http_request_start', 'http_response', 'http_response_chunk', 'http_error', 'websocket_message', 'ws_message', 'websocket_start', 'websocket_end'])
+// `ws_message`, not the addon's hook name `websocket_message`; nothing writes a
+// `websocket_start` (hooks/mitmproxy-addon.py).
+const HTTP = new Set(['http_request_start', 'http_response', 'http_response_chunk', 'http_error', 'ws_message', 'websocket_end'])
 const MESSAGES = new Set(['user_message', 'assistant_message', 'thinking', 'compact_summary', 'away_summary'])
 
 /** Derived identity only. Payload text, target, time, query, page and pairing state
@@ -58,9 +60,11 @@ export function activityClassification(event: Pick<RedLogEvent, 'agentType' | 'd
     ? TOOL_ACTIONS[provider]?.[d.tool_name] ?? 'unknown' : 'unknown'
   const action: ActivityAction = event.agentType === 'agent' ? toolAction === 'execute' ? 'command' : 'conversation'
     : event.agentType === 'shell' ? 'command'
-      : ['scanner', 'dns', 'browser', 'pcap', 'connection'].includes(event.agentType) ? 'network'
-        : ['screenshot', 'marker', 'loot', 'artifact'].includes(event.agentType) ? 'evidence'
-          : ['alert', 'scope_violation'].includes(event.agentType) ? 'security'
-            : ['system', 'process', 'file', 'clipboard', 'cleanup'].includes(event.agentType) ? 'system' : 'other'
+      // Agent types that some writer produces. `connection`, `artifact`, `file`,
+      // `alert` and `scope_violation` were listed here and never written (report
+      // 10, A.5); the external API refuses all five.
+      : ['scanner', 'dns', 'browser', 'pcap'].includes(event.agentType) ? 'network'
+        : ['screenshot', 'marker', 'loot'].includes(event.agentType) ? 'evidence'
+          : ['system', 'process', 'clipboard', 'cleanup'].includes(event.agentType) ? 'system' : 'other'
   return { action, toolAction, provider, sourceSession }
 }

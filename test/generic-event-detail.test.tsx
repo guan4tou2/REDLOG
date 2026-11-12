@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { GenericEventDetail } from '../src/renderer/src/components/TimelineEventDetails'
-import { hasSpecificEventDetail } from '../src/renderer/src/lib/timelineEvents'
+import { eventReader } from '../src/renderer/src/lib/timelineEvents'
 
 afterEach(() => { cleanup(); localStorage.clear() })
 const draw = (data: Record<string, unknown>): void => {
@@ -45,14 +45,19 @@ describe('GenericEventDetail', () => {
   })
 })
 
-describe('hasSpecificEventDetail', () => {
+describe('eventReader', () => {
   const ev = (agentType: string, subtype?: string) => ({ agentType, data: { subtype } }) as never
-  it('knows the sources that have their own detail', () => {
-    for (const t of ['shell', 'agent', 'scanner', 'browser', 'marker', 'screenshot']) expect(hasSpecificEventDetail(ev(t))).toBe(true)
-    expect(hasSpecificEventDetail(ev('file_transfer', 'artifact_added'))).toBe(true)
+  // By kind, not by source (report 10, A.4 #8): test/event-reader-by-kind.test.tsx
+  // holds the full table.
+  it('knows the kinds that have their own detail', () => {
+    for (const [t, s] of [['shell', 'command_end'], ['agent', 'tool_call'], ['scanner', 'http_response'], ['browser', 'console_error'], ['marker', undefined], ['screenshot', undefined]] as const)
+      expect(eventReader(ev(t, s))).not.toBe('generic')
+    expect(eventReader(ev('file_transfer', 'artifact_added'))).toBe('artifact')
   })
   it('sends everything else to the generic reader', () => {
-    expect(hasSpecificEventDetail(ev('some-plugin-source'))).toBe(false)
-    expect(hasSpecificEventDetail(ev('file_transfer', 'download_seen'))).toBe(false)
+    expect(eventReader(ev('some-plugin-source'))).toBe('generic')
+    expect(eventReader(ev('file_transfer', 'download_seen'))).toBe('generic')
+    expect(eventReader(ev('scanner', 'packet_flow'))).toBe('generic')
+    expect(eventReader(ev('shell', 'capture_stopped'))).toBe('generic')
   })
 })

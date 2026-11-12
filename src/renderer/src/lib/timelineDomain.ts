@@ -8,6 +8,7 @@
 import { SCOPE_VIOLATION_SUBTYPE } from '../../../core/scope-vocabulary'
 import { formatTime, formatDate, formatDateTime } from './time'
 import { compareEventOrder } from '../../../core/event-order'
+import { commandOutputState } from '../../../core/content-contract'
 
 // ── Lane / band topology ────────────────────────────────────────────
 // v0.6.92 W-project: added `browser` (CDP console) between scanner and dns,
@@ -149,6 +150,12 @@ export function toLane(agentType: string, subtype?: string, pluginTypes?: Plugin
   // (historical: a since-removed webhook filter watched 'system'). Route them into their own
   // lane at render time so they don't drown in the system-lane housekeeping.
   if (agentType === 'system' && (subtype === SCOPE_VIOLATION_SUBTYPE || subtype === 'scope_recomputed' || subtype === 'scope_cleared')) return 'scope'
+  // The C2 tailers write `scanner.c2_*` (plugins/c2-tailers/parse.js); the C2
+  // lane was named for an older `c2_checkin` type that only old projects hold.
+  if (agentType === 'scanner' && subtype?.startsWith('c2_')) return 'c2_checkin'
+  // hooks/pcap-agent.py writes `pcap.*`: network observations, not RedLog's own
+  // housekeeping, so the network lane rather than the system one.
+  if (agentType === 'pcap') return 'scanner'
   if (LANES.includes(agentType as LaneId)) return agentType as LaneId
   // Plugin-registered event type maps into whichever built-in lane the plugin
   // declared (its `lane` field). Falls back to `system` when the plugin didn't
@@ -205,16 +212,10 @@ export function formatBehind(ms: number): string {
 export function ioMark(e: RedLogEvent): { io: IoMark; fail: boolean } {
   if (e.agentType !== 'shell' || e.data?.subtype !== 'command_end') return { io: null, fail: false }
   const fail = Number(e.data?.exit_code ?? 0) !== 0
-  const inline = typeof e.data?.stdout === 'string' || typeof e.data?.stderr === 'string' || typeof e.data?.output === 'string'
-  if (inline) {
-    const n = String(e.data?.stdout ?? '').length + String(e.data?.stderr ?? '').length + String(e.data?.output ?? '').length
-    return { io: n > 0 ? 'recorded' : null, fail }
-  }
-  const io = e.data?.io as { len?: number; unbracketed?: boolean } | undefined
-  if (io && typeof io.len === 'number' && !io.unbracketed && io.len > 0) {
-    return { io: 'recorded', fail }
-  }
-  return { io: 'uncaptured', fail }
+  // The reader's answer, so the notch and the detail never disagree: no notch
+  // only for a command the producer says printed nothing.
+  const state = commandOutputState(e.data as Record<string, unknown>)
+  return { io: state === 'empty' ? null : state === 'inline' || state === 'saved' || state === 'recorded' ? 'recorded' : 'uncaptured', fail }
 }
 
 /** v0.11.4 (AUDIT V3): severity and scope violations were invisible on the

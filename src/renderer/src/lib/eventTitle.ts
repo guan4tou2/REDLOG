@@ -60,7 +60,17 @@ function rawEventTitle(event: RedLogEvent, t: Translate): string {
       if (d.subtype === 'command' && d.command) return `$ ${(d.command as string).slice(0, 100)}`
       if (d.subtype === 'session_output') return `PTY #${String(d.sequence ?? '')}: ${String(d.stdout ?? '').slice(0, 100)}`
       if (d.subtype === 'session_start') return t('eventTitle.terminalOpened')
-      if (d.subtype === 'command_boundary' && d.reason === 'recovered-orphan') return t('eventTitle.commandInterrupted')
+      // Every reason (recovered-orphan, pane-closed, shell-exited,
+      // project-switched, app-quit) means the same thing: the recording of
+      // this command ended before its result (terminal-manager.ts).
+      if (d.subtype === 'command_boundary') return t('eventTitle.commandInterrupted')
+      if (d.subtype === 'capture_stopped' || d.subtype === 'capture_resumed') {
+        // `redlog stop` / `redlog start` in one terminal (shell hooks): name
+        // the terminal, since it is not the global pause.
+        const terminal = typeof d.terminalId === 'string' && d.terminalId
+          ? d.terminalId : [d.shell, d.pid].filter((v) => v != null && v !== '').join(' ')
+        return t(d.subtype === 'capture_stopped' ? 'eventTitle.terminalCaptureStopped' : 'eventTitle.terminalCaptureResumed', { terminal: terminal || '?' })
+      }
       if (d.subtype === 'session_end') {
         if (d.recovered === true) return t('eventTitle.terminalInterrupted')
         if (d.source === 'external-session' && (Number(d.omittedBytes) > 0 || Number(d.pausedBytes) > 0 || d.incomplete)) {
@@ -144,6 +154,20 @@ function rawEventTitle(event: RedLogEvent, t: Translate): string {
           const dur = d.duration_sec != null ? ` (${d.duration_sec}s)` : ''
           return `⇄ ${proto} ${d.remote_addr || '?'}:${d.remote_port ?? '?'} ${t('eventTitle.connectionClosed')}${dur}`.trim()
         }
+        // plugins/c2-tailers/parse.js: the framework's own record of a session.
+        case 'c2_checkin':
+          return t('eventTitle.c2Beacon', { host: String(d.host || d.remote_addr || '?'), bytes: '' }).trim()
+        case 'c2_task':
+          return t('eventTitle.c2Task', { host: String(d.host || '?'), command: String(d.command ?? '').slice(0, 80) }).trim()
+        case 'c2_pivot':
+          return t(d.state === 'closed' ? 'eventTitle.c2PivotClosed' : 'eventTitle.c2PivotOpen', { via: String(d.via || d.host || '?') })
+        // plugins/pcap-capture: one flow summary, and a raw file kept elsewhere.
+        case 'packet_flow':
+          return `⇢ ${String(d.proto || '?').toUpperCase()} ${d.src || '?'}:${d.src_port ?? '?'} → ${d.dst || '?'}:${d.dst_port ?? '?'}${d.syn_only ? ' SYN' : ''}`
+        case 'pcap_segment': {
+          const file = String(d.pcap_file ?? '')
+          return t('eventTitle.pcapSegment', { file: file.split(/[\\/]/).pop() || '?', size: formatBytes(typeof d.bytes === 'number' ? d.bytes : 0) })
+        }
         default:
           return `[${d.subtype || 'req'}] ${method} ${url}`.trim()
       }
@@ -220,6 +244,9 @@ function rawEventTitle(event: RedLogEvent, t: Translate): string {
       if (sub === 'transcript_schema_drift') return t('eventTitle.agentSchemaDrift', { type: String(d.unknown_type ?? '?') })
       if (sub === 'transcript_parent_missing') return t('eventTitle.agentParentMissing')
       if (sub === 'transcript_tool_gap') return t('eventTitle.agentToolGap', { seen: String(d.tool_calls_seen ?? '?'), emitted: Number(d.tool_calls_emitted ?? 0) })
+      if (sub === 'model_refusal') return t('eventTitle.agentRefusal')
+      if (sub === 'api_error') return t('eventTitle.agentApiError')
+      if (sub === 'transcript_capture_started') return t('eventTitle.agentCaptureStarted')
       return `agent: ${sub}`
     }
     case 'system':
@@ -249,6 +276,12 @@ function rawEventTitle(event: RedLogEvent, t: Translate): string {
       if (d.subtype === 'secret_revealed') return t('eventTitle.secretRevealed', { fields: (d.fields as string[])?.join(', ') || t('eventTitle.secretRevealedUnknown') })
       if (d.subtype === 'connection_capture_started') return t('eventTitle.connectionCaptureOn')
       if (d.subtype === 'capture_gap' && d.reason === 'gap-unsaved') return t('eventTitle.gapUnsaved', { count: String(d.skipped_units ?? '?') })
+      // An AI transcript's pause gap (tailer-host.ts reportGap): no reason, an agent.
+      if (d.subtype === 'capture_gap' && typeof d.agent === 'string') return t('eventTitle.gapAiPaused', { agent: d.agent, count: String(d.skipped_units ?? '?') })
+      // Facts about the record itself: something in it was rewritten or removed.
+      if (d.subtype === 'sanitized') return t('eventTitle.sanitized', { count: Array.isArray(d.source_events) ? d.source_events.length : '?' })
+      if (d.subtype === 'retention_pruned_logged') return t('eventTitle.retentionPruned', { count: String(d.count ?? '?') })
+      if (d.subtype === 'body_evicted') return t('eventTitle.bodyEvicted', { count: String(d.count ?? '?') })
       if (d.subtype === 'connection_monitor_saturated') return t('eventTitle.connectionSaturated', { count: String(d.count ?? '?') })
       // RedLog's own state changes. Raw `system: ip_verdict` rows sat at the top
       // of the activity log in the Stitch audit (2026-11-08); each gets a title.

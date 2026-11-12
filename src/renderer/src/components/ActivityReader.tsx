@@ -11,6 +11,7 @@ import { agentTypeLabel } from '../lib/timelineDomain'
 import { formatDateTime, formatTime } from '../lib/time'
 import { Button } from './Button'
 import { EventContentReader } from './EventContentReader'
+import { commandOutputOf } from '../lib/commandOutputNote'
 
 type T = (key: string, vars?: Record<string, string | number>) => string
 
@@ -152,7 +153,7 @@ function ReaderSources({ item, request, snapshot, active, filtering, onChoose }:
       </div>
       {sources.filter(source => visited.has(source.event.id) || source.event.id === current.event.id).map(source =>
         <div key={source.event.id} hidden={source.event.id !== current.event.id}>
-          <EventContentReader active={active} projectId={request.projectId} eventId={source.event.id} />
+          <EventContentReader active={active} projectId={request.projectId} eventId={source.event.id} outputState={commandOutputOf(source.event)} />
         </div>)}
       <EventFacts event={current.event} t={t} />
     </>}

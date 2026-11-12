@@ -1,7 +1,8 @@
 import { contentState } from '../../../core/content-contract'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { useEffect, useRef, useState } from 'react'
-import type { ContentAnchor, ContentDescriptor, ContentFindCursor, ContentWindow, ContentUnavailable } from '../../../core/content-contract'
+import type { CommandOutputState, ContentAnchor, ContentDescriptor, ContentFindCursor, ContentWindow, ContentUnavailable } from '../../../core/content-contract'
+import { OUTPUT_NOTE_KEY } from '../lib/commandOutputNote'
 import { safeDisplay, hasUnsafeText } from '../lib/evidenceText'
 import { useI18n } from '../i18n'
 import { useReadState } from '../lib/readState'
@@ -11,7 +12,9 @@ import { toast } from './Toast'
 import { isComposing } from '../lib/ime'
 
 /** The field owns its byte position; switching sources cannot reuse a cursor. */
-function ContentFieldReader({ descriptor, onReload, initialOffset = 0, initialFind, expanded = false, onMark, fragment }: { descriptor: ContentDescriptor; onReload: () => void; initialOffset?: number; initialFind?: string; expanded?: boolean; onMark: () => void; fragment?: ContentAnchor }): JSX.Element {
+function ContentFieldReader({ descriptor, onReload, initialOffset = 0, initialFind, expanded = false, onMark, fragment, emptyKey = 'content.empty' }: { descriptor: ContentDescriptor; onReload: () => void; initialOffset?: number; initialFind?: string; expanded?: boolean; onMark: () => void; fragment?: ContentAnchor
+  /** What zero saved bytes mean for this field, when the event says. */
+  emptyKey?: string }): JSX.Element {
   const { t } = useI18n()
   const [window, setWindow] = useState<ContentWindow | null>(null)
   const [history, setHistory] = useState<number[]>([])
@@ -147,7 +150,7 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, initialFi
     {state === 'truncated' && <p role="status" className="text-xs text-amber-300">{t('content.partial')}</p>}
     {descriptor.format === 'binary' && <p className="text-xs text-redlog-text-dim">{t('content.binary')}</p>}
     {window && <>
-      <pre ref={pre} onMouseUp={captureSelection} onKeyUp={captureSelection} tabIndex={0} className={`${expanded ? 'max-h-[70vh]' : 'max-h-80'} overflow-auto whitespace-pre-wrap break-words bg-redlog-elevated p-3 text-xs font-mono`}>{highlightAt >= 0 ? <>{safeDisplay(window.text.slice(0, highlightAt))}<mark className="bg-redlog-accent/25 text-redlog-text">{safeDisplay(window.text.slice(highlightAt, highlightAt + highlightLength))}</mark>{safeDisplay(window.text.slice(highlightAt + highlightLength))}</> : safeDisplay(window.text) || (state === 'empty' ? t('content.empty') : '')}</pre>
+      <pre ref={pre} onMouseUp={captureSelection} onKeyUp={captureSelection} tabIndex={0} className={`${expanded ? 'max-h-[70vh]' : 'max-h-80'} overflow-auto whitespace-pre-wrap break-words bg-redlog-elevated p-3 text-xs font-mono`}>{highlightAt >= 0 ? <>{safeDisplay(window.text.slice(0, highlightAt))}<mark className="bg-redlog-accent/25 text-redlog-text">{safeDisplay(window.text.slice(highlightAt, highlightAt + highlightLength))}</mark>{safeDisplay(window.text.slice(highlightAt + highlightLength))}</> : safeDisplay(window.text) || (state === 'empty' ? t(emptyKey) : '')}</pre>
       <div className="flex flex-wrap items-center gap-2 text-xs text-redlog-text-dim">
         <span className="font-mono">{window.offset}–{window.end} / {window.total} B</span>
         <Button disabled={busy || window.offset === 0} onClick={() => void read(history.at(-1) ?? Math.max(0, window.offset - 65536), 'previous')}>{t('content.previous')}</Button>
@@ -161,11 +164,15 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, initialFi
 export type ReaderMode = 'closed' | 'inline' | 'expanded'
 export interface ReaderControl { mode: ReaderMode; setMode: (mode: ReaderMode) => void }
 
-export function EventContentReader({ projectId, eventId, active = true, anchor, find, expanded: expandedProp, onExpandedChange }: { projectId: string; eventId: string; active?: boolean; anchor?: ContentAnchor
+export function EventContentReader({ projectId, eventId, active = true, anchor, find, expanded: expandedProp, onExpandedChange, outputState }: { projectId: string; eventId: string; active?: boolean; anchor?: ContentAnchor
   /** Text to open each field at, through the reader's own Find. */
   find?: string
-  expanded?: boolean; onExpandedChange?: (expanded: boolean) => void }): JSX.Element {
+  expanded?: boolean; onExpandedChange?: (expanded: boolean) => void
+  /** A shell command's output state: an empty stdout/stderr is only "no
+   *  content" when the producer said so (report 10, A.4 #1). */
+  outputState?: CommandOutputState }): JSX.Element {
   const { t } = useI18n()
+  const outputEmptyKey = outputState && !['inline', 'saved', 'recorded'].includes(outputState) ? OUTPUT_NOTE_KEY[outputState] : undefined
   const fields = useReadState(async () => {
     const reply = await window.redlog.content.list({ projectId, eventId })
     if (!reply.ok) throw new Error(t(`content.status.${reply.status}`))
@@ -209,7 +216,8 @@ export function EventContentReader({ projectId, eventId, active = true, anchor, 
       </select></div>
       {visibleFields?.filter(field => visited.has(field.field) || field.field === current.field).map(field =>
         <div key={`${projectId}:${eventId}:${field.field}:${field.ref?.version}`} hidden={field.field !== current.field}>
-          <ContentFieldReader descriptor={field} onReload={fields.retry} expanded={expanded} fragment={anchor?.ref.field===field.field?anchor:undefined} initialOffset={anchor?.ref.field===field.field?anchor.start:0} initialFind={anchor?undefined:find} onMark={()=>setExpanded(false)} />
+          <ContentFieldReader descriptor={field} onReload={fields.retry} expanded={expanded} fragment={anchor?.ref.field===field.field?anchor:undefined} initialOffset={anchor?.ref.field===field.field?anchor.start:0} initialFind={anchor?undefined:find} onMark={()=>setExpanded(false)}
+            emptyKey={outputEmptyKey && (field.field === 'stdout' || field.field === 'stderr') ? outputEmptyKey : undefined} />
         </div>)}
     </>}
   </div>
