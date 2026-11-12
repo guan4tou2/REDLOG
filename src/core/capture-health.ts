@@ -9,7 +9,8 @@ import {
 } from './spool-replay'
 import { isMemberSelected, isPackAvailable, type CapturePackId, type PackMemberId } from './capture-packs'
 import { listPlugins } from './plugins'
-import { getDB } from './db/index'
+import { getDB, getProjectDir } from './db/index'
+import { createActivityProbe, type ActivityProbe, type ProbeFs } from './agent-activity-probe'
 import { detectHooks, invalidateCommandCache } from './hooks-manager'
 import { listTerminalEnrollments } from './terminal-enrollment'
 import { eventBus } from './event-bus'
@@ -114,6 +115,12 @@ export interface CaptureSource {
    *  (#688). An enabled source with a `missing` one is `error`; `unknown`
    *  means it could not be asked and changes nothing. */
   prerequisites?: CapturePrerequisite[]
+  /** AI rows only. A transcript under this tool's directory was written in the
+   *  last `ACTIVE_WINDOW_MS`, and this source is not recording for the open
+   *  project. Not a fault: it changes no state, no verdict and no issue. Set
+   *  only while recording is not paused, and never on an enabled source —
+   *  one that is failing is already `error`. */
+  unrecordedActivityAt?: number
 }
 
 export interface CapturePrerequisite {
@@ -293,11 +300,34 @@ function getLiveSampleBroken(now: number): CaptureHealth['lastSampleBroken'] {
 }
 
 // "Fed recently" — no longer a state, and no longer anything an operator sees
-// a colour for. Two uses are left, and both are about a source RedLog knows is
-// live rather than about the operator's activity: which stream of the
-// mitmproxy row is carrying traffic, and whether a producer that is
-// heartbeating has stopped delivering.
+// a colour for. Three uses are left, and all are about something writing right
+// now rather than about the operator's activity: which stream of the
+// mitmproxy row is carrying traffic, whether a producer that is heartbeating
+// has stopped delivering, and whether an AI tool RedLog is not recording is
+// writing transcripts.
 const ACTIVE_WINDOW_MS = 10 * 60 * 1000
+
+// Whether an AI tool is writing sessions RedLog is not recording
+// (agent-activity-probe.ts: names and modification times only). On in the app
+// and off anywhere else, so that a test or a script importing this module
+// never walks the real home directory of whoever runs it; tests opt in with a
+// temp HOME. `undefined` = that default, `null` = off.
+let activityProbe: ActivityProbe | null | undefined
+function agentActivityProbe(): ActivityProbe | null {
+  if (activityProbe === undefined) {
+    activityProbe = process.versions.electron
+      ? createActivityProbe({ windowMs: ACTIVE_WINDOW_MS, onChange: () => { healthCache = null } })
+      : null
+  }
+  return activityProbe
+}
+/** Test seam. `{ fs }` installs a probe, `null` turns it off, `undefined`
+ *  restores the default. Returns the installed probe. */
+export function _configureAgentActivityProbe(opts: { fs?: ProbeFs } | null | undefined): ActivityProbe | null {
+  activityProbe = opts ? createActivityProbe({ windowMs: ACTIVE_WINDOW_MS, fs: opts.fs, onChange: () => { healthCache = null } }) : opts
+  healthCache = null
+  return activityProbe ?? null
+}
 // E3: a plugin producer counts as "running" if it posted a heartbeat within
 // this window. Producers heartbeat roughly every 15s, so 60s tolerates a
 // missed beat or two without flapping.
@@ -379,6 +409,8 @@ const HEALTH_TTL_MS = 750
 // The bus defers its fanout to a microtask, and the renderer's batch is
 // downstream of the same publish, so this clears before anyone can ask.
 eventBus.on('event', () => { healthCache = null })
+// Pausing withdraws the AI "not recorded" note, which is read from the bus.
+eventBus.on('recording', () => { healthCache = null })
 
 function stateFrom(
   installed: boolean | undefined,
@@ -650,6 +682,11 @@ function computeCaptureHealth(now: number): CaptureHealth {
 
   const agentCatalog = createOfficialAgentPluginManager(path.join(os.homedir(), '.redlog', 'plugins')).list()
   const activeAgents = resolveAgentCapture(cfgSnapshot, agentCatalog, listPlugins())
+  // Only with a project open (no project, no record to be missing from) and
+  // recording not paused (nothing is being recorded on purpose).
+  const probe = eventBus.paused ? null : agentActivityProbe()
+  let projectDir: string | null = null
+  if (probe) { try { projectDir = getProjectDir() } catch { projectDir = null } }
   const agentRows = agentCatalog.map(entry => {
     const kind = entry.agentKind
     const enabled = activeAgents.some(a => a.agentKind === kind)
@@ -658,6 +695,18 @@ function computeCaptureHealth(now: number): CaptureHealth {
     row.label = entry.name
     if (entry.state === 'error' || entry.state === 'conflict' || entry.state === 'update-available' || (enabled && !existsSync(agentTranscriptRoot(entry, os.homedir(), (cfgSnapshot as AgentCaptureConfig).agentTailer?.sources?.[kind])))) {
       row.state = 'error'; row.lastError = { at: now, message: entry.error ?? (entry.state === 'update-available' ? 'AI capture integration update required' : 'AI transcript directory not found') }
+    }
+    // Not enabled for this project, and not failing (a failure is already the
+    // row's error): is the tool writing sessions anyway? An enabled source's
+    // session selection is the operator's choice and is not second-guessed.
+    if (probe && projectDir && !enabled && row.state !== 'error') {
+      let root: string | null = null
+      try { root = agentTranscriptRoot(entry, os.homedir(), (cfgSnapshot as AgentCaptureConfig).agentTailer?.sources?.[kind]) } catch { root = null }
+      // A catalog row with no location resolves to the home directory itself.
+      if (root && entry.source.defaultPath && path.resolve(root) !== path.resolve(os.homedir())) {
+        const at = probe.recentActivity(root, now, [projectDir])
+        if (at !== null) row.unrecordedActivityAt = at
+      }
     }
     return row
   })

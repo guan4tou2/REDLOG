@@ -596,6 +596,9 @@ interface CaptureSourceInfo {
   /** Switched off and listed anyway. Together with a live producer it is the
    *  one combination that means the record is taking data nobody authorised. */
   disabled?: boolean
+  /** AI rows only: the tool wrote a session recently and this source is not
+   *  recording for the open project. Information, not a fault. */
+  unrecordedActivityAt?: number
   /** E3: this plugin producer is heartbeating — the operator has it running. */
   running?: boolean
   /** #688: core/capture-health.ts CapturePrerequisite. */

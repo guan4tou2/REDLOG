@@ -14,6 +14,7 @@ import { formatTime, formatDateTime } from '../lib/time'
 import { writeClipboard } from '../lib/clipboard'
 import { RecordTerminalFlow } from './RecordTerminalFlow'
 import { shellLabel, shellNameForHook } from '../lib/terminalActivation'
+import { dismissUnrecordedAgent, dismissedUnrecordedAgents } from '../lib/unrecordedAgentDismissals'
 
 
 /** What the `terminal` row says about the operator's OWN shell — three states,
@@ -189,8 +190,11 @@ function CoreCaptureLine({ readiness, readUnknown, http, listenAddress, source, 
   )
 }
 
-export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onSetup }: {
+export function CaptureHealthCard({ capture, unknown, projectId, onNavigate, onRefresh, onSetup }: {
   capture: CaptureHealthInfo
+  /** The open project, which a dismissed "in use, not recorded" note belongs
+   *  to. Without one the note is not listed: it could not stay dismissed. */
+  projectId?: string
   /** Set when the last read failed: what to say in place of a verdict. `capture`
    *  is then the last good snapshot, and the rows and controls below stay
    *  usable, but the headline and the "all good" line are not drawn. */
@@ -299,6 +303,19 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
     isRogue(s) || (!s.informational && s.state === 'error')
   const problems = sources.filter(isProblem)
   const healthy = sources.filter((s) => s.state === 'ready')
+
+  // An AI tool writing sessions this project is not recording. Below a fault:
+  // it changes no verdict and raises nothing, and it can be put away for good.
+  // It cannot tell the engagement's AI use from the operator's own.
+  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => projectId ? dismissedUnrecordedAgents(projectId) : new Set())
+  useEffect(() => { setDismissed(projectId ? dismissedUnrecordedAgents(projectId) : new Set()) }, [projectId])
+  const isUnrecordedNote = (s: CaptureSourceInfo): boolean =>
+    s.unrecordedActivityAt != null && projectId !== undefined && !dismissed.has(s.id)
+  const dismissNote = (s: CaptureSourceInfo): void => {
+    if (!projectId) return
+    dismissUnrecordedAgent(projectId, s.id)
+    setDismissed(dismissedUnrecordedAgents(projectId))
+  }
 
   const setEnabled = async (s: CaptureSourceInfo, on: boolean): Promise<void> => {
     if (!s.configPath) return
@@ -419,7 +436,8 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
   // The core line always carries HTTP(S), so a mitmproxy row beneath it would
   // say the same thing twice. A rogue one stays: the core line has no word for
   // "switched off and still writing".
-  const shown = manage ? sources : problems.filter((s) => s.id !== 'mitmproxy' || isRogue(s))
+  const shown = manage ? sources : sources.filter((s) =>
+    (problems.includes(s) && (s.id !== 'mitmproxy' || isRogue(s))) || isUnrecordedNote(s))
 
   // One action, when there is one.
   //
@@ -481,8 +499,9 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
         // row keeps its state word and controls, not a second copy.
         const detail = s.id !== 'mitmproxy'
         const missing = missingPrerequisite(s)
+        const note = !manage && isUnrecordedNote(s)
         return (
-        <div key={s.id} data-testid={`capture-row-${s.id}`} className="flex items-center gap-2 text-xs">
+        <div key={s.id} data-testid={`capture-row-${s.id}`} className={`flex items-center gap-2 text-xs ${note ? 'flex-wrap' : ''}`}>
           <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.id === 'mitmproxy' ? httpDot(http) : dot(s.state)}`} />
           <span title={s.label ?? SOURCE_LABEL[s.id] ?? s.id} className={`flex-1 min-w-0 ${s.state === 'off' ? 'text-redlog-text-dim' : 'text-redlog-text'}`}>
             <span className="block truncate" title={s.label ?? SOURCE_LABEL[s.id] ?? s.id}>
@@ -521,7 +540,9 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
             {detail && missing
               ? <span data-testid={`capture-prereq-${s.id}`} className="block text-red-400">{prerequisiteText(missing, t)}</span>
               : detail && s.lastError && <span className="block text-red-400" title={s.lastError.message}>{s.lastError.message}</span>}
-
+            {s.unrecordedActivityAt != null && (manage || note) && (
+              <span data-testid={`capture-unrecorded-${s.id}`} className="block text-redlog-text-dim">{t('capture.unrecordedActivity')}</span>
+            )}
           </span>
           <span data-testid={`capture-state-${s.id}`} className="text-redlog-text-faint text-xs">
             {s.id === 'mitmproxy' ? t(`capture.http.${http}`) : stateLabel(s.state)}
@@ -544,6 +565,9 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
               not the page that holds it (#590). */}
           {!manage && isAgentRow(s) && (
             <button data-testid={`capture-open-${s.id}`} onClick={() => onNavigate(settingsTarget('captureControl', { source: s.id }))} className="text-xs text-redlog-text-dim underline shrink-0">{t('settings.agents')}</button>
+          )}
+          {note && (
+            <Button size="compact" level="quiet" data-testid={`capture-dismiss-${s.id}`} onClick={() => dismissNote(s)}>{t('capture.unrecordedDismiss')}</Button>
           )}
           {manage && (
             <span className="flex items-center gap-1.5 shrink-0">
