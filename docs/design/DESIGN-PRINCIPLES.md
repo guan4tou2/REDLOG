@@ -122,7 +122,6 @@ existing one shouldn't exist. Currently frozen (kept, not grown):
   profile sync. **No central server, no shared DB, no team dashboard.**
 - **Local code plugins** — drop-in + trust gate; **no** exporters/monitors
   contributions until there is demand.
-- **Cloud share** — opt-in BYO-bucket worker; not invested in, not core surface.
 
 **Shelved** (a different verdict — zero demand × high ongoing cost × dangerous if
 half-maintained): the **plugin marketplace** (signed registry, publisher trust,

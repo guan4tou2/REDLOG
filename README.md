@@ -504,19 +504,6 @@ Built artifacts go to `dist/`. Tagged releases are built by
 [`.github/workflows/release.yml`](.github/workflows/release.yml), which also
 publishes `SHA256SUMS.txt`.
 
-## Cloud share backend (optional)
-
-The **Share (bundle)** button in Settings ships with a local `file://` stub —
-it exercises the whole redaction-gate + zip flow without any backend. If you
-want a real shareable URL, deploy the companion Cloudflare Worker in
-[`redlog-share-worker/`](redlog-share-worker/) to your own Cloudflare account
-(free tier fits most single-operator use) and point RedLog at it via
-**Settings ▸ Cloud share ▸ Advanced: HTTPS backend**. The RedLog project does
-not host a default tier — every operator BYO-buckets, so sanitized evidence
-never leaves accounts you control. See
-[`redlog-share-worker/README.md`](redlog-share-worker/README.md) for the
-deploy walkthrough.
-
 ## Release notes
 
 Per-version summary lives in [`CHANGELOG.md`](CHANGELOG.md); full commit

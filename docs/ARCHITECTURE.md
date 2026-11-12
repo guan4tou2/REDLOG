@@ -113,7 +113,7 @@ main 內的 producer ─────────────────┘
 
 Bundle／HAR 是主要交付入口；既有 JSON／NDJSON／Timeline 保留。operator PII 清洗不等於秘密偵測，Bundle／HAR 不支援的政策要明確拒絕。原始附件不做內容層 scope／PII 清洗；cast 可僅複製核准 byte prefix，不能宣稱完整原檔或自行改寫內容。
 
-選取契約見 [export-event-selection](domain/SPEC-export-event-selection.md)；產物／manifest／離線 verifier 及 restart 由 [packaged smoke](PACKAGED-SMOKE.md) 依實際格式驗證。[redlog-share-worker/](../redlog-share-worker/) 是獨立分享服務，不把本機交付驗收當成已部署或分享成功。
+選取契約見 [export-event-selection](domain/SPEC-export-event-selection.md)；產物／manifest／離線 verifier 及 restart 由 [packaged smoke](PACKAGED-SMOKE.md) 依實際格式驗證。
 
 ## 8. Plugin system
 
@@ -144,7 +144,6 @@ Bundle／HAR 是主要交付入口；既有 JSON／NDJSON／Timeline 保留。op
 | `docs/`、`design/`、`domain/`、`research/`、`records/`、`archive/` | 長期入口／標準、現行設計、領域契約、研究筆記、日期證據、過期提案；見 [文件入口](README.md) |
 | `design/`、`examples/` | 設計來源、可維護的公開範例；不是執行紀錄 |
 | `prototypes/` | 靜態 HTML 參考原型（`app-reference/`、`stitch/`）；不是產品來源，也不代表已實作 |
-| `redlog-share-worker/` | 獨立分享服務（見 §7）；不是桌面 App 的一部分 |
 | `.specify/` | Spec Kit 範本、腳本與 [constitution](../.specify/memory/constitution.md)；feature 文件仍放 `specs/` |
 | `out/`、`dist/`、`test-results/` 等生成輸出 | build／候選／測試 artifacts；不當作來源或搬入 docs，依 `.gitignore` 管理 |
 

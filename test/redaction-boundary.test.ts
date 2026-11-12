@@ -23,7 +23,7 @@ describe('the redaction boundary', () => {
   })
 
   it('still redacts on every path out of the app', () => {
-    // Bundle export, cloud share and the API's pre-delivery sanitize are
+    // Bundle export and the API's pre-delivery sanitize are
     // layer 4 and live in src/core, reachable without the renderer at all.
     expect(read('src/core/bundle-export.ts')).toMatch(/redact/i)
     expect(read('src/core/api-server.ts')).toMatch(/from '\.\/redaction'/)
