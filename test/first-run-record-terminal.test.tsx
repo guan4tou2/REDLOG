@@ -475,6 +475,32 @@ describe('first run: HTTP(S) card', () => {
     expect(screen.getByTestId('first-run-commands-status').textContent).toBe('✓ 已驗證')
   })
 
+  // The preparation panel used to replace the whole page, so going to install
+  // a shell dependency threw away a verified HTTPS check, the open built-in
+  // terminal and a shell attempt — none of which that install touches. Only
+  // the proof the preparation could change is reset (the test above).
+  it('keeps HTTPS verified and the built-in terminal open across a shell-dependency preparation', async () => {
+    install({ pre: preflight({ missing: ['python3'] }), proxy: RUNNING })
+    draw()
+    fireEvent.click(await screen.findByTestId('capture-prepare-skip'))
+    fireEvent.click(await screen.findByTestId('first-run-builtin-toggle'))
+    const terminal = await screen.findByTestId('terminal')
+    await report({ scheme: 'https', nonce: await shownNonce() })
+    expect(await screen.findByTestId('first-run-core-ready')).toBeTruthy()
+
+    // The own-terminal flow is blocked on python3 and sends the operator to
+    // preparation for it.
+    fireEvent.click(screen.getByTestId('first-run-record-terminal'))
+    const blocked = await screen.findByTestId('record-terminal-missing')
+    fireEvent.click(blocked.querySelector('button')!)
+    fireEvent.click(await screen.findByTestId('capture-prepare-skip'))
+
+    await waitFor(() => expect(screen.queryByTestId('capture-prepare')).toBeNull())
+    expect(screen.getByTestId('first-run-http-check-https').getAttribute('data-verified')).toBe('true')
+    expect(screen.getByTestId('first-run-core-ready')).toBeTruthy()
+    expect(screen.getByTestId('terminal')).toBe(terminal)
+  })
+
   it('when mitmdump is missing, installs it in one click and re-probes on return', async () => {
     install({ pre: preflight({ missing: ['mitmdump'] }), proxy: { state: 'unavailable', url: null } })
     draw()

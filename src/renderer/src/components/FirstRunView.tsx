@@ -107,7 +107,18 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
   useEffect(() => {
     if (preflight && !preflightFailed && (preparationChecks(preflight, preparationSource).length === 0 || (!preparationRequested.current && commandCaptureBlockers(preflight).length === 0))) setPreparing(false)
   }, [preflight, preflightFailed, preparationSource])
-  const openPreparation = (source: 'commands' | 'web'): void => { setPreparationSource(source); preparationRequested.current = true; setHttpVerified(false); setPreparing(true); checkRuntime() }
+  // Opened from this page, the page stays mounted behind the preparation panel
+  // so coming back finds it as it was. Only the proof the preparation can
+  // invalidate is thrown away: reinstalling HTTP tools resets the HTTP check,
+  // installing a shell dependency restarts the shell attempt. The other card,
+  // the built-in terminal and what is open on the page are untouched.
+  const [keepPage, setKeepPage] = useState(false)
+  const openPreparation = (source: 'commands' | 'web'): void => {
+    setPreparationSource(source); preparationRequested.current = true
+    if (source === 'web') setHttpVerified(false)
+    setKeepPage(true); setPreparing(true); checkRuntime()
+  }
+  const preparingFor = (source: 'commands' | 'web'): boolean => preparing && preparationSource === source
 
   // WSL is its own terminal with its own install path (the one Settings'
   // WslPanel uses); offer it beside the host shell, never instead of it.
@@ -183,7 +194,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
     ? { kind: 'wsl', distro: wsl.name, shell: wsl.hookStatus.zsh !== 'no-shell' ? 'zsh' : 'bash', label: `WSL ${wsl.name}` }
     : null
 
-  if (preparing) return (
+  const preparation = preparing ? (
     <div className="h-full overflow-auto p-pad"><div className={`${DASHBOARD_COLUMN} space-y-4`}>
       <div>
         <h2 className="text-lg font-semibold text-redlog-text">{t('firstRun.title')}</h2>
@@ -194,10 +205,13 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
       }} source={preparationSource} preflight={preflight} failed={preflightFailed} onRecheck={checkRuntime}
         onSkip={() => setPreparing(false)} onLeave={() => onNavigate('timeline')} />
     </div></div>
-  )
+  ) : null
+  if (preparation && !keepPage) return preparation
 
   return (
-    <div className="h-full p-pad overflow-auto"><div className={`${DASHBOARD_COLUMN} flex flex-col gap-gap`}>
+    <>
+    {preparation}
+    <div hidden={preparing} className="h-full p-pad overflow-auto"><div className={`${DASHBOARD_COLUMN} flex flex-col gap-gap`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold tracking-[0.15em] text-redlog-accent">{t('firstRun.eyebrow')}</p>
@@ -217,7 +231,8 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
           ) : (
             <>
               <p className="text-redlog-text-faint">{t('firstRun.core.laterWhy')}</p>
-              {commands === 'none' && <button
+              {/* While hidden behind the preparation panel, that panel has the exit. */}
+              {commands === 'none' && !preparing && <button
                 onClick={() => onNavigate('timeline')}
                 data-testid="first-run-later"
                 className="inline-flex items-center min-h-8 text-redlog-text-dim hover:text-redlog-text underline"
@@ -341,7 +356,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
                         </Button>
                       )}
                     </div>
-                    {recording && <RecordTerminalFlow key={recording.kind === 'host' ? 'host' : recording.label} target={recording} onPrepare={() => openPreparation('commands')}
+                    {recording && !preparingFor('commands') && <RecordTerminalFlow key={recording.kind === 'host' ? 'host' : recording.label} target={recording} onPrepare={() => openPreparation('commands')}
                       onSelectedLabel={recording.kind === 'host' ? setHostShellLabel : undefined} />}
                   </div>
                   )}
@@ -365,7 +380,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
                 </div>
               )}
             </div>
-            <HttpCaptureStep onVerified={onHttpVerified} onPrepare={() => openPreparation('web')} paused={recordingOn === false} />
+            {!preparingFor('web') && <HttpCaptureStep onVerified={onHttpVerified} onPrepare={() => openPreparation('web')} paused={recordingOn === false} />}
           </div>
         </div>
         <div className="w-full space-y-2">
@@ -394,6 +409,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
         {showSources && <div className="mt-2">{renderCaptureCard()}</div>}
       </div>
     </div></div>
+    </>
   )
 }
 

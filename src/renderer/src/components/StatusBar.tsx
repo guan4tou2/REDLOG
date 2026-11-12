@@ -7,6 +7,7 @@ import { formatTime, formatDateTime, useDisplayZone } from '../lib/time'
 import { useAppCounts } from '../lib/useAppCounts'
 import { integrityFault } from '../lib/integrityPulse'
 import { scopeIssue } from '../lib/scopeIssue'
+import { captureIssueView } from '../lib/captureIssue'
 import { settingsTarget } from '../lib/navigation'
 import { useNarrowViewport } from '../hooks/useNarrowViewport'
 import { useCaptureHealthState } from '../lib/useCaptureHealth'
@@ -145,7 +146,7 @@ export default function StatusBar(): JSX.Element {
         tier: 'attention',
         title: verdict === 'dark' ? t('statusBar.captureDark') : t('statusBar.capturePartial'),
         detail: dbErr ? `${dbErr.source}: ${dbErr.message.slice(0, 120)}` : t('issues.captureDetail'),
-        view: 'dashboard'
+        view: captureIssueView(h as CaptureHealthInfo)
       })
     }
     if (prevVerdict.current === 'healthy' && verdict !== 'healthy') {

@@ -12,6 +12,8 @@ import { settingsTarget } from '../lib/navigation'
 import { removeHookWithUndo } from '../lib/hookRemoval'
 import { formatTime, formatDateTime } from '../lib/time'
 import { writeClipboard } from '../lib/clipboard'
+import { RecordTerminalFlow } from './RecordTerminalFlow'
+import { shellLabel, shellNameForHook } from '../lib/terminalActivation'
 
 
 /** What the `terminal` row says about the operator's OWN shell — three states,
@@ -234,6 +236,9 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
   // opens the full inventory with the controls.
   const [manage, setManage] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
+  // The shell hook whose install is being proved here: the same nonce flow as
+  // first run and Settings (FR-015), so an install is never the end state.
+  const [shellFlow, setShellFlow] = useState<string | null>(null)
   // Hooks whose removal is waiting out its undo window, shown removed until
   // the health poll reports them gone (lib/hookRemoval.ts).
   const [removing, setRemoving] = useState<ReadonlySet<string>>(new Set())
@@ -346,6 +351,9 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
       })
       return
     }
+    // The operator's own shell: installed is not recording, so the install
+    // runs inside the flow that waits for a command to come back.
+    if (s.id === 'terminal') { setShellFlow(s.hookId); return }
     setBusy(s.id)
     try {
       const hookId = s.hookId
@@ -433,7 +441,7 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
     ? readiness.nextStep.status === 'todo'
       ? { label: t('capture.ctaOpenTerminal'), run: () => onNavigate('terminal') }
       : { label: t('capture.ctaRunCommand'), run: () => onNavigate('terminal') }
-    : notEnrolled
+    : notEnrolled && shellFlow === null
       ? { label: t('capture.ctaInstallShellHook'), run: () => { void setInstalled(terminalSource!, true) } }
       : null
   const mitmSource = sources.find((s) => s.id === 'mitmproxy')
@@ -637,6 +645,16 @@ export function CaptureHealthCard({ capture, unknown, onNavigate, onRefresh, onS
             <button onClick={() => onNavigate(settingsTarget('hooks'))} className="text-xs text-redlog-text-dim hover:text-redlog-text underline">
               {t('capture.openHooks')}
             </button>
+          </div>
+        )}
+        {shellFlow !== null && (
+          <div data-testid="capture-shell-flow" className="border-t border-redlog-border-subtle px-pad pb-2">
+            <RecordTerminalFlow
+              target={{ kind: 'host', hookId: shellFlow, label: shellLabel(shellNameForHook(shellFlow) ?? t('capture.tag.shell')) }}
+              onInstalled={onRefresh}
+              onInstallFailed={(message) => toast(t('capture.actionFailed'), { type: 'error', why: t('capture.actionFailedWhy'), detail: message })}
+              onPrepare={() => onNavigate(settingsTarget('hooks'))}
+            />
           </div>
         )}
         {/* An exception stays in view with the list folded: a source that
