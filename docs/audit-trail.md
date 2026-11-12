@@ -2,7 +2,7 @@
 
 > **Status:** current  
 > **Scope:** hash chain, signatures and OpenTimestamps anchoring  
-> **Last verified:** not re-verified in this pass
+> **Last verified:** 2026-11-12 for "Verifying a bundle" (bundle version 4); the rest not re-verified in that pass
 
 RedLog's timeline is designed to be **tamper-evident**, not tamper-proof. Anyone with local root on the machine can rewrite the SQLite file — nothing stops that. But three layers make silent rewrites very hard to hide:
 
@@ -159,6 +159,159 @@ never chained, never signed, editable in place, and never opened by the bundled
 verifier — so the tampering they permitted was on-machine and pre-export, which
 is exactly what the SHA and the HMAC cannot see. They are no longer included.
 - Standard `.ots` bundles per anchor via `redlog-cli chain export-ots <id> --out anchor.ots`.
+
+The SHA and the HMAC describe the manifest; neither can be checked by a third
+party against anything they did not receive from the same hands. What a
+recipient *can* check is set out next.
+
+## Verifying a bundle
+
+A bundle is handed to a third party, who runs the `redlog-verify.py` inside it
+(or `verify.sh` / `verify.cmd`). The app applies the same rules to every bundle
+it writes before handing it over, and to the project's own chain in Settings ▸
+Integrity. The rules live in one place —
+[src/core/evidence-rules.ts](../src/core/evidence-rules.ts), applied by
+[src/core/bundle-verify.ts](../src/core/bundle-verify.ts) and ported to
+[tools/redlog-verify.py](../tools/redlog-verify.py) — and
+`test/evidence-vectors.test.ts` runs both verifiers over the same tampered
+bundles and requires the same verdict.
+
+### What each part of a bundle is checked against
+
+| Part | Checked against | Strength |
+|---|---|---|
+| `events.jsonl` rows | their own hash, the previous row's hash, and the operator's Ed25519 signature | authenticated when signed |
+| screenshots | `data.sha256` of the `screenshot` event that captured it | authenticated (the event is signed) |
+| casts, each segment | `castSegments[].sha256` of the terminal's `session_end` (older recordings: `castSha256`) | authenticated |
+| HTTP / output bodies | the `*_ref.sha256` of the row that references it (the name is that digest) | authenticated from a chained row; from a logged row only as strong as the logged tier (below) |
+| operator artifacts | `sha256` of the `file_transfer.artifact_added` event | authenticated |
+| AI transcripts (opt-in) | the first `cumulative_bytes` against `cumulative_sha256` of each `agent.transcript_snapshot` — a prefix, because the transcript keeps growing after the snapshot | authenticated prefix; bytes after it are not |
+| `events_logged.jsonl` | the logged-tier digest (`tiers.loggedDigest`, chained as `system.logged_tier_digest` on direct exports), recomputed when the delivered tier is the whole digested tier and untransformed | not chained or signed per row; from v4 its bytes are sealed |
+| everything else in the manifest | the seal (v4) | as strong as the seal's signature |
+
+The manifest's own `sha256` is no longer what an attachment is judged by: it is
+recomputable by anyone holding the bundle. A file is reported as one of:
+
+- **matches** the digest its event recorded at capture;
+- **unbound** — in the bundle, but no event in it refers to it. Listed, never
+  called verified. A projection carries screenshots and casts whose events
+  were not selected; those are unbound.
+- **omitted (declared)** — an event refers to it, the bundle does not carry it,
+  and the export said why in `manifest.omittedAttachments`
+  (`excluded-by-operator`, `out-of-scope`, `personal-domain`, the approved
+  preview's status, `raw-transcripts-not-requested`, `not-on-disk` after
+  retention or eviction, `not-exported`). Not a failure.
+- **absent (undeclared)** — referenced and not there. A failure when the
+  manifest lists the file (removed after export) and, from v4, always: a v4
+  export declares every omission. In a v3 bundle an unlisted absence is
+  reported but cannot fail — that version had no way to declare one.
+- **differs** — the bytes are not what the event recorded. Always a failure.
+
+Layer-4 sanitizing and scope masking change **rows**, never attachment bytes:
+a masked row is listed in `evidence.transformedEventIds`, its body references
+are dropped (so the body is not referenced and not shipped), and screenshots
+of out-of-scope targets are left out and declared. No attachment is ever
+substituted by policy, so there is nothing for the verifier to excuse.
+
+### Export seal (bundle version 4)
+
+The last line of `events.jsonl` is a chained, signed `system.export_sealed`
+row written by the exporting app for this export. Its `data`:
+
+| Field | Commits to |
+|---|---|
+| `exportId` | this export; `manifest.seal.exportId` names it |
+| `bundleVersion`, `sealVersion` | the format the rest is read in |
+| `events.count`, `events.headHash` | how many rows precede it in `events.jsonl` and the last one's hash |
+| `events.bytes`, `events.sha256` | the exact bytes of `events.jsonl` before the seal line |
+| `manifestSha256` | sha256 of the canonical JSON (keys sorted, as the chain hashes rows) of `manifest.json` **without** its `seal` block and **without** the `events.jsonl` entry of `files` |
+
+**Circularity.** The seal is inside the bundle it describes, so it cannot
+commit to the two things written after it: its own line in `events.jsonl`, and
+`events.jsonl`'s whole-file digest in the manifest. It commits to the bytes
+before its line instead, and its own line is covered by its hash and
+signature. Everything else in the manifest — the file list with each path,
+sha256 and size, the declared omissions, tiers and logged digest, evidence
+kind and transformed ids, the export plan, scope policy counts — is in
+`manifestSha256`. Rows appended after the seal make it no longer the last line,
+which fails.
+
+**Where it is written.** The seal is the one chained row an export writes,
+and only main writes the chain. In-process (`exportBundle` on main) it is
+inserted directly. In the export worker — the Export menu's planned bundle and
+`POST /api/export/bundle`'s third stage alike — the worker's database is
+read-only and its read transaction cannot see new rows, so the worker asks main
+over a message channel, blocks until main has inserted the seal by the primary
+operator (unsigned, by `unattributed-export`, in a project with no primary),
+and appends the row main sends back. A planned export's snapshot was fixed at
+preview time; rows recorded since are not in the bundle, although the seal
+follows them in the chain. The seal is therefore exempt from linking to the
+row before it in the bundle — that is what `events.headHash` is for — and the
+verifier says whether it follows the delivered chain directly or after rows
+past the boundary. A failed delivery after the seal leaves a seal in the chain
+for a bundle nobody received; it names the export, not a delivery.
+
+`manifest.chainHead` and `tiers.chained` keep their meaning: the head is the
+delivered chain before the seal; `tiers.chained` counts every line, seal
+included.
+
+**The rule.** A bundle of version 4 or later without a matching seal fails
+(exit 5). A bundle of an earlier version verifies exactly as it always did and
+is reported `NOT SEALED`; that is a statement, not a failure, unless the
+recipient passes `--require-seal`. The app's own reading follows the same rule.
+
+**Fails closed.** A version 4 verifier refuses (exit 2), and reports nothing as
+verified, on a bundle version newer than it knows, a top-level manifest field
+it does not know, or a seal of an unknown `sealVersion` or with unknown fields.
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | verified within the stated scope (read the report's limits) |
+| 1 | the chain, a signature, the chain head, a non-attachment file or the logged digest failed; or signing is in use and a row is unsigned or uncheckable |
+| 2 | malformed, or not understood (see above) |
+| 3 | consistent but nothing is signed (`--hash-only` accepts this as 0) |
+| 4 | an attachment differs from its capture digest, or is absent without a declaration (above) |
+| 5 | not what its export sealed, or a v4 bundle without its seal, or `--require-seal` on an unsealed one |
+
+When several apply: 2, 1, 4, 5, then 3. `--hash-only` never accepts 4 or 5.
+
+### The app's own walk (Settings ▸ Integrity)
+
+It walks the project database rather than a bundle and now judges signatures
+as the bundle verifiers do. Before this it differed in four ways, all closed:
+an unsigned row in a signed chain passed; a signed row whose operator had no
+public key passed as "unsigned"; signing was considered in use only per row,
+not when an operator had a key; and the panel did not show signature state at
+all. A project with such rows — for example one recorded before its
+operator's key existed — now reads "Signatures incomplete", as a bundle
+exported from it always has. It does not check attachment files on disk; the
+bundle verifier does, on every export.
+
+### What remains undetectable without an external anchor
+
+- **Rows removed before the export, or the tail cut off together with the
+  seal.** Someone holding the bundle can drop the last rows *and* the seal and
+  present the rest as a version 3 bundle; it reads `NOT SEALED` and passes.
+  `--require-seal` refuses it. Proving nothing was cut needs the
+  OpenTimestamps anchor compared with a head held elsewhere.
+- **A rewrite by someone holding the signing key.** The seal is signed by the
+  same key as the rows. The threat model excludes the operator's own account.
+- **An unsigned bundle.** Its seal is as recomputable as its rows; it reports
+  consistency, never authentication (exit 3).
+- **What was never captured, or captured already wrong.** A screenshot
+  replaced in the project folder before export ships with the replacement and
+  fails as *differs* — detected, but the original is gone. A logged-tier row
+  changed before export is caught only if the digest still covers the
+  complete delivered tier.
+- **Config, retention and sanitizing are recorded as chained events** (layer
+  3, `system.*_pruned`, `system.sanitized`), but a recipient sees only what
+  those events say. That a file was pruned is declared, not proven absent from
+  the operator's disk.
+- **The anchor table itself.** `chain_anchors.json` is sealed as exported, but
+  an anchor row deleted in the project before export is simply not in it;
+  anchors are not chained events.
 
 ## Clock hardening
 

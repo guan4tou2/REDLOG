@@ -28,6 +28,10 @@ export interface FullVerifyResult {
   clockAnomalies?: Array<{ eventId: string; reason: string }>
   signedCount?: number
   unsignedCount?: number
+  noPubKeyCount?: number
+  authentication?: 'verified' | 'none' | 'failed'
+  authenticationReasons?: string[]
+  firstUncheckedEventId?: string | null
   badSignatureAtEventId?: string | null
 }
 

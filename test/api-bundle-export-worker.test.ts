@@ -149,7 +149,13 @@ describe('POST /api/export/bundle', () => {
     expect(ids).toContain(midChained)
     expect(ids).not.toContain(lateChained)
     expect(manifest.tiers.chained).toBe(ids.length)
-    expect(manifest.chainHead.eventCount).toBe(ids.length)
+    // The last line is the seal main inserted at the worker's request, after
+    // `late`; the head describes the delivered chain before it.
+    const sealRow = lines(path.join(outDir, 'events.jsonl')).at(-1)!
+    expect(JSON.parse(sealRow.data as string).subtype).toBe('export_sealed')
+    expect((getDB().prepare('SELECT rowid AS r FROM events WHERE id=?').get(sealRow.id) as { r: number }).r)
+      .toBeGreaterThan((getDB().prepare('SELECT rowid AS r FROM events WHERE id=?').get(lateChained) as { r: number }).r)
+    expect(manifest.chainHead.eventCount).toBe(ids.length - 1)
     expect(manifest.tiers.logged).toBe(before.logged)
     expect(manifest.evidence.kind).toBe('complete-chain')
 

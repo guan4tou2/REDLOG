@@ -402,6 +402,8 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.integrityVerifyFull',
     'settings.integrityUpgradeAll',
     'settings.integrityFullWalked',
+    'settings.integrityFullSignatures',
+    'settings.integrityFullAuthFailed',
     'settings.integrityFullBrokenAt',
     'settings.integrityFullReason',
     'settings.integrityHeadHash',

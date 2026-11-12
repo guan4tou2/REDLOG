@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { initDB, closeDB, getDB } from '../src/core/db/index'
 import { runExportTask } from '../src/main/services/export-runner'
@@ -89,6 +90,38 @@ it('refuses an event file whose rows no longer match the approved digest, and pu
 it('refuses an event file when the approved row count no longer matches', async () => {
   await expect(runExportTask(events({ selectedEventIds: ['request', 'gone'] }))).rejects.toThrow('source-unavailable')
   expect(fs.readdirSync(path.join(dir, 'exports'))).toEqual([])
+})
+// The planned bundle path (Export menu → data:executeExportPlan). The worker's
+// database is read-only and its snapshot is fixed, so the seal — the one
+// chained row an export writes — is inserted here, on main, at the worker's
+// request, and comes back as the bundle's last line.
+it('seals a planned bundle built in the production worker, through main, and the recipient verifier accepts it', async () => {
+  const before = (getDB().prepare('SELECT count(*) AS n FROM events').get() as { n: number }).n
+  const plan = buildExportPlan(project, { format: 'bundle' })
+  // Recorded after the snapshot: outside the bundle, though before the seal.
+  const { insertEvent } = await import('../src/core/db/events')
+  const late = insertEvent('shell', { subtype: 'command_start', command: 'after the snapshot' }, { operatorId: 'op' })!
+  const result = await runExportTask({ kind: 'bundle', project, approvedPlan: plan, engagementId: 'p', options: {
+    snapshot: plan.snapshot, includeEventIds: new Set(plan.selectedEventIds), attachments: plan.attachments,
+    exportPlan: { id: plan.id, fingerprint: plan.fingerprint, counts: plan.counts, request: plan.request },
+    outRoot: path.join(dir, 'exports')
+  }, attachmentDigest: plan.attachmentDigest })
+  if (!('artifactPath' in result)) throw new Error('artifact missing')
+  const lines = fs.readFileSync(path.join(result.artifactPath, 'events.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l))
+  const seal = lines.at(-1)
+  expect(JSON.parse(seal.data).subtype).toBe('export_sealed')
+  expect(lines.map((r) => r.id)).not.toContain(late.id)
+  // Main wrote exactly the seal (and the late row); the worker wrote nothing.
+  expect((getDB().prepare('SELECT count(*) AS n FROM events').get() as { n: number }).n).toBe(before + 2)
+  expect((getDB().prepare('SELECT id FROM events ORDER BY rowid DESC LIMIT 1').get() as { id: string }).id).toBe(seal.id)
+  const { verifyBundleDir } = await import('../src/core/bundle-verify')
+  expect(verifyBundleDir(result.artifactPath).seal).toBe('sealed')
+  const python = ['python3', 'python'].find((bin) => spawnSync(bin, ['--version']).status === 0)
+  if (python) {
+    const r = spawnSync(python, ['-I', path.resolve('tools/redlog-verify.py'), '--hash-only', result.artifactPath], { encoding: 'utf8' })
+    expect(r.status, r.stdout + r.stderr).toBe(0)
+    expect(r.stdout).toMatch(/Seal\s+: SEALED .*after rows recorded past the export boundary/)
+  }
 })
 it('cancels a running event file after project switch and refuses it on a completion policy change', async () => {
   let allowed = true

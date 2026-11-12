@@ -91,17 +91,30 @@ export default function IntegrityPanel({ t }: { t: (key: string, vars?: Record<s
           <div className="text-redlog-text-dim">
             {t('settings.integrityFullWalked', { n: String(fullVerify.walked ?? 0) })}
           </div>
+          {fullVerify.signedCount !== undefined && (
+            <div className={fullVerify.authentication === 'verified' ? 'text-redlog-text-dim' : 'text-amber-400'}>
+              {t('settings.integrityFullSignatures', {
+                signed: String(fullVerify.signedCount),
+                unchecked: String((fullVerify.unsignedCount ?? 0) + (fullVerify.noPubKeyCount ?? 0))
+              })}
+            </div>
+          )}
+          {fullVerify.authentication === 'failed' && (
+            <div className="text-amber-400 break-all">
+              <div>{t('settings.integrityFullAuthFailed')}</div>
+              {fullVerify.authenticationReasons?.map(r => <div key={r}>{r}</div>)}
+              {fullVerify.firstUncheckedEventId && <div>{fullVerify.firstUncheckedEventId}</div>}
+            </div>
+          )}
           {!fullVerify.ok && fullVerify.brokenAtEventId && (
-            <>
-              <div className="text-red-400 break-all">
-                {t('settings.integrityFullBrokenAt')}: {fullVerify.brokenAtEventId}
-              </div>
-              {fullVerify.brokenReason && (
-                <div className="text-redlog-text-dim break-all">
-                  {t('settings.integrityFullReason')}: {fullVerify.brokenReason}
-                </div>
-              )}
-            </>
+            <div className="text-red-400 break-all">
+              {t('settings.integrityFullBrokenAt')}: {fullVerify.brokenAtEventId}
+            </div>
+          )}
+          {!fullVerify.ok && fullVerify.brokenReason && (
+            <div className="text-redlog-text-dim break-all">
+              {t('settings.integrityFullReason')}: {fullVerify.brokenReason}
+            </div>
           )}
           {fullVerify.currentHead && (
             <div className="text-redlog-text-dim break-all">

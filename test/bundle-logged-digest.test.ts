@@ -155,7 +155,10 @@ describeDB('bundle export — logged-tier digest (§7.5)', () => {
 
     const chained = readJsonl(path.join(bundleDir, 'events.jsonl'))
     const logged = readJsonl(path.join(bundleDir, 'events_logged.jsonl'))
-    expect(chained.map((r) => r.id)).toEqual([before.id])
+    // The approved row, then this export's seal; nothing recorded after the
+    // snapshot, although the seal itself was chained after it.
+    expect(chained.map((r) => r.id)).toEqual([before.id, chained[1].id])
+    expect(chained[1].data.subtype).toBe('export_sealed')
     expect(chained.some((r) => r.data.subtype === 'logged_tier_digest')).toBe(false)
     expect(logged).toHaveLength(0) // exact plan selection excludes the logged row
     expect(manifest.tiers?.loggedDigest?.count).toBe(1)
@@ -166,6 +169,6 @@ describeDB('bundle export — logged-tier digest (§7.5)', () => {
     // is the form that made every planned bundle fail its verifier (#226).
     const head = crypto.createHash('sha256').update(before.hash).update('1').digest('hex')
     expect(manifest.chainHead).toEqual({ hash: head, eventCount: 1 })
-    expect(manifest.tiers?.chained).toBe(1)
+    expect(manifest.tiers?.chained).toBe(2)
   })
 })

@@ -156,6 +156,8 @@
   "settings.integrityVerifying": "驗證中⋯",
   "settings.integrityFullOk": "證據鏈完整",
   "settings.integrityFullBroken": "證據鏈損壞",
+  "settings.integrityFullAuthFailed": "簽章不完整",
+  "settings.integrityFullSignatures": "簽章：{{signed}} 筆已驗證，{{unchecked}} 筆未能檢查",
   "settings.integrityFullWalked": "已走過 {{n}} 筆事件",
   "settings.integrityFullBrokenAt": "斷點事件",
   "settings.integrityFullReason": "原因",

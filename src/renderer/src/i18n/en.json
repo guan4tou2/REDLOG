@@ -156,6 +156,8 @@
   "settings.integrityVerifying": "Verifying…",
   "settings.integrityFullOk": "Chain intact",
   "settings.integrityFullBroken": "Chain broken",
+  "settings.integrityFullAuthFailed": "Signatures incomplete",
+  "settings.integrityFullSignatures": "Signatures: {{signed}} verified, {{unchecked}} not checked",
   "settings.integrityFullWalked": "Walked {{n}} events",
   "settings.integrityFullBrokenAt": "Broken at event",
   "settings.integrityFullReason": "Reason",

@@ -1,8 +1,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { Worker } from 'node:worker_threads'
+import { Worker, MessageChannel } from 'node:worker_threads'
 import type { ExportTask, ExportTaskResult } from '../../core/export-task'
+import { writeExportSeal } from '../../core/bundle-export'
 
 export type ExportTaskRunner = (task: ExportTask, isAllowed?: (completed?: boolean) => boolean) => Promise<ExportTaskResult>
 
@@ -40,20 +41,40 @@ export const runExportTask: ExportTaskRunner = async (input, isAllowed = () => t
   // emitted beside it. No TypeScript loader or test-only execution branch.
   const workerFile = fs.existsSync(entry) ? entry : path.resolve(__dirname, '../../../out/main/export-worker.js')
   let worker: Worker | undefined
+  let channel: MessageChannel | undefined
   let timer: ReturnType<typeof setInterval> | undefined
   try {
     if (!isAllowed()) throw new Error('project-changed')
     const task: ExportTask = input.kind === 'bundle' || input.kind === 'direct-bundle' ? { ...input, options: { ...input.options, outRoot: stage } }
       : input.kind === 'har' ? { ...input, outDir: stage! }
       : input.kind === 'events' ? { ...input, outDir: stage!, ...stagedEventFile() } : input
-    worker = new Worker(workerFile, { workerData: task })
+    // A bundle's seal is the one chained row an export writes. The worker's
+    // database is read-only, so it asks here and blocks until the row comes
+    // back on `sealChannel` (export-worker.ts).
+    const sealChannel = new MessageChannel()
+    const sealSignal = new SharedArrayBuffer(4)
+    channel = sealChannel
+    worker = new Worker(workerFile, { workerData: { task, sealPort: sealChannel.port2, sealSignal }, transferList: [sealChannel.port2] })
     const reply = await new Promise<ExportTaskResult>((resolve, reject) => {
       let settled = false
       const fail = (error: Error) => { if (!settled) { settled = true; reject(error) } }
       worker!.once('error', fail)
       worker!.once('exit', code => fail(new Error(`Export worker exited before delivery (${code})`)))
-      worker!.once('message', (message: { result?: ExportTaskResult; error?: string }) => {
+      worker!.on('message', (message: { result?: ExportTaskResult; error?: string; seal?: { engagementId: string; data: Record<string, unknown> } }) => {
         if (settled) return
+        if (message.seal) {
+          let answer: { row?: Record<string, unknown>; error?: string }
+          try {
+            if (input.kind !== 'bundle' && input.kind !== 'direct-bundle') throw new Error('Only a bundle export is sealed')
+            if (!isAllowed()) throw new Error('project-changed')
+            answer = { row: writeExportSeal(message.seal.engagementId, message.seal.data) }
+          } catch (error) { answer = { error: (error as Error).message } }
+          sealChannel.port1.postMessage(answer)
+          const signal = new Int32Array(sealSignal)
+          Atomics.store(signal, 0, 1)
+          Atomics.notify(signal, 0)
+          return
+        }
         settled = true
         if (message.error || !message.result) reject(new Error(message.error ?? 'Invalid export worker result'))
         else resolve(message.result)
@@ -97,6 +118,7 @@ export const runExportTask: ExportTaskRunner = async (input, isAllowed = () => t
   } finally {
     if (timer) clearInterval(timer)
     await worker?.terminate()
+    channel?.port1.close()
     if (stagedFd !== undefined) try { fs.closeSync(stagedFd) } catch { /* already closed */ }
     if (ownedStage()) fs.rmSync(stage!, { recursive: true, force: true })
   }

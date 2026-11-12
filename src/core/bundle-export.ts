@@ -14,6 +14,8 @@ import { isOutOfScope, isPersonalDomain, scopeMaskReplacements, type ScopeForSan
 import { BODY_REF_FOR, scopeBodyRefsToDrop } from './redact-export'
 import { getDoNotExportIds } from './db/do-not-export'
 import { isAttachmentId, type ExportAttachment } from './export-attachments'
+import { BUNDLE_VERSION, SEAL_SUBTYPE, SEAL_VERSION, attachmentRefs, sealedManifestDigest, sha256Hex } from './evidence-rules'
+import { verifyBundleDir } from './bundle-verify'
 
 interface ManifestFile {
   path: string
@@ -69,6 +71,41 @@ interface ManifestPayload {
    *  agent's transcript as written — not redacted, not scope-trimmed. */
   rawAgentTranscripts?: { redacted: false; files: RawTranscriptFile[] }
   files: ManifestFile[]
+  /** v4. The id of the `system.export_sealed` row that is the last line of
+   *  events.jsonl. A v4 bundle without it fails verification. */
+  seal: { exportId: string }
+  /** v4. Every attachment an event in this bundle refers to that the bundle
+   *  does not carry, with why. Sealed, so a recipient can tell an omission
+   *  the export made from a file removed afterwards. */
+  omittedAttachments: Array<{ path: string; reason: string }>
+}
+
+/** Records this export's seal in the chain and returns the row as the bundle
+ *  serialises it. In-process this is `writeExportSeal`; the export worker,
+ *  whose database is read-only, asks main to run it (export-worker.ts). */
+export type SealWriter = (engagementId: string, data: Record<string, unknown>) => Record<string, unknown>
+
+const UNATTRIBUTED_EXPORT_OPERATOR = 'unattributed-export'
+
+const EXPORTED_EVENT_COLUMNS = `id, timestamp, engagement_id, session_id, operator_id, agent_type,
+            hostname, source_ip, target_id, data, hash, prev_hash, created_at,
+            monotonic_ns, ntp_offset_ms, signature`
+
+/** Append the seal: a chained, signed `system.export_sealed` row by the
+ *  primary operator. System rows are not held by a recording pause. Throws
+ *  rather than returning an unsealed bundle that claims to be sealed. */
+export function writeExportSeal(engagementId: string, data: Record<string, unknown>): Record<string, unknown> {
+  if (data.subtype !== SEAL_SUBTYPE) throw new Error('Not an export seal')
+  // A project with no primary operator has no key to sign with either; its
+  // seal is an unsigned row like the rest of its chain, so the bundle still
+  // verifies as consistent and NOT AUTHENTICATED rather than as unsealed.
+  const operatorId = getPrimaryOperator()?.id ?? UNATTRIBUTED_EXPORT_OPERATOR
+  const ev = insertEvent('system', data, { engagementId, operatorId })
+  if (!ev) throw new Error('Export seal could not be recorded')
+  eventBus.publish(ev)
+  const row = getDB().prepare(`SELECT ${EXPORTED_EVENT_COLUMNS} FROM events WHERE id = ?`).get(ev.id) as Record<string, unknown> | undefined
+  if (!row) throw new Error('Export seal could not be read back')
+  return row
 }
 
 interface RawTranscriptFile extends ManifestFile {
@@ -145,6 +182,8 @@ export interface ExportBundleOpts {
    *  `snapshot.chainedMaxRowId` (export-direct-bundle.ts). Recorded in the
    *  manifest as given; no digest is computed and no event is inserted. */
   loggedDigest?: LoggedTierDigest
+  /** Where the seal is written. Defaults to `writeExportSeal` on this thread. */
+  sealWriter?: SealWriter
 }
 export type LoggedTierDigest = ReturnType<typeof loggedTierDigest>
 
@@ -221,6 +260,18 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
 
   const files: ManifestFile[] = []
   const excluded = opts.excludeAttachments ?? new Set<string>()
+  // Why a file an exported event refers to was not copied; declared in the
+  // manifest's sealed `omittedAttachments`.
+  const omitReason = new Map<string, string>()
+  /** The operator left it out, or the approved preview did not include it. */
+  const leftOutByOperatorOrPlan = (id: string): boolean => {
+    if (excluded.has(id)) { omitReason.set(id, 'excluded-by-operator'); return true }
+    if (opts.attachments && !opts.attachments.some((a) => a.id === id && a.status === 'included')) {
+      omitReason.set(id, opts.attachments.find((a) => a.id === id)?.status ?? 'not-in-approved-preview')
+      return true
+    }
+    return false
+  }
 
   const db = getDB()
 
@@ -263,14 +314,28 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   // 1. events.jsonl (in insertion order)
   const eventsPath = path.join(bundleDir, 'events.jsonl')
   const fd = fs.openSync(eventsPath, 'w')
+  // events.jsonl is hashed as it is written: the seal commits to the bytes
+  // before its own line, and the manifest to the whole file after it.
+  const eventsHash = crypto.createHash('sha256')
+  let eventsBytes = 0
+  let lastDeliveredHash: string | null = null
+  const writeEventLine = (row: Record<string, unknown>): void => {
+    const line = Buffer.from(JSON.stringify(row) + '\n')
+    fs.writeSync(fd, line)
+    eventsHash.update(line)
+    eventsBytes += line.length
+  }
+  // Attachments the delivered rows refer to, and why any of them is left out.
+  const referencedAttachments = new Set<string>()
+  const noteRefs = (agentType: string, d: Record<string, unknown>): void => {
+    for (const ref of attachmentRefs(agentType, d)) referencedAttachments.add(ref.path)
+  }
   const snap = opts.snapshot
   const chainedBound = snap ? ' WHERE rowid <= ?' : ''
   let chainedRowCount = 0
   const transformedEventIds: string[] = []
   const rowIter = db.prepare(
-    `SELECT id, timestamp, engagement_id, session_id, operator_id, agent_type,
-            hostname, source_ip, target_id, data, hash, prev_hash, created_at,
-            monotonic_ns, ntp_offset_ms, signature
+    `SELECT ${EXPORTED_EVENT_COLUMNS}
      FROM events${chainedBound} ORDER BY created_at ASC, rowid ASC`
   ).iterate(...(snap ? [snap.chainedMaxRowId] : [])) as IterableIterator<Record<string, unknown>>
   // Four-layer redaction, layer 4: when an event has a sanitized replacement
@@ -339,16 +404,16 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
           survivingBodyRefs.add((ref as Record<string, unknown>).sha256 as string)
         }
       }
-      if (agentType === 'file_transfer' && d.subtype === 'artifact_added' && isAttachmentId(d.stored)
-        && d.stored.startsWith('artifacts/') && !(scope && isOutOfScope(row.target_id as string | null, scope))) {
-        survivingArtifacts.add(d.stored)
+      if (agentType === 'file_transfer' && d.subtype === 'artifact_added' && isAttachmentId(d.stored) && d.stored.startsWith('artifacts/')) {
+        if (!(scope && isOutOfScope(row.target_id as string | null, scope))) survivingArtifacts.add(d.stored)
+        else omitReason.set(d.stored, 'out-of-scope')
       }
+      noteRefs(agentType, d)
     } catch { /* parse already failed above; skip */ }
-    fs.writeSync(fd, JSON.stringify(row) + '\n')
+    writeEventLine(row)
+    lastDeliveredHash = (row.hash as string | null) ?? null
     chainedRowCount++
   }
-  fs.closeSync(fd)
-  files.push({ path: 'events.jsonl', ...sha256File(eventsPath) })
 
   // 1b. v0.13.0: events_logged.jsonl — the supporting-evidence tier
   // (docs/design/DESIGN-two-tier-chain.md sec.7.1). Same insertion-order dump as
@@ -417,6 +482,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
           survivingBodyRefs.add((ref as Record<string, unknown>).sha256 as string)
         }
       }
+      noteRefs((row.agent_type as string) ?? 'unknown', d)
     } catch { /* skip */ }
     fs.writeSync(loggedFd, JSON.stringify(row) + '\n')
     loggedRowCount++
@@ -468,11 +534,12 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
     for (const name of fs.readdirSync(srcShots)) {
       const s = path.join(srcShots, name)
       if (!fs.statSync(s).isFile()) continue
-      if (excluded.has(`screenshots/${name}`) || (opts.attachments && !opts.attachments.some(a=>a.id===`screenshots/${name}` && a.status==='included'))) continue
+      if (leftOutByOperatorOrPlan(`screenshots/${name}`)) continue
       {
         const target = shotFilenameToTarget.get(name)
         if (isPersonalDomain(target ?? null, opts.scope)) {
           screenshotsExcluded++
+          omitReason.set(`screenshots/${name}`, 'personal-domain')
           continue
         }
         if (scope) {
@@ -482,6 +549,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
             screenshotsUnattributed++
           } else if (isOutOfScope(target, scope)) {
             screenshotsExcluded++
+            omitReason.set(`screenshots/${name}`, 'out-of-scope')
             continue
           }
         }
@@ -507,7 +575,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   if (fs.existsSync(srcCasts)) {
     fs.mkdirSync(dstCasts, { recursive: true })
     for (const name of fs.readdirSync(srcCasts)) {
-      if (excluded.has(`casts/${name}`) || (opts.attachments && !opts.attachments.some(a=>a.id===`casts/${name}` && a.status==='included'))) continue
+      if (leftOutByOperatorOrPlan(`casts/${name}`)) continue
       const s = path.join(srcCasts, name)
       const d = path.join(dstCasts, name)
       if (fs.statSync(s).isFile()) {
@@ -533,10 +601,10 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
     if (bodyFiles.length > 0) {
       let dirCreated = false
       for (const name of bodyFiles) {
-        if (excluded.has(`http-bodies/${name}`) || (opts.attachments && !opts.attachments.some(a=>a.id===`http-bodies/${name}` && a.status==='included'))) continue
+        if (leftOutByOperatorOrPlan(`http-bodies/${name}`)) continue
         if (scope) {
           const hash = name.replace(/\.body$/, '')
-          if (!survivingBodyRefs.has(hash)) { httpBodiesExcluded++; continue }
+          if (!survivingBodyRefs.has(hash)) { httpBodiesExcluded++; omitReason.set(`http-bodies/${name}`, 'out-of-scope'); continue }
         }
         if (!dirCreated) { fs.mkdirSync(dstBodies, { recursive: true }); dirCreated = true }
         const s = path.join(srcBodies, name)
@@ -555,7 +623,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   // byte-for-byte: the sha256 in the event that added each one must match.
   let artifactsIncluded = 0
   for (const id of [...survivingArtifacts].sort()) {
-    if (excluded.has(id) || (opts.attachments && !opts.attachments.some(a=>a.id===id && a.status==='included'))) continue
+    if (leftOutByOperatorOrPlan(id)) continue
     const s = path.join(projectDir, id)
     if (!fs.existsSync(s) || !fs.statSync(s).isFile()) continue
     const d = path.join(bundleDir, id)
@@ -618,7 +686,9 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
       '# `cryptography` package; without it a signed bundle FAILS (exit 1):',
       '#   uv run --with cryptography redlog-verify.py .',
       '# Exit 0 = authenticated (or --hash-only), 1 = failed,',
-      '# 3 = hash chain consistent but NOT AUTHENTICATED (no signatures).',
+      '# 3 = hash chain consistent but NOT AUTHENTICATED (no signatures),',
+      '# 4 = an attachment differs from the digest recorded at capture,',
+      '# 5 = the bundle differs from what its export sealed.',
       'set -euo pipefail',
       'DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
       'exec python3 "$DIR/redlog-verify.py" "$DIR" "$@"',
@@ -634,7 +704,8 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
       '@echo off',
       'REM RedLog bundle verifier — thin wrapper around redlog-verify.py.',
       'REM Requires: python3 on PATH, plus `cryptography` to check signatures.',
-      'REM Exit 0 = authenticated (or --hash-only), 1 = failed, 3 = not authenticated.',
+      'REM Exit 0 = authenticated (or --hash-only), 1 = failed, 3 = not authenticated,',
+      'REM 4 = attachment differs from its capture digest, 5 = differs from the export seal.',
       'python "%~dp0redlog-verify.py" "%~dp0." %*',
       ''
     ].join('\r\n')
@@ -700,9 +771,23 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
       '',
       'Exit codes: 0 authenticated, 1 failed (including an unsigned event or a',
       'signature that cannot be checked), 3 hash chain consistent but NOT',
-      'AUTHENTICATED (nothing signed). `--hash-only` reports the chain without',
-      'authentication and exits 0 instead of 3. Each signer\'s public-key SHA-256',
-      'fingerprint is printed; compare it with the operator out of band.',
+      'AUTHENTICATED (nothing signed), 4 a screenshot, cast, HTTP body, artifact',
+      'or transcript differs from the sha256 its event recorded at capture (or',
+      'an event refers to one that is absent and not declared omitted), 5 the',
+      'bundle differs from what its export sealed. `--hash-only` reports the',
+      'chain without authentication and exits 0 instead of 3; it does not',
+      'accept 4 or 5. Each signer\'s public-key SHA-256 fingerprint is printed;',
+      'compare it with the operator out of band.',
+      '',
+      'The last row of `events.jsonl` is this export\'s seal',
+      '(`system.export_sealed`), signed like every other row. It commits to the',
+      'rows before it and to `manifest.json` (all of it except the seal block',
+      'and the events.jsonl entry), so the file list, the declared omissions',
+      'and the export\'s boundary cannot be changed without failing. It cannot',
+      'show that rows were not removed before the export, or that the seal',
+      'itself was not cut off together with the rows before it: only the',
+      'OpenTimestamps anchors, compared with a copy held elsewhere, can.',
+      '`--require-seal` makes an unsealed bundle fail.',
       '',
       'The verifier reads `manifest.json`, `events.jsonl`, and `operators.json`',
       'from this directory and prints a summary: events walked, chain intact or',
@@ -740,10 +825,23 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   // anything in it was transformed.  A filtered selection is the third way
   // that happens, and the one the manifest could not say before (spec 056).
   const projection = transformedEventIds.length > 0 || chainedRowCount !== (head?.eventCount ?? 0) || loggedRowCount !== loggedDigest.count || (opts.exportPlan?.request?.subset.kind != null && opts.exportPlan.request.subset.kind !== 'all')
+
+  // Every attachment a delivered row refers to and the bundle does not carry,
+  // with the reason. Sealed with the manifest, so a recipient can tell a file
+  // this export left out from one removed afterwards.
+  const shipped = new Set(files.map((f) => f.path))
+  const omittedAttachments = [...referencedAttachments].filter((p) => !shipped.has(p)).sort().map((p) => ({
+    path: p,
+    reason: omitReason.get(p)
+      ?? (p.startsWith('agent-transcripts/') && !opts.includeAgentTranscripts ? 'raw-transcripts-not-requested'
+        : fs.existsSync(path.join(projectDir, p)) ? 'not-exported' : 'not-on-disk')
+  }))
+  const exportId = crypto.randomUUID()
+
   const manifest: ManifestPayload = {
     evidence: { kind: projection ? 'projection' : 'complete-chain', transformedEventIds, sourceChain: head ? { hash: head.hash, eventCount: head.eventCount } : null },
     // Current evidence-bundle schema identifier.
-    bundleVersion: 3,
+    bundleVersion: BUNDLE_VERSION,
     createdAt: new Date().toISOString(),
     hostname: os.hostname(),
     engagementId,
@@ -783,8 +881,9 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
     rawAgentTranscripts,
     tiers: {
       // Planned exports describe the approved snapshot. Direct exports use
-      // the live head, including the digest event emitted above.
-      chained: chainedRowCount,
+      // the live head, including the digest event emitted above. The seal,
+      // the last line of events.jsonl, is counted; chainHead stops before it.
+      chained: chainedRowCount + 1,
       logged: loggedRowCount,
       // §7.5: the anchored snapshot of the logged tier taken above. Surfaced
       // here so a consumer reading manifest.json sees the count + hash without
@@ -793,8 +892,33 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
         ? { count: loggedDigest.count, sha256: loggedDigest.sha256 }
         : undefined
     },
-    files
+    files,
+    seal: { exportId },
+    omittedAttachments
   }
+
+  // The seal (docs/audit-trail.md "Export seal"). It commits to the rows
+  // before it — their count, the last one's hash and the bytes they occupy in
+  // events.jsonl — and to the manifest without its seal block and without the
+  // events.jsonl entry, the only two things written after it. It is chained
+  // and signed like any row, by main: in the export worker `sealWriter` asks
+  // main to insert it, and the row comes back to be appended here, because the
+  // worker's read transaction cannot see it. Rows recorded between this
+  // export's boundary and the seal are not in the bundle; the seal is exempt
+  // from linking to the row before it, and says what it follows instead.
+  const sealData = {
+    subtype: SEAL_SUBTYPE,
+    sealVersion: SEAL_VERSION,
+    exportId,
+    bundleVersion: BUNDLE_VERSION,
+    manifestSha256: sealedManifestDigest(manifest as unknown as Record<string, unknown>),
+    events: { count: chainedRowCount, bytes: eventsBytes, sha256: eventsHash.copy().digest('hex'), headHash: lastDeliveredHash },
+    description: `export sealed: ${chainedRowCount} chained row(s), ${files.length} file(s), ${omittedAttachments.length} omitted attachment(s)`
+  }
+  const sealRow = (opts.sealWriter ?? writeExportSeal)(engagementId, sealData)
+  writeEventLine(sealRow)
+  fs.closeSync(fd)
+  files.unshift({ path: 'events.jsonl', bytes: eventsBytes, sha256: eventsHash.digest('hex') })
 
   const manifestPath = path.join(bundleDir, 'manifest.json')
   const manifestBytes = Buffer.from(JSON.stringify(manifest, null, 2))
@@ -809,6 +933,16 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
       path.join(bundleDir, 'manifest.hmac'),
       `hmac_sha256=${hmac}\ntoken_hash_prefix=${primaryTokenHash.slice(0, 16)}\nalgo=HMAC-SHA256(token_hash, manifest.json)\n`
     )
+  }
+
+  // Read back under the recipient's rules before it is handed over. A seal or
+  // manifest the verifier would reject is this exporter's fault, so the export
+  // fails. A broken source chain or an attachment that no longer matches its
+  // capture digest is the project's state, faithfully delivered: the
+  // recipient's verifier reports it, so it does not stop the export.
+  const self = verifyBundleDir(bundleDir, { hashOnly: true, selfCheck: true })
+  if (self.category === 'malformed' || self.category === 'sealMismatch') {
+    throw new Error(`Evidence bundle failed its own verification: ${self.problems.join('; ')}`)
   }
 
   // Copies keep the source's mode and several files are opened without one, so

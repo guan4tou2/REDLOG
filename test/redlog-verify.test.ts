@@ -145,7 +145,7 @@ describeVerify('tools/redlog-verify.py against real bundle', () => {
     // Tamper: rewrite the middle event's data field to something else.
     const eventsPath = path.join(bundle.outDir, 'events.jsonl')
     const lines = fs.readFileSync(eventsPath, 'utf-8').split('\n').filter(Boolean)
-    expect(lines.length).toBe(3)
+    expect(lines.length).toBe(4) // three rows and the export's seal
     const mid = JSON.parse(lines[1])
     const midData = JSON.parse(mid.data)
     midData.command = 'evil-injected'
@@ -306,7 +306,7 @@ describeVerify('tools/redlog-verify.py against real bundle', () => {
       if (!hasCryptography) {
         // Fail closed: signatures cannot be checked, so the bundle must not pass.
         expect(r.status, r.stdout + r.stderr).toBe(1)
-        expect(r.stdout).toMatch(/AUTHENTICATION FAILED: 3 signed event\(s\) cannot be checked: the `cryptography` module is not installed/)
+        expect(r.stdout).toMatch(/AUTHENTICATION FAILED: 4 signed event\(s\) cannot be checked: the `cryptography` module is not installed/)
         expect(r.stdout).not.toContain('Chain            : INTACT')
         return
       }
@@ -323,11 +323,15 @@ describeVerify('tools/redlog-verify.py against real bundle', () => {
       refresh(dir)
       const r = run(dir)
       expect(r.status, r.stdout).toBe(1)
-      expect(r.stdout).toMatch(/AUTHENTICATION FAILED: 3 event\(s\) carry no signature/)
+      // Three rows and the export's seal, all stripped.
+      expect(r.stdout).toMatch(/AUTHENTICATION FAILED: 4 event\(s\) carry no signature/)
       expect(r.stdout).not.toContain('Chain            : INTACT')
+      // --hash-only accepts the missing signatures, but not that the rows and
+      // manifest are no longer the ones the export sealed (v4).
       const relaxed = run(dir, '--hash-only')
-      expect(relaxed.status, relaxed.stdout).toBe(0)
-      expect(relaxed.stdout).toContain('NOT AUTHENTICATED (--hash-only): 3 event(s) carry no signature')
+      expect(relaxed.status, relaxed.stdout).toBe(5)
+      expect(relaxed.stdout).toContain('NOT AUTHENTICATED (--hash-only): 4 event(s) carry no signature')
+      expect(relaxed.stdout).toContain('SEAL MISMATCH')
       expect(relaxed.stdout).not.toContain('Chain            : INTACT')
     })
 
@@ -338,7 +342,8 @@ describeVerify('tools/redlog-verify.py against real bundle', () => {
       fs.writeFileSync(opsPath, JSON.stringify((JSON.parse(fs.readFileSync(opsPath, 'utf8')) as Array<Record<string, unknown>>).map((o) => ({ ...o, signerPubKey: null }))))
       refresh(dir)
       const r = run(dir)
-      expect(r.status, r.stdout).toBe(3)
+      // Not authenticated, and (v4) no longer what the export sealed.
+      expect(r.status, r.stdout).toBe(5)
       expect(r.stdout).toContain('hash chain consistent, NOT AUTHENTICATED')
       expect(r.stdout).not.toContain('Chain            : INTACT')
     })
@@ -367,8 +372,8 @@ describeVerify('tools/redlog-verify.py against real bundle', () => {
       expect(r.status, r.stdout).toBe(1)
       // Without `cryptography` the verifier reports the missing module, not the missing key.
       expect(r.stdout).toMatch(hasCryptography
-        ? /AUTHENTICATION FAILED: 3 signed event\(s\) cannot be checked: their operator has no signerPubKey/
-        : /AUTHENTICATION FAILED: 3 signed event\(s\) cannot be checked: the `cryptography` module is not installed/)
+        ? /AUTHENTICATION FAILED: 4 signed event\(s\) cannot be checked: their operator has no signerPubKey/
+        : /AUTHENTICATION FAILED: 4 signed event\(s\) cannot be checked: the `cryptography` module is not installed/)
     })
 
     it('fails, rather than skips, when `cryptography` is missing from a signed bundle', { timeout: 30_000 }, () => {
@@ -376,7 +381,7 @@ describeVerify('tools/redlog-verify.py against real bundle', () => {
       const code = `import sys, runpy; sys.modules['cryptography'] = None; sys.argv = ['v', ${JSON.stringify(dir)}]; runpy.run_path(${JSON.stringify(verifierPath)}, run_name='__main__')`
       const r = spawnSync(pythonBin!, ['-c', code], { encoding: 'utf8' })
       expect(r.status, r.stdout + r.stderr).toBe(1)
-      expect(r.stdout).toMatch(/AUTHENTICATION FAILED: 3 signed event\(s\) cannot be checked: the `cryptography` module is not installed/)
+      expect(r.stdout).toMatch(/AUTHENTICATION FAILED: 4 signed event\(s\) cannot be checked: the `cryptography` module is not installed/)
     })
 
     it('a bundle with nothing signed fails by default and passes with --hash-only, with the distinct verdict', { timeout: 30_000 }, () => {

@@ -5,8 +5,8 @@ import https from 'https'
 import { URL } from 'url'
 import { getDB, openReadOnlyDB, dbGeneration, getProjectDir } from './db/index'
 import { loadConfig } from './config'
-import { canonicalStringify } from './db/events'
 import { verifyEventSignature } from './signing'
+import { authenticationVerdict, chainedRowCanonical } from './evidence-rules'
 
 export interface ChainAnchor {
   id: string
@@ -437,16 +437,33 @@ export interface FullVerifyResult {
   anchor: ChainAnchor | null
   anchorMatchesWalkedHead: boolean
   clockAnomalies: ClockAnomaly[]
-  // Per-event Ed25519 signature roll-up.
-  //   signedCount   — rows with a signature that verifies against the
-  //                   operator's DB-stored public key.
-  //   unsignedCount — rows without a signature because the operator signing
-  //                   key was unavailable. Not a failure signal
-  //                   on its own — chain hash still protects them.
+  // Per-event Ed25519 signature roll-up, judged by the same rule as a
+  // bundle (evidence-rules.ts authenticationVerdict).
+  //   signedCount   — rows whose signature verifies against the operator's
+  //                   DB-stored public key.
+  //   unsignedCount — rows that carry no signature.
+  //   noPubKeyCount — signed rows whose operator has no public key to check
+  //                   them against.
+  //   authentication — 'verified': signing in use and every row checked;
+  //                   'none': nothing in this chain is signed (consistent,
+  //                   but not authenticated); 'failed': signing is in use and
+  //                   some row is unsigned or uncheckable. This does NOT set
+  //                   ok=false: `ok` here means the chain is intact (every
+  //                   row hashes, links, and no present signature is bad).
+  //                   Authentication is a separate fact, so a project with one
+  //                   historic unsigned row is not reported as tampered. A
+  //                   bundle exported from such a chain fails the standalone
+  //                   verifier unless it is run with --hash-only.
+  //   authenticationReasons — why authentication is 'failed' (empty otherwise).
+  //   firstUncheckedEventId — first unsigned or uncheckable row, or null.
   //   badSignatureAtEventId — first row whose signature is present but does
   //                   NOT verify. That IS a tamper signal; also causes ok=false.
   signedCount: number
   unsignedCount: number
+  noPubKeyCount: number
+  authentication: 'verified' | 'none' | 'failed'
+  authenticationReasons: string[]
+  firstUncheckedEventId: string | null
   badSignatureAtEventId: string | null
 }
 
@@ -486,8 +503,33 @@ interface WalkerState {
   prevByHostSession: Map<string, WalkRow>
   signedCount: number
   unsignedCount: number
+  noPubKeyCount: number
+  firstUncheckedEventId: string | null
+  anySignature: boolean
+  /** an operator has a signer key: signing is in use even before a row is signed */
+  signingDeclared: boolean
   badSignatureAtEventId: string | null
   lookupPubKey: (opId: string) => string | null
+}
+
+function brokenResult(state: WalkerState, eventId: string, reason: string, currentHeadHash: string | null, anchor: ChainAnchor | null): FullVerifyResult {
+  return {
+    ok: false,
+    walked: state.walked,
+    brokenAtEventId: eventId,
+    brokenReason: reason,
+    currentHead: currentHeadHash,
+    anchor,
+    anchorMatchesWalkedHead: false,
+    clockAnomalies: state.clockAnomalies,
+    signedCount: state.signedCount,
+    unsignedCount: state.unsignedCount,
+    noPubKeyCount: state.noPubKeyCount,
+    authentication: 'failed',
+    authenticationReasons: [],
+    firstUncheckedEventId: state.firstUncheckedEventId,
+    badSignatureAtEventId: state.badSignatureAtEventId
+  }
 }
 
 // v0.7.1 P3: subset of the row shape needed to rebuild a hash. Both
@@ -511,31 +553,10 @@ export interface HashableRow {
   ntp_offset_ms: number | null
 }
 
-function canonicalHashPayload(row: HashableRow, parsedData: unknown): Record<string, unknown> {
-  return {
-    id: row.id,
-    timestamp: row.timestamp,
-    engagementId: row.engagement_id,
-    sessionId: row.session_id,
-    operatorId: row.operator_id,
-    agentType: row.agent_type,
-    hostname: row.hostname,
-    sourceIP: row.source_ip,
-    targetId: row.target_id,
-    data: parsedData,
-    prevHash: row.prev_hash,
-    createdAt: row.created_at,
-    monotonicNs: row.monotonic_ns,
-    ntpOffsetMs: row.ntp_offset_ms,
-    tier: 'chained',
-    hash: undefined
-  }
-}
-
-function verifyRowHash(row: WalkRow, parsedData: unknown):
+function verifyRowHash(row: HashableRow & { hash: string | null }, parsedData: unknown):
   { matched: { label: string; canonicalJsonForSig: string } | null; attemptLabels: string[] } {
-  const payload = canonicalHashPayload(row, parsedData)
-  const canonical = canonicalStringify(payload)
+  // The same payload the bundle verifiers rebuild (evidence-rules.ts).
+  const canonical = chainedRowCanonical(row, parsedData)
   const computed = crypto.createHash('sha256').update(canonical).digest('hex')
   return computed === row.hash
     ? { matched: { label: 'canonical', canonicalJsonForSig: canonical }, attemptLabels: [`canonical=${computed.slice(0, 8)}`] }
@@ -548,71 +569,33 @@ function verifyRowHash(row: WalkRow, parsedData: unknown):
 function processRow(row: WalkRow, state: WalkerState, currentHeadHash: string | null, anchor: ChainAnchor | null): FullVerifyResult | null {
   state.walked++
   if (row.prev_hash !== state.expectedPrev) {
-    return {
-      ok: false,
-      walked: state.walked,
-      brokenAtEventId: row.id,
-      brokenReason: `prev_hash mismatch (expected ${state.expectedPrev ?? 'null'}, got ${row.prev_hash ?? 'null'})`,
-      currentHead: currentHeadHash,
-      anchor,
-      anchorMatchesWalkedHead: false,
-      clockAnomalies: state.clockAnomalies,
-      signedCount: state.signedCount,
-      unsignedCount: state.unsignedCount,
-      badSignatureAtEventId: state.badSignatureAtEventId
-    }
+    return brokenResult(state, row.id, `prev_hash mismatch (expected ${state.expectedPrev ?? 'null'}, got ${row.prev_hash ?? 'null'})`, currentHeadHash, anchor)
   }
 
   const parsedData = JSON.parse(row.data)
   const { matched, attemptLabels } = verifyRowHash(row, parsedData)
   if (!matched) {
-    return {
-      ok: false,
-      walked: state.walked,
-      brokenAtEventId: row.id,
-      brokenReason: `hash mismatch (tried ${attemptLabels.join(', ')}, stored ${(row.hash ?? '').slice(0, 16)}...)`,
-      currentHead: currentHeadHash,
-      anchor,
-      anchorMatchesWalkedHead: false,
-      clockAnomalies: state.clockAnomalies,
-      signedCount: state.signedCount,
-      unsignedCount: state.unsignedCount,
-      badSignatureAtEventId: state.badSignatureAtEventId
-    }
+    return brokenResult(state, row.id, `hash mismatch (tried ${attemptLabels.join(', ')}, stored ${(row.hash ?? '').slice(0, 16)}...)`, currentHeadHash, anchor)
   }
 
-  // Verify the Ed25519 signature over the canonical payload.
+  // Verify the Ed25519 signature over the canonical payload. A row that
+  // carries none, or whose operator has no key to check it against, is
+  // counted here and judged once the walk knows whether signing is in use.
   if (row.signature) {
-    if (matched.canonicalJsonForSig) {
-      const pubKey = state.lookupPubKey(row.operator_id)
-      if (!pubKey) {
-        state.unsignedCount++
-      } else {
-        const sigOk = verifyEventSignature(matched.canonicalJsonForSig, row.signature, pubKey)
-        if (sigOk) {
-          state.signedCount++
-        } else {
-          if (state.badSignatureAtEventId == null) state.badSignatureAtEventId = row.id
-          return {
-            ok: false,
-            walked: state.walked,
-            brokenAtEventId: row.id,
-            brokenReason: 'signature invalid',
-            currentHead: currentHeadHash,
-            anchor,
-            anchorMatchesWalkedHead: false,
-            clockAnomalies: state.clockAnomalies,
-            signedCount: state.signedCount,
-            unsignedCount: state.unsignedCount,
-            badSignatureAtEventId: state.badSignatureAtEventId
-          }
-        }
-      }
+    state.anySignature = true
+    const pubKey = state.lookupPubKey(row.operator_id)
+    if (!pubKey) {
+      state.noPubKeyCount++
+      state.firstUncheckedEventId ??= row.id
+    } else if (verifyEventSignature(matched.canonicalJsonForSig, row.signature, pubKey)) {
+      state.signedCount++
     } else {
-      state.unsignedCount++
+      if (state.badSignatureAtEventId == null) state.badSignatureAtEventId = row.id
+      return brokenResult(state, row.id, 'signature invalid', currentHeadHash, anchor)
     }
   } else {
     state.unsignedCount++
+    state.firstUncheckedEventId ??= row.id
   }
 
   const key = `${row.hostname}|${row.session_id}`
@@ -671,11 +654,16 @@ function initWalkerState(): WalkerState {
     prevByHostSession: new Map<string, WalkRow>(),
     signedCount: 0,
     unsignedCount: 0,
+    noPubKeyCount: 0,
+    firstUncheckedEventId: null,
+    anySignature: false,
+    // operators.json in a bundle carries every operator's key; a key there
+    // means signing was in use, and so it does here.
+    signingDeclared: db.prepare(`SELECT 1 FROM operators WHERE signer_pub_key IS NOT NULL AND signer_pub_key <> '' LIMIT 1`).get() !== undefined,
     badSignatureAtEventId: null,
     // v0.6.89: cache operator → public key lookups. verifyChainFullAsync walks the
     // full events table; a typical operator set is <20, so a Map keyed by
-    // operator_id is cheaper than a JOIN and lets us surface "no pubkey" as
-    // "unsigned" cleanly.
+    // operator_id is cheaper than a JOIN.
     lookupPubKey: (opId: string): string | null => {
       if (pubKeyCache.has(opId)) return pubKeyCache.get(opId) ?? null
       const row = pubKeyStmt.get(opId) as { signer_pub_key: string | null } | undefined
@@ -694,7 +682,18 @@ function finaliseWalk(state: WalkerState, anchor: ChainAnchor | null, currentHea
   const anchorMatchesWalkedHead = anchor !== null && state.lastHash !== null
     && anchor.eventCount <= state.walked
     && computeChainHead(anchor.eventCount)?.hash === anchor.headHash
+  // The bundle verifiers' rule. This walk used to count an unsigned row, and
+  // a signed row with no key to check it, as "unsigned" and pass; the
+  // standalone verifier failed the same rows once exported.
+  const auth = authenticationVerdict({
+    signingInUse: state.anySignature || state.signingDeclared,
+    unsigned: state.unsignedCount,
+    noPubKey: state.noPubKeyCount
+  })
   return {
+    // Intact: every row hashes to the next and no present signature is bad.
+    // Authentication is reported beside it, never folded into it: ok:false
+    // with brokenAtEventId:null reads as tampering to most callers.
     ok: true,
     walked: state.walked,
     brokenAtEventId: null,
@@ -705,6 +704,10 @@ function finaliseWalk(state: WalkerState, anchor: ChainAnchor | null, currentHea
     clockAnomalies: state.clockAnomalies,
     signedCount: state.signedCount,
     unsignedCount: state.unsignedCount,
+    noPubKeyCount: state.noPubKeyCount,
+    authentication: auth.state,
+    authenticationReasons: auth.reasons,
+    firstUncheckedEventId: state.firstUncheckedEventId,
     badSignatureAtEventId: state.badSignatureAtEventId
   }
 }
@@ -864,7 +867,7 @@ export function verifyRandomSample(count = 50): RandomSampleResult {
     try { parsedData = JSON.parse(row.data) } catch {
       return { ok: false, sampled: rows.length, brokenAtEventId: row.id, brokenReason: 'data column is not valid JSON' }
     }
-    const { matched, attemptLabels } = verifyRowHash({ signature: null, ...row }, parsedData)
+    const { matched, attemptLabels } = verifyRowHash(row, parsedData)
     if (!matched) {
       return {
         ok: false,

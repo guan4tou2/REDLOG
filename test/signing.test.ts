@@ -130,6 +130,24 @@ describeDB('signing (v0.6.89)', () => {
       expect(r.unsignedCount).toBe(2)
     })
 
+    it('a replayed row attributed to an operator with no public key keeps the chain intact but not authenticated', async () => {
+      // project-open-rollback replays a spooled event whose operator is
+      // 'spool-operator', which has no key. ok must stay true: authentication
+      // is its own fact, and ok:false with no broken event reads as tampering.
+      const token = ops.generateToken()
+      ops.createOperator({ id: 'real-op', name: 'Real', token })
+      events.insertEvent('marker', { i: 1 }, { operatorId: 'real-op' })
+      const replayed = events.insertEvent('marker', { i: 2 }, { operatorId: 'spool-operator' })!
+
+      const r = await anchor.verifyChainFullAsync()
+      expect(r.ok).toBe(true)
+      expect(r.brokenAtEventId).toBeNull()
+      expect(r.brokenReason).toBeNull()
+      expect(r.authentication).toBe('failed')
+      expect(r.authenticationReasons.length).toBeGreaterThan(0)
+      expect(r.firstUncheckedEventId).toBe(replayed.id)
+    })
+
     it('flags a row whose signature no longer verifies (tamper signal)', async () => {
       const token = ops.generateToken()
       ops.createOperator({ id: 'tamper-op', name: 'Tamper', token })
