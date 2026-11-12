@@ -52,7 +52,7 @@
     }
   },
   "win32": {
-    "skippedCases": 743,
+    "skippedCases": 754,
     "mustRun": [
       "test/csp-production.test.ts",
       "test/bundle-requires.test.ts",
@@ -81,6 +81,7 @@
       "test/hooks-removal-and-profile-path.test.ts": 1,
       "test/http-flow-query-perf.test.ts": 2,
       "test/late-output.pty.test.ts": 10,
+      "test/legacy-producer-decisions.test.ts": 11,
       "test/login-path.test.ts": 2,
       "test/loot-emit-dedup.test.ts": 1,
       "test/official-agent-plugins.test.ts": 1,

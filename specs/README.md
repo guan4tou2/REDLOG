@@ -41,7 +41,29 @@
 | [068 專案選擇畫面 — 搜尋與範圍狀態徽章](068-project-picker-search-scope/spec.md) | Draft | 2026-11-11 補列；剩餘工作未在索引核對，見該 spec 與 verification。 |
 | [069 活動紀錄與時間軸 — 對齊 Stitch 設計決策](069-activity-timeline-alignment/spec.md) | Draft | 2026-11-11 補列；剩餘工作未在索引核對，見該 spec 與 tasks。 |
 | [070 截取來源、設定導航與外部工具整合](070-capture-sources-and-integrations/spec.md) | Draft | 2026-11-11 補列；剩餘工作未在索引核對，見該 spec 與 tasks。 |
-| [071 核心蓋章的事件身分與來源、單一寫入契約](071-event-provenance-and-ingestion-contract/spec.md) | Draft | 2026-11-12 起草，未開始實作；根因審查階段 1 與 4。五個開放問題待擁有者決定。 |
+| [071 核心蓋章的事件身分與來源、單一寫入契約](071-event-provenance-and-ingestion-contract/spec.md) | Draft | 2026-11-12 起草；Phase 1 在 #716，其餘未開始；根因審查階段 1 與 4。原五個開放問題已決定（O13–O17）；一項新決定待擁有者：耐久度（Q6，`synchronous` 實為 NORMAL）。 |
+| [072 事件種類登記表與閱讀器契約](072-event-kind-registry-and-readers/spec.md) | Draft | 2026-11-12 起草，未開始實作；根因審查 §4「擷取種類盤點的決定」（支援階段 4、6）。開放問題待擁有者（Q1–Q3）。 |
+| [073 專案執行期、設定層級與安裝帳本](073-project-runtime-and-setting-scopes/spec.md) | Draft | 2026-11-12 起草，未開始實作；根因審查階段 2。開放問題待擁有者（Q1–Q5）。 |
+| [074 查詢工作執行緒、增量投影與讀取契約](074-query-worker-projections-and-read-contract/spec.md) | Draft | 2026-11-12 起草，未開始實作；根因審查階段 3 與 6。沒有自己的開放問題（相關問題在 072 Q3、071 O18）。 |
+| [075 來源描述、單一狀態模型與外掛 manifest v2](075-source-status-and-plugin-manifest/spec.md) | Draft | 2026-11-12 起草，未開始實作；根因審查階段 5。開放問題待擁有者（Q1）。 |
+
+### 071–075 的跨規格順序
+
+五份規格同批定稿（2026-11-12 對帳），這是它們之間**唯一**的順序；各規格的 tasks 只寫自己的 Phase 與它等待的兄弟任務，並指回這裡。每一步結束時 main 都可出貨：等待兄弟的地方都有寫明的過渡做法（括號內）。依賴只朝前，無循環。
+
+1. 各規格的 Phase 1（只加測試與 gate）全部平行；071 Phase 1 在 #716。
+2. 平行、互不等待：071 Phase 2–3（封旁路、暫停區間、蓋章、單一入口、`CommitReceipt`；tier 照今天的 `classifyTier`）；072 Phase 2–3（登記表、純呈現的摺疊）；073 Phase 2–3（session 骨架與資源清單；`query-worker` 先是 no-op 資源）；074 Phase 2–4（讀取服務、移動讀取、`derived.db`；回執先用過渡包裝，資源先接 `ProjectRuntime.onStop`）；075 Phase 2（狀態模型進核心；071／073 尚未提供的事實缺席＝unknown）。
+3. 072 Phase 4 與 071 的對應任務同 PR：072 T040＝071 T027（071 FR-113 由此生效）、T041／071 T015、T042／071 T010、T043／071 T024、T045／071 T037。需要第 2 步的 071 Phase 3。
+4. 071 Phase 4（憑證與能力）→ 071 Phase 5（契約 1、存活、遺失帳本、第一次接受、`/api/whoami`；T051、T055 等 071 Q6 的答覆）。
+5. 平行：073 Phase 4（設定層級、`machine.yaml`）；074 Phase 5（`intervals`、`cause_counts`、`gapOverlaps`、`terminal_targets` 回填；需要 072 Phase 2 與 071 T024）；072 Phase 5 的 T051（`project_closed` 種類與過渡寫入點）→ 073 Phase 5（`lifecycle-records` 取代過渡寫入點）。072 T052 在 074 Phase 5 之後。
+6. 平行：075 Phase 3–6（各畫面改讀同一份狀態；讀第 4 步的事實）；074 Phase 6（讀取模型、變更主題；`config` 主題由 073 T043 發出）。
+7. 071 Phase 6（各來源換上契約 1），其中 071 T075 與 073 Phase 6（終端機綁定）配對。
+8. 075 Phase 7（manifest v2；用 072 Phase 2 的 `validatePluginKind`）→ 072 Phase 6（匯出與外掛的表）。
+9. 073 Phase 7（安裝帳本；T076 接 071 T041 的憑證檔）與 073 Phase 8（AI 同意；用 075 T021 的描述表；T084 與 075 T083 配對）→ 075 Phase 8（生命週期與動作；需要 071 Phase 4、073 Phase 7–8）；075 Phase 9（Processor；需要 071 Phase 3）。
+10. 074 Phase 7（導覽堆疊與各頁篩選，取代 Spec 038 的共用篩選）。
+11. 各規格的文件與驗收 Phase。
+
+未併入任何一步、需要先補的：071 O18（`REDLOG_COMMAND_ID`、proxy userinfo）的 FR 與任務；hook 自我檢查 `detached` 在 071 信封中的欄位（075 決策表 F6 的輸入）。
 
 
 ## 交付版本、驗收與主要追蹤
