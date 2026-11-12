@@ -2,9 +2,26 @@
 
 > **狀態**：current — 「現在什麼是真的」的唯一頁面；下一步只在 [工作計畫](WORK-PLAN.md)  
 > **範圍**：已合併程式、spec 正式狀態、候選產物與驗收證據的入口  
-> **最後核對**：2026-11-11 於 `main@9f60882d`，只核對本 repository 可讀到的事實（git 紀錄、spec 檔、程式）；issue 狀態與 CI 結果沒有離線來源，保留各自的核對日期
+> **最後核對**：2026-11-12 於 `main@aaee01fd`（第一節）；其餘各節保留自己的核對日期。只核對本 repository 可讀到的事實（git 紀錄、spec 檔、程式）；issue 狀態與 CI 結果沒有離線來源，保留各自的核對日期
 
 其他文件裡的狀態表、待辦與「目前」敘述都是寫成當天的紀錄（[records/](records/README.md)），與本頁不一致時以本頁及其證據為準；本頁也不能取代證據本身。
+
+## 2026-11-12 核對（`main@aaee01fd`）
+
+| 項目 | 狀態／證據 |
+|---|---|
+| 程式基準 | `aaee01fd`（合併 #698，2026-11-12）。自 `9f60882d` 起合併 #684、#694、#696、#697、#698（可用性審查的修正、效能、安全與 hook）；逐項內容、量測條件與限制見 [可用性審查收尾](records/2026-11-12/USABILITY-AUDIT-CLOSEOUT.md) |
+| CI | 上述五個 PR 與 #693 的最終 commit：unit（ubuntu、macOS、Windows）、e2e 三分片（ubuntu）、install-smoke（Linux、Windows）通過。五個 PR 以 merge commit 依序併入、期間 `main` 無其他變動，`main` 的樹與 #698 最終 commit 相同；`main` 上各 merge commit 自己的 CI 執行未在此核對 |
+| 測試規模 | 單元與元件 662 個檔、6841 個案例（macOS 本機 6799 通過、42 略過）；e2e 52 個規格，只在 ubuntu 的 CI 執行 |
+| 建置變體 | 正式版（預設）與冒煙版（`REDLOG_SMOKE_BUILD=1` 加 fuse 覆寫）在建置時決定。正式版關閉 inspector、忽略 `--remote-debugging-port` 與 `REDLOG_E2E*`；冒煙版只供 install-smoke 流程。`verify:package-resources` 以正式版模式檢查冒煙版會失敗。見 [Releasing](releasing.md) 的 Build variants |
+| Electron fuses | RunAsNode、NODE_OPTIONS、inspector 關閉（`electron-builder.yml` 的 `electronFuses`）；asar 完整性與 only-load-from-asar 未開 |
+| 打包版 CSP | 以回應標頭送出，於未簽章 macOS app 實測在 `file://` 上生效（行內腳本與 `new Function` 被擋）；Windows、Linux 未實測 |
+| HUD 設定 | 全域偏好（`~/.redlog/hud-prefs.json`），不隨專案變動 |
+| AI session 選取 | 依 engagement 保存於記憶體，專案關閉時清除；設定儲存不再清掉（#686） |
+| 搜尋索引 | `http-body-index.db` `user_version` 7；驗證狀態隨索引列保存，回填為增量。放寬條件見收尾紀錄 §3 |
+| API 上限 | `/api/loot/scan` 文字 128 KiB；查詢 1000 字元；JSON body 必須是物件且深度 ≤ 64（`src/core/api-request.ts`、`src/core/query/contract.ts`） |
+| 已知未完成 | 開啟後第一次搜尋的主行程停頓、8 MiB 相異雜湊輸出的擷取時間、時間軸刻度重疊等，見收尾紀錄 §4；排程在 [工作計畫](WORK-PLAN.md) |
+| 未驗證的環境 | Windows PowerShell 與 Git Bash、WSL、Linux 非 UTF-8 目錄、真實輸入法、多螢幕、簽章與公證 |
 
 ## 2026-11-11 核對（`main@9f60882d`）
 
