@@ -41,6 +41,7 @@
 | [068 專案選擇畫面 — 搜尋與範圍狀態徽章](068-project-picker-search-scope/spec.md) | Draft | 2026-11-11 補列；剩餘工作未在索引核對，見該 spec 與 verification。 |
 | [069 活動紀錄與時間軸 — 對齊 Stitch 設計決策](069-activity-timeline-alignment/spec.md) | Draft | 2026-11-11 補列；剩餘工作未在索引核對，見該 spec 與 tasks。 |
 | [070 截取來源、設定導航與外部工具整合](070-capture-sources-and-integrations/spec.md) | Draft | 2026-11-11 補列；剩餘工作未在索引核對，見該 spec 與 tasks。 |
+| [071 核心蓋章的事件身分與來源、單一寫入契約](071-event-provenance-and-ingestion-contract/spec.md) | Draft | 2026-11-12 起草，未開始實作；根因審查階段 1 與 4。五個開放問題待擁有者決定。 |
 
 
 ## 交付版本、驗收與主要追蹤
