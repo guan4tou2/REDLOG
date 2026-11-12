@@ -131,19 +131,41 @@ export const BODY_SOURCE_PREDICATE = `CASE WHEN json_valid(data) THEN (${[
  *  - `recorded`     a bracketed span of the session recording holds it
  *  - `empty`        a bracketed span says the command printed nothing
  *  - `unbracketed`  built-in terminal, but no span could be matched to it
- *  - `not-captured` an external shell: the command only, no output */
+ *  - `not-captured` the producer held no output (the relay never ran, or a row
+ *                   from before the relay that carries no output at all)
+ *  - `redirected`   the operator sent stdout elsewhere (`> file`, `-oN`)
+ *  - `interactive`  a program that owns the terminal; not relayed by design
+ *  - `incomplete`   the producer says some output did not reach it
+ *  - `unknown`      empty text with no producer statement that capture was
+ *                   complete: an older row, or a source that does not say
+ *
+ *  `empty` is only ever the producer's own claim — a bracketed span of length
+ *  0, or `output_disposition: captured` with `completeness: complete`. Empty
+ *  strings alone are what a relay that never ran writes too (redlog-relay.py
+ *  `emit`), so they are never read as "printed nothing" (report 10, A.4 #1). */
 export type CommandOutputState = 'inline' | 'saved' | 'recorded' | 'empty' | 'unbracketed' | 'not-captured'
+  | 'redirected' | 'interactive' | 'incomplete' | 'unknown'
 
 export function commandOutputState(data: Record<string, unknown>, hasInlineText = false): CommandOutputState {
   const inline = (text: unknown, bytes: unknown, truncated: unknown): boolean =>
     typeof text === 'string' && (text.length > 0 || Number(bytes) > 0 || truncated === true)
   if (hasInlineText || inline(data.stdout, data.stdout_bytes, data.stdout_truncated)
-    || inline(data.stderr, data.stderr_bytes, data.stderr_truncated)) return 'inline'
+    || inline(data.stderr, data.stderr_bytes, data.stderr_truncated)
+    // PowerShell transcript rows carry their output here (powershell-transcript.ts).
+    || (typeof data.output_preview === 'string' && data.output_preview.length > 0)) return 'inline'
   if (data.stdout_ref || data.stderr_ref) return 'saved'
   const io = data.io as { len?: unknown; unbracketed?: unknown } | undefined
   if (typeof io?.len === 'number' && !io.unbracketed) return io.len > 0 ? 'recorded' : 'empty'
-  if (typeof data.stdout === 'string') return 'empty'
-  return data.source === 'builtin-terminal' ? 'unbracketed' : 'not-captured'
+  if (data.source === 'builtin-terminal') return 'unbracketed'
+  if (data.output_disposition === 'redirected') return 'redirected'
+  if (data.output_disposition === 'interactive') return 'interactive'
+  if (data.output_disposition === 'not-captured') return 'not-captured'
+  if (data.completeness === 'truncated' || data.completeness === 'partial') return 'incomplete'
+  if (typeof data.stdout === 'string' || typeof data.stderr === 'string')
+    return data.output_disposition === 'captured' && data.completeness === 'complete' ? 'empty' : 'unknown'
+  // A PowerShell transcript row with no output text: the transcript held the
+  // command, and says nothing about whether it printed.
+  return data.source === 'start-transcript' ? 'unknown' : 'not-captured'
 }
 
 /** The same question for an HTTP response body, as the transcript asks it:

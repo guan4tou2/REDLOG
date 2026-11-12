@@ -30,7 +30,11 @@ const CASES: Array<[string, Record<string, unknown>, CommandOutputState]> = [
   ['bracketed span, nothing printed', { ...base, source: 'builtin-terminal', io: { off: 0, len: 0 } }, 'empty'],
   ['built-in terminal, no span', { ...base, source: 'builtin-terminal' }, 'unbracketed'],
   ['unbracketed span', { ...base, source: 'builtin-terminal', io: { off: 0, len: 9, unbracketed: true } }, 'unbracketed'],
-  ['captured empty stdout', { ...base, stdout: '', stderr: '' }, 'empty'],
+  // Empty is the producer's claim, not an inference from empty strings: the
+  // relay writes the same strings when it never ran (report 10, A.4 #1).
+  ['captured empty stdout', { ...base, stdout: '', stderr: '', completeness: 'complete', output_disposition: 'captured' }, 'empty'],
+  ['empty strings, no producer statement', { ...base, stdout: '', stderr: '' }, 'unknown'],
+  ['relay never held the output', { ...base, stdout: '', stderr: '', completeness: 'metadata-only', output_disposition: 'not-captured' }, 'not-captured'],
   ['external shell', { ...base, source: 'auto-relay' }, 'not-captured']
 ]
 
@@ -45,11 +49,13 @@ describe('commandOutputState', () => {
 // listed.
 const TRANSCRIPT_KEY: Partial<Record<CommandOutputState, string>> = {
   recorded: 'transcript.note.recorded', empty: 'content.empty', saved: 'transcript.note.saved',
-  unbracketed: 'transcript.note.unbracketed', 'not-captured': 'transcript.note.uncaptured'
+  unbracketed: 'transcript.note.unbracketed', 'not-captured': 'transcript.note.uncaptured',
+  unknown: 'content.output.unknown'
 }
 const TIMELINE_KEY: Partial<Record<CommandOutputState, string>> = {
   recorded: 'timeline.detail.ioOnDisk', empty: 'content.empty',
-  unbracketed: 'timeline.detail.ioUnbracketed', 'not-captured': 'timeline.detail.ioNotCaptured'
+  unbracketed: 'timeline.detail.ioUnbracketed', 'not-captured': 'timeline.detail.ioNotCaptured',
+  unknown: 'content.output.unknown'
 }
 
 function installTranscript(data: Record<string, unknown>) {
