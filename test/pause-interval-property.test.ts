@@ -1,5 +1,5 @@
-// Spec 071 T015 (US2, FR-082–084 as revised 2026-11-13): the pause property,
-// the forerunner of T022.
+// Spec 071 T015 and T022 (US2, FR-082–084 as revised 2026-11-13; SC-005): the
+// pause property.
 //
 // Random pause intervals × random observation times × random door × random
 // arrival time. The rule:
@@ -15,8 +15,13 @@
 //   2. no spooled row's usable source time lies inside a recorded pause;
 //   3. every item is written exactly as the rule says, exactly once.
 //
-// Seeded and deterministic: the clock is faked, every choice comes from one
-// PRNG. WORLDS × ITEMS cases; the full 10 000 is T022.
+// Seeded and deterministic: the clock is faked, every choice in a world comes
+// from that world's PRNG, seeded from SEED and the world's number, so one world
+// reproduces on its own (`-t 'world 7:'`). WORLDS × ITEMS = 10 000 cases, the
+// count T022 and SC-005 ask for. Measured on macOS, most of the time is per
+// item, not per world (opening and closing a project is under a tenth of it),
+// so the 10 000 come from more items per world rather than more worlds, and
+// each world is its own test so that no one test carries the whole budget.
 
 import fs from 'node:fs'
 import os from 'node:os'
@@ -43,7 +48,7 @@ if (sqlite.ok) {
 
 const SEED = 0x071_0215
 const WORLDS = 25
-const ITEMS = 160
+const ITEMS = 400
 const SPAN = 3600_000
 const ORIGIN = Date.UTC(2026, 10, 1, 8, 0, 0)
 const DAY = 24 * 3600_000
@@ -70,22 +75,26 @@ const inside = (t: number, pauses: Array<[number, number]>): boolean => pauses.s
 sqlite.describe(`the pause property (${WORLDS * ITEMS} seeded cases)`, () => {
   let root = ''
   const prevKeys = process.env.REDLOG_KEYS_DIR
-  const failures: string[] = []
   let cases = 0
 
   beforeAll(() => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-pause-prop-'))
     process.env.REDLOG_KEYS_DIR = path.join(root, 'keys')
-    const rand = mulberry32(SEED)
-    for (let w = 0; w < WORLDS; w++) {
-      // A world a day after the last: the clock never runs backwards.
-      const BASE = ORIGIN + w * DAY
-      const eng = `eng-prop-${w}`
-      const id = { engagementId: eng, operatorId: `op-prop-${w}` }
-      const spool = path.join(root, `spool-${w}`)
-      fs.mkdirSync(spool)
-      vi.useFakeTimers({ now: BASE, toFake: ['Date'] })
-      db.initDB(path.join(root, `p-${w}`))
+  })
+
+  /** One world; returns its violations. */
+  function world(w: number): string[] {
+    const failures: string[] = []
+    const rand = mulberry32((SEED ^ Math.imul(w + 1, 0x9e3779b9)) >>> 0)
+    // A world a day after the last: the clock never runs backwards.
+    const BASE = ORIGIN + w * DAY
+    const eng = `eng-prop-${w}`
+    const id = { engagementId: eng, operatorId: `op-prop-${w}` }
+    const spool = path.join(root, `spool-${w}`)
+    fs.mkdirSync(spool)
+    vi.useFakeTimers({ now: BASE, toFake: ['Date'] })
+    db.initDB(path.join(root, `p-${w}`))
+    try {
       db.bindDBEngagement(eng)
       ingestMod._resetIngest()
       ops.createOperator({ id: id.operatorId, name: 'P', token: ops.generateToken(), isPrimary: true })
@@ -183,10 +192,13 @@ sqlite.describe(`the pause property (${WORLDS * ITEMS} seeded cases)`, () => {
         }
       }
       if (fs.readdirSync(spool).some((n) => n.endsWith('.json'))) failures.push(`world ${w}: spool files left after the last drain`)
+    } finally {
+      if (busMod.eventBus.paused) busMod.eventBus.resume('api')
       db.closeDB()
       vi.useRealTimers()
     }
-  }, 120_000)
+    return failures
+  }
 
   afterAll(() => {
     vi.useRealTimers()
@@ -196,11 +208,15 @@ sqlite.describe(`the pause property (${WORLDS * ITEMS} seeded cases)`, () => {
     else process.env.REDLOG_KEYS_DIR = prevKeys
   })
 
+  for (let w = 0; w < WORLDS; w++) {
+    sqlite.it(`world ${w}: nothing received during a pause; no spooled row observed in a recorded pause; each item as the rule says`, () => {
+      const failures = world(w)
+      expect(failures.slice(0, 10), `${failures.length} violation(s)`).toEqual([])
+    }, 120_000)
+  }
+
+  // Last: tests in a file run in order.
   sqlite.it('ran every case', () => {
     expect(cases).toBe(WORLDS * ITEMS)
-  })
-
-  sqlite.it('nothing received during a pause; no spooled row observed in a recorded pause; each item as the rule says', () => {
-    expect(failures.slice(0, 10), `${failures.length} violation(s)`).toEqual([])
   })
 })
