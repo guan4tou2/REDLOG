@@ -82,6 +82,10 @@
 
 **代價**：`data` 不再純粹是來源的 payload。讀 `data` 的地方要知道 `_ingest` 是保留鍵（見「其他讀者與寫者」）。
 
+> **修訂（2026-11-13，Phase 3 審查 G）**：上面「兩個 verifier 與已出貨 bundle 內附的 verifier 不需修改就能驗證新列」對一般列成立，對**封印列**不成立。封印列（`subtype: export_sealed`）也經由接收端寫入，因此同樣帶 `_ingest`；而兩個 verifier 對封印列的 `data` 採鍵名白名單，071 之前的白名單沒有 `_ingest`（也漏了既有的 `_clock_anomaly`）。所以 071 之前的 `redlog-verify.py` 與 app 內驗證，遇到 071 之後匯出的 bundle 會回報 `UNSUPPORTED: seal version 1 with field(s) _ingest … the seal was not checked`（`redlog-verify.py` 結束碼 2，app 判定 `malformed`）。T021 已把兩個白名單都補上 `_ingest` 與 `_clock_anomaly`（共用向量 `test/fixtures/provenance-vectors`）。
+>
+> **決定**：接受這個不相容。依 Spec 077 R8（產品未發行，不需要任何相容：不並存版本、沒有棄用期），**不**為此引入雜湊版本或封印版本、**不**讓封印列免蓋章、也不在新 verifier 裡為舊 verifier 留特例。舊 bundle 由新 verifier 驗證不受影響（SC-001、`test/golden-old-rows.test.ts`）。上面的否決理由「舊版 `redlog-verify.py` 會把新列判為 BROKEN」因此只剩「不必改雜湊公式」這一半仍成立。
+
 ### D2 身分與時間的蓋章規則
 
 - **專案**：取綁定的 DB（FR-007）。`ingest()` 與 `insertEvent` 的 `engagementId` 參數保留型別相容，但不再作為來源；與綁定值不同時回 `retry`／`foreign-project`。
