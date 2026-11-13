@@ -14,6 +14,19 @@ describe('external event policy', () => {
     expect(isExternalEventAllowed('system', { subtype: 'producer_heartbeat', producer: 'pcap-capture' })).toBe(true)
   })
 
+  // Spec 071 FR-090: the receiver-owned keys leave `data` before policy reads
+  // it, so a heartbeat whose producer also sends `_ingest` (or `_raw`, …) is
+  // still exactly a heartbeat. The keys themselves are taken out, and named in
+  // the stamp's `stripped`, by ingest().
+  it('judges the heartbeat without the receiver-owned keys (FR-090)', () => {
+    for (const k of ['_ingest', '_raw', '_clock_anomaly', '_source_time_rejected']) {
+      expect(isExternalEventAllowed('system', { subtype: 'producer_heartbeat', producer: 'pcap-capture', [k]: { door: 'forged' } }), k).toBe(true)
+      expect(isKindAllowed('legacy', 'system', { subtype: 'producer_heartbeat', producer: 'pcap-capture', [k]: 1 }), k).toBe(true)
+    }
+    // Not a way round the two-key rule: anything else still counts.
+    expect(isExternalEventAllowed('system', { subtype: 'producer_heartbeat', producer: 'pcap-capture', _ingest: {}, _causes: [] })).toBe(false)
+  })
+
   it('refuses every other external system event', () => {
     for (const data of [
       {},
