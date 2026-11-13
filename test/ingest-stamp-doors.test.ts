@@ -52,6 +52,7 @@ const IN_PROCESS = { v: 1, door: 'in-process', producer: 'in-process', auth: 'in
 const DERIVED = { ...IN_PROCESS, producer: 'derived' }
 const LEGACY_HANDOFF = { v: 1, door: 'legacy-handoff', producer: 'legacy-handoff', auth: 'none', credential: null }
 const LEGACY_API = { v: 1, door: 'legacy-api', producer: 'legacy', auth: 'bearer', credential: null }
+const LEGACY_API_STAMP = LEGACY_API
 
 type Stamp = Record<string, unknown>
 function stampsOf(where: string, ...args: unknown[]): Array<{ agent_type: string; subtype: string | null; stamp: Stamp }> {
@@ -110,6 +111,63 @@ sqlite.describe('the in-process doors and the spool', () => {
     expect(got).toEqual([LEGACY_HANDOFF, { ...LEGACY_HANDOFF, stripped: ['_ingest'] }])
   })
 
+  // Review B: rows the pipeline derives without going through emitCompanion —
+  // the loot row a command's output yields, and the scope_violation its target
+  // causes — are derived too (external-event-policy.ts names both as derived).
+  it('the loot row a command yields is `derived`', async () => {
+    const { LootDetector } = await import('../src/core/loot-detector')
+    const loot = new LootDetector()
+    loot.configure({ identity: { projectId: 'p', engagementId: ENG, operatorId: who.operatorId } })
+    ingestMod.configureIngest({ lootDetector: loot })
+    ingestMod.ingest({ agentType: 'shell', data: { subtype: 'command_end', command: 'cat creds', terminalId: 't-l', pid: 11, exit_code: 0,
+      stdout: 'password=Sup3rS3cretValue!\nAKIAIOSFODNN7EXAMPLE\n' }, ...who })
+    const rows = stampsOf(`agent_type = 'loot'`)
+    expect(rows.length).toBeGreaterThan(0)
+    expect(rows.map((r) => door(r.stamp))).toEqual(rows.map(() => DERIVED))
+  })
+
+  it('the scope_violation a command causes is `derived`', async () => {
+    const { ChainEmitter } = await import('../src/core/alert/surface')
+    const emitter = new ChainEmitter(who)
+    ingestMod.configureIngest({ alertRuntime: { dispatchTargetHit: (input) => emitter.handle({
+      kind: 'scope', signal: { target: input.target, action: input.action, source: input.source, sourceEventId: input.sourceEventId },
+      distance: 'out-of-scope', authority: 'fact', severity: 'warning'
+    } as never) } })
+    ingestMod.ingest({ agentType: 'shell', data: { subtype: 'command_start', command: 'curl https://203.0.113.9/', terminalId: 't-sv', pid: 12 }, ...who })
+    const rows = stampsOf(`subtype = 'scope_violation'`)
+    expect(rows).toHaveLength(1)
+    expect(door(rows[0].stamp)).toEqual(DERIVED)
+  })
+
+  // Review A: a row RedLog's code writes on an API caller's behalf carries the
+  // API's door. withEntrance is how a route says so for everything it calls.
+  it('a row written inside withEntrance(LEGACY_API) — through insertEvent, sync or after an await — is legacy-api', async () => {
+    const stampMod = await import('../src/core/ingest/stamp') as unknown as Record<string, unknown>
+    const withEntrance = stampMod.withEntrance as <T>(e: unknown, fn: () => T) => T
+    expect(typeof withEntrance).toBe('function')
+    withEntrance(stampMod.LEGACY_API, () => events.insertEvent('system', { subtype: 'sanitized', n: 1 }, who))
+    await withEntrance(stampMod.LEGACY_API, async () => {
+      await new Promise((r) => setTimeout(r, 5))
+      ingestMod.ingestEvent('screenshot', { trigger: 'api', filename: 'x.jpg' }, who)
+    })
+    events.insertEvent('system', { subtype: 'sanitized', n: 2 }, who)
+    expect(stampsOf(`subtype = 'sanitized' OR agent_type = 'screenshot'`).map((r) => door(r.stamp))).toEqual([LEGACY_API_STAMP, LEGACY_API_STAMP, IN_PROCESS])
+  })
+
+  it('a companion of an API row is still `derived`, and its loot row too', async () => {
+    const stampMod = await import('../src/core/ingest/stamp')
+    const { LootDetector } = await import('../src/core/loot-detector')
+    const loot = new LootDetector()
+    loot.configure({ identity: { projectId: 'p', engagementId: ENG, operatorId: who.operatorId } })
+    ingestMod.configureIngest({ lootDetector: loot })
+    ingestMod.ingest({ agentType: 'shell', data: { subtype: 'command_end', command: 'sshuttle -r user@jump 10.10.0.0/16', terminalId: 't-a', pid: 13,
+      exit_code: 0, duration_sec: 5, stdout: 'password=An0therS3cretValue!\n' }, ...who, entrance: stampMod.LEGACY_API })
+    expect(door(stampsOf(`agent_type = 'shell'`)[0].stamp)).toEqual(LEGACY_API_STAMP)
+    const derived = stampsOf(`agent_type IN ('pivot', 'loot')`)
+    expect(derived.length).toBeGreaterThanOrEqual(2)
+    expect(derived.map((r) => door(r.stamp))).toEqual(derived.map(() => DERIVED))
+  })
+
   it('the spool\'s own record of what it refused is RedLog writing: in-process', () => {
     fs.writeFileSync(path.join(pending, '0001.json'), JSON.stringify({ agent_type: 'system', data: { subtype: 'recording_resumed' }, _identity: who }))
     spool.drainSpoolAsMain(pending, who)
@@ -117,6 +175,59 @@ sqlite.describe('the in-process doors and the spool', () => {
     expect(gaps).toHaveLength(1)
     expect(door(gaps[0].stamp)).toEqual(IN_PROCESS)
     expect(stampsOf(`subtype = 'recording_resumed'`)).toEqual([])
+  })
+})
+
+// Review A, without a port: every call api-server.ts makes into code that can
+// write a row is made under the API's entrance. "Can write a row" is decided
+// from the source: an import whose module calls insertEvent / ingest /
+// ingestEvent itself, and the injected collaborators that do. A route added
+// later that reaches a writer without saying its door fails here.
+describe('every writer the API reaches is reached under the legacy-api entrance (source check)', () => {
+  const SRC = path.join(__dirname, '..', 'src', 'core')
+  const api = fs.readFileSync(path.join(SRC, 'api-server.ts'), 'utf8')
+  const writes = (file: string): boolean => /\b(insertEvent|ingestEvent)\s*\(|\bingest\(\{/.test(fs.readFileSync(file, 'utf8'))
+  /** Named imports of api-server.ts from modules that write rows themselves. */
+  const writerImports = (): string[] => {
+    const out: string[] = []
+    for (const m of api.matchAll(/import\s*\{([^}]*)\}\s*from\s*'\.\/([^']+)'/g)) {
+      const file = path.join(SRC, `${m[2]}.ts`)
+      if (!fs.existsSync(file) || !writes(file)) continue
+      for (const name of m[1].split(',').map((n) => n.trim()).filter((n) => n && !n.startsWith('type '))) out.push(name)
+    }
+    return out
+  }
+  /** Imports from writing modules that do not themselves write, each with why. */
+  const READ_ONLY: Record<string, string> = {
+    queryEvents: 'reads', queryEventById: 'reads', queryBuiltinTerminalSessionStart: 'reads', getEventCount: 'reads', executeEventQuery: 'reads',
+    PAUSE_EXEMPT_AGENT_TYPES: 'a constant', listAnchors: 'reads', verifyLatestAnchor: 'reads', getAnchorById: 'reads', buildOtsBundle: 'builds bytes',
+    getCaptureHealth: 'reads', getCaptureError: 'reads', noteDbError: 'records an error in memory', LEGACY_API: 'the entrance itself',
+    isExternalEventAllowed: 'a predicate', resolveIncomingCauses: 'settles runtime pairs', noteStartEvent: 'notes an id in memory'
+  }
+  const INJECTED = ['lootDetectorRef.scan', 'screenshotAgentRef.captureNow', 'bundleExporterRef']
+
+  it('names every writer it imports', () => {
+    expect(writerImports().filter((n) => !READ_ONLY[n] && n !== 'ingest').sort()).toEqual(
+      ['anchorNow', 'exportBundle', 'sanitize', 'upgradeAllPending', 'upgradeAnchor', 'verifyChainFullAsync'])
+  })
+
+  it('every call of a writer is inside withEntrance(LEGACY_API, …) on the same line', () => {
+    const names = [...writerImports().filter((n) => !READ_ONLY[n] && n !== 'ingest'), ...INJECTED]
+    const bad: string[] = []
+    api.split('\n').forEach((line, i) => {
+      if (/^\s*(\/\/|\*)/.test(line) || /^\s*import\b/.test(line)) return
+      for (const name of names) {
+        const call = new RegExp(`(?<![\\w.])${name.replace('.', '\\.')}\\??\\.?\\(`)
+        if (call.test(line) && !/withEntrance\(LEGACY_API,/.test(line)) bad.push(`${i + 1}: ${line.trim()}`)
+      }
+    })
+    expect(bad).toEqual([])
+  })
+
+  it('recording toggled by the API: main writes its pause/resume row with the API entrance', () => {
+    const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'index.ts'), 'utf8')
+    expect(api).toMatch(/eventBus\.pause\('api'\)/)
+    expect(main).toMatch(/source === 'api' \? LEGACY_API/)
   })
 })
 
@@ -147,7 +258,16 @@ describeApi('POST /api/events and /api/marker: legacy-api, auth bearer', () => {
     dbMod.initDB(dir)
     dbMod.bindDBEngagement(ENG)
     ingestMod._resetIngest()
-    api.configureApi({ engagementId: ENG, operatorId: 'op-doors', operatorName: 'Doors' })
+    const { LootDetector } = await import('../src/core/loot-detector')
+    const loot = new LootDetector()
+    loot.configure({ identity: { projectId: 'p', engagementId: ENG, operatorId: 'op-doors' } })
+    api.configureApi({ engagementId: ENG, operatorId: 'op-doors', operatorName: 'Doors', lootDetector: loot,
+      // Stands in for the screenshot agent: writes its row after an await, as the real one does.
+      screenshotAgent: { captureNow: async () => {
+        await new Promise((r) => setTimeout(r, 5))
+        ingestMod.ingestEvent('screenshot', { trigger: 'api', filename: 'doors.jpg' }, { engagementId: ENG, operatorId: 'op-doors' })
+        return '/tmp/doors.jpg'
+      } } as never })
     const port = await api.startApiServer(0)
     api.onApiProjectOpen()
     base = `http://127.0.0.1:${port}`
@@ -162,11 +282,43 @@ describeApi('POST /api/events and /api/marker: legacy-api, auth bearer', () => {
     else process.env.REDLOG_KEYS_DIR = prevKeys
   })
 
+  const send = (route: string, body: Record<string, unknown>): Promise<Response> =>
+    fetch(`${base}${route}`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   const post = async (route: string, body: Record<string, unknown>): Promise<Record<string, unknown>> => {
-    const res = await fetch(`${base}${route}`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    const res = await send(route, body)
     expect(res.status).toBe(201)
     return await res.json() as Record<string, unknown>
   }
+
+  // Review A: every route that can cause a row, and the rows it caused.
+  const newRows = async (act: () => Promise<Response>, status: number): Promise<Array<{ agent_type: string; subtype: string | null; stamp: Stamp }>> => {
+    const max = (t: string): number => (dbMod.getDB().prepare(`SELECT COALESCE(MAX(rowid), 0) AS n FROM ${t}`).get() as { n: number }).n
+    const [c, l] = [max('events'), max('events_logged')]
+    const res = await act()
+    expect(res.status, await res.clone().text()).toBe(status)
+    return stampsOf('(t = 0 AND r > ?) OR (t = 1 AND r > ?)', c, l)
+  }
+  const ROUTES: Array<{ route: string; body: Record<string, unknown>; status: number; kinds: string[] }> = [
+    { route: '/api/loot/scan', body: { text: 'password=Th1rdS3cretValue!' }, status: 200, kinds: ['loot'] },
+    { route: '/api/screenshot', body: {}, status: 200, kinds: ['screenshot'] },
+    { route: '/api/export/bundle', body: {}, status: 201, kinds: ['system', 'system'] }
+  ]
+  for (const r of ROUTES) {
+    it(`${r.route}: every row it causes is legacy-api`, async () => {
+      const rows = await newRows(() => send(r.route, r.body), r.status)
+      expect(rows.map((x) => x.agent_type)).toEqual(r.kinds)
+      expect(rows.map((x) => door(x.stamp))).toEqual(rows.map(() => LEGACY_API))
+    })
+  }
+  it('/api/sanitize: its system.sanitized row is legacy-api', async () => {
+    const ev = ingestMod.ingestEvent('shell', { subtype: 'command_start', command: 'cat secret-file', terminalId: 't-z', pid: 14 }, who)!
+    const rows = await newRows(() => send('/api/sanitize', { event_ids: [ev.id], fields: ['command'], reason: 'doors' }), 201)
+    expect(rows.map((x) => x.subtype)).toContain('sanitized')
+    expect(rows.map((x) => door(x.stamp))).toEqual(rows.map(() => LEGACY_API))
+  })
+  // Not driven here: POST /api/anchors and the upgrade routes need a calendar
+  // (their only row is anchor_failed), and POST /api/recording's row is
+  // written by main's listener; the source checks above hold all three.
 
   it('an event, with a forged stamp in it', async () => {
     const row = await post('/api/events', { agent_type: 'shell', data: { subtype: 'command_start', command: 'id', terminalId: 'api-t', pid: 11,
