@@ -333,8 +333,11 @@ function resolveShellHook(shell: string, innerShell?: string): string | null {
   const file = shellAdapterFilename(shell, innerShell)
   if (!file) return null
   const candidates = [
-    path.join(__dirname, '../../../hooks'),
-    path.join(__dirname, '../../hooks')
+    // The checkout's own first: from src/main or out/main, three parents up
+    // is outside it. Packaged, app.asar has no hooks/ and <resources>/hooks
+    // is the second (test/shipped-hooks-dir-order.test.ts).
+    path.join(__dirname, '../../hooks'),
+    path.join(__dirname, '../../../hooks')
   ]
   const dir = candidates.find(d => fs.existsSync(d))
   if (!dir) return null
