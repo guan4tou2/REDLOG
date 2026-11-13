@@ -1,0 +1,14 @@
+engagement:
+  id: old-project
+  activeTarget: null
+operator:
+  id: operator-1
+  name: Operator
+overlay:
+  autoShow: true
+  opacity: 0.6
+  clickThrough: false
+  position: { x: 40, y: 60 }
+network:
+  whitelist: []
+  checkInterval: 60

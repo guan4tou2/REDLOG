@@ -1,0 +1,119 @@
+engagement:
+  id: default
+  activeTarget: null
+operator:
+  id: operator-1
+  name: Operator
+network:
+  whitelist: []
+  blacklist: []
+  checkInterval: 60
+  providers: []
+  confirmations: 3
+  ipMode: auto
+  offline: false
+  showWifiName: false
+  vpnAdapters:
+    - name: WireGuard
+      pattern: wireguard|^wg\d
+      enabled: true
+    - name: OpenVPN (tun/tap)
+      pattern: ^(tun|tap)\d|openvpn
+      enabled: true
+    - name: Tailscale
+      pattern: tailscale
+      enabled: true
+    - name: NordVPN
+      pattern: nordlynx|nordvpn
+      enabled: true
+    - name: ProtonVPN
+      pattern: proton
+      enabled: true
+    - name: Cisco AnyConnect
+      pattern: cisco\s*anyconnect
+      enabled: true
+    - name: Fortinet / FortiClient
+      pattern: fortinet|forticlient
+      enabled: true
+    - name: GlobalProtect
+      pattern: globalprotect
+      enabled: true
+    - name: Juniper / Pulse Secure
+      pattern: juniper|pulse\s*secure
+      enabled: true
+    - name: IPSec
+      pattern: ^ipsec
+      enabled: true
+    - name: PPP
+      pattern: ^ppp
+      enabled: true
+    - name: macOS utun
+      pattern: ^utun
+      enabled: true
+scope:
+  warnOnViolation: true
+  targets: []
+  excludeTargets: []
+  personalDomains:
+    - 127.0.0.0/8
+    - ::1
+    - localhost
+  scopeFile: null
+screenshot:
+  quality: 85
+  intervalSec: 0
+  diffThreshold: 5
+  captureOnCommand: false
+terminal:
+  maxCastBytes: 52428800
+browser:
+  binary: ''
+  proxy: http://127.0.0.1:6661
+  cdpPort: 9222
+  isolateProfile: true
+  ignoreCertErrors: false
+  startUrl: ''
+  extraArgs: []
+httpCapture:
+  routeTerminals: true
+  port: 7788
+  listenHost: 0.0.0.0
+redaction:
+  allowlist: []
+  denylist: []
+  entropyThreshold: 4.5
+  minLength: 20
+fileWatcher:
+  watchPaths: []
+  ignorePatterns: []
+processMonitor:
+  pollMs: 500
+  ignoreCommands: []
+connectionMonitor:
+  pollMs: 2000
+packs:
+  hostMonitors: false
+  windowsOutput: false
+agentTailer:
+  emitThinking: false
+loot:
+  disabledRules:
+    - jwt
+    - generic_api_key
+retention:
+  loggedTier:
+    keepDays: 0
+    sweepIntervalHours: 24
+  bookmarks:
+    keepDays: 0
+  casts:
+    keepDays: 0
+    maxBytes: 0
+  screenshots:
+    keepDays: 0
+    maxBytes: 0
+  httpBodies:
+    keepDays: 0
+    maxBytes: 0
+  agentTranscripts:
+    keepDays: 0
