@@ -294,9 +294,9 @@
 
 | # | 問題 | 建議 |
 |---|---|---|
-| Q1 | 瀏覽器 console 列今天因 `LOGGED_TIER` 的鍵寫錯而是 chained；新列是否改為設計原意的 logged？ | 改。列入 `TIER_CHANGES`，只影響新列，舊列不動；理由與 DESIGN-two-tier-chain §2.3 相同（console 是足跡，不是證據）。若不改，就把 `LOGGED_TIER` 中的 `'browser:console'` 刪掉，使文件與事實一致 |
-| Q2 | `credential_use` 今天外部可寫；契約 1 是否拒絕？（FR-006） | 拒絕契約 1 憑證寫入；舊入口維持今天的行為直到 071 FR-037 移除它。理由：它是 RedLog 的推導，偽造它就是偽造 RedLog 的結論（`external-event-policy.ts:4-8` 自己的理由） |
-| Q3 | 匯出是否附上登記表版本與每列的角色（`kinds.json`），以及 Spec 074 的區間投影（`intervals.jsonl`）？（074 的「不在範圍」指向本題） | 兩者都不做：會改變 bundle 格式（#711 的第 4 版剛定）。NDJSON 的每列已有 `agent_type`／`subtype`，讀者可用公開的登記表對照；區間可由列重算 |
+| Q1 | 瀏覽器 console 列今天因 `LOGGED_TIER` 的鍵寫錯而是 chained；新列是否改為設計原意的 logged？ | 改。列入 `TIER_CHANGES`，只影響新列，舊列不動；理由與 DESIGN-two-tier-chain §2.3 相同（console 是足跡，不是證據）。若不改，就把 `LOGGED_TIER` 中的 `'browser:console'` 刪掉，使文件與事實一致 **已裁定（2026-11-13，DECISIONS §9）**：新列改為 logged |
+| Q2 | `credential_use` 今天外部可寫；契約 1 是否拒絕？（FR-006） | 拒絕契約 1 憑證寫入；舊入口維持今天的行為直到 071 FR-037 移除它。理由：它是 RedLog 的推導，偽造它就是偽造 RedLog 的結論（`external-event-policy.ts:4-8` 自己的理由） **已裁定（2026-11-13，DECISIONS §9）**：新契約拒絕外部寫入 |
+| Q3 | 匯出是否附上登記表版本與每列的角色（`kinds.json`），以及 Spec 074 的區間投影（`intervals.jsonl`）？（074 的「不在範圍」指向本題） | 兩者都不做：會改變 bundle 格式（#711 的第 4 版剛定）。NDJSON 的每列已有 `agent_type`／`subtype`，讀者可用公開的登記表對照；區間可由列重算 **已裁定（2026-11-13，DECISIONS §9）**：**兩者都附**（`kinds.json` 與 `intervals.jsonl`）；與建議不同，bundle 格式因此要改版，本規格與 074、驗證器的對應條文待修訂 |
 
 ## 與既有文件、程式註解、規格的矛盾
 
