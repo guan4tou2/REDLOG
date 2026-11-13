@@ -32,6 +32,7 @@ import { redact, getRules } from './redaction'
 import { extractBodyToSidecar, extractTextToSidecar } from './http-body-store'
 import { linkHttpBodyEvent } from './http-body-index'
 import { noteDbError } from './capture-health'
+import { DERIVED, IN_PROCESS, stripReserved, type IngestEntrance } from './ingest/stamp'
 
 // ── Injected collaborators ──────────────────────────────────────────────────
 // core/ cannot import main/, so the pieces that live there are handed in.
@@ -101,8 +102,12 @@ export interface IngestInput {
    *  db/event-write.ts for the precedence and the validation. */
   occurredAt?: number
   /** A companion emitted by the pipeline itself. Skips enrichment so a
-   *  derived row cannot derive further rows (no pivot-of-a-pivot). */
+   *  derived row cannot derive further rows (no pivot-of-a-pivot). Stamped
+   *  with the `derived` producer, whatever `entrance` says. */
   derived?: boolean
+  /** Which door received the row, as that door authenticated it (Spec 071
+   *  FR-005). Absent: RedLog's own code, in-process. */
+  entrance?: IngestEntrance
   /** Set by the spool drain only: the file was judged against the project's
    *  recorded pause intervals before it got here (Spec 071 FR-082 as revised
    *  2026-11-13). The pause in effect now still refuses it. */
@@ -157,6 +162,12 @@ export function ingest(input: IngestInput): IngestResult {
     return { event: null, skipped: 'dedup', companions: [] }
   }
   dropStateOfClosedProject()
+
+  // The stamp's half that must happen first (FR-090: stamp before dedup,
+  // policy and derivation): the producer's values for the receiver-owned keys
+  // leave `data` before anything reads it. insertEvent writes the stamp.
+  const entrance = input.derived ? DERIVED : (input.entrance ?? IN_PROCESS)
+  const stripped = stripReserved(data)
 
   // Runtime pairs must settle even if the evidence write is paused. Otherwise
   // a command_end seen during pause leaves a phantom active command that can
@@ -277,7 +288,7 @@ export function ingest(input: IngestInput): IngestResult {
   // 5. Write. insertEvent stores the raw bytes and hashes the envelope.
   const event = insertEvent(agentType, data, {
     engagementId, operatorId, targetId, bypassPause: input.bypassPause, envelope: input.envelope,
-    occurredAt: input.occurredAt
+    occurredAt: input.occurredAt, entrance, stripped
   })
   if (!event) return { event: null, skipped: 'dedup', companions: [] }
   // Everything after the commit. A throw from here still propagates, but

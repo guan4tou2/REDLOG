@@ -38,6 +38,7 @@ import { exportHar, bodyDeliverableUnderScope } from './har-export'
 import { getCaptureHealth, getCaptureError, noteDbError } from './capture-health'
 import { resolveIncomingCauses, noteStartEvent } from './causes-resolver'
 import { ingest, type LootDetectorLike } from './ingest'
+import { LEGACY_API } from './ingest/stamp'
 import { isInsideDir } from './paths'
 import { getProjectDir } from './db/index'
 import { extractBodyToSidecar, readBody as readHttpBody, type BodyRef } from './http-body-store'
@@ -393,7 +394,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       // from an in-process producer. `identity` mapper: the posted body IS the
       // envelope's {agent_type, data}.
       const result = ingest({
-        agentType, data, operatorId: operator.id, engagementId, targetId,
+        agentType, data, operatorId: operator.id, engagementId, targetId, entrance: LEGACY_API,
         envelope: { source: 'api', mapper: { id: 'identity', version: '1' } }
       })
       if (!result.event) {
@@ -521,7 +522,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         severity: body.severity || 'info',
         category: body.category || 'external'
       }, engagementId, operatorId: operator.id,
-      targetId: (body.target_id || body.targetId) as string | undefined,
+      targetId: (body.target_id || body.targetId) as string | undefined, entrance: LEGACY_API,
       envelope: { source: 'api', mapper: { id: 'identity', version: '1' } } }).event
       json(res, 201, event && withoutRowId(event))
       return

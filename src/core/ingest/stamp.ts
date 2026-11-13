@@ -22,8 +22,8 @@
 import crypto from 'crypto'
 import { dbEngagement } from '../db/index'
 
-/** FR-005's doors. Only `in-process` is written until the contract-1 receiver
- *  (Phase 5) and the doors of T030 are threaded through. */
+/** FR-005's doors. `api` and `handoff` arrive with the contract-1 receiver
+ *  (Phase 5); until then the doors are the two legacy ones and in-process. */
 export type IngestDoor = 'api' | 'handoff' | 'in-process' | 'legacy-api' | 'legacy-handoff'
 export type IngestAuth = 'bearer' | 'mac' | 'in-process' | 'none'
 
@@ -41,6 +41,16 @@ export interface IngestEntrance {
 
 /** RedLog's own code writing a row. */
 export const IN_PROCESS: IngestEntrance = { door: 'in-process', producer: 'in-process', auth: 'in-process', credential: null }
+/** A row the pipeline derives from another (a companion: pivot, cleanup,
+ *  credential use…). Written in-process; FR-071 names `derived` as its own
+ *  producer class. */
+export const DERIVED: IngestEntrance = { door: 'in-process', producer: 'derived', auth: 'in-process', credential: null }
+/** POST /api/events and /api/marker with today's per-project token. The
+ *  producer is the class that token has (external-event-policy.ts
+ *  ProducerClass `legacy`); which tool held it, the receiver cannot tell. */
+export const LEGACY_API: IngestEntrance = { door: 'legacy-api', producer: 'legacy', auth: 'bearer', credential: null }
+/** A file in ~/.redlog/pending: no credential at all (FR-069). */
+export const LEGACY_HANDOFF: IngestEntrance = { door: 'legacy-handoff', producer: 'legacy-handoff', auth: 'none', credential: null }
 
 /** What an item said about itself that the stamp records. Nothing writes these
  *  before the contract-1 receiver (Phase 5) and Spec 075's rule list. */
