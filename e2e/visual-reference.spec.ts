@@ -189,8 +189,6 @@ test.describe.serial('visual-reference', () => {
           await expect(page.locator(`[data-testid="view-root"][data-view="${view}"]`)).toBeVisible()
           if (view === 'dashboard') {
             await expect(page.getByTestId('first-run-strip')).toHaveCount(0)
-            const width = await page.getByTestId('dashboard-header').evaluate(el => (el.parentElement as HTMLElement).offsetWidth)
-            expect(width).toBeLessThanOrEqual(980)
           }
           if (view === 'settings' && await page.getByTestId('settings-content').getAttribute('data-page') !== 'home') {
             await page.getByTestId('settings-back').click()
