@@ -51,6 +51,7 @@
 | A5 | **暫停規則正在實作分支上改寫**：FR-080–084 與 US2 依 DECISIONS §6 改為「即時入口依收到時間判斷、暫停中即拒收；暫存檔恢復後只採信通過驗證的來源時間與已記錄的暫停區間」。本修訂**不動**這些條文，只加指標 | DECISIONS §6 | US2、H 段的指標 |
 | A6 | **第一次綁定的提示與 `redlog private`** 是來源端行為，進共用向量 | DECISIONS §5 #1；Spec 076 FR-043、FR-044 | L 段 FR-086、FR-087 |
 | A7 | 擴充功能（Spec 076）的 `plugin:<id>` 憑證可另帶受 manifest `reads` 限定的 `read` 能力，供 L0 讀取 API（`/api/v1/*`）；Exporter 不寫事件，送出紀錄由核心以行程內入口寫入 | Spec 076 FR-062、FR-091 | FR-070 的指標 |
+| A8 | **operator 只在機器層**（DECISIONS §9 對 Spec 073 Q4 的答覆）：FR-009 的「本專案已知的操作者」只由機器層 operator 曾經生效的值構成；沒有專案層的 operator 來源 | Spec 073 修訂 B7、FR-01D | B 段 FR-009 的註記 |
 
 > **指標（2026-11-13）**：[Spec 077](../077-personal-content-and-delivery/spec.md) 依賴本規格：操作者憑證的能力 `append(delivery_mark)`、有意遺失原因 `ignored-rule` 與 `shell-history-rule`、`target_via`（FR-010）作為「確定的目標」的依據；077 也記錄了擁有者對 `redlog private`（FR-086、FR-087）與遠端 hook（FR-130–134）的新裁定，條文的修改不在 077 內。
 
@@ -248,6 +249,7 @@
 - **FR-007** 新列的 engagement 一律等於開著的專案 DB 所綁定的 engagement。任何入口都不再寫 `'default'`。沒有綁定的 DB 時不寫入，回 `retry`／`no-project`。
 - **FR-008** `observed.project` 與開著的專案不同時，不寫入，回 `retry`／`foreign-project`，項目留給它自己的專案（Spec 002 FR-001）。沒有 `observed.project` 的交接項目進隔離區（`no-project`，承接 Spec 002 FR-006 的語意）。專案已不在本機專案清單中的交接項目進隔離區（`unknown-project`）。
 - **FR-009** 列的操作者是觀察當下的操作者。`observed.operator` 是本專案已知且未撤銷的操作者時採用；否則採機器層級設定中的目前操作者（O12），來源的值記在 `_ingest.claimed.operator`。
+  > **修訂註記（2026-11-13，修訂 A8）**：專案不可以覆寫 operator（Spec 073 FR-01D）。`observed.operator` 是觀察當下的機器層 operator（交接目錄延遲送達時，送達時的值可能已改）；「本專案已知」的集合只由機器層 operator 曾在本專案生效的值構成。專案 `config.yaml` 中的 `operator` 不是任何一步的來源。
 - **FR-010** 目標依以下順序決定，結果寫在 `target_id`，方法寫在 `_ingest.target_via`：
   1. `explicit`：項目明示的目標；
   2. `extracted`：從內容擷取（既有的 target extractor）；
