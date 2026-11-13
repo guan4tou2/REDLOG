@@ -83,8 +83,9 @@ for full commit body + generated notes.
   list keeps one line per anomaly; the detail reads five axes — trust, install,
   project, health and what took effect — so a loaded plugin is never shown in a
   single "OK" colour. "No contributions reported yet" is stated as such, never
-  as all-accepted. Wide windows show list and detail side by side; narrow
-  windows swap the list for the detail and offer a back entry (Spec 065).
+  as all-accepted. One column at every width: opening a plugin replaces the
+  list with its detail, and a back entry returns to the list (Spec 065; single
+  column since Spec 069 T019).
 
 ## v0.18.6 — 2026-11-01
 
