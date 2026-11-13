@@ -18,8 +18,8 @@
 // The fixture is the pre-071 record and is never regenerated. Until Spec 071
 // Phase 3 this file also checked that the generator still reproduced it; T021
 // changed what new rows carry (`data._ingest`), so the generator's output now
-// differs by design, and that check was retired as golden-pre071-generate.ts
-// said it would be. Rows written with the stamp are pinned by
+// differs by design; that check was retired and the generator deleted (it is
+// in ec20dd90, see golden-pre071-generate.ts). Rows written with the stamp are pinned by
 // test/provenance-vectors.test.ts.
 
 import fs from 'node:fs'
@@ -192,7 +192,7 @@ sqlite.describe('rows written before Spec 071', () => {
     })
 
     // One row was sanitized AFTER the committed complete bundle was exported
-    // (the generator sanitizes between the two exports, so that bundle stays a
+    // (the generator sanitized between the two exports, so that bundle stays a
     // complete chain). Its line today carries the sanitized value, as any
     // export after the sanitize does; it is held to exactly that, byte for
     // byte, rather than to the pre-sanitize line.

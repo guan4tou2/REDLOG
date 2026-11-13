@@ -126,37 +126,81 @@ python.it('a seal written with the clock off: tools/redlog-verify.py accepts it'
   expect(got.status).toBe(0)
 })
 
-/** The committed bundle with one chained row's stamp changed to another door. */
-function tampered(): string {
-  const dir = committed()
+// A stamp changed after the fact. Rewriting events.jsonl also breaks the
+// manifest checksum and the seal's prefix digest, so "the verifier failed"
+// proves nothing about the row hash (review D). Each case is therefore run
+// twice: the real change (`_ingest.door`), and a control that rewrites the same
+// line with the same content in another key order — the row hash is computed
+// over canonical JSON, so the control leaves the chain intact and fails only on
+// the file and the seal. The test asserts the chain-specific failure, at that
+// row, for the real change, and its absence for the control.
+function rewritten(change: 'door' | 'reorder', name = BUNDLE): { dir: string; id: string } {
+  const dir = committed(name)
   const file = path.join(dir, 'events.jsonl')
   const rows = lines(file)
   const i = rows.findIndex((l) => stampOf(l)?.door === 'legacy-api')
-  const row = JSON.parse(rows[i]) as { data: string }
+  const row = JSON.parse(rows[i]) as { id: string; data: string }
   const data = JSON.parse(row.data) as { _ingest: Record<string, unknown> }
-  data._ingest.door = 'in-process'
-  rows[i] = JSON.stringify({ ...row, data: JSON.stringify(data) })
+  if (change === 'door') data._ingest.door = 'in-process'
+  const text = change === 'door' ? JSON.stringify(data) : JSON.stringify(Object.fromEntries(Object.entries(data).reverse()))
+  expect(text).not.toBe(row.data)
+  rows[i] = JSON.stringify({ ...row, data: text })
   fs.writeFileSync(file, rows.join('\n') + '\n')
-  return dir
+  return { dir, id: row.id }
 }
 
-it('a stamp changed after the fact fails the app\'s verifier', async () => {
+it('a stamp changed after the fact breaks the chain at that row in the app\'s verifier; the same bytes reordered do not', async () => {
   const { verifyBundleDir } = await import('../src/core/bundle-verify')
-  expect(verifyBundleDir(tampered()).exitCode).not.toBe(0)
+  const real = rewritten('door')
+  expect(verifyBundleDir(real.dir).problems).toContain(`CHAIN BROKEN at event ${real.id}: hash mismatch`)
+  const control = verifyBundleDir(rewritten('reorder').dir)
+  expect(control.exitCode).not.toBe(0)
+  expect(control.problems.filter((p) => p.startsWith('CHAIN BROKEN'))).toEqual([])
+  expect(control.problems.some((p) => p.startsWith('SEAL MISMATCH'))).toBe(true)
 })
 
-python.it('a stamp changed after the fact fails tools/redlog-verify.py', () => {
-  expect(runPythonVerifier(tampered()).status).not.toBe(0)
+python.it('a stamp changed after the fact breaks the chain at that row in tools/redlog-verify.py; the same bytes reordered do not', () => {
+  const real = rewritten('door')
+  const r = runPythonVerifier(real.dir)
+  expect(r.status).not.toBe(0)
+  expect(`${r.stdout}${r.stderr}`).toContain(`CHAIN BROKEN at event ${real.id}: hash mismatch`)
+  const c = runPythonVerifier(rewritten('reorder').dir)
+  expect(c.status).not.toBe(0)
+  expect(`${c.stdout}${c.stderr}`).not.toContain('CHAIN BROKEN')
+  expect(c.stdout).toMatch(/^Chain\s+: INTACT$/m)
+  expect(c.stdout).toContain('SEAL MISMATCH')
 })
 
-sqlite.it('the generator writes the same rows today: the stamp\'s bytes are pinned', async () => {
+// Review E: the regeneration pins what golden-old-rows' retired check pinned —
+// every file the exporter writes from the rows (operators.json,
+// chain_anchors.json, raw/, events*.jsonl) and the manifest — not only the
+// rows. Copies of tools (redlog-verify.py, verify.sh/.cmd, README.md) and the
+// manifest's checksums of them change with the tool, not the rows, and are left
+// out, as they were there.
+const ROW_FILES = /^(events\.jsonl|events_logged\.jsonl|operators\.json|chain_anchors\.json)$|^raw\//
+function rowFiles(root: string): string[] {
+  return (fs.readdirSync(root, { recursive: true, withFileTypes: true }) as fs.Dirent[])
+    .filter((e) => e.isFile()).map((e) => path.relative(root, path.join(e.parentPath, e.name)).split(path.sep).join('/'))
+    .filter((f) => ROW_FILES.test(f)).sort()
+}
+function manifestOf(root: string): Record<string, unknown> {
+  const m = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8')) as Record<string, unknown> & { files: Array<{ path: string }> }
+  return { ...m, files: m.files.filter((x) => ROW_FILES.test(x.path)) }
+}
+
+sqlite.it('the generator writes the same rows, files and manifests today: the stamp\'s bytes are pinned', async () => {
   const out = path.join(tmp('regen'), 'provenance-vectors')
   const got = await regenerate(out)
   expect({ rows: got.rows, rowsSha256: got.rowsSha256, stamps: got.stamps }, STALE)
     .toEqual({ rows: expected.rows, rowsSha256: expected.rowsSha256, stamps: expected.stamps })
-  const mine = unpackTo(path.join(out, BUNDLE), path.join(tmp('mine'), 'bundle'))
-  const theirs = committed()
-  for (const f of ['events.jsonl', 'events_logged.jsonl']) {
-    expect(fs.readFileSync(path.join(mine, f)).equals(fs.readFileSync(path.join(theirs, f))), `${f}: ${STALE}`).toBe(true)
+  for (const name of [BUNDLE, CLOCK_BUNDLE]) {
+    const mine = unpackTo(path.join(out, name), path.join(tmp('mine'), 'bundle'))
+    const theirs = committed(name)
+    expect(rowFiles(mine), `${name}: ${STALE}`).toEqual(rowFiles(theirs))
+    expect(rowFiles(mine).length, name).toBeGreaterThanOrEqual(4)
+    for (const f of rowFiles(mine)) {
+      expect(fs.readFileSync(path.join(mine, f)).equals(fs.readFileSync(path.join(theirs, f))), `${name} ${f}: ${STALE}`).toBe(true)
+    }
+    expect(manifestOf(mine), `${name} manifest.json: ${STALE}`).toEqual(manifestOf(theirs))
   }
 }, 60_000)
