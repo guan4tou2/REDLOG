@@ -1,0 +1,2136 @@
+{
+ "answers": {
+  "agent:api_error": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "agent:assistant_message": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "agent:away_summary": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "agent:compact_summary": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "agent:future_subtype#unknown-subtype": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "agent:model_refusal": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "agent:session_end": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "agent:system#open-branch": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "agent:thinking": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "agent:tool_call": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "agent:tool_interrupted": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "agent:tool_result": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "agent:transcript_capture_started": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "agent:transcript_compacted": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "agent:transcript_parent_missing": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "agent:transcript_schema_drift": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "agent:transcript_snapshot": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "agent:transcript_tool_gap": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "agent:user_message": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "browser:console_debug": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "browser:console_error": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "browser:console_info": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "browser:console_log": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "browser:console_trace": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "browser:console_warn": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "browser:exception": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "browser:log_entry": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "c2_checkin:beacon#agent-type-with-no-writer": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "cleanup:attr_hide": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "cleanup:file_shred": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "cleanup:history_clear": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "cleanup:log_clear": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "cleanup:timestomp": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "credential_use:api_key": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "credential_use:auth_header": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "credential_use:basic_auth": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "credential_use:bearer_token": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "credential_use:digest": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "credential_use:form_login": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "credential_use:negotiate": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "credential_use:ntlm": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "credential_use:password_flag": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "credential_use:session_cookie": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "credential_use:url_userinfo": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "dns:dns_query": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "dns:dns_response": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "external:note#external-family": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "file_transfer:artifact_added": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "file_transfer:download": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "file_transfer:file_created": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "file_transfer:file_deleted": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "file_transfer:file_modified": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "file_transfer:upload": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "http_navigation:navigation": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "loot:credential_detected": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "marker": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1.25,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "marker:amended": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "pcap:connection_attempt": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "pcap:connection_established": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "pcap:connection_refused": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "pcap:port_scan": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "pcap:udp_flow": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "pivot:agent_connect": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "pivot:closed": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "pivot:interactive": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "pivot:port_forward": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "pivot:proxied": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "pivot:route_add": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "pivot:socks_up": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "pivot:tunnel_start": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "plugin-kind:probe#plugin-declared": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "process:process_exit": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "process:process_spawn": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "scanner:c2_checkin": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "scanner:c2_checkin#generic": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "scanner:c2_pivot": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "scanner:c2_pivot#closed": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "scanner:c2_task": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "scanner:capture_gap": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "scanner:capture_gap#inflight": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "scanner:connection": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "scanner:connection_end": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "scanner:cookie_change": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "scanner:http_error": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "scanner:http_request_dropped": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "scanner:http_request_start": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "scanner:http_response": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "scanner:http_response_chunk": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "scanner:packet_flow": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "scanner:packet_flow#syn-only": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "scanner:pcap_segment": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "scanner:tcp_end": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "scanner:tcp_message": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "scanner:websocket_end": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "scanner:ws_message": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "screenshot": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "shell:capture_resumed": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "shell:capture_stopped": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "shell:command#legacy": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "shell:command_boundary": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "shell:command_end": {
+   "badges": [],
+   "commandOutputState": "inline",
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": "recorded"
+   }
+  },
+  "shell:command_end#builtin-io-bytes": {
+   "badges": [],
+   "commandOutputState": "recorded",
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": "recorded"
+   }
+  },
+  "shell:command_end#builtin-io-empty": {
+   "badges": [],
+   "commandOutputState": "empty",
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "shell:command_end#builtin-io-unbracketed": {
+   "badges": [],
+   "commandOutputState": "unbracketed",
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": "uncaptured"
+   }
+  },
+  "shell:command_end#hook-source": {
+   "badges": [],
+   "commandOutputState": "not-captured",
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": "uncaptured"
+   }
+  },
+  "shell:command_end#legacy-no-fields": {
+   "badges": [],
+   "commandOutputState": "not-captured",
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": "uncaptured"
+   }
+  },
+  "shell:command_end#powershell-profile": {
+   "badges": [],
+   "commandOutputState": "not-captured",
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": "uncaptured"
+   }
+  },
+  "shell:command_end#powershell-transcript": {
+   "badges": [],
+   "commandOutputState": "inline",
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": "recorded"
+   }
+  },
+  "shell:command_end#redlog-run-builtin": {
+   "badges": [],
+   "commandOutputState": "not-captured",
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": "uncaptured"
+   }
+  },
+  "shell:command_end#relay-complete": {
+   "badges": [],
+   "commandOutputState": "inline",
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": "recorded"
+   }
+  },
+  "shell:command_end#relay-complete-empty": {
+   "badges": [],
+   "commandOutputState": "empty",
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "shell:command_end#relay-drain-timeout": {
+   "badges": [],
+   "commandOutputState": "incomplete",
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": "uncaptured"
+   }
+  },
+  "shell:command_end#relay-not-captured": {
+   "badges": [],
+   "commandOutputState": "not-captured",
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": "uncaptured"
+   }
+  },
+  "shell:command_end#relay-partial-background": {
+   "badges": [],
+   "commandOutputState": "inline",
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": "recorded"
+   }
+  },
+  "shell:command_end#relay-partial-streamed": {
+   "badges": [],
+   "commandOutputState": "incomplete",
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": "uncaptured"
+   }
+  },
+  "shell:command_end#relay-redirected": {
+   "badges": [],
+   "commandOutputState": "redirected",
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": "uncaptured"
+   }
+  },
+  "shell:command_end#relay-truncated": {
+   "badges": [],
+   "commandOutputState": "inline",
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": "recorded"
+   }
+  },
+  "shell:command_end#tlogger-prompt": {
+   "badges": [],
+   "commandOutputState": "not-captured",
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": "uncaptured"
+   }
+  },
+  "shell:command_output": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "shell:command_output#foreground": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "shell:command_output#streamed": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "shell:command_start": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "shell:command_start#powershell-profile": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "shell:command_start#tlogger-prompt": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "shell:session_end": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "shell:session_end#incomplete": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "shell:session_end#recovered": {
+   "badges": [
+    "recovered"
+   ],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "shell:session_output": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "shell:session_start": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "shell:session_start#external": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "shell:wsl_test": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:active_target_changed": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:agent_transcript_pruned": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:anchor_failed": {
+   "badges": [
+    "anchor"
+   ],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:api_started#legacy": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:body_evicted": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:bookmarks_pruned": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:browser_launched": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:capture_gap": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:cast_evicted": {
+   "badges": [
+    "evidence"
+   ],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:cast_pruned": {
+   "badges": [
+    "evidence"
+   ],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:chain_sample_broken": {
+   "badges": [
+    "sample-broken"
+   ],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:config_changed": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:connection_capture_started": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:connection_monitor_saturated": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:export_sealed": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:http_body_pruned": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:http_proxy_failed": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:http_proxy_orphan_reclaimed": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:http_proxy_started": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:http_proxy_stopped": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:ip_verdict": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:logged_tier_digest": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:opsec_airgap": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:opsec_state_changed": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:process_monitor_ps_unavailable": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:process_monitor_saturated": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:producer_heartbeat": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:recording_paused": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:recording_resumed": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:retention_pruned_logged": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:sanitized": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:scope_cleared": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:scope_recomputed": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:scope_violation": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1.25,
+    "shape": "diamond"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:scope_violation#in-scope-tally": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:screenshot_deleted": {
+   "badges": [
+    "evidence"
+   ],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:screenshot_evicted": {
+   "badges": [
+    "evidence"
+   ],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:screenshot_pruned": {
+   "badges": [
+    "evidence"
+   ],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:session_start": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:session_start#api": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:update_completed": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:update_not_applied": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "system:update_pending": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "terminal:command#cli-help-text": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  },
+  "terminal:session_start#legacy": {
+   "badges": [],
+   "commandOutputState": null,
+   "dotShape": {
+    "scale": 1,
+    "shape": "circle"
+   },
+   "ioMark": {
+    "fail": false,
+    "io": null
+   }
+  }
+ },
+ "location": "src/renderer/src/lib/timelineDomain.ts",
+ "mode": "evaluated",
+ "n": 20,
+ "table": "computeBadges / ioMark / dotShape"
+}

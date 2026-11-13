@@ -1,0 +1,748 @@
+{
+ "answers": {
+  "agent:api_error": {
+   "hasContentReader": false,
+   "reader": "generic"
+  },
+  "agent:assistant_message": {
+   "hasContentReader": true,
+   "reader": "agent-turn"
+  },
+  "agent:away_summary": {
+   "hasContentReader": false,
+   "reader": "agent-turn"
+  },
+  "agent:compact_summary": {
+   "hasContentReader": false,
+   "reader": "agent-turn"
+  },
+  "agent:future_subtype#unknown-subtype": {
+   "hasContentReader": false,
+   "reader": "generic"
+  },
+  "agent:model_refusal": {
+   "hasContentReader": false,
+   "reader": "generic"
+  },
+  "agent:session_end": {
+   "hasContentReader": false,
+   "reader": "generic"
+  },
+  "agent:system#open-branch": {
+   "hasContentReader": false,
+   "reader": "generic"
+  },
+  "agent:thinking": {
+   "hasContentReader": true,
+   "reader": "agent-turn"
+  },
+  "agent:tool_call": {
+   "hasContentReader": true,
+   "reader": "agent-turn"
+  },
+  "agent:tool_interrupted": {
+   "hasContentReader": false,
+   "reader": "agent-turn"
+  },
+  "agent:tool_result": {
+   "hasContentReader": true,
+   "reader": "agent-turn"
+  },
+  "agent:transcript_capture_started": {
+   "hasContentReader": false,
+   "reader": "generic"
+  },
+  "agent:transcript_compacted": {
+   "hasContentReader": false,
+   "reader": "generic"
+  },
+  "agent:transcript_parent_missing": {
+   "hasContentReader": false,
+   "reader": "generic"
+  },
+  "agent:transcript_schema_drift": {
+   "hasContentReader": false,
+   "reader": "generic"
+  },
+  "agent:transcript_snapshot": {
+   "hasContentReader": false,
+   "reader": "generic"
+  },
+  "agent:transcript_tool_gap": {
+   "hasContentReader": false,
+   "reader": "generic"
+  },
+  "agent:user_message": {
+   "hasContentReader": true,
+   "reader": "agent-turn"
+  },
+  "browser:console_debug": {
+   "hasContentReader": false,
+   "reader": "console"
+  },
+  "browser:console_error": {
+   "hasContentReader": false,
+   "reader": "console"
+  },
+  "browser:console_info": {
+   "hasContentReader": false,
+   "reader": "console"
+  },
+  "browser:console_log": {
+   "hasContentReader": false,
+   "reader": "console"
+  },
+  "browser:console_trace": {
+   "hasContentReader": false,
+   "reader": "console"
+  },
+  "browser:console_warn": {
+   "hasContentReader": false,
+   "reader": "console"
+  },
+  "browser:exception": {
+   "hasContentReader": false,
+   "reader": "console"
+  },
+  "browser:log_entry": {
+   "hasContentReader": false,
+   "reader": "console"
+  },
+  "c2_checkin:beacon#agent-type-with-no-writer": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "cleanup:attr_hide": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "cleanup:file_shred": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "cleanup:history_clear": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "cleanup:log_clear": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "cleanup:timestomp": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "credential_use:api_key": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "credential_use:auth_header": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "credential_use:basic_auth": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "credential_use:bearer_token": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "credential_use:digest": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "credential_use:form_login": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "credential_use:negotiate": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "credential_use:ntlm": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "credential_use:password_flag": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "credential_use:session_cookie": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "credential_use:url_userinfo": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "dns:dns_query": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "dns:dns_response": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "external:note#external-family": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "file_transfer:artifact_added": {
+   "hasContentReader": false,
+   "reader": "artifact"
+  },
+  "file_transfer:download": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "file_transfer:file_created": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "file_transfer:file_deleted": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "file_transfer:file_modified": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "file_transfer:upload": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "http_navigation:navigation": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "loot:credential_detected": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "marker": {
+   "hasContentReader": false,
+   "reader": "marker"
+  },
+  "marker:amended": {
+   "hasContentReader": false,
+   "reader": "marker"
+  },
+  "pcap:connection_attempt": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "pcap:connection_established": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "pcap:connection_refused": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "pcap:port_scan": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "pcap:udp_flow": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "pivot:agent_connect": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "pivot:closed": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "pivot:interactive": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "pivot:port_forward": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "pivot:proxied": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "pivot:route_add": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "pivot:socks_up": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "pivot:tunnel_start": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "plugin-kind:probe#plugin-declared": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "process:process_exit": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "process:process_spawn": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "scanner:c2_checkin": {
+   "hasContentReader": false,
+   "reader": "generic"
+  },
+  "scanner:c2_checkin#generic": {
+   "hasContentReader": false,
+   "reader": "generic"
+  },
+  "scanner:c2_pivot": {
+   "hasContentReader": false,
+   "reader": "generic"
+  },
+  "scanner:c2_pivot#closed": {
+   "hasContentReader": false,
+   "reader": "generic"
+  },
+  "scanner:c2_task": {
+   "hasContentReader": false,
+   "reader": "generic"
+  },
+  "scanner:capture_gap": {
+   "hasContentReader": false,
+   "reader": "generic"
+  },
+  "scanner:capture_gap#inflight": {
+   "hasContentReader": false,
+   "reader": "generic"
+  },
+  "scanner:connection": {
+   "hasContentReader": false,
+   "reader": "generic"
+  },
+  "scanner:connection_end": {
+   "hasContentReader": false,
+   "reader": "generic"
+  },
+  "scanner:cookie_change": {
+   "hasContentReader": false,
+   "reader": "generic"
+  },
+  "scanner:http_error": {
+   "hasContentReader": false,
+   "reader": "http"
+  },
+  "scanner:http_request_dropped": {
+   "hasContentReader": false,
+   "reader": "http"
+  },
+  "scanner:http_request_start": {
+   "hasContentReader": false,
+   "reader": "http"
+  },
+  "scanner:http_response": {
+   "hasContentReader": true,
+   "reader": "http"
+  },
+  "scanner:http_response_chunk": {
+   "hasContentReader": false,
+   "reader": "http"
+  },
+  "scanner:packet_flow": {
+   "hasContentReader": false,
+   "reader": "generic"
+  },
+  "scanner:packet_flow#syn-only": {
+   "hasContentReader": false,
+   "reader": "generic"
+  },
+  "scanner:pcap_segment": {
+   "hasContentReader": false,
+   "reader": "generic"
+  },
+  "scanner:tcp_end": {
+   "hasContentReader": false,
+   "reader": "http"
+  },
+  "scanner:tcp_message": {
+   "hasContentReader": false,
+   "reader": "http"
+  },
+  "scanner:websocket_end": {
+   "hasContentReader": false,
+   "reader": "http"
+  },
+  "scanner:ws_message": {
+   "hasContentReader": false,
+   "reader": "http"
+  },
+  "screenshot": {
+   "hasContentReader": false,
+   "reader": "image"
+  },
+  "shell:capture_resumed": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "shell:capture_stopped": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "shell:command#legacy": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "shell:command_boundary": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "shell:command_end": {
+   "hasContentReader": false,
+   "reader": "command"
+  },
+  "shell:command_end#builtin-io-bytes": {
+   "hasContentReader": false,
+   "reader": "command"
+  },
+  "shell:command_end#builtin-io-empty": {
+   "hasContentReader": false,
+   "reader": "command"
+  },
+  "shell:command_end#builtin-io-unbracketed": {
+   "hasContentReader": false,
+   "reader": "command"
+  },
+  "shell:command_end#hook-source": {
+   "hasContentReader": false,
+   "reader": "command"
+  },
+  "shell:command_end#legacy-no-fields": {
+   "hasContentReader": false,
+   "reader": "command"
+  },
+  "shell:command_end#powershell-profile": {
+   "hasContentReader": false,
+   "reader": "command"
+  },
+  "shell:command_end#powershell-transcript": {
+   "hasContentReader": false,
+   "reader": "command"
+  },
+  "shell:command_end#redlog-run-builtin": {
+   "hasContentReader": false,
+   "reader": "command"
+  },
+  "shell:command_end#relay-complete": {
+   "hasContentReader": false,
+   "reader": "command"
+  },
+  "shell:command_end#relay-complete-empty": {
+   "hasContentReader": false,
+   "reader": "command"
+  },
+  "shell:command_end#relay-drain-timeout": {
+   "hasContentReader": false,
+   "reader": "command"
+  },
+  "shell:command_end#relay-not-captured": {
+   "hasContentReader": false,
+   "reader": "command"
+  },
+  "shell:command_end#relay-partial-background": {
+   "hasContentReader": false,
+   "reader": "command"
+  },
+  "shell:command_end#relay-partial-streamed": {
+   "hasContentReader": false,
+   "reader": "command"
+  },
+  "shell:command_end#relay-redirected": {
+   "hasContentReader": false,
+   "reader": "command"
+  },
+  "shell:command_end#relay-truncated": {
+   "hasContentReader": false,
+   "reader": "command"
+  },
+  "shell:command_end#tlogger-prompt": {
+   "hasContentReader": false,
+   "reader": "command"
+  },
+  "shell:command_output": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "shell:command_output#foreground": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "shell:command_output#streamed": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "shell:command_start": {
+   "hasContentReader": false,
+   "reader": "command"
+  },
+  "shell:command_start#powershell-profile": {
+   "hasContentReader": false,
+   "reader": "command"
+  },
+  "shell:command_start#tlogger-prompt": {
+   "hasContentReader": false,
+   "reader": "command"
+  },
+  "shell:session_end": {
+   "hasContentReader": false,
+   "reader": "session"
+  },
+  "shell:session_end#incomplete": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "shell:session_end#recovered": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "shell:session_output": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "shell:session_start": {
+   "hasContentReader": false,
+   "reader": "session"
+  },
+  "shell:session_start#external": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "shell:wsl_test": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:active_target_changed": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:agent_transcript_pruned": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:anchor_failed": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:api_started#legacy": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:body_evicted": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:bookmarks_pruned": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:browser_launched": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:capture_gap": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:cast_evicted": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:cast_pruned": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:chain_sample_broken": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:config_changed": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:connection_capture_started": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:connection_monitor_saturated": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:export_sealed": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:http_body_pruned": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:http_proxy_failed": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:http_proxy_orphan_reclaimed": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:http_proxy_started": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:http_proxy_stopped": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:ip_verdict": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:logged_tier_digest": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:opsec_airgap": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:opsec_state_changed": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:process_monitor_ps_unavailable": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:process_monitor_saturated": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:producer_heartbeat": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:recording_paused": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:recording_resumed": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:retention_pruned_logged": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:sanitized": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:scope_cleared": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:scope_recomputed": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:scope_violation": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:scope_violation#in-scope-tally": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:screenshot_deleted": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:screenshot_evicted": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:screenshot_pruned": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:session_start": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:session_start#api": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:update_completed": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:update_not_applied": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "system:update_pending": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "terminal:command#cli-help-text": {
+   "hasContentReader": true,
+   "reader": "generic"
+  },
+  "terminal:session_start#legacy": {
+   "hasContentReader": true,
+   "reader": "generic"
+  }
+ },
+ "location": "src/renderer/src/lib/timelineEvents.ts",
+ "mode": "evaluated+extracted",
+ "n": 17,
+ "table": "reader dispatch",
+ "words": {
+  "HTTP_SUBTYPES": [
+   "http_error",
+   "http_request_dropped",
+   "http_request_start",
+   "http_response",
+   "http_response_chunk",
+   "tcp_end",
+   "tcp_message",
+   "websocket_end",
+   "ws_message"
+  ],
+  "eventReader": [
+   "agent",
+   "artifact_added",
+   "browser",
+   "command_end",
+   "command_start",
+   "file_transfer",
+   "marker",
+   "scanner",
+   "screenshot",
+   "session_end",
+   "session_start",
+   "shell"
+  ],
+  "inspector": [
+   "command_end",
+   "command_start",
+   "marker",
+   "screenshot",
+   "session_end",
+   "session_start",
+   "shell"
+  ]
+ }
+}

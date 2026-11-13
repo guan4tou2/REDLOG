@@ -1,0 +1,712 @@
+{
+ "answers": {
+  "agent:api_error": {
+   "band": "commands",
+   "lane": "agent"
+  },
+  "agent:assistant_message": {
+   "band": "commands",
+   "lane": "agent"
+  },
+  "agent:away_summary": {
+   "band": "commands",
+   "lane": "agent"
+  },
+  "agent:compact_summary": {
+   "band": "commands",
+   "lane": "agent"
+  },
+  "agent:future_subtype#unknown-subtype": {
+   "band": "commands",
+   "lane": "agent"
+  },
+  "agent:model_refusal": {
+   "band": "commands",
+   "lane": "agent"
+  },
+  "agent:session_end": {
+   "band": "commands",
+   "lane": "agent"
+  },
+  "agent:system#open-branch": {
+   "band": "commands",
+   "lane": "agent"
+  },
+  "agent:thinking": {
+   "band": "commands",
+   "lane": "agent"
+  },
+  "agent:tool_call": {
+   "band": "commands",
+   "lane": "agent"
+  },
+  "agent:tool_interrupted": {
+   "band": "commands",
+   "lane": "agent"
+  },
+  "agent:tool_result": {
+   "band": "commands",
+   "lane": "agent"
+  },
+  "agent:transcript_capture_started": {
+   "band": "commands",
+   "lane": "agent"
+  },
+  "agent:transcript_compacted": {
+   "band": "commands",
+   "lane": "agent"
+  },
+  "agent:transcript_parent_missing": {
+   "band": "commands",
+   "lane": "agent"
+  },
+  "agent:transcript_schema_drift": {
+   "band": "commands",
+   "lane": "agent"
+  },
+  "agent:transcript_snapshot": {
+   "band": "commands",
+   "lane": "agent"
+  },
+  "agent:transcript_tool_gap": {
+   "band": "commands",
+   "lane": "agent"
+  },
+  "agent:user_message": {
+   "band": "commands",
+   "lane": "agent"
+  },
+  "browser:console_debug": {
+   "band": "traffic",
+   "lane": "browser"
+  },
+  "browser:console_error": {
+   "band": "traffic",
+   "lane": "browser"
+  },
+  "browser:console_info": {
+   "band": "traffic",
+   "lane": "browser"
+  },
+  "browser:console_log": {
+   "band": "traffic",
+   "lane": "browser"
+  },
+  "browser:console_trace": {
+   "band": "traffic",
+   "lane": "browser"
+  },
+  "browser:console_warn": {
+   "band": "traffic",
+   "lane": "browser"
+  },
+  "browser:exception": {
+   "band": "traffic",
+   "lane": "browser"
+  },
+  "browser:log_entry": {
+   "band": "traffic",
+   "lane": "browser"
+  },
+  "c2_checkin:beacon#agent-type-with-no-writer": {
+   "band": "traffic",
+   "lane": "c2_checkin"
+  },
+  "cleanup:attr_hide": {
+   "band": "signals",
+   "lane": "cleanup"
+  },
+  "cleanup:file_shred": {
+   "band": "signals",
+   "lane": "cleanup"
+  },
+  "cleanup:history_clear": {
+   "band": "signals",
+   "lane": "cleanup"
+  },
+  "cleanup:log_clear": {
+   "band": "signals",
+   "lane": "cleanup"
+  },
+  "cleanup:timestomp": {
+   "band": "signals",
+   "lane": "cleanup"
+  },
+  "credential_use:api_key": {
+   "band": "signals",
+   "lane": "credential_use"
+  },
+  "credential_use:auth_header": {
+   "band": "signals",
+   "lane": "credential_use"
+  },
+  "credential_use:basic_auth": {
+   "band": "signals",
+   "lane": "credential_use"
+  },
+  "credential_use:bearer_token": {
+   "band": "signals",
+   "lane": "credential_use"
+  },
+  "credential_use:digest": {
+   "band": "signals",
+   "lane": "credential_use"
+  },
+  "credential_use:form_login": {
+   "band": "signals",
+   "lane": "credential_use"
+  },
+  "credential_use:negotiate": {
+   "band": "signals",
+   "lane": "credential_use"
+  },
+  "credential_use:ntlm": {
+   "band": "signals",
+   "lane": "credential_use"
+  },
+  "credential_use:password_flag": {
+   "band": "signals",
+   "lane": "credential_use"
+  },
+  "credential_use:session_cookie": {
+   "band": "signals",
+   "lane": "credential_use"
+  },
+  "credential_use:url_userinfo": {
+   "band": "signals",
+   "lane": "credential_use"
+  },
+  "dns:dns_query": {
+   "band": "traffic",
+   "lane": "dns"
+  },
+  "dns:dns_response": {
+   "band": "traffic",
+   "lane": "dns"
+  },
+  "external:note#external-family": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "file_transfer:artifact_added": {
+   "band": "artifacts",
+   "lane": "file_transfer"
+  },
+  "file_transfer:download": {
+   "band": "artifacts",
+   "lane": "file_transfer"
+  },
+  "file_transfer:file_created": {
+   "band": "artifacts",
+   "lane": "file_transfer"
+  },
+  "file_transfer:file_deleted": {
+   "band": "artifacts",
+   "lane": "file_transfer"
+  },
+  "file_transfer:file_modified": {
+   "band": "artifacts",
+   "lane": "file_transfer"
+  },
+  "file_transfer:upload": {
+   "band": "artifacts",
+   "lane": "file_transfer"
+  },
+  "http_navigation:navigation": {
+   "band": "traffic",
+   "lane": "http_navigation"
+  },
+  "loot:credential_detected": {
+   "band": "artifacts",
+   "lane": "loot"
+  },
+  "marker": {
+   "band": "signals",
+   "lane": "marker"
+  },
+  "marker:amended": {
+   "band": "signals",
+   "lane": "marker"
+  },
+  "pcap:connection_attempt": {
+   "band": "traffic",
+   "lane": "scanner"
+  },
+  "pcap:connection_established": {
+   "band": "traffic",
+   "lane": "scanner"
+  },
+  "pcap:connection_refused": {
+   "band": "traffic",
+   "lane": "scanner"
+  },
+  "pcap:port_scan": {
+   "band": "traffic",
+   "lane": "scanner"
+  },
+  "pcap:udp_flow": {
+   "band": "traffic",
+   "lane": "scanner"
+  },
+  "pivot:agent_connect": {
+   "band": "traffic",
+   "lane": "pivot"
+  },
+  "pivot:closed": {
+   "band": "traffic",
+   "lane": "pivot"
+  },
+  "pivot:interactive": {
+   "band": "traffic",
+   "lane": "pivot"
+  },
+  "pivot:port_forward": {
+   "band": "traffic",
+   "lane": "pivot"
+  },
+  "pivot:proxied": {
+   "band": "traffic",
+   "lane": "pivot"
+  },
+  "pivot:route_add": {
+   "band": "traffic",
+   "lane": "pivot"
+  },
+  "pivot:socks_up": {
+   "band": "traffic",
+   "lane": "pivot"
+  },
+  "pivot:tunnel_start": {
+   "band": "traffic",
+   "lane": "pivot"
+  },
+  "plugin-kind:probe#plugin-declared": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "process:process_exit": {
+   "band": "commands",
+   "lane": "process"
+  },
+  "process:process_spawn": {
+   "band": "commands",
+   "lane": "process"
+  },
+  "scanner:c2_checkin": {
+   "band": "traffic",
+   "lane": "c2_checkin"
+  },
+  "scanner:c2_checkin#generic": {
+   "band": "traffic",
+   "lane": "c2_checkin"
+  },
+  "scanner:c2_pivot": {
+   "band": "traffic",
+   "lane": "c2_checkin"
+  },
+  "scanner:c2_pivot#closed": {
+   "band": "traffic",
+   "lane": "c2_checkin"
+  },
+  "scanner:c2_task": {
+   "band": "traffic",
+   "lane": "c2_checkin"
+  },
+  "scanner:capture_gap": {
+   "band": "traffic",
+   "lane": "scanner"
+  },
+  "scanner:capture_gap#inflight": {
+   "band": "traffic",
+   "lane": "scanner"
+  },
+  "scanner:connection": {
+   "band": "traffic",
+   "lane": "scanner"
+  },
+  "scanner:connection_end": {
+   "band": "traffic",
+   "lane": "scanner"
+  },
+  "scanner:cookie_change": {
+   "band": "traffic",
+   "lane": "scanner"
+  },
+  "scanner:http_error": {
+   "band": "traffic",
+   "lane": "scanner"
+  },
+  "scanner:http_request_dropped": {
+   "band": "traffic",
+   "lane": "scanner"
+  },
+  "scanner:http_request_start": {
+   "band": "traffic",
+   "lane": "scanner"
+  },
+  "scanner:http_response": {
+   "band": "traffic",
+   "lane": "scanner"
+  },
+  "scanner:http_response_chunk": {
+   "band": "traffic",
+   "lane": "scanner"
+  },
+  "scanner:packet_flow": {
+   "band": "traffic",
+   "lane": "scanner"
+  },
+  "scanner:packet_flow#syn-only": {
+   "band": "traffic",
+   "lane": "scanner"
+  },
+  "scanner:pcap_segment": {
+   "band": "traffic",
+   "lane": "scanner"
+  },
+  "scanner:tcp_end": {
+   "band": "traffic",
+   "lane": "scanner"
+  },
+  "scanner:tcp_message": {
+   "band": "traffic",
+   "lane": "scanner"
+  },
+  "scanner:websocket_end": {
+   "band": "traffic",
+   "lane": "scanner"
+  },
+  "scanner:ws_message": {
+   "band": "traffic",
+   "lane": "scanner"
+  },
+  "screenshot": {
+   "band": "artifacts",
+   "lane": "screenshot"
+  },
+  "shell:capture_resumed": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:capture_stopped": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command#legacy": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command_boundary": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command_end": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command_end#builtin-io-bytes": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command_end#builtin-io-empty": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command_end#builtin-io-unbracketed": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command_end#hook-source": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command_end#legacy-no-fields": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command_end#powershell-profile": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command_end#powershell-transcript": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command_end#redlog-run-builtin": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command_end#relay-complete": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command_end#relay-complete-empty": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command_end#relay-drain-timeout": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command_end#relay-not-captured": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command_end#relay-partial-background": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command_end#relay-partial-streamed": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command_end#relay-redirected": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command_end#relay-truncated": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command_end#tlogger-prompt": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command_output": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command_output#foreground": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command_output#streamed": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command_start": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command_start#powershell-profile": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:command_start#tlogger-prompt": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:session_end": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:session_end#incomplete": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:session_end#recovered": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:session_output": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:session_start": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:session_start#external": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "shell:wsl_test": {
+   "band": "commands",
+   "lane": "shell"
+  },
+  "system:active_target_changed": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:agent_transcript_pruned": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:anchor_failed": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:api_started#legacy": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:body_evicted": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:bookmarks_pruned": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:browser_launched": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:capture_gap": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:cast_evicted": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:cast_pruned": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:chain_sample_broken": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:config_changed": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:connection_capture_started": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:connection_monitor_saturated": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:export_sealed": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:http_body_pruned": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:http_proxy_failed": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:http_proxy_orphan_reclaimed": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:http_proxy_started": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:http_proxy_stopped": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:ip_verdict": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:logged_tier_digest": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:opsec_airgap": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:opsec_state_changed": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:process_monitor_ps_unavailable": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:process_monitor_saturated": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:producer_heartbeat": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:recording_paused": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:recording_resumed": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:retention_pruned_logged": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:sanitized": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:scope_cleared": {
+   "band": "signals",
+   "lane": "scope"
+  },
+  "system:scope_recomputed": {
+   "band": "signals",
+   "lane": "scope"
+  },
+  "system:scope_violation": {
+   "band": "signals",
+   "lane": "scope"
+  },
+  "system:scope_violation#in-scope-tally": {
+   "band": "signals",
+   "lane": "scope"
+  },
+  "system:screenshot_deleted": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:screenshot_evicted": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:screenshot_pruned": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:session_start": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:session_start#api": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:update_completed": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:update_not_applied": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "system:update_pending": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "terminal:command#cli-help-text": {
+   "band": "signals",
+   "lane": "system"
+  },
+  "terminal:session_start#legacy": {
+   "band": "signals",
+   "lane": "system"
+  }
+ },
+ "location": "src/renderer/src/lib/timelineDomain.ts",
+ "mode": "evaluated",
+ "n": 12,
+ "table": "LANES / BANDS / toLane"
+}

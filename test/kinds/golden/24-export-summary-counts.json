@@ -1,0 +1,1789 @@
+{
+ "answers": {
+  "agent:api_error": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "agent:assistant_message": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "agent:away_summary": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "agent:compact_summary": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "agent:future_subtype#unknown-subtype": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "agent:model_refusal": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "agent:session_end": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "agent:system#open-branch": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "agent:thinking": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "agent:tool_call": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "agent:tool_interrupted": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "agent:tool_result": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "agent:transcript_capture_started": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "agent:transcript_compacted": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "agent:transcript_parent_missing": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "agent:transcript_schema_drift": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "agent:transcript_snapshot": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "agent:transcript_tool_gap": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "agent:user_message": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "browser:console_debug": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "browser:console_error": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "browser:console_info": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "browser:console_log": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "browser:console_trace": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "browser:console_warn": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "browser:exception": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "browser:log_entry": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "c2_checkin:beacon#agent-type-with-no-writer": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "cleanup:attr_hide": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "cleanup:file_shred": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "cleanup:history_clear": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "cleanup:log_clear": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "cleanup:timestomp": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "credential_use:api_key": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "credential_use:auth_header": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "credential_use:basic_auth": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "credential_use:bearer_token": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "credential_use:digest": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "credential_use:form_login": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "credential_use:negotiate": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "credential_use:ntlm": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "credential_use:password_flag": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "credential_use:session_cookie": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "credential_use:url_userinfo": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "dns:dns_query": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "dns:dns_response": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "external:note#external-family": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "file_transfer:artifact_added": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "file_transfer:download": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "file_transfer:file_created": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "file_transfer:file_deleted": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "file_transfer:file_modified": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "file_transfer:upload": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "http_navigation:navigation": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "loot:credential_detected": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "marker": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "marker:amended": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "pcap:connection_attempt": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "pcap:connection_established": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "pcap:connection_refused": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "pcap:port_scan": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "pcap:udp_flow": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "pivot:agent_connect": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "pivot:closed": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "pivot:interactive": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "pivot:port_forward": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "pivot:proxied": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "pivot:route_add": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "pivot:socks_up": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "pivot:tunnel_start": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "plugin-kind:probe#plugin-declared": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "process:process_exit": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "process:process_spawn": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "scanner:c2_checkin": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "scanner:c2_checkin#generic": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "scanner:c2_pivot": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "scanner:c2_pivot#closed": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "scanner:c2_task": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "scanner:capture_gap": {
+   "gaps": [
+    {
+     "gaps": 1,
+     "reason": "spool",
+     "skippedUnits": 0,
+     "unknownAmount": 1
+    }
+   ],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "scanner:capture_gap#inflight": {
+   "gaps": [
+    {
+     "gaps": 1,
+     "reason": "inflight-at-exit",
+     "skippedUnits": 0,
+     "unknownAmount": 1
+    }
+   ],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "scanner:connection": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "scanner:connection_end": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "scanner:cookie_change": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "scanner:http_error": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "scanner:http_request_dropped": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "scanner:http_request_start": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "scanner:http_response": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "scanner:http_response_chunk": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 1,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "scanner:packet_flow": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "scanner:packet_flow#syn-only": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "scanner:pcap_segment": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "scanner:tcp_end": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "scanner:tcp_message": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "scanner:websocket_end": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "scanner:ws_message": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 1,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "screenshot": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:capture_resumed": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:capture_stopped": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:command#legacy": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:command_boundary": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:command_end": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:command_end#builtin-io-bytes": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:command_end#builtin-io-empty": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:command_end#builtin-io-unbracketed": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:command_end#hook-source": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:command_end#legacy-no-fields": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:command_end#powershell-profile": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:command_end#powershell-transcript": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:command_end#redlog-run-builtin": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:command_end#relay-complete": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:command_end#relay-complete-empty": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:command_end#relay-drain-timeout": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:command_end#relay-not-captured": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:command_end#relay-partial-background": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:command_end#relay-partial-streamed": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:command_end#relay-redirected": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:command_end#relay-truncated": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 1
+  },
+  "shell:command_end#tlogger-prompt": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:command_output": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:command_output#foreground": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:command_output#streamed": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:command_start": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:command_start#powershell-profile": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:command_start#tlogger-prompt": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:session_end": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:session_end#incomplete": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:session_end#recovered": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 1
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:session_output": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:session_start": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:session_start#external": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "shell:wsl_test": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:active_target_changed": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:agent_transcript_pruned": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:anchor_failed": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:api_started#legacy": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:body_evicted": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:bookmarks_pruned": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:browser_launched": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:capture_gap": {
+   "gaps": [
+    {
+     "gaps": 1,
+     "reason": "gap-unsaved",
+     "skippedUnits": 0,
+     "unknownAmount": 1
+    }
+   ],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:cast_evicted": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:cast_pruned": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:chain_sample_broken": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:config_changed": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:connection_capture_started": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:connection_monitor_saturated": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:export_sealed": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:http_body_pruned": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:http_proxy_failed": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:http_proxy_orphan_reclaimed": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:http_proxy_started": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:http_proxy_stopped": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:ip_verdict": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:logged_tier_digest": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:opsec_airgap": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:opsec_state_changed": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:process_monitor_ps_unavailable": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:process_monitor_saturated": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:producer_heartbeat": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:recording_paused": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 1,
+   "truncated": 0
+  },
+  "system:recording_resumed": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:retention_pruned_logged": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:sanitized": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:scope_cleared": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:scope_recomputed": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:scope_violation": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:scope_violation#in-scope-tally": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:screenshot_deleted": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:screenshot_evicted": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:screenshot_pruned": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:session_start": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:session_start#api": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:update_completed": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:update_not_applied": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "system:update_pending": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "terminal:command#cli-help-text": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  },
+  "terminal:session_start#legacy": {
+   "gaps": [],
+   "interrupted": {
+    "commands": 0,
+    "recordings": 0
+   },
+   "partialHttp": 0,
+   "pauses": 0,
+   "truncated": 0
+  }
+ },
+ "location": "src/core/export-plan.ts",
+ "mode": "evaluated",
+ "n": 24,
+ "table": "export summary counts"
+}

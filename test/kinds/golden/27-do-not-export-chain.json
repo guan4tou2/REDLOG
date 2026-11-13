@@ -1,0 +1,12 @@
+{
+ "location": "src/core/db/do-not-export.ts",
+ "mode": "extracted",
+ "n": 27,
+ "table": "do-not-export chain",
+ "words": {
+  "getDoNotExportIds": [
+   "events",
+   "events_logged"
+  ]
+ }
+}

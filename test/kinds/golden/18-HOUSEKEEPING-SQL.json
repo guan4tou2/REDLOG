@@ -1,0 +1,9 @@
+{
+ "location": "src/core/db/event-queries.ts",
+ "mode": "extracted",
+ "n": 18,
+ "sql": {
+  "HOUSEKEEPING_SQL": "NOT ( (agent_type = 'system' AND COALESCE(subtype, '') IN ('api_started','session_start')) OR (agent_type = 'shell' AND COALESCE(subtype, '') = 'session_start') OR (agent_type = 'shell' AND COALESCE(subtype, '') = 'command_output' AND (COALESCE(json_extract(data,'$.late'), 0) = 1 OR COALESCE(json_extract(data,'$.streamed'), 0) = 1)) OR (agent_type = 'terminal' AND COALESCE(subtype, '') = 'session_start') OR (agent_type = 'shell' AND COALESCE(subtype, '') IN ('command_start','command','command_end') AND (COALESCE(json_extract(data,'$.command'), '') LIKE '%shell-bash-hook.sh%' OR COALESCE(json_extract(data,'$.command'), '') LIKE '%shell-zsh-hook.zsh%' OR COALESCE(json_extract(data,'$.command'), '') LIKE '%shell-hook.ps1%' OR COALESCE(json_extract(data,'$.command'), '') LIKE '%tlogger_prompt_command%' OR COALESCE(json_extract(data,'$.command'), '') LIKE '%Microsoft.PowerShell_profile.ps1%')) )"
+ },
+ "table": "HOUSEKEEPING_SQL"
+}

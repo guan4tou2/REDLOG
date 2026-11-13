@@ -1,0 +1,9 @@
+{
+ "location": "src/core/content-contract.ts",
+ "mode": "extracted",
+ "n": 30,
+ "sql": {
+  "BODY_SOURCE_PREDICATE": "CASE WHEN json_valid(data) THEN (json_extract(data,'$.request_body_ref.sha256') IS NOT NULL OR json_extract(data,'$.response_body_ref.sha256') IS NOT NULL OR json_extract(data,'$.ws_body_ref.sha256') IS NOT NULL OR json_extract(data,'$.tcp_body_ref.sha256') IS NOT NULL OR json_extract(data,'$.stdout_ref.sha256') IS NOT NULL OR json_extract(data,'$.stderr_ref.sha256') IS NOT NULL OR json_extract(data,'$.output_body_ref.sha256') IS NOT NULL OR json_extract(data,'$.request_body.encoding')='base64' OR json_extract(data,'$.response_body.encoding')='base64' OR json_extract(data,'$.ws_body.encoding')='base64' OR json_extract(data,'$.tcp_body.encoding')='base64' OR json_extract(data,'$.output_body.encoding')='base64' OR (agent_type='file_transfer' AND subtype='artifact_added') OR (agent_type='agent' AND subtype IN ('transcript_snapshot','transcript_capture_started'))) ELSE 0 END"
+ },
+ "table": "content kinds (BODY_SOURCE_PREDICATE)"
+}
