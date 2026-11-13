@@ -21,7 +21,7 @@
   - app 內驗證與 `redlog-verify.py` 的輸出不變；
   - 舊列匯出的 `events.jsonl` 逐位元組相同。
 - [x] T003 [P] [US5] `test/api-events-legacy-mapping.test.ts`：表格驅動，列出 `/api/events` 每種情況今天的狀態碼與主體：accepted、2 秒去重、late chunk 去重、ingest 內跨專案、標頭 pin、paused、unrecorded、plumbing、政策 403、`marker`／`amended` 403、400、401、503、heartbeat。
-- [ ] T004 [P] [US6] `test/legacy-producer-decisions.test.ts`：對 mock 伺服器記錄 shell、relay、mitm、pcap-agent、pcap-capture、c2、PowerShell sender 對每種回應的反應（01-F1 的表，依實測更正：relay 只重試網路錯誤、不重試 5xx；pcap-capture 不檢查 POST 結果）。已知缺陷以 `it.fails` 標示。（在 PR #716 中，未合併前不勾）
+- [x] T004 [P] [US6] `test/legacy-producer-decisions.test.ts`：對 mock 伺服器記錄 shell、relay、mitm、pcap-agent、pcap-capture、c2、PowerShell sender 對每種回應的反應（01-F1 的表，依實測更正：relay 只重試網路錯誤、不重試 5xx；pcap-capture 不檢查 POST 結果）。已知缺陷以 `it.fails` 標示。（在 PR #716 中，未合併前不勾）
 - [x] T005 [P] `test/hash-input-pin.test.ts`：釘住 `insertChainedEvent`、`chain-anchor.canonicalHashPayload`、`redlog-verify._rebuild_shapes` 的鍵集合，以及 `PRAGMA synchronous`：寫入連線在寫入後為 FULL（2），含新專案、重開、切換專案；唯讀連線與匯出 worker 的唯讀連線維持 NORMAL（1）。（Q6 已答覆並實作：Phase 1 時這裡釘的是 NORMAL。）（在 PR #716 中，未合併前不勾）
 - [ ] T006 [P] `test/single-ingest-door.test.ts`：掃描 `src/**` 中的 `insertEvent(`，基準值 31（#716 量得），只能下降（ratchet；形式同 `test/mutation-guard.test.ts`），取代 `test/canonical-ingest-sources.test.ts` 的檔案清單。
 - [x] T007 [P] [US4] RED：`test/spool-bypass.test.ts`。spool 檔放 `agent_type: system`／`recording_resumed`，今天會寫出 chained 列。以 `it.fails` 標示，Phase 2 翻正。

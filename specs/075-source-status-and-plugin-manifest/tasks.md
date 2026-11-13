@@ -19,15 +19,15 @@
 
 ## Phase 1 — 釘住今天的行為（只加測試與 gate）
 
-- [ ] T004 [P] `test/capture-payload-golden.test.ts`：以 8 種固定事實組合（新專案無 hook、有 hook、缺 python3、proxy 失敗、外掛停用仍在送、AI 相對路徑、HTTPS 未驗證、chain 抽樣失敗）呼叫 `getCaptureHealth`，釘住今天的 `verdict` 與每列 `state`。
-- [ ] T005 [P] [US2] `test/source-surface-agreement.test.tsx`：對同一份 payload 渲染 9 個 surface（儀表板卡、狀態列、指令與終端、HTTP、擷取控制、外掛詳情、首次使用、HUD、pane 徽章），記錄每個來源今天顯示的字。今天不一致的組合以 `it.fails` 標示；同時重新計數 renderer 受影響的檔案，更新 plan 的估計。
-- [ ] T006 [P] G2 ratchet：`test/source-status-boundary.test.ts`，基準 20（plan「要取代的判斷」J1–J7、S1–S13），只能下降；形式同 `test/mutation-guard.test.ts`。
-- [ ] T007 [P] G5 的 shell 名稱字面陣列 ratchet，基準 9（plan「現況」的清單；先開檔確認 `wsl-manager.ts:288`）。
-- [ ] T008 [P] G4：`test/source-owner-actions.test.ts`，以今天呼叫 `hooks.install|uninstall`、`httpCapture.start|stop`、`plugins.setEnabled|grant|revoke`、寫 `packs`／`packMembers`／`agentTailer.sources` 的檔案為允許清單，只能變短。
-- [ ] T009 [P] G7 雛形：`test/plugin-manifest-consumers.test.ts`，以今天的 `PluginManifest` 欄位為對象，列出沒有讀者的欄位（`kind`、`capabilities` 的行為、`signature`、`publisher`、`schemaVersion`、頂層 `emits`、`health`、`homepage`）為允許清單，只能變短。
-- [ ] T010 [P] [US1] RED：新專案無 hook 時整體應為等待第一筆事件（今天 `dark`，`test/capture-health.test.ts:65` 釘住相反的契約）；有 hook 的機器上的新專案應與無 hook 時相同。`it.fails`。
-- [ ] T011 [P] [US3] RED：POSIX 缺 python3 時內建終端機不應為 ready（04-U6a）；外掛停用後仍收到事件應為失敗。`it.fails`。
-- [ ] T012 [P] [US2] 特徵化：`test/cli-status-words.test.ts` 釘住今天 CLI 對每種 verdict 的輸出（含 `wired but idle`）；`test/api-status-compat.test.ts` 釘住 `/api/status` 的 `capture` 形狀。
+- [x] T004 [P] `test/capture-payload-golden.test.ts`：以 8 種固定事實組合（新專案無 hook、有 hook、缺 python3、proxy 失敗、外掛停用仍在送、AI 相對路徑、HTTPS 未驗證、chain 抽樣失敗）呼叫 `getCaptureHealth`，釘住今天的 `verdict` 與每列 `state`。
+- [x] T005 [P] [US2] `test/source-surface-agreement.test.tsx`：對同一份 payload 渲染 9 個 surface（儀表板卡、狀態列、指令與終端、HTTP、擷取控制、外掛詳情、首次使用、HUD、pane 徽章），記錄每個來源今天顯示的字。今天不一致的組合以 `it.fails` 標示；同時重新計數 renderer 受影響的檔案，更新 plan 的估計。
+- [x] T006 [P] G2 ratchet：`test/source-status-boundary.test.ts`，基準 20（plan「要取代的判斷」J1–J7、S1–S13），只能下降；形式同 `test/mutation-guard.test.ts`。
+- [x] T007 [P] G5 的 shell 名稱字面陣列 ratchet，基準 9（plan「現況」的清單；先開檔確認 `wsl-manager.ts:288`）。
+- [x] T008 [P] G4：`test/source-owner-actions.test.ts`，以今天呼叫 `hooks.install|uninstall`、`httpCapture.start|stop`、`plugins.setEnabled|grant|revoke`、寫 `packs`／`packMembers`／`agentTailer.sources` 的檔案為允許清單，只能變短。
+- [x] T009 [P] G7 雛形：`test/plugin-manifest-consumers.test.ts`，以今天的 `PluginManifest` 欄位為對象，列出沒有讀者的欄位（`kind`、`capabilities` 的行為、`signature`、`publisher`、`schemaVersion`、頂層 `emits`、`health`、`homepage`）為允許清單，只能變短。
+- [x] T010 [P] [US1] RED：新專案無 hook 時整體應為等待第一筆事件（今天 `dark`，`test/capture-health.test.ts:65` 釘住相反的契約）；有 hook 的機器上的新專案應與無 hook 時相同。`it.fails`。
+- [x] T011 [P] [US3] RED：POSIX 缺 python3 時內建終端機不應為 ready（04-U6a）；外掛停用後仍收到事件應為失敗。`it.fails`。
+- [x] T012 [P] [US2] 特徵化：`test/cli-status-words.test.ts` 釘住今天 CLI 對每種 verdict 的輸出（含 `wired but idle`）；`test/api-status-compat.test.ts` 釘住 `/api/status` 的 `capture` 形狀。
 - **Gate**：五道 gate 全綠；新測試在三個平台的 unit leg 都有執行，或記為 not-run 並附原因。
 
 ## Phase 2 — 模型進核心，介面不變
