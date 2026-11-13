@@ -26,6 +26,8 @@ import { parseQuery } from '../src/core/query/contract'
 import type { ParsedQuery } from '../src/core/query/contract'
 
 let initDB: typeof import('../src/core/db').initDB
+
+let bindDBEngagement: typeof import('../src/core/db').bindDBEngagement
 let closeDB: typeof import('../src/core/db').closeDB
 let insertEvent: typeof import('../src/core/db/event-write').insertEvent
 let closeHttpBodyIndex: typeof import('../src/core/http-body-index').closeHttpBodyIndex
@@ -37,7 +39,7 @@ if (requires('better-sqlite3').ok) {
   const write = await import('../src/core/db/event-write')
   const queries = await import('../src/core/db/event-queries')
   const bodyIndex = await import('../src/core/http-body-index')
-  initDB = db.initDB
+  initDB = db.initDB; bindDBEngagement = db.bindDBEngagement
   closeDB = db.closeDB
   insertEvent = write.insertEvent
   closeHttpBodyIndex = bodyIndex.closeHttpBodyIndex
@@ -67,7 +69,7 @@ describe('unparsable is decided before the store is touched (T006)', () => {
 describeDB('failure and absence are different answers (T006)', () => {
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-query-states-'))
-    initDB(dir)
+    initDB(dir); bindDBEngagement('eng-test')
     insertEvent('agent', { subtype: 'assistant_message', session_id: 'S1', full: 'connection refused' }, { operatorId: 'op' })
   })
   afterEach(() => {

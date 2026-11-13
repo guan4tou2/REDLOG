@@ -6,6 +6,8 @@ import path from 'path'
 import { parseQuery } from '../src/core/query/contract'
 
 let initDB: typeof import('../src/core/db').initDB
+
+let bindDBEngagement: typeof import('../src/core/db').bindDBEngagement
 let closeDB: typeof import('../src/core/db').closeDB
 let insertEvent: typeof import('../src/core/db/events').insertEvent
 let queryEventsPage: typeof import('../src/core/db/events').queryEventsPage
@@ -17,7 +19,7 @@ let available = false
 if (requires('better-sqlite3').ok) {
   const db = await import('../src/core/db')
   const events = await import('../src/core/db/events')
-  initDB = db.initDB
+  initDB = db.initDB; bindDBEngagement = db.bindDBEngagement
   closeDB = db.closeDB
   insertEvent = events.insertEvent
   queryEventsPage = events.queryEventsPage
@@ -33,7 +35,7 @@ let dir: string
 describeDB('queryEventsPage', () => {
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-event-page-'))
-    initDB(dir)
+    initDB(dir); bindDBEngagement('eng-test')
   })
   afterEach(() => {
     // A text query opens the body index too; Windows will not delete it open.
@@ -60,7 +62,7 @@ describeDB('queryEventsPage', () => {
     const db = getDB()
     const table = subtype === 'thinking' ? 'events_logged' : 'events'
     const before = db.prepare(`SELECT data FROM ${table} WHERE id = ?`).get(event.id)
-    closeDB(); initDB(dir)
+    closeDB(); initDB(dir); bindDBEngagement('eng-test')
     expect(getDB().prepare('SELECT total_changes() AS writes').get()).toEqual({ writes: 0 })
     expect(find('AFTER_NEWLINE')).toContain(event.id)
     expect(getDB().prepare(`SELECT data FROM ${table} WHERE id = ?`).get(event.id)).toEqual(before)
@@ -80,7 +82,7 @@ describeDB('queryEventsPage', () => {
       DROP TABLE events_fts;
       CREATE VIRTUAL TABLE events_fts USING fts5(data, target_id, agent_type, content=events, content_rowid=rowid);
       INSERT INTO events_fts(events_fts) VALUES ('rebuild');`)
-    closeDB(); initDB(dir)
+    closeDB(); initDB(dir); bindDBEngagement('eng-test')
     expect(find('PREVIOUSLY_UNSEARCHABLE')).toContain(event.id)
     expect(getDB().prepare('SELECT data, hash, prev_hash FROM events WHERE id = ?').get(event.id)).toEqual(evidence)
   })

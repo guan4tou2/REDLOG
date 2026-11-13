@@ -218,7 +218,11 @@ describeDB('ingest characterization (R2-0a)', () => {
       expect(fs.existsSync(file)).toBe(false)
       const [row, ...rest] = gaps()
       expect(rest).toEqual([])
-      expect(row.data).toEqual({ ...data, recovered_from_spool: true })
+      // Unchanged but for the receiver's stamp (Spec 071 FR-005), which every
+      // new row carries; which door it names is test/ingest-stamp-doors.test.ts.
+      const { _ingest: stamp, ...stored } = row.data as Record<string, unknown>
+      expect(stored).toEqual({ ...data, recovered_from_spool: true })
+      expect(stamp).toMatchObject({ v: 1 })
       expect(row.data.overlaps_pause).toBeUndefined()
       expect(row.source).toBe('spool')
     })

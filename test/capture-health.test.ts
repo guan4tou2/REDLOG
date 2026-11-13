@@ -5,6 +5,8 @@ import path from 'path'
 import os from 'os'
 
 let initDB: typeof import('../src/core/db/index').initDB
+
+let bindDBEngagement: typeof import('../src/core/db/index').bindDBEngagement
 let closeDB: typeof import('../src/core/db/index').closeDB
 let getDB: typeof import('../src/core/db/index').getDB
 let insertEventRaw: typeof import('../src/core/db/events').insertEvent
@@ -23,7 +25,7 @@ if (requires('better-sqlite3').ok) {
   hooksMod = await import('../src/core/hooks-manager')
   pluginsIndex = await import('../src/core/plugins/index')
   eventBusMod = await import('../src/core/event-bus')
-  initDB = dbMod.initDB; closeDB = dbMod.closeDB; getDB = dbMod.getDB
+  initDB = dbMod.initDB; bindDBEngagement = dbMod.bindDBEngagement; closeDB = dbMod.closeDB; getDB = dbMod.getDB
   insertEventRaw = evMod.insertEvent
   getCaptureHealth = chMod.getCaptureHealth
   configureCaptureHealth = chMod.configureCaptureHealth
@@ -52,7 +54,7 @@ function mockHooks(installed: Record<string, boolean>, unavailable: string[] = [
 describeDB('capture-health', () => {
   let tmp: string
   beforeEach(() => {
-    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-cap-')); initDB(tmp)
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-cap-')); initDB(tmp); bindDBEngagement('eng-1')
     // The app loads the bundled pack plugins at startup; tests do not, and a
     // pack whose plugin is not active is left out of health (Spec 035).
     const active = (id: string) => ({ manifest: { id }, source: 'bundled', status: 'active' }) as never
@@ -533,7 +535,7 @@ describeDB('capture-health tells the truth about live sources', () => {
     const ch = await import('../src/core/capture-health')
     noteCaptureError = ch.noteCaptureError; clearCaptureError = ch.clearCaptureError
     clearCaptureError('screenshot')
-    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-cap2-')); initDB(tmp)
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-cap2-')); initDB(tmp); bindDBEngagement('eng-1')
     const active = (id: string) => ({ manifest: { id }, source: 'bundled', status: 'active' }) as never
     vi.spyOn(pluginsIndex, 'listPlugins').mockReturnValue(
       [active('pack-host-monitors'), active('pack-windows-output')]
@@ -617,7 +619,7 @@ describeDB('capture-health tells the truth about live sources', () => {
 describeDB('the mitmproxy row is fed by either of its two modes', () => {
   let tmp: string
   beforeEach(() => {
-    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-streams-')); initDB(tmp)
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-streams-')); initDB(tmp); bindDBEngagement('eng-1')
     const active = (id: string) => ({ manifest: { id }, source: 'bundled', status: 'active' }) as never
     vi.spyOn(pluginsIndex, 'listPlugins').mockReturnValue(
       [active('pack-host-monitors'), active('pack-windows-output')]
@@ -653,7 +655,7 @@ describeDB('the mitmproxy row is fed by either of its two modes', () => {
 describeDB('each AI tool reports its own last event', () => {
   let tmp: string
   beforeEach(() => {
-    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-agents-')); initDB(tmp)
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-agents-')); initDB(tmp); bindDBEngagement('eng-1')
     const active = (id: string) => ({ manifest: { id }, source: 'bundled', status: 'active' }) as never
     vi.spyOn(pluginsIndex, 'listPlugins').mockReturnValue(
       [active('pack-host-monitors'), active('pack-windows-output')]
@@ -686,7 +688,7 @@ describeDB('capture-health: the indexed probes answer what the IN-list probes di
   const DAY = 24 * HOUR
 
   beforeEach(() => {
-    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-equiv-')); initDB(tmp)
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-equiv-')); initDB(tmp); bindDBEngagement('eng-1')
     const active = (id: string) => ({ manifest: { id }, source: 'bundled', status: 'active' }) as never
     vi.spyOn(pluginsIndex, 'listPlugins').mockReturnValue(
       [active('pack-host-monitors'), active('pack-windows-output')]

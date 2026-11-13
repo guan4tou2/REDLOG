@@ -7,6 +7,7 @@ import os from 'os'
 // evidence-chain depends on the native better-sqlite3 module; use the same
 // conditional-import guard as the rest of the DB-backed test suites.
 let initDB: typeof import('../src/core/db/index').initDB
+let bindDBEngagement: typeof import('../src/core/db/index').bindDBEngagement
 let closeDB: typeof import('../src/core/db/index').closeDB
 let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let getChainLength: typeof import('../src/core/evidence-chain').getChainLength
@@ -16,7 +17,7 @@ if (requires('better-sqlite3').ok) {
   const dbMod =await import('../src/core/db/index')
   const evMod = await import('../src/core/db/events')
   const ecMod = await import('../src/core/evidence-chain')
-  initDB = dbMod.initDB
+  initDB = dbMod.initDB; bindDBEngagement = dbMod.bindDBEngagement
   closeDB = dbMod.closeDB
   insertEventRaw = evMod.insertEvent
   getChainLength = ecMod.getChainLength
@@ -33,7 +34,7 @@ describeDB('evidence-chain', () => {
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-chain-'))
-    initDB(tmpDir)
+    initDB(tmpDir); bindDBEngagement('eng-test')
   })
 
   afterEach(() => {

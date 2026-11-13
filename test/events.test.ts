@@ -6,6 +6,8 @@ import path from 'path'
 import os from 'os'
 
 let initDB: typeof import('../src/core/db/index').initDB
+
+let bindDBEngagement: typeof import('../src/core/db/index').bindDBEngagement
 let closeDB: typeof import('../src/core/db/index').closeDB
 let closeHttpBodyIndex: typeof import('../src/core/http-body-index').closeHttpBodyIndex
 let getDB: typeof import('../src/core/db/index').getDB
@@ -18,7 +20,7 @@ let dbAvailable = false
 if (requires('better-sqlite3').ok) {
   const dbMod =await import('../src/core/db/index')
   const eventsMod = await import('../src/core/db/events')
-  initDB = dbMod.initDB
+  initDB = dbMod.initDB; bindDBEngagement = dbMod.bindDBEngagement
   closeDB = dbMod.closeDB
   closeHttpBodyIndex = (await import('../src/core/http-body-index')).closeHttpBodyIndex
   getDB = dbMod.getDB
@@ -49,7 +51,7 @@ let tmpDir: string
 describeDB('insertEvent', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-test-'))
-    initDB(tmpDir)
+    initDB(tmpDir); bindDBEngagement('eng-1')
   })
   afterEach(() => {
     // `closeDB()` closes the project DB and its read-only twin, but not
@@ -71,15 +73,15 @@ describeDB('insertEvent', () => {
     expect(event!.hash).toBeTruthy()
   })
 
-  it('assigns default engagement when not provided', () => {
+  it('takes the open database\'s engagement when none is provided, never `default` (Spec 071 FR-007)', () => {
     const event = insertEvent('marker', { title: 'test' })!
-    expect(event.engagementId).toBe('default')
+    expect(event.engagementId).toBe('eng-1')
     expect(event.operatorId).toBe('test-op')
   })
 
   it('throws if operatorId is missing (no silent fallback)', () => {
     expect(() => insertEventRaw('marker', { title: 'x' })).toThrow(/operatorId is required/)
-    expect(() => insertEventRaw('marker', { title: 'x' }, { engagementId: 'e' } as unknown as { operatorId: string })).toThrow(/operatorId is required/)
+    expect(() => insertEventRaw('marker', { title: 'x' }, { engagementId: 'eng-1' } as unknown as { operatorId: string })).toThrow(/operatorId is required/)
   })
 
   it('uses provided engagement and operator', () => {
@@ -94,7 +96,7 @@ describeDB('insertEvent', () => {
 describeDB('shell dedup', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-test-'))
-    initDB(tmpDir)
+    initDB(tmpDir); bindDBEngagement('eng-1')
   })
   afterEach(() => {
     closeHttpBodyIndex()
@@ -165,7 +167,7 @@ describeDB('shell dedup', () => {
 describeDB('monotonic_ns padding', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-test-'))
-    initDB(tmpDir)
+    initDB(tmpDir); bindDBEngagement('eng-1')
   })
   afterEach(() => {
     closeHttpBodyIndex()
@@ -189,7 +191,7 @@ describeDB('monotonic_ns padding', () => {
 describeDB('queryEvents excludeHousekeeping', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-test-'))
-    initDB(tmpDir)
+    initDB(tmpDir); bindDBEngagement('eng-1')
   })
   afterEach(() => {
     closeHttpBodyIndex()
@@ -217,7 +219,7 @@ describeDB('queryEvents excludeHousekeeping', () => {
 describeDB('evidence chain', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-test-'))
-    initDB(tmpDir)
+    initDB(tmpDir); bindDBEngagement('eng-1')
   })
   afterEach(() => {
     closeHttpBodyIndex()
@@ -255,7 +257,7 @@ describeDB('evidence chain', () => {
 describeDB('queryEvents', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-test-'))
-    initDB(tmpDir)
+    initDB(tmpDir); bindDBEngagement('eng-1')
   })
   afterEach(() => {
     closeHttpBodyIndex()
@@ -318,7 +320,7 @@ describeDB('queryEvents', () => {
 describeDB('getEventCount', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-test-'))
-    initDB(tmpDir)
+    initDB(tmpDir); bindDBEngagement('eng-1')
   })
   afterEach(() => {
     closeHttpBodyIndex()
@@ -340,7 +342,7 @@ describeDB('getEventCount', () => {
 describeDB('full-text search on the query contract', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-test-'))
-    initDB(tmpDir)
+    initDB(tmpDir); bindDBEngagement('eng-1')
   })
   afterEach(() => {
     closeHttpBodyIndex()

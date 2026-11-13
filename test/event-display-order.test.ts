@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { initDB, closeDB, getDB } from '../src/core/db/index'
+import { initDB, closeDB, getDB, bindDBEngagement } from '../src/core/db/index'
 import { closeHttpBodyIndex } from '../src/core/http-body-index'
 import { parseQuery } from '../src/core/query/contract'
 import { queryActivityPage, queryActivityMembers } from '../src/core/db/activity-queries'
@@ -20,7 +20,7 @@ import { redactEventForExport } from '../src/core/redact-export'
 // the tie on id fails every time rather than half the time.
 
 let dir: string
-beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-order-')); initDB(dir) })
+beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-order-')); initDB(dir); bindDBEngagement('eng-test') })
 afterEach(() => { closeHttpBodyIndex(); closeDB(); fs.rmSync(dir, { recursive: true, force: true }) })
 
 type Tier = 'chained' | 'logged'
@@ -38,7 +38,7 @@ function request(query = '', extra: Partial<ActivityRequest> = {}): ActivityRequ
   const parsed = parseQuery(query); if (!parsed.ok) throw new Error('bad fixture query')
   return { projectId: 'eng', parsed: parsed.parsed, ...extra }
 }
-function reopen(): void { closeHttpBodyIndex(); closeDB(); initDB(dir) }
+function reopen(): void { closeHttpBodyIndex(); closeDB(); initDB(dir); bindDBEngagement('eng-test') }
 
 /** Same-millisecond sequences, each listed in ingestion order. */
 const T = 1_700_000_000_000

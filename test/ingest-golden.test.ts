@@ -27,10 +27,13 @@ vi.mock('../src/core/signing', async (actual) => {
 })
 
 // Recorded from the write path before statement caching and the skipped FTS
-// delete (2026-11-11).
+// delete (2026-11-11). Re-recorded 2026-11-13 for Spec 071 T021: every new
+// row now carries the receiver's stamp `data._ingest` (FR-005), which is
+// inside the chained hash, and its event_id takes one randomUUID per row, so
+// the ids that follow shift too. The evidence content of new rows changed.
 const GOLDEN = {
-  rows: '9127c95d6823d84a492a2fa941b5bf54f5c015e928f904e0d6e6153c4f12fc2b',
-  head: '0714ce444f301ef44b0d7d83ce599ca0762fc06245034971082f77e8e40af63c'
+  rows: 'e719bcfdf95f0e82c9afefd5a9f8eb8b6a28a07cbad8584c58be50b770c286ac',
+  head: '55e74822b63eb7d8bf139cb6f0cb44180b77ebc673fc030bd32b00074c1b5c76'
 }
 
 let dir: string

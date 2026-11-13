@@ -12,6 +12,8 @@ import os from 'os'
 // SQLite DB.
 
 let initDB: typeof import('../../src/core/db/index').initDB
+
+let bindDBEngagement: typeof import('../../src/core/db/index').bindDBEngagement
 let closeDB: typeof import('../../src/core/db/index').closeDB
 let getDB: typeof import('../../src/core/db/index').getDB
 let events: typeof import('../../src/core/db/events')
@@ -22,7 +24,7 @@ if (requires('better-sqlite3').ok) {
   const dbMod = await import('../../src/core/db/index')
   events = await import('../../src/core/db/events')
   ops = await import('../../src/core/db/operators')
-  initDB = dbMod.initDB
+  initDB = dbMod.initDB; bindDBEngagement = dbMod.bindDBEngagement
   closeDB = dbMod.closeDB
   getDB = dbMod.getDB
   dbAvailable = true
@@ -36,7 +38,7 @@ describeDB('insertEvent — two-tier dispatch (v0.13.0)', () => {
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-tier-'))
-    initDB(tmpDir)
+    initDB(tmpDir); bindDBEngagement('test')
     // Every insertEvent requires a resolved operator; primary operator
     // is created lazily by the app but tests need it up front.
     const op = ops.ensurePrimaryOperator('test-op', 'Test Operator', 'test-token-' + Math.random())

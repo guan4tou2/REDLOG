@@ -11,6 +11,8 @@ import os from 'os'
 // both tiers, nulls excluded, correct MIN/MAX, and — the headline — uncapped.
 
 let initDB: typeof import('../src/core/db/index').initDB
+
+let bindDBEngagement: typeof import('../src/core/db/index').bindDBEngagement
 let closeDB: typeof import('../src/core/db/index').closeDB
 let getDB: typeof import('../src/core/db/index').getDB
 let insertEventRaw: typeof import('../src/core/db/events').insertEvent
@@ -21,7 +23,7 @@ let dbAvailable = false
 if (requires('better-sqlite3').ok) {
   const dbMod = await import('../src/core/db/index')
   const eventsMod = await import('../src/core/db/events')
-  initDB = dbMod.initDB
+  initDB = dbMod.initDB; bindDBEngagement = dbMod.bindDBEngagement
   closeDB = dbMod.closeDB
   getDB = dbMod.getDB
   insertEventRaw = eventsMod.insertEvent
@@ -40,7 +42,7 @@ let tmpDir: string
 describeDB('aggregateTargets', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-tgt-'))
-    initDB(tmpDir)
+    initDB(tmpDir); bindDBEngagement('eng-test')
   })
   afterEach(() => {
     closeDB()

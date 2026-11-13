@@ -16,6 +16,8 @@ import os from 'os'
 // variant logic verifyChainFullAsync tests cover.
 
 let initDB: typeof import('../src/core/db/index').initDB
+
+let bindDBEngagement: typeof import('../src/core/db/index').bindDBEngagement
 let closeDB: typeof import('../src/core/db/index').closeDB
 let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let anchor: typeof import('../src/core/chain-anchor')
@@ -27,7 +29,7 @@ if (requires('better-sqlite3').ok) {
   const evMod = await import('../src/core/db/events')
   anchor = await import('../src/core/chain-anchor')
   capture = await import('../src/core/capture-health')
-  initDB = dbMod.initDB
+  initDB = dbMod.initDB; bindDBEngagement = dbMod.bindDBEngagement
   closeDB = dbMod.closeDB
   insertEventRaw = evMod.insertEvent
   dbAvailable = true
@@ -43,7 +45,7 @@ describeDB('chain-sampling', () => {
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-sample-'))
-    initDB(tmpDir)
+    initDB(tmpDir); bindDBEngagement('eng-test')
     capture.clearSampleBroken()
   })
 

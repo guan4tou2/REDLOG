@@ -7,16 +7,12 @@
 // those rows are committed, together with what the old verifiers said about
 // them. test/golden-old-rows.test.ts holds every later phase to them.
 //
-// Run through the test, never by hand:
-//
-//   REDLOG_WRITE_GOLDEN_PRE071=1 npx vitest run test/golden-old-rows.test.ts
-//
-// writes the fixture; without the variable the same test regenerates into a
-// temporary directory and fails if the result differs from what is committed.
-// Once Spec 071 Phase 3 changes what new rows carry, the regenerated rows WILL
-// differ — that is the change, not a reason to rewrite the fixture. The
-// fixture is the pre-071 record; retire the regeneration check then, and keep
-// every other assertion.
+// The fixture was written by this generator on main before Spec 071 Phase 3
+// and is frozen: Phase 3 (T021) changed what new rows carry, so running the
+// generator now produces rows with `data._ingest` — the change, not a reason
+// to rewrite the fixture. The regeneration check was retired then; the
+// generator stays as the record of how the fixture was made, and its helpers
+// serve test/fixtures/provenance-vectors-generate.ts.
 //
 // Deterministic: the wall clock is faked, the monotonic clock follows it, ids
 // count up, the host name is fixed, and the operator's Ed25519 key is derived
@@ -118,7 +114,7 @@ export function clockMock(real: Record<string, unknown>): Record<string, unknown
 }
 
 /** The operator's key pair, from the public seed above. */
-function writeOperatorKeys(keysDir: string, operatorId: string): void {
+export function writeOperatorKeys(keysDir: string, operatorId: string): void {
   const seed = crypto.createHash('sha256').update(KEY_SEED_TEXT).digest()
   // PKCS#8 wrapper for a raw Ed25519 seed (RFC 8410).
   const der = Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), seed])

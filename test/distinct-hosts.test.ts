@@ -8,6 +8,8 @@ import os from 'os'
 // Companion to target-aggregate.test.ts — same SQL-over-JSON shape (#65).
 
 let initDB: typeof import('../src/core/db/index').initDB
+
+let bindDBEngagement: typeof import('../src/core/db/index').bindDBEngagement
 let closeDB: typeof import('../src/core/db/index').closeDB
 let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let distinctHosts: typeof import('../src/core/db/events').distinctHosts
@@ -16,7 +18,7 @@ let dbAvailable = false
 if (requires('better-sqlite3').ok) {
   const dbMod = await import('../src/core/db/index')
   const eventsMod = await import('../src/core/db/events')
-  initDB = dbMod.initDB; closeDB = dbMod.closeDB
+  initDB = dbMod.initDB; bindDBEngagement = dbMod.bindDBEngagement; closeDB = dbMod.closeDB
   insertEventRaw = eventsMod.insertEvent; distinctHosts = eventsMod.distinctHosts
   dbAvailable = true
 }
@@ -27,7 +29,7 @@ const describeDB = dbAvailable ? describe : describe.skip
 let tmpDir: string
 
 describeDB('distinctHosts', () => {
-  beforeEach(() => { tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-host-')); initDB(tmpDir) })
+  beforeEach(() => { tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-host-')); initDB(tmpDir); bindDBEngagement('eng-test') })
   afterEach(() => { closeDB(); fs.rmSync(tmpDir, { recursive: true, force: true }) })
 
   it('groups distinct hosts with a hit count, busiest first', () => {

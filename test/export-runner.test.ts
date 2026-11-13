@@ -4,7 +4,7 @@ import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { afterEach, beforeEach, expect, it } from 'vitest'
-import { initDB, closeDB, getDB } from '../src/core/db/index'
+import { initDB, closeDB, getDB, bindDBEngagement } from '../src/core/db/index'
 import { runExportTask } from '../src/main/services/export-runner'
 import type { ExportTask } from '../src/core/export-task'
 import type { ProjectMeta } from '../src/core/project-manager'
@@ -14,7 +14,7 @@ import { buildExportPlan } from '../src/core/export-planning'
 let dir: string, project: ProjectMeta
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-real-worker-'))
-  initDB(dir)
+  initDB(dir); bindDBEngagement('p')
   project = { id: 'p', name: 'worker', path: dir, createdAt: 1, lastOpened: 1 }
   getDB().prepare(`INSERT INTO events_logged (id,timestamp,engagement_id,session_id,operator_id,agent_type,subtype,hostname,data,created_at)
     VALUES ('request',1,'p','s','op','scanner','http_request_start','host',?,1)`).run(JSON.stringify({ subtype: 'http_request_start', flow_id: 'flow', url: 'http://example.test/', method: 'GET' }))

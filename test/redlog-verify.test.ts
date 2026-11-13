@@ -14,6 +14,8 @@ import { spawnSync } from 'child_process'
 //   - python3 isn't on PATH (pythonAvailable=false)
 
 let initDB: typeof import('../src/core/db/index').initDB
+
+let bindDBEngagement: typeof import('../src/core/db/index').bindDBEngagement
 let closeDB: typeof import('../src/core/db/index').closeDB
 let events: typeof import('../src/core/db/events')
 let ops: typeof import('../src/core/db/operators')
@@ -25,7 +27,7 @@ try {
   events = await import('../src/core/db/events')
   ops = await import('../src/core/db/operators')
   bundleExport = await import('../src/core/bundle-export')
-  initDB = dbMod.initDB
+  initDB = dbMod.initDB; bindDBEngagement = dbMod.bindDBEngagement
   closeDB = dbMod.closeDB
   dbAvailable = true
 } catch { /* better-sqlite3 not compiled */ }
@@ -66,7 +68,7 @@ describeVerify('tools/redlog-verify.py against real bundle', () => {
     keysDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-verify-keys-'))
     prevKeysEnv = process.env.REDLOG_KEYS_DIR
     process.env.REDLOG_KEYS_DIR = keysDir
-    initDB(tmpDir)
+    initDB(tmpDir); bindDBEngagement('default')
   })
 
   afterEach(() => {

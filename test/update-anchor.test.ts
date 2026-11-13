@@ -10,6 +10,7 @@ import os from 'os'
 
 let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
+let bindDBEngagement: typeof import('../src/core/db/index').bindDBEngagement
 let events: typeof import('../src/core/db/events')
 let ops: typeof import('../src/core/db/operators')
 let ua: typeof import('../src/core/update-anchor')
@@ -19,7 +20,7 @@ if (requires('better-sqlite3').ok) {
   events = await import('../src/core/db/events')
   ops = await import('../src/core/db/operators')
   ua = await import('../src/core/update-anchor')
-  initDB = dbMod.initDB; closeDB = dbMod.closeDB
+  initDB = dbMod.initDB; closeDB = dbMod.closeDB; bindDBEngagement = dbMod.bindDBEngagement
   dbAvailable = true
 }
 const describeDB = dbAvailable ? describe : describe.skip
@@ -35,7 +36,7 @@ describeDB('anchorBeforeRestart (5a backend)', () => {
   let tmpDir: string
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-updanchor-'))
-    initDB(tmpDir)
+    initDB(tmpDir); bindDBEngagement('eng-upd')
     ops.ensurePrimaryOperator('upd-op', 'Upd Op', 'tok-' + Math.random())
   })
   afterEach(() => { closeDB(); fs.rmSync(tmpDir, { recursive: true, force: true }) })
@@ -141,12 +142,12 @@ describeDB('anchorBeforeRestart (5a backend)', () => {
   it('records what the update did, and says the sessions before it were not resumed', () => {
     const done = ua.recordUpdateOutcome(
       { kind: 'completed', fromVersion: '1.0.0', toVersion: '1.1.0', actualVersion: '1.1.0' },
-      { engagementId: 'default', operatorId: 'upd-op' }
+      { engagementId: 'eng-upd', operatorId: 'upd-op' }
     )
     expect(done).not.toBeNull()
     const miss = ua.recordUpdateOutcome(
       { kind: 'not-applied', fromVersion: '1.0.0', toVersion: '1.1.0', actualVersion: '1.0.0' },
-      { engagementId: 'default', operatorId: 'upd-op' }
+      { engagementId: 'eng-upd', operatorId: 'upd-op' }
     )
     const subs = events.queryEvents({ agentType: 'system', limit: 50 }).map((e) => e.data as Record<string, unknown>)
     const completed = subs.find((d) => d.subtype === 'update_completed')!

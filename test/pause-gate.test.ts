@@ -9,6 +9,8 @@ import os from 'os'
 // the hash chain — it only muted the UI feed.
 
 let initDB: typeof import('../src/core/db/index').initDB
+
+let bindDBEngagement: typeof import('../src/core/db/index').bindDBEngagement
 let closeDB: typeof import('../src/core/db/index').closeDB
 let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let getEventCount: typeof import('../src/core/db/events').getEventCount
@@ -21,7 +23,7 @@ if (requires('better-sqlite3').ok) {
   const dbMod =await import('../src/core/db/index')
   const eventsMod = await import('../src/core/db/events')
   const busMod = await import('../src/core/event-bus')
-  initDB = dbMod.initDB
+  initDB = dbMod.initDB; bindDBEngagement = dbMod.bindDBEngagement
   closeDB = dbMod.closeDB
   insertEventRaw = eventsMod.insertEvent
   getEventCount = eventsMod.getEventCount
@@ -40,7 +42,7 @@ let tmpDir: string
 describeDB('pause gate (v0.9.5)', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-pause-'))
-    initDB(tmpDir)
+    initDB(tmpDir); bindDBEngagement('eng-test')
     bus.resume()
   })
   afterEach(() => {

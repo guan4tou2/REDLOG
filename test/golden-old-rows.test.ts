@@ -4,7 +4,7 @@
 // test/fixtures/golden-pre071 holds a project database and two bundles (one
 // whole chain, one projection) written by main before Spec 071, with what the
 // app's verifiers and tools/redlog-verify.py said about them
-// (expected.json). How they were made, and how to regenerate them, is in
+// (expected.json). How they were made is in
 // test/fixtures/golden-pre071-generate.ts.
 //
 // Held here, against today's code and every later phase's:
@@ -15,9 +15,12 @@
 //     what they said;
 //   - a bundle exported now carries the old rows' events.jsonl and
 //     events_logged.jsonl lines byte for byte as the old export did.
-// And, separately: the committed fixture is what the generator produces with
-// the code in this checkout. That check is about the fixture, not the rows —
-// see the note in golden-pre071-generate.ts on retiring it in Phase 3.
+// The fixture is the pre-071 record and is never regenerated. Until Spec 071
+// Phase 3 this file also checked that the generator still reproduced it; T021
+// changed what new rows carry (`data._ingest`), so the generator's output now
+// differs by design, and that check was retired as golden-pre071-generate.ts
+// said it would be. Rows written with the stamp are pinned by
+// test/provenance-vectors.test.ts.
 
 import fs from 'node:fs'
 import os from 'node:os'
@@ -25,30 +28,13 @@ import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { requires } from './helpers/requires'
 import {
-  ENG, OP, T_START, BUNDLES, dumpRows, digestRows, appVerifyView, runPythonVerifier, clockMock, generateGoldenPre071, unpackTo, type GoldenExpected
+  ENG, OP, T_START, BUNDLES, dumpRows, digestRows, appVerifyView, runPythonVerifier, unpackTo, type GoldenExpected
 } from './fixtures/golden-pre071-generate'
 
 const sqlite = requires('better-sqlite3')
 const python = requires('python-cryptography')
 const Database = sqlite.ok ? (await import('better-sqlite3')).default : null
 const FIXTURE = path.join(__dirname, 'fixtures', 'golden-pre071')
-const WRITE = process.env.REDLOG_WRITE_GOLDEN_PRE071 === '1'
-const STALE = 'test/fixtures/golden-pre071 does not match what test/fixtures/golden-pre071-generate.ts produces with this checkout. ' +
-  'If you changed the generator or the code that wrote these rows on purpose BEFORE Spec 071 Phase 3, regenerate with ' +
-  '`REDLOG_WRITE_GOLDEN_PRE071=1 npx vitest run test/golden-old-rows.test.ts` and review the diff. ' +
-  'If this commit changes what NEW rows carry (Spec 071 T030), do not regenerate: the fixture is the pre-071 record. Retire this check instead.'
-
-async function regenerate(out: string): Promise<GoldenExpected> {
-  vi.resetModules()
-  vi.doMock('../src/core/clock', async (importOriginal) => clockMock(await importOriginal<Record<string, unknown>>()))
-  try {
-    return await generateGoldenPre071(out)
-  } finally {
-    vi.doUnmock('../src/core/clock')
-    vi.resetModules()
-  }
-}
-
 const tmps: string[] = []
 function tmp(label: string): string {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), `redlog-golden-${label}-`))
@@ -69,7 +55,6 @@ sqlite.describe('rows written before Spec 071', () => {
   const prevKeys = process.env.REDLOG_KEYS_DIR
 
   beforeAll(async () => {
-    if (WRITE) await regenerate(FIXTURE)
     expected = JSON.parse(fs.readFileSync(path.join(FIXTURE, 'expected.json'), 'utf8')) as GoldenExpected
     // The signer key is not part of the fixture. Verifying needs only the
     // public half, which is in the database and in operators.json.
@@ -245,40 +230,4 @@ sqlite.describe('rows written before Spec 071', () => {
       expect(runPythonVerifier(committedBundle(name)), name).toEqual(expected.pythonVerify[name])
     }
   })
-
-  it('the committed fixture is what golden-pre071-generate.ts produces with this checkout', async () => {
-    const out = path.join(tmp('regen'), 'golden-pre071')
-    const got = await regenerate(out)
-    // What the rows are and what the app's verifiers say. redlog-verify.py's
-    // output is held against the committed bundles by its own test above, so
-    // a change to the verifier's wording is reported there, once.
-    const { pythonVerify: _gotPy, ...gotRest } = got
-    const { pythonVerify: _wantPy, ...wantRest } = expected
-    expect(gotRest, STALE).toEqual(wantRest)
-    // The bytes the exporter wrote from the rows. Files a bundle carries as
-    // copies of tools (redlog-verify.py, verify.sh/.cmd, README.md) and the
-    // manifest's checksums of them are left out: they change with the tool,
-    // not with the rows. timeline.db is compared by rows, above.
-    // Compared unpacked: gzip's header names the OS that wrote it.
-    const ROW_FILES = /^bundle-[a-z]+\/(events\.jsonl|events_logged\.jsonl|operators\.json|chain_anchors\.json)$|^project\/raw\//
-    const view = (root: string): string => {
-      const v = tmp('view')
-      copyDir(path.join(root, 'project'), path.join(v, 'project'))
-      for (const name of BUNDLES) unpackTo(path.join(root, `bundle-${name}.json.gz`), path.join(v, `bundle-${name}`))
-      return v
-    }
-    const [mine, theirs] = [view(out), view(FIXTURE)]
-    const files = (root: string): string[] => (fs.readdirSync(root, { recursive: true, withFileTypes: true }) as fs.Dirent[])
-      .filter((e) => e.isFile()).map((e) => path.relative(root, path.join(e.parentPath, e.name)).split(path.sep).join('/'))
-      .filter((f) => ROW_FILES.test(f)).sort()
-    expect(files(mine), STALE).toEqual(files(theirs))
-    for (const f of files(mine)) {
-      expect(fs.readFileSync(path.join(mine, f)).equals(fs.readFileSync(path.join(theirs, f))), `${f}: ${STALE}`).toBe(true)
-    }
-    const manifest = (root: string, name: string): Record<string, unknown> => {
-      const m = JSON.parse(fs.readFileSync(path.join(root, `bundle-${name}`, 'manifest.json'), 'utf8')) as Record<string, unknown> & { files: Array<{ path: string }> }
-      return { ...m, files: m.files.filter((x) => ROW_FILES.test(`bundle-${name}/${x.path}`)) }
-    }
-    for (const name of BUNDLES) expect(manifest(mine, name), `bundle-${name}/manifest.json: ${STALE}`).toEqual(manifest(theirs, name))
-  }, 60_000)
 })

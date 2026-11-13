@@ -99,9 +99,9 @@ export async function anchorBeforeRestart(
         description: external === 'skipped'
           ? '準備更新重啟：air-gap 模式，未對外送出時間戳；重啟安裝期間會有數秒不記錄'
           : `準備更新重啟：鏈頭已錨定（${anchorStatus}）；重啟安裝期間會有數秒不記錄`
-      // No engagement named means none: insertEvent stores `default` for it.
-      // Spelling `default` out here named a foreign one, and a database bound
-      // to its project refuses that.
+      // No engagement named means the open database's: insertEvent writes the
+      // one it is bound to (Spec 071 FR-007). Spelling `default` out here
+      // named a foreign one, and a database bound to its project refuses that.
       }, { engagementId: opts.engagementId, operatorId: primary.id })
       // A null is a row that was not stored (a duplicate inside the window is
       // the only legitimate reason, and a marker is never identical twice).

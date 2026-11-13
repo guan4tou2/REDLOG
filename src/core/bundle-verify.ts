@@ -47,7 +47,10 @@ const V4_MANIFEST_KEYS = new Set([
   'sanitized', 'sanitizedOutOfScope', 'personalDropped', 'doNotExportDropped', 'exportPlan', 'tiers', 'attachments',
   'attachmentScopePolicy', 'eventSourceBreakdown', 'rawAgentTranscripts', 'files', 'seal', 'omittedAttachments'
 ])
-const SEAL_DATA_KEYS = new Set(['subtype', 'sealVersion', 'exportId', 'bundleVersion', 'manifestSha256', 'events', 'description'])
+/** The seal's own fields, plus `_ingest`: the receiver stamps every new row,
+ *  this one included (Spec 071 FR-005). It is not a seal field and says
+ *  nothing the seal check reads; refusing it would refuse every new seal. */
+const SEAL_DATA_KEYS = new Set(['subtype', 'sealVersion', 'exportId', 'bundleVersion', 'manifestSha256', 'events', 'description', '_ingest'])
 const SEAL_EVENTS_KEYS = new Set(['count', 'bytes', 'sha256', 'headHash'])
 
 type Row = Record<string, unknown>

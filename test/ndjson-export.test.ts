@@ -41,6 +41,7 @@ describe('ndjson-export — operator PII scrub', () => {
 // Structural test against a real DB — one line per event, ISO @timestamp,
 // chain columns preserved.
 let initDB: typeof import('../src/core/db/index').initDB
+let bindDBEngagement: typeof import('../src/core/db/index').bindDBEngagement
 let closeDB: typeof import('../src/core/db/index').closeDB
 let events: typeof import('../src/core/db/events')
 let ops: typeof import('../src/core/db/operators')
@@ -55,7 +56,7 @@ if (requires('better-sqlite3').ok) {
   ndjson = await import('../src/core/ndjson-export')
   redact = await import('../src/core/redact-export')
   dbIndex = dbMod
-  initDB = dbMod.initDB; closeDB = dbMod.closeDB
+  initDB = dbMod.initDB; bindDBEngagement = dbMod.bindDBEngagement; closeDB = dbMod.closeDB
   dbAvailable = true
 }
 const describeDB = dbAvailable ? describe : describe.skip
@@ -65,7 +66,7 @@ describeDB('ndjson-export — eventsToNdjson', () => {
   let operatorId: string
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-ndjson-'))
-    initDB(tmpDir)
+    initDB(tmpDir); bindDBEngagement('eng-test')
     operatorId = ops.ensurePrimaryOperator('ndjson-op', 'NDJSON Op', 'tok-' + Math.random()).id
   })
   afterEach(() => { closeDB(); fs.rmSync(tmpDir, { recursive: true, force: true }) })
