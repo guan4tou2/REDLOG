@@ -268,6 +268,21 @@ sqlite.describe('the engagement of a new row is the open database\'s (FR-007, T0
     expect(engagementForWrite(undefined)).toBe('eng-bound')
   })
 
+  // KNOWN GAP, pinned on purpose. FR-007 says a new row's engagement is always
+  // the bound database's, and T021's task text says "沒有綁定 DB 時拋錯" — throw
+  // whenever no database is bound. This slice is lenient instead: a database
+  // opened WITHOUT a binding (tests and tools; production binds right after
+  // initDB, src/main/index.ts startProject) takes the engagement the caller
+  // names. Making it strict means changing this test — and binding in the ~120
+  // test files that open a database without one. Decided 2026-11-13: lenient
+  // for now.
+  it('KNOWN GAP (FR-007 / T021): a database opened without a binding takes the caller\'s engagement', () => {
+    expect(dbMod.dbEngagement()).toBeNull()
+    const ev = events.insertEvent('system', { subtype: 'session_start' }, { engagementId: 'eng-named', operatorId: 'op' })!
+    expect(ev.engagementId).toBe('eng-named')
+    expect(engagementForWrite('eng-named')).toBe('eng-named')
+  })
+
   it('with nothing bound and no engagement named, nothing is written: it throws `no-project`', () => {
     expect(() => engagementForWrite(undefined)).toThrow(expect.objectContaining({ code: 'no-project' }))
     expect(() => events.insertEvent('system', { subtype: 'session_start' }, { operatorId: 'op' })).toThrow(expect.objectContaining({ code: 'no-project' }))
