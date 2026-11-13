@@ -510,6 +510,10 @@
       "class": "constant",
       "reason": "The four receiver-owned keys of `data` (Spec 071 FR-005), fixed at declaration; nothing mutates it."
     },
+    "src/core/ingest/stamp.ts#entranceScope": {
+      "class": "app",
+      "reason": "AsyncLocalStorage carrying the door of the API request a write is made for, per async call chain; it holds no value between calls and nothing about a project."
+    },
     "src/core/loot-detector.ts#externalPatterns": {
       "class": "project-legacy",
       "reason": "Plugin loot patterns loaded for the open project."

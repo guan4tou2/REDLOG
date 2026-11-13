@@ -70,6 +70,15 @@ it('every row in the bundle carries the stamp, and every door is there', () => {
   const doors = new Set(stamps.map((s) => `${String(s!.door)}/${String(s!.producer)}/${String(s!.auth)}`))
   expect([...doors].sort()).toEqual(['in-process/derived/in-process', 'in-process/in-process/in-process', 'legacy-api/legacy/bearer', 'legacy-handoff/legacy-handoff/none'])
   expect(stamps.some((s) => Array.isArray(s!.stripped) && (s!.stripped as string[]).length === 4), 'the forged row names all four keys').toBe(true)
+  // The loot row and the scope_violation are derived (review B).
+  const kinds = lines(path.join(dir, 'events.jsonl')).map((l) => {
+    const row = JSON.parse(l) as { agent_type: string; data: string }
+    const d = JSON.parse(row.data) as { subtype?: string; _ingest: Record<string, unknown> }
+    return { kind: `${row.agent_type}.${String(d.subtype)}`, producer: d._ingest.producer }
+  })
+  for (const k of ['loot.credential_detected', 'system.scope_violation']) {
+    expect(kinds.filter((x) => x.kind === k).map((x) => x.producer), k).toEqual(['derived'])
+  }
   expect(lines(path.join(dir, 'events_logged.jsonl')).length, 'a logged row is in the vectors').toBeGreaterThan(0)
   // The receiver's own keys sit beside the stamp, each on a row of its own.
   const keys = lines(path.join(dir, 'events.jsonl')).map((l) => Object.keys(JSON.parse(String((JSON.parse(l) as { data: string }).data)) as object))

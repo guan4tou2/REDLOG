@@ -20,6 +20,7 @@
 // `claimed` as the one nested object FR-005 itself names, holding strings.
 
 import crypto from 'crypto'
+import { AsyncLocalStorage } from 'async_hooks'
 import { dbEngagement } from '../db/index'
 
 /** FR-005's doors. `api` and `handoff` arrive with the contract-1 receiver
@@ -51,6 +52,29 @@ export const DERIVED: IngestEntrance = { door: 'in-process', producer: 'derived'
 export const LEGACY_API: IngestEntrance = { door: 'legacy-api', producer: 'legacy', auth: 'bearer', credential: null }
 /** A file in ~/.redlog/pending: no credential at all (FR-069). */
 export const LEGACY_HANDOFF: IngestEntrance = { door: 'legacy-handoff', producer: 'legacy-handoff', auth: 'none', credential: null }
+
+// The door of the request a row is written for, when the writer is RedLog's
+// own code acting on a caller's behalf: an API route's loot scan, sanitize,
+// export, screenshot or anchor writes rows through code that knows nothing of
+// HTTP. The route runs that code under withEntrance, and insertEvent and
+// ingest() take their default from here; an explicit entrance still wins.
+//
+// AsyncLocalStorage carries it across the awaits inside the call. It would also
+// carry it into a timer or watcher STARTED inside the call, so withEntrance
+// wraps one writer call, never a whole request, and a toggle whose listeners
+// start long-lived work (POST /api/recording) does not use it: main stamps
+// that row from the toggle's source instead.
+const entranceScope = new AsyncLocalStorage<IngestEntrance>()
+
+/** Run `fn` as writes made for `entrance`'s caller. */
+export function withEntrance<T>(entrance: IngestEntrance, fn: () => T): T {
+  return entranceScope.run(entrance, fn)
+}
+
+/** The entrance a write takes when its caller names none. */
+export function currentEntrance(): IngestEntrance {
+  return entranceScope.getStore() ?? IN_PROCESS
+}
 
 /** What an item said about itself that the stamp records. Nothing writes these
  *  before the contract-1 receiver (Phase 5) and Spec 075's rule list. */

@@ -8,7 +8,7 @@ import { signEvent } from '../signing'
 import { storeRaw, type RawRef } from '../raw-store'
 import type { RedLogEvent, EnvelopeInput, StoredEnvelope } from './event-types'
 import { ENVELOPE_SCHEMA_VERSION } from './event-types'
-import { IN_PROCESS, engagementForWrite, ingestStamp, stripReserved, type IngestEntrance } from '../ingest/stamp'
+import { currentEntrance, engagementForWrite, ingestStamp, stripReserved, type IngestEntrance } from '../ingest/stamp'
 
 interface InsertOpts {
   engagementId?: string
@@ -18,7 +18,8 @@ interface InsertOpts {
   envelope?: EnvelopeInput
   occurredAt?: number
   /** Who wrote the row, as the door that received it decided (Spec 071
-   *  FR-005). A caller that is not a door is RedLog's own code: in-process. */
+   *  FR-005). Absent: the entrance of the writer's caller (withEntrance), else
+   *  RedLog's own code, in-process. */
   entrance?: IngestEntrance
   /** Receiver-owned keys the door already removed from the producer's data. */
   stripped?: readonly string[]
@@ -630,7 +631,7 @@ function insertChainedEvent(
   if (anomaly) dataForChain = { ...dataForChain, _clock_anomaly: anomaly }
   if (sourceTimeRejected) dataForChain = { ...dataForChain, _source_time_rejected: sourceTimeRejected }
   // Last of the receiver's keys, and like them before the hash (FR-020).
-  dataForChain = { ...dataForChain, _ingest: ingestStamp(opts?.entrance ?? IN_PROCESS, { tier: 'chained', now, stripped: opts?.stripped }) }
+  dataForChain = { ...dataForChain, _ingest: ingestStamp(opts?.entrance ?? currentEntrance(), { tier: 'chained', now, stripped: opts?.stripped }) }
 
   const event: RedLogEvent = {
     id: crypto.randomUUID(),
@@ -761,7 +762,7 @@ function insertLoggedEvent(
     targetId: opts.targetId ?? null,
     // Stamped like a chained row (FR-005). Not hashed here: this tier has no
     // per-row hash, and the export's logged digest covers it (FR-024).
-    data: { ...data, _ingest: ingestStamp(opts.entrance ?? IN_PROCESS, { tier: 'logged', now, stripped: opts.stripped }) },
+    data: { ...data, _ingest: ingestStamp(opts.entrance ?? currentEntrance(), { tier: 'logged', now, stripped: opts.stripped }) },
     createdAt: now,
     // Deliberately absent — see the block above.
     hash: undefined,

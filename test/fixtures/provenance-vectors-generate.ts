@@ -25,7 +25,8 @@
 //   in-process      session_start written straight through insertEvent, as
 //                   main does on every open (FR-022); ingestEvent; the
 //                   export's own rows (logged digest, seal)
-//   derived         a companion (a pivot) the pipeline derives from a command
+//   derived         a companion (a pivot) the pipeline derives from a command,
+//                   and the loot row and scope_violation it derives without one
 //   legacy-api      ingest() with the entrance POST /api/events passes, chained
 //                   and logged; with a forged stamp and receiver-owned keys in
 //                   the data (`stripped`); beside the receiver's own `_raw`,
@@ -154,6 +155,23 @@ export async function generateProvenanceVectors(out: string): Promise<Provenance
     clockControl.ntpOffsetMs = 45_000
     ingestMod.ingestEvent('shell', { subtype: 'command_start', command: 'whoami', terminalId: 'term-1', pid: 4005, source: 'builtin-terminal' }, who)
     clockControl.ntpOffsetMs = null
+    // derived, without emitCompanion: the loot row a command's output yields
+    // and the scope_violation its target causes (review B).
+    const { LootDetector } = await import('../../src/core/loot-detector')
+    const { ChainEmitter } = await import('../../src/core/alert/surface')
+    const loot = new LootDetector()
+    loot.configure({ identity: { projectId: 'p-vectors', engagementId: ENG, operatorId: OP } })
+    const emitter = new ChainEmitter(who)
+    ingestMod.configureIngest({ lootDetector: loot, alertRuntime: { dispatchTargetHit: (input) => emitter.handle({
+      kind: 'scope', signal: { target: input.target, action: input.action, source: input.source, sourceEventId: input.sourceEventId },
+      distance: 'out-of-scope', authority: 'fact', severity: 'warning'
+    } as never) } })
+    step()
+    ingestMod.ingest({ agentType: 'shell', data: { subtype: 'command_start', command: 'curl -s https://203.0.113.7/creds', terminalId: 'term-1', pid: 4008 }, ...who })
+    step()
+    ingestMod.ingest({ agentType: 'shell', data: { subtype: 'command_end', command: 'curl -s https://203.0.113.7/creds', terminalId: 'term-1', pid: 4008,
+      exit_code: 0, stdout: 'password=Vect0rS3cretValue!\n' }, ...who })
+    ingestMod.configureIngest({ lootDetector: null, alertRuntime: null })
     step()
     const pivot = ingestMod.ingest({ agentType: 'shell', data: { subtype: 'command_start', command: 'sshuttle -r user@jump 10.10.0.0/16', terminalId: 'term-1', pid: 4006 }, ...who })
     if (!pivot.companions.some((c) => c.agentType === 'pivot')) throw new Error('vectors: no pivot companion')

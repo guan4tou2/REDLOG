@@ -32,7 +32,7 @@ import { redact, getRules } from './redaction'
 import { extractBodyToSidecar, extractTextToSidecar } from './http-body-store'
 import { linkHttpBodyEvent } from './http-body-index'
 import { noteDbError } from './capture-health'
-import { DERIVED, IN_PROCESS, stripReserved, type IngestEntrance } from './ingest/stamp'
+import { DERIVED, currentEntrance, stripReserved, withEntrance, type IngestEntrance } from './ingest/stamp'
 
 // ── Injected collaborators ──────────────────────────────────────────────────
 // core/ cannot import main/, so the pieces that live there are handed in.
@@ -106,7 +106,7 @@ export interface IngestInput {
    *  with the `derived` producer, whatever `entrance` says. */
   derived?: boolean
   /** Which door received the row, as that door authenticated it (Spec 071
-   *  FR-005). Absent: RedLog's own code, in-process. */
+   *  FR-005). Absent: the caller's (withEntrance), else in-process. */
   entrance?: IngestEntrance
   /** Set by the spool drain only: the file was judged against the project's
    *  recorded pause intervals before it got here (Spec 071 FR-082 as revised
@@ -166,7 +166,7 @@ export function ingest(input: IngestInput): IngestResult {
   // The stamp's half that must happen first (FR-090: stamp before dedup,
   // policy and derivation): the producer's values for the receiver-owned keys
   // leave `data` before anything reads it. insertEvent writes the stamp.
-  const entrance = input.derived ? DERIVED : (input.entrance ?? IN_PROCESS)
+  const entrance = input.derived ? DERIVED : (input.entrance ?? currentEntrance())
   const stripped = stripReserved(data)
 
   // Runtime pairs must settle even if the evidence write is paused. Otherwise
@@ -339,7 +339,8 @@ export function ingest(input: IngestInput): IngestResult {
   // 7. Scope dispatch, after the insert so the violation cites this row.
   if (alertRuntimeRef) {
     const hit = scopeSignalFor(agentType, data)
-    if (hit) alertRuntimeRef.dispatchTargetHit({ ...hit, sourceEventId: event.id })
+    // A scope_violation is derived from this row (external-event-policy.ts).
+    if (hit) withEntrance(DERIVED, () => alertRuntimeRef!.dispatchTargetHit({ ...hit, sourceEventId: event.id }))
   }
 
   // 8. Companions. Each goes back through ingest as `derived`, so it gets a
@@ -357,7 +358,9 @@ export function ingest(input: IngestInput): IngestResult {
   }
 
   if (plan.pendingLootMatches.length > 0 && lootDetectorRef?.emit) {
-    lootDetectorRef.emit(plan.pendingLootMatches, { targetId, source: data.command as string, causeEventId: event.id })
+    // Loot is derived from this row, like the companions below.
+    const loot = lootDetectorRef
+    withEntrance(DERIVED, () => loot.emit!(plan.pendingLootMatches, { targetId, source: data.command as string, causeEventId: event.id }))
   }
   if (plan.pivot) {
     const p = plan.pivot
@@ -530,7 +533,8 @@ function enrich(agentType: string, data: Record<string, unknown>, targetId: stri
           plan.pendingLootMatches = lootDetectorRef.findMatches(textToScan)
           plan.lootValues = plan.pendingLootMatches.map((m) => m.value).filter((v) => v && v.length >= 6)
         } else {
-          const matches = lootDetectorRef.scan(textToScan, targetId ?? plan.targetId, cmd)
+          const loot = lootDetectorRef
+          const matches = withEntrance(DERIVED, () => loot.scan(textToScan, targetId ?? plan.targetId, cmd))
           plan.lootValues = matches.map((m) => m.value).filter((v) => v && v.length >= 6)
         }
       }
