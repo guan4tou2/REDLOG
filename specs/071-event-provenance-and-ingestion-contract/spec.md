@@ -467,6 +467,7 @@
 
 - **FR-086** 外部 shell 第一次綁定到某個專案時（FR-085 的 pin 成立、第一個項目被接受後），hook 在**下一個 prompt 之前**於 stderr 印恰好一行：專案名稱與 `redlog private`。每個 shell instance 每個專案至多一次；shell 初始化期間仍為 0 位元組（O10）；stderr 不是終端機時不印。共用向量加「第一次綁定恰好一行、之後 0 行」。
 - **FR-087** `redlog private`：(a) 從未綁定的 instance：之後不送 `hello`、不送任何項目、不寫交接檔、不累計 `discarded`（私人 pane 的活動量本身就是私人資訊）；(b) 已綁定的 instance：送一列 `capture_stopped{reason:"private"}`（既有的 subtype），之後同 (a)。`redlog start` 撤銷它；從未綁定者的 `start` 視同第一次綁定（FR-086 再印一次）。終端機狀態檔的停止原因增加 `private`（Spec 073 FR-041 的封閉清單加一項，永久直到 `start`）。共用向量涵蓋 (a)(b)。
+  > **指標（2026-11-13 深夜，DECISIONS §12）**：擁有者取消私人終端機：只有一套錄製流程，不想被記錄用暫停（FR-080–FR-084）。本條（與 FR-086 提示中的 `redlog private`）不再實作；[Spec 077](../077-personal-content-and-delivery/spec.md) 修訂 S3。077 也不再需要 FR-050 的 `ignored-rule`、`shell-history-rule`（077 修訂 S6，擁有者確認）。077 FR-110 的「擷取路徑」在本規格的單一入口落地時改指向它，其名稱 ratchet 的基準一併移過去。
 - **FR-088** 每個 shell 的 `hello`、`command_start`、`command_end` 在 `data.term` 帶 hook 能知道的終端機事實：`user`（`$USER`／`$env:USERNAME`）、`tty`（`tty` 的結果，例如 `/dev/pts/3`）、`pane`（多工器提供的識別，依序取 `$TMUX_PANE`、`$WEZTERM_PANE`、`$KITTY_WINDOW_ID`、`$ZELLIJ_PANE_ID`；都沒有則省略）、`shell`（名稱與主版本）、`host`（只有在 shell 知道自己在遠端時：遠端 hook 一律帶 `hostname`；本機 hook 不帶，本機主機名已在列的 `hostname`）。這些是**來源自述的內容**，不是身分：在 `data` 內（受雜湊涵蓋），不進 `_ingest`；接收端只做長度上限（每項 64 位元組）與控制字元移除。FR-103 的行程數限制適用：取得這些值不得多啟動行程（`tty` 在 shell 啟動時讀一次並快取）。
 
 #### M. 出口（修訂 A1，2026-11-13）

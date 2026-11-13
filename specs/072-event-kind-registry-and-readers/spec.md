@@ -26,6 +26,8 @@
 
 > **指標（2026-11-13）**：O9 的「只有 Source／Processor」已改為 Source／Processor／Exporter，介面擴充見 [Spec 076](../076-extensions-and-machine-scoped-sources/spec.md) J 段；需在登記表新增的種類：`system:egress_changed`（071 FR-123）、`system:extensions_active`、`system:extension_read`、`system:export_shipped`、`system:export_failed`、`system:session_rebound`、`system:extension_config_changed`（076）；076 FR-097 提議的 `ReaderId` 附加值 `table`、`hex`、`diff`、`key-value`。
 
+> **指標（2026-11-13 深夜，[Spec 077](../077-personal-content-and-delivery/spec.md) 修訂 S1、S2、S4）**：077 不新增種類，但改兩個既有種類的欄位，登記時要列入：`system:config_changed` 的 `changed` 多鍵 `scope.effective`（`{from, to}`，兩邊為完整的有效範圍）與欄位 `basis: 'saved' | 'observed'`（077 FR-115）；`system:export_sealed` 多欄 `delivery`（`DeliveryRecord`），且不只 bundle、每種格式的交付都寫一列（077 FR-113）。`system:delivery_mark` 的 `reason` 改為 `'operator-excluded' | 'answer'`（原 `personal`、`private-terminal`）。`kinds.json`、`intervals.jsonl` 照 DECISIONS §11 併入 077 的第 5 版；第 5 版 manifest 另有 `evidence.selection`（077 FR-114），由 077 擁有。
+
 ### 修訂（2026-11-13，DECISIONS §9）
 
 依 [2026-11-13 的決定](../../docs/records/2026-11-13/DECISIONS.md) §9（開放問題 Q3 的答覆與建議不同）。被取代的原文保留在原處，以「> **Superseded（2026-11-13，修訂 D1）**」標示。

@@ -36,6 +36,8 @@
 
 > **指標（2026-11-13）**：[Spec 077](../077-personal-content-and-delivery/spec.md) 在 `derived.db` 新增投影 `delivery_state`、在讀取契約加共用參數 `delivery`（`operator`／`deliver`）與查詢鍵 `delivery:`，並刪除 FR-032 所列的 `sanitized_events`、`do_not_export` 兩表；FR-065 的「不匯出標記」topic 改為 `delivery`。
 
+> **指標（2026-11-13 深夜，[Spec 077](../077-personal-content-and-delivery/spec.md) 修訂 S2、S4、S5）**：`delivery:` 的值 `personal` 改為 `operator-excluded`；`operator` 讀取不隱藏任何列（077 原 FR-007 取消：被排除的列照常出現在搜尋與清單）；查詢語言另加鍵 `scope-then:`（`yes`／`no`／`unknown`，077 FR-117）。
+
 ### 修訂（2026-11-13，DECISIONS §9）
 
 依 [2026-11-13 的決定](../../docs/records/2026-11-13/DECISIONS.md) §9。被取代的原文保留在原處，以「> **Superseded（2026-11-13，修訂 E…）**」標示。

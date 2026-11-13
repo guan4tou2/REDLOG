@@ -298,6 +298,7 @@
 - **FR-042** 綁定是擷取的邊界，不是來源的開關（14 號審查 D(4)）：一個機器層啟用的來源，只有綁定到開著專案的資料流才會寫入該專案。
 - **FR-043** Shell 第一次綁定到某個專案時，hook 在下一個 prompt 前於 stderr 印恰好一行，含專案名稱與 `redlog private`；每個 shell 每個專案至多一次；shell 初始化期間不輸出（071 O10）；stderr 不是終端機時不印。這是來源端的行為，向量在 071（071 FR-086）。
 - **FR-044** `redlog private`：從未綁定的 shell 從此不綁定、不送任何項目、不計數；已綁定的 shell 送一列 `capture_stopped{reason:"private"}` 後停止，之後不逐指令計數。`redlog start` 撤銷它。這是來源端行為（071 FR-087）。
+  > **指標（2026-11-13 深夜，DECISIONS §12）**：私人終端機取消，本條與 FR-043 提示中的 `redlog private`、E8 的「設為私人的指令」、US5 情境 2–3、決定 11 不再實作；不想被記錄用暫停（Spec 071 FR-080–FR-084）。[Spec 077](../077-personal-content-and-delivery/spec.md) 修訂 S3；077 的 `reads.withheld` 理由 `personal` 改為 `operator-excluded`（修訂 S4）。
 - **FR-045** 資料流不天然綁定專案的來源（今天只有 AI 工具的工作階段）在 manifest 或核心描述中宣告 `binding: "explicit"`。它們的專案層選擇（工作路徑、選取的工作階段、`startedAt`）保留在專案設定的 `agentTailer.sources.<kind>`（073 F 段修訂）；機器層有一份工作階段認領索引（`~/.redlog/session-claims.json`，0600，原子寫入），一個工作階段同時只被一個專案認領。
 - **FR-046** 重新綁定是一個明確動作（「記錄到這個專案」）：把認領從原專案移到開著的專案，在開著的專案寫一列 `system:session_rebound{session, from, at}`；原專案下次開啟時寫一列 `system:session_rebound{session, to:"other-project", at}`。已寫入原專案的列不動。
 - **FR-047** 遷移：升級後第一次啟動時，任何專案的設定中「曾被使用」的選用來源（受管代理有過 HTTP 列、擷取瀏覽器有過 `browser` 列、內建終端機有過 session、pack 為開），在機器層設為啟用，並寫一份遷移報告到設定頁的擴充功能區；其餘選用來源維持預設關閉。AI adapter：有效的安裝收據 → 機器層啟用（方式 `migration`），各專案的選擇原樣保留。
