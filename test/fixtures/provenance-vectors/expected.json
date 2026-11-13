@@ -1,0 +1,250 @@
+{
+  "generatedFrom": "test/fixtures/provenance-vectors-generate.ts (Spec 071 T031)",
+  "rows": {
+    "events": [
+      {
+        "id": "00000000-0000-4000-8000-000000000004",
+        "hash": "eab53def84ef482bfa37b09eeee853425063bed1f86a076d13b7c32a403cdc5a",
+        "sha256": "12c91099fe7425381b2d8502e5d5f67c20e283993f1c43400da87355b98b25b8"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000006",
+        "hash": "7e81a86d0e7b004842f5147ad260c5e1b8fb8937d9388bd283eef156bb6ec53d",
+        "sha256": "bec8a66c589219cfd75fdef4ca5d22f7910d9bbe2ab3fa1610e808ed4c0cb6a4"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000010",
+        "hash": "2b22e93d81dfe5085d46b50450f8e4f7d0b9a33873c20a60ff8db7363b8714e4",
+        "sha256": "3a7f7be5ab38fb78ade773c519ce9a2ea943c31f513a318ec45af7cde31e6a2e"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000012",
+        "hash": "f88efeb09dbfc9adba94dddfeca863b32159f17afa0b0952695a1d84bf829dba",
+        "sha256": "c6018ad29bd78c2dd3a17ae2fcbc87c50955baf2708397de2dbd3ac44d4898ba"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000014",
+        "hash": "f35dd7ac58cc7d7cd6bf85d7db9056e649b42a3a14ae281e1c750e888982160d",
+        "sha256": "d11fd0fb2e4ef1a8f25389e84f385b291860d2b33f2d67ca01cca3af4d1f1a43"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000016",
+        "hash": "24386419d0053db6f7ffed8c6e7d5a7ec3f2b408f3e31e60dd36eed937e74bcd",
+        "sha256": "d579b27cd38a7fecf7abac663d992626339780ca034eb155f0c39efd920da41b"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000018",
+        "hash": "8a61b9a5e039f3d7cf4d12042ed1b4faeb5fec8810a4ec99d5ddc8a6dd316e71",
+        "sha256": "8202a33dc313ba40b264acc8acf53b3911bee9c391f8e673962ccdd3361e8a3a"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000020",
+        "hash": "166b1dc5e2e1f6de7b83fe271496f8343964d084bf8468fd62565662e939dcfd",
+        "sha256": "193b5893bca2cd43ce8df94ccb38c840432dd89ca194e3670424677a40681100"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000022",
+        "hash": "c6e645c279f56b64ea800ccb42f1c8fbc0f70ec2f8e28e58eb5b2766cea4fc43",
+        "sha256": "c177079f46e43cf57dfea6e23609d7da11303eb2534ce5b1b9ceb479fd94be43"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000024",
+        "hash": "cf19ec25b4b8191b3581521bc7913c8cf03046a61768df4367bc41405c35a68f",
+        "sha256": "3918031496f2f6d1cc6ff5bb95ebd882706240ff9d001829d9d0e0328fdd7912"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000027",
+        "hash": "03cc2d0b3f76f4af08a094b405a0e3f9af70cd8060cf1e3b49a6001df461b4b3",
+        "sha256": "8f48e0c1be3bc27143d1ad6753d04ec3b3e0930cacb64ffba26215ebc7e87131"
+      }
+    ],
+    "events_logged": [
+      {
+        "id": "00000000-0000-4000-8000-000000000007",
+        "hash": null,
+        "sha256": "72fdebf1e6a8eb0209b50474f9852e16a34eb29d2f62204572714f34bba86876"
+      }
+    ]
+  },
+  "rowsSha256": "30f8a9d21644de15a4f61f9bc95caf43136a5dea3e361d5cdfb1121ef3eb113c",
+  "stamps": {
+    "events": [
+      {
+        "id": "00000000-0000-4000-8000-000000000004",
+        "subtype": "session_start",
+        "stamp": {
+          "v": 1,
+          "door": "in-process",
+          "producer": "in-process",
+          "credential": null,
+          "auth": "in-process"
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000006",
+        "subtype": "command_start",
+        "stamp": {
+          "v": 1,
+          "door": "legacy-api",
+          "producer": "legacy",
+          "credential": null,
+          "auth": "bearer"
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000010",
+        "subtype": "command_start",
+        "stamp": {
+          "v": 1,
+          "door": "legacy-api",
+          "producer": "legacy",
+          "credential": null,
+          "auth": "bearer",
+          "stripped": [
+            "_ingest",
+            "_raw",
+            "_clock_anomaly",
+            "_source_time_rejected"
+          ]
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000012",
+        "subtype": "command_start",
+        "stamp": {
+          "v": 1,
+          "door": "legacy-api",
+          "producer": "legacy",
+          "credential": null,
+          "auth": "bearer"
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000014",
+        "subtype": "command_start",
+        "stamp": {
+          "v": 1,
+          "door": "legacy-api",
+          "producer": "legacy",
+          "credential": null,
+          "auth": "bearer"
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000016",
+        "subtype": "command_start",
+        "stamp": {
+          "v": 1,
+          "door": "in-process",
+          "producer": "in-process",
+          "credential": null,
+          "auth": "in-process"
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000018",
+        "subtype": "command_start",
+        "stamp": {
+          "v": 1,
+          "door": "in-process",
+          "producer": "in-process",
+          "credential": null,
+          "auth": "in-process"
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000020",
+        "subtype": "route_add",
+        "stamp": {
+          "v": 1,
+          "door": "in-process",
+          "producer": "derived",
+          "credential": null,
+          "auth": "in-process"
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000022",
+        "subtype": "command_start",
+        "stamp": {
+          "v": 1,
+          "door": "legacy-handoff",
+          "producer": "legacy-handoff",
+          "credential": null,
+          "auth": "none"
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000024",
+        "subtype": "logged_tier_digest",
+        "stamp": {
+          "v": 1,
+          "door": "in-process",
+          "producer": "in-process",
+          "credential": null,
+          "auth": "in-process"
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000027",
+        "subtype": "export_sealed",
+        "stamp": {
+          "v": 1,
+          "door": "in-process",
+          "producer": "in-process",
+          "credential": null,
+          "auth": "in-process"
+        }
+      }
+    ],
+    "events_logged": [
+      {
+        "id": "00000000-0000-4000-8000-000000000007",
+        "subtype": "http_request_start",
+        "stamp": {
+          "v": 1,
+          "door": "legacy-api",
+          "producer": "legacy",
+          "credential": null,
+          "auth": "bearer"
+        }
+      }
+    ]
+  },
+  "appVerify": {
+    "ok": true,
+    "walked": 11,
+    "brokenAtEventId": null,
+    "brokenReason": null,
+    "currentHead": "2dfdca87a111ed3f63bee5432937b638bd9e29b09c9232fac3167b415a666df1",
+    "anchorMatchesWalkedHead": false,
+    "clockAnomalies": [],
+    "signedCount": 11,
+    "unsignedCount": 0,
+    "noPubKeyCount": 0,
+    "authentication": "verified",
+    "authenticationReasons": [],
+    "firstUncheckedEventId": null,
+    "badSignatureAtEventId": null
+  },
+  "bundleVerify": {
+    "exitCode": 0,
+    "category": "verified",
+    "problems": [],
+    "seal": "sealed",
+    "attachments": {
+      "bound": [],
+      "boundUnverifiedRow": [],
+      "unbound": [],
+      "mismatched": [],
+      "omittedDeclared": [],
+      "missingUndeclared": [],
+      "unlisted": []
+    }
+  },
+  "pythonVerify": {
+    "status": 0,
+    "stdout": "\nRedLog bundle verification report\n========================================\nBundle dir       : <bundle>\nBundle version   : 4\nEngagement ID    : eng-provenance-vectors\nEvents walked    : 11\nManifest checksum: matches (not an authenticated source identity)\nChain            : INTACT\nChain-head match : yes (recomputed matches manifest.chainHead)\nSeal             : SEALED (export 00000000-0000-4000-8000-000000000025; it follows the delivered chain directly)\n                   rows before it and the manifest are as exported\nSignatures       : 11 verified\nSigner           : op-provenance  sha256:5df840e88a41a05b32c8c076086ae442d696f8556d8e3452d2738f96722e8e0d\n  compare these fingerprints with the operator out of band;\n  a key taken from this bundle only proves the bundle agrees with itself\nLogged tier      : 1 rows present in events_logged.jsonl\n                   (not chained or signed; digest matches; bytes sealed by the export)\nAttachments      : 0 match the digest recorded at capture\nManifest files   : 5 verified (sha256 matches)\n",
+    "stderr": ""
+  }
+}
