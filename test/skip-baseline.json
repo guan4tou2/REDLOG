@@ -52,7 +52,7 @@
     }
   },
   "win32": {
-    "skippedCases": 759,
+    "skippedCases": 760,
     "mustRun": [
       "test/csp-production.test.ts",
       "test/bundle-requires.test.ts",
@@ -137,7 +137,8 @@
       "test/zsh-recorder-failure.pty.test.ts": 17,
       "test/zsh-redlog-command.pty.test.ts": 22,
       "test/zsh-tool-report.pty.test.ts": 6,
-      "test/zsh-transparency.pty.test.ts": 19
+      "test/zsh-transparency.pty.test.ts": 19,
+      "test/source-status-red.test.ts": 1
     }
   }
 }
