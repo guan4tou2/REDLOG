@@ -14,7 +14,7 @@
 ## Phase 0 — 工作流程前置
 
 - [ ] T001 依憲章對本功能（跨層契約：API 欄位、manifest 公開契約、證據歸屬）執行 Clarify、Checklist、Analyze，結果記入 `verification.md` 的 Gates。
-- [ ] T002 確認進行中分支 `work/1112-plugsafe`（`hash-changed`、`contentStillApproved`、bundled id 保留、使用者步驟需核准、`requiresAll`）是否已合併；未合併時，Phase 7 的 T073 以它的行為為 RED 測試的期望，並與其作者協調檔案歸屬（`loader.ts`、`manifest.ts`、`hooks-manager.ts`）。
+- [ ] T002 確認進行中分支 `work/1112-plugsafe`（`hash-changed`、`contentStillApproved`、bundled id 保留、使用者步驟需核准、`requiresAll`）是否已合併；未合併時，Spec 076 的 T023（原本這裡 Phase 7 的 T073）以它的行為為 RED 測試的期望，並與其作者協調檔案歸屬（`loader.ts`、`manifest.ts`、`hooks-manager.ts`）。
 - [ ] T003 確認 plan「對姊妹規格的需求與提供」中每一個名稱仍與兄弟規格一致（2026-11-12 已對帳：071 接受 `/api/whoami` 與 `_ingest.rules`；憑證改為機器層加專案層政策；`detached` 的傳遞仍待 071 定義）；之後的差異記入 `verification.md`。跨 071–075 的順序只寫在 [specs/README.md](../README.md)「071–075 的跨規格順序」。
 
 ## Phase 1 — 釘住今天的行為（只加測試與 gate）
@@ -55,6 +55,10 @@
 
 ## Phase 4 — 儀表板卡與 HTTP
 
+> **裁定（2026-11-13，DECISIONS §8 第 9 項）**：儀表板移除，不替它接新的狀態模型。T040 的對象改為
+> 活動紀錄頂端的狀態讀數與其展開區（DECISIONS §4）：要刪的判斷與要改的測試不變，渲染的位置改變。
+> 儀表板頁面本身的移除屬導覽收斂，不在本規格。T041、T042 不受影響。
+
 - [ ] T040 [US2] CaptureHealthCard 只渲染 `statuses` 與 `overall`：刪 `coreCommandState`、`ownShellKey`、`isRogue`、`isProblem`、`isAgentRow`、`dark`／`partial`／`coreGap`／`healthyGap`、7 處 `settingsTarget(...)` 對照；指令列以 shell 群組呈現（D5）。同 PR 改 `capture-core-commands-own-shell`、`capture-source-rows`、`capture-health-prerequisite-card`、`capture-health-proxy-failed`、`capture-health-unrecorded-card` 等測試。G2 −4（J2、S2、S10、S13）。
 - [ ] T041 [US4] HTTP client 事實：收集器從本專案的 flow 推出 client（UA 族群、socket 歸因的行程名稱），產生四個事實；擷取瀏覽器 proxy 非受管端點的事實。先 RED（`test/http-client-facts.test.ts`，US4 的四個情境）。
 - [ ] T042 [US4] HTTP 列、`HttpCaptureStep`、`BrowserPage` 的驗證面板改為同一元件、讀同一份狀態；刪 `httpCaptureState`、兩份「已驗證」（`CaptureHealth.tsx:143`、`HttpCaptureStep.tsx:255`）。同 PR 改 `http-capture-state.test.ts`、`capture-http-row.test.tsx`、`capture-browser-check-caveat.test.tsx`、`http-ca-trust-label.test.tsx`。G2 −2。
@@ -82,11 +86,13 @@
 
 ## Phase 7 — Manifest v2
 
-- [ ] T070 [P] [US5] `plugins/plugin.schema.json` 與手寫驗證器；`ajv`（devDependency）只在 `test/plugin-manifest-schema.test.ts` 比對兩者結果（G6）。
-- [ ] T071 [US5] `src/core/plugins/manifest-v2.ts`：v1 與 v2 轉成內部形狀；v1 同時有 capture 與規則時拆成 Source 與 Processor；v2 拒絕 FR-053 的欄位並說明原因；錯誤帶 JSON pointer。`loadStarterPack`（`hooks-manager.ts:237-268`）與 `official-agents.ts` 的 manifest 讀取改經它或刪除。
-- [ ] T072 [US5] `manifest-consumers.ts` 與 G7 轉為以 v2 schema 為準；T009 的允許清單清空。
-- [ ] T073 [US5] RED → GREEN：v2 內容雜湊涵蓋 `files` 的每個檔；未列出的檔為錯誤；載入、顯示步驟、發放憑證前重算（G9）；bundled id 保留（建立在 T002 確認的行為上）。
-- [ ] T074 [P] bundled 改寫為 v2：`pcap-capture`、`c2-tailers`（Source，`files`、結構化 `requires`、`stop`、`elevated`）、`builtin-tools`（Processor）；`examples/plugins/*` 同步。
+> **裁定（2026-11-13，DECISIONS §8 第 8 項）**：T070–T074 已移除，由 Spec 076 的任務承接：
+> T070（schema 與驗證器）→ 076 T020、T022；T071（v1 與新 manifest 轉成內部形狀）→ 076 T022、T029；
+> T072（每個欄位都有讀者）→ 076 T022；T073（內容雜湊涵蓋 `files`）→ 076 T023；T074（bundled 改寫）→ 076 T030。
+> 下面四個在 076 沒有對應任務，留在這裡：刪除三個 pack 與 `STARTER_PACK_FALLBACK`（T075）、
+> `state.json` 的停用旗標（T076）、`optional-plugins` 不再被讀成 pack（T077）、v1 遷移的 fixture（T078）。
+> T072 原本要清空的 T009 允許清單，改由 076 T022 完成時清空。
+
 - [ ] T075 刪 `plugins/starter-pack`、`plugins/pack-host-monitors`、`plugins/pack-windows-output`；`hooks-manager.ts` 的內建 producer 改讀描述表，刪 `STARTER_PACK_FALLBACK` 與 parity 測試；`isPackAvailable` 不再看外掛；同 PR 修訂 Spec 035 FR-001／002 與 `capture-packs.ts:1-10`、`capture-health.ts:736-746` 的註解，改寫 `starter-pack.test.ts`、`capture-packs.test.ts`、`capture-pack-group.test.tsx`。`verify:package-resources` 的清單同步（release-only gate）。
 - [ ] T076 [P] `state.json` 中 bundled pack 與 starter-pack 的停用旗標轉成一次性通知並刪除；使用者外掛與 `builtin-tools` 的旗標保留（FR-072）。
 - [ ] T077 `optional-plugins/*/plugin.json` 不再被通用 loader 讀成 `kind: pack`；官方 AI 來源改由描述表提供（載入路徑與收據轉換屬 Spec 073，協調同一版本出貨）。
@@ -129,7 +135,7 @@
 
 ## Dependencies & Execution Order
 
-- Phase 0 → 1 → 2 → 3 → 4 → 5 → 6 依序；Phase 7 可在 Phase 2 之後與 3–6 平行（不同檔案；T075 與 T055 都改 `hooks-manager.ts`，不可同時）。
+- Phase 0 → 1 → 2 → 3 → 4 → 5 → 6 依序；Phase 7 可在 Phase 2 之後與 3–6 平行（不同檔案；T075 與 T055 都改 `hooks-manager.ts`，不可同時）。Phase 7 剩下的 T075–T078 依賴 Spec 076 Phase 2、3（原 T070–T074 的承接者）。
 - Phase 8 依賴 Phase 7，以及 Spec 071（憑證）與 Spec 073（同意紀錄、安裝帳本）的對應部分。
 - Phase 9 依賴 Spec 071 Phase 3 的蓋章（`_ingest.rules` 已由 071 接受）。
 - Phase 6 的 T064 讀 071 T060；決策表 F6（`detached`）在 071 定義傳遞方式之前不會成立（spec 開放問題下的注記）。

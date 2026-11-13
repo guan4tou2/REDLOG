@@ -79,6 +79,8 @@
 
 ## Phase 6 — L0：讀取 API、指令、深連結（需要 074 的讀取服務）
 
+> **裁定（2026-11-13，DECISIONS §8 第 4 項）**：整段等 Spec 077 Phase 4 的遮蔽引擎完成後才開始，`meta` 也不先開放。
+
 - [ ] T060 [US9] `/api/v1/query`、`/api/v1/events/<id>`、`/api/v1/topics`：074 讀取服務的另一個傳輸；`reads` 範圍在伺服端過濾；私人與不得匯出的列排除並計數。
 - [ ] T061 [US9] `system:extension_read` 每分鐘彙總（D9）；`test/extensions/read-audit.test.ts`。
 - [ ] T062 [P] [US9] 貢獻的指令（指令面板、列動作，只在宣告的種類）；第一次執行的確認。
@@ -104,11 +106,15 @@
 
 ## Phase 9 — Exporter（experimental；需要「交付邊界與內容生命週期」規格的遮蔽前提才能開 `command`／`content`）
 
+> **暫緩（2026-11-13，DECISIONS §8 第 2 項）**：不排入第一版。任務保留，重新排入前不要動手。
+
 - [ ] T090 [US10] `ExporterApi`、批次產生、`system:export_shipped` 先寫後交、`system:export_failed`；逐專案啟用；核准原生對話框（FR-071）。
 - [ ] T093 [P] [US10] 假收集端的整合測試（SC-010）；`command`／`content` 在前提未成立時拒絕。
 - **Gate**：五道 gate。
 
 ## Phase 10 — L2 面板（只在 FR-096 選 `experimental` 時；需要 Phase 6）
+
+> **裁定（2026-11-13，DECISIONS §8 第 1 項）**：FR-096 選 `experimental`，本段要做。它依賴 Phase 6，而 Phase 6 等遮蔽引擎（第 4 項），所以本段排在那之後。
 
 - [ ] T100 [P] 向 072 提出 FR-097 的四個通用閱讀器（`table`、`hex`、`diff`、`key-value`），以 072 的附加變更實作；本任務只追蹤，實作屬 072。
 - [ ] T101 `redlog-ext://` 協定：只供應 `files` 中雜湊相符的檔；CSP 回應標頭（契約 §8.3）。
