@@ -13,7 +13,7 @@
 //
 //   REDLOG_WRITE_PROVENANCE_VECTORS=1 npx vitest run test/provenance-vectors.test.ts
 //
-// rewrites the fixture; without the variable the test regenerates into a
+// rewrites the fixture (both bundles); without the variable the test regenerates into a
 // temporary directory and fails if the rows differ from what is committed.
 // Regenerate only in a commit that changes what new rows carry, and say so.
 //
@@ -31,6 +31,10 @@
 //                   the data (`stripped`); beside the receiver's own `_raw`,
 //                   `_source_time_rejected` and `_clock_anomaly`
 //   legacy-handoff  a hook spool file replayed by main's drain
+//
+// And a second bundle, exported while the NTP offset is past the clock-anomaly
+// threshold: its seal row carries `_clock_anomaly` (both verifiers' seal key
+// check once refused that, making every export with a bad clock unverifiable).
 
 import crypto from 'node:crypto'
 import fs from 'node:fs'
@@ -47,7 +51,10 @@ export const T_START = Date.UTC(2026, 10, 13, 10, 0, 0)
 const HOST = 'provenance-vectors-host'
 
 export const BUNDLE = 'bundle.json.gz'
-const OUTPUTS = [BUNDLE, 'expected.json'] as const
+/** A second export, taken while the NTP offset is past the clock-anomaly
+ *  threshold, so its seal row carries `_clock_anomaly` beside `_ingest`. */
+export const CLOCK_BUNDLE = 'bundle-clock-anomaly.json.gz'
+const OUTPUTS = [BUNDLE, CLOCK_BUNDLE, 'expected.json'] as const
 
 export interface ProvenanceExpected {
   generatedFrom: string
@@ -58,6 +65,8 @@ export interface ProvenanceExpected {
   appVerify: Record<string, unknown>
   bundleVerify: Record<string, unknown>
   pythonVerify: { status: number | null; stdout: string; stderr: string }
+  /** What both verifiers say about CLOCK_BUNDLE. */
+  clockAnomaly: { bundleVerify: Record<string, unknown>; pythonVerify: { status: number | null; stdout: string; stderr: string } }
 }
 
 /** Faking the clock module for the generator; the monotonic counter follows
@@ -162,6 +171,13 @@ export async function generateProvenanceVectors(out: string): Promise<Provenance
     step()
     const bundle = exportBundle(ENG, { outRoot: path.join(work, 'export') })
 
+    // The clock is off by more than the threshold while exporting: the seal
+    // row (and the logged digest row) are stamped with `_clock_anomaly`.
+    step()
+    clockControl.ntpOffsetMs = 45_000
+    const clockBundle = exportBundle(ENG, { outRoot: path.join(work, 'export-clock') })
+    clockControl.ntpOffsetMs = null
+
     const appVerify = appVerifyView(await verifyChainFullAsync() as unknown as Record<string, unknown>)
     const rows = dumpRows(db.getDB())
     closeHttpBodyIndex()
@@ -170,9 +186,11 @@ export async function generateProvenanceVectors(out: string): Promise<Provenance
     fs.mkdirSync(out, { recursive: true })
     for (const o of OUTPUTS) fs.rmSync(path.join(out, o), { recursive: true, force: true })
     fs.writeFileSync(path.join(out, BUNDLE), packDir(bundle.outDir))
+    fs.writeFileSync(path.join(out, CLOCK_BUNDLE), packDir(clockBundle.outDir))
     // What the verifiers say is taken from the packed bytes, unpacked, as the
     // test will see them.
     const seen = unpackTo(path.join(out, BUNDLE), path.join(work, 'unpacked', 'bundle'))
+    const seenClock = unpackTo(path.join(out, CLOCK_BUNDLE), path.join(work, 'unpacked', 'bundle-clock'))
     const { events: chained, events_logged: logged } = rows
     const expected: ProvenanceExpected = {
       generatedFrom: 'test/fixtures/provenance-vectors-generate.ts (Spec 071 T031)',
@@ -180,7 +198,8 @@ export async function generateProvenanceVectors(out: string): Promise<Provenance
       stamps: stampsOf(rows),
       appVerify,
       bundleVerify: verifyBundleDir(seen) as unknown as Record<string, unknown>,
-      pythonVerify: runPythonVerifier(seen)
+      pythonVerify: runPythonVerifier(seen),
+      clockAnomaly: { bundleVerify: verifyBundleDir(seenClock) as unknown as Record<string, unknown>, pythonVerify: runPythonVerifier(seenClock) }
     }
     fs.writeFileSync(path.join(out, 'expected.json'), JSON.stringify(expected, null, 2) + '\n')
     return expected

@@ -20,7 +20,7 @@ import path from 'node:path'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { requires } from './helpers/requires'
 import { runPythonVerifier, unpackTo } from './fixtures/golden-pre071-generate'
-import { BUNDLE, clockMockVectors, generateProvenanceVectors, type ProvenanceExpected } from './fixtures/provenance-vectors-generate'
+import { BUNDLE, CLOCK_BUNDLE, clockMockVectors, generateProvenanceVectors, type ProvenanceExpected } from './fixtures/provenance-vectors-generate'
 
 const sqlite = requires('better-sqlite3')
 const python = requires('python-cryptography')
@@ -43,7 +43,7 @@ async function regenerate(out: string): Promise<ProvenanceExpected> {
 
 const tmps: string[] = []
 const tmp = (label: string): string => { const d = fs.mkdtempSync(path.join(os.tmpdir(), `redlog-vectors-${label}-`)); tmps.push(d); return d }
-const committed = (): string => unpackTo(path.join(FIXTURE, BUNDLE), path.join(tmp('bundle'), 'bundle'))
+const committed = (name = BUNDLE): string => unpackTo(path.join(FIXTURE, name), path.join(tmp('bundle'), 'bundle'))
 const lines = (file: string): string[] => fs.readFileSync(file, 'utf8').split('\n').filter(Boolean)
 const stampOf = (line: string): Record<string, unknown> | undefined =>
   (JSON.parse(String((JSON.parse(line) as { data: string }).data)) as { _ingest?: Record<string, unknown> })._ingest
@@ -90,6 +90,30 @@ it('the app\'s bundle verifier accepts the bundle, and says what it said', async
 python.it('tools/redlog-verify.py accepts the bundle, and says what it said', () => {
   const got = runPythonVerifier(committed())
   expect(got).toEqual(expected.pythonVerify)
+  expect(got.status).toBe(0)
+})
+
+// A seal written while the clock is off carries `_clock_anomaly`. The seal's
+// key check is strict — an unknown field means a seal format this verifier
+// does not understand — but the receiver's own keys are not seal fields. Both
+// verifiers accept exactly `_ingest` and `_clock_anomaly` on a seal row; a seal
+// row can carry no other (insertEvent adds `_raw` only for an envelope with raw
+// bytes and `_source_time_rejected` only for a producer-supplied time, and
+// writeExportSeal passes neither).
+it('a seal written with the clock off carries `_clock_anomaly`, and the app\'s verifier accepts it', async () => {
+  const dir = committed(CLOCK_BUNDLE)
+  const seal = JSON.parse(String((JSON.parse(lines(path.join(dir, 'events.jsonl')).at(-1)!) as { data: string }).data)) as Record<string, unknown>
+  expect(seal.subtype).toBe('export_sealed')
+  expect(Object.keys(seal).filter((k) => k.startsWith('_')).sort()).toEqual(['_clock_anomaly', '_ingest'])
+  const { verifyBundleDir } = await import('../src/core/bundle-verify')
+  const got = verifyBundleDir(dir)
+  expect(got).toEqual(expected.clockAnomaly.bundleVerify)
+  expect({ exitCode: got.exitCode, seal: got.seal, problems: got.problems }).toEqual({ exitCode: 0, seal: 'sealed', problems: [] })
+})
+
+python.it('a seal written with the clock off: tools/redlog-verify.py accepts it', () => {
+  const got = runPythonVerifier(committed(CLOCK_BUNDLE))
+  expect(got).toEqual(expected.clockAnomaly.pythonVerify)
   expect(got.status).toBe(0)
 })
 
