@@ -213,10 +213,14 @@ describe('SQL order and the TypeScript comparator agree', () => {
 
   it('on random rows from both tiers, every event read carries its rowId and sorts the same both ways', () => {
     const r = rng(7)
+    const diagT0 = Date.now()
+    console.log(`[DIAG-EDO] start sync=${String(getDB().pragma('synchronous', { simple: true }))} patched=${String(Boolean((Object.getPrototypeOf(getDB()) as Record<symbol, unknown>)[Symbol.for('redlog.test.synchronousRelaxed')]))}`)
     for (let i = 0; i < 300; i++) {
       add({ id: `e${Math.floor(r() * 1e9).toString(36)}-${i}`, ts: T + Math.floor(r() * 4), type: 'marker', tier: r() < 0.5 ? 'logged' : 'chained', data: { title: String(i) } })
     }
+    console.log(`[DIAG-EDO] 300 inserts ${Date.now() - diagT0}ms sync=${String(getDB().pragma('synchronous', { simple: true }))}`)
     const sql = queryEvents({ order: 'oldest', limit: 1000 })
+    console.log(`[DIAG-EDO] +queryEvents ${Date.now() - diagT0}ms`)
     expect(sql).toHaveLength(300)
     expect(sql.every(e => typeof e.rowId === 'number')).toBe(true)
     expect(sql.map(e => e.id)).toEqual([...sql].sort(compareEventOrder).map(e => e.id))

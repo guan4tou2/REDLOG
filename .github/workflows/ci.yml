@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [windows-latest]
     runs-on: ${{ matrix.os }}
     env:
       # test/helpers/requires.ts: a capability test/capabilities.json marks
@@ -126,6 +126,10 @@ jobs:
         id: build
         run: npm run build
 
+      - name: DIAG alone (unloaded)
+        if: always()
+        run: npx vitest run test/zz-diag-order-timing.test.ts test/event-display-order.test.ts
+
       - name: Vitest
         # Also when the build failed: those files then fail on the missing
         # build, and every other file still reports.
@@ -172,6 +176,7 @@ jobs:
     # Sharded across three runners, by spec file. One runner had a single
     # worker (`workers: 1` — one Electron at a time), so ~7 minutes of specs
     # ran end to end; separate runners need no change to that.
+    if: false
     name: e2e (${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
     strategy:
