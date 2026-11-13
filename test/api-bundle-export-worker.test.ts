@@ -76,6 +76,20 @@ function digestEvents(outDir: string): Array<{ count: number; sha256: string }> 
     .filter(d => d.subtype === 'logged_tier_digest')
 }
 const python = ['python3', 'python'].find(bin => spawnSync(bin, ['--version']).status === 0)
+/** Spec 071 review A: the stamps of the digest and the seal this export wrote
+ *  (the last of each in its events.jsonl), as stored. Both are written in main
+ *  — the digest by exportBundle or export-direct-bundle, the seal by
+ *  writeExportSeal, on the worker path from the worker's message — and both
+ *  are rows the API request caused, so they carry its door. */
+function exportStamps(outDir: string): Array<Record<string, unknown>> {
+  const rows = lines(path.join(outDir, 'events.jsonl'))
+  const last = (subtype: string) => rows.filter(r => JSON.parse(r.data as string).subtype === subtype).at(-1)!
+  return ['logged_tier_digest', 'export_sealed'].map(subtype => {
+    const stored = getDB().prepare('SELECT data FROM events WHERE id=?').get(last(subtype).id) as { data: string }
+    return { subtype, ...(JSON.parse(stored.data) as { _ingest: Record<string, unknown> })._ingest }
+  })
+}
+const API_DOOR = { door: 'legacy-api', producer: 'legacy', auth: 'bearer' }
 
 beforeAll(async () => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-apibundle-db-'))
@@ -104,6 +118,8 @@ describe('POST /api/export/bundle', () => {
     expect(bundleExport.exportBundle).toHaveBeenCalledTimes(1)
     expect(events.loggedTierDigest).toHaveBeenCalledTimes(1)
     expect(digestEvents(r.json().outDir as string)).toHaveLength(1)
+    expect(exportStamps(r.json().outDir as string)).toEqual([
+      expect.objectContaining({ subtype: 'logged_tier_digest', ...API_DOOR }), expect.objectContaining({ subtype: 'export_sealed', ...API_DOOR })])
   })
 
   it('with an exporter, scans in the worker, inserts the digest here, and stays inside both boundaries', async () => {
@@ -158,6 +174,8 @@ describe('POST /api/export/bundle', () => {
     expect(manifest.chainHead.eventCount).toBe(ids.length - 1)
     expect(manifest.tiers.logged).toBe(before.logged)
     expect(manifest.evidence.kind).toBe('complete-chain')
+    expect(exportStamps(outDir)).toEqual([
+      expect.objectContaining({ subtype: 'logged_tier_digest', ...API_DOOR }), expect.objectContaining({ subtype: 'export_sealed', ...API_DOOR })])
 
     if (python) {
       const v = spawnSync(python, [path.resolve('tools/redlog-verify.py'), '--hash-only', outDir], { encoding: 'utf8' })

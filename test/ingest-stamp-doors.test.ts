@@ -61,8 +61,8 @@ const LEGACY_API_STAMP = LEGACY_API
 type Stamp = Record<string, unknown>
 function stampsOf(where: string, ...args: unknown[]): Array<{ agent_type: string; subtype: string | null; stamp: Stamp }> {
   const rows = dbMod.getDB().prepare(`SELECT agent_type, subtype, data FROM (
-      SELECT agent_type, subtype, data, created_at, rowid AS r, 0 AS t FROM events
-      UNION ALL SELECT agent_type, subtype, data, created_at, rowid AS r, 1 AS t FROM events_logged)
+      SELECT id, agent_type, subtype, data, created_at, rowid AS r, 0 AS t FROM events
+      UNION ALL SELECT id, agent_type, subtype, data, created_at, rowid AS r, 1 AS t FROM events_logged)
     WHERE ${where} ORDER BY t, r`).all(...args) as Array<{ agent_type: string; subtype: string | null; data: string }>
   return rows.map((r) => ({ agent_type: r.agent_type, subtype: r.subtype, stamp: (JSON.parse(r.data) as { _ingest: Stamp })._ingest }))
 }
@@ -302,23 +302,49 @@ describeApi('POST /api/events and /api/marker: legacy-api, auth bearer', () => {
     expect(res.status, await res.clone().text()).toBe(status)
     return stampsOf('(t = 0 AND r > ?) OR (t = 1 AND r > ?)', c, l)
   }
-  const ROUTES: Array<{ route: string; body: Record<string, unknown>; status: number; kinds: string[] }> = [
-    { route: '/api/loot/scan', body: { text: fakeCredential('Th1rd', 'S3cret', 'Value!') }, status: 200, kinds: ['loot'] },
-    { route: '/api/screenshot', body: {}, status: 200, kinds: ['screenshot'] },
-    { route: '/api/export/bundle', body: {}, status: 201, kinds: ['system', 'system'] }
+  // `rows` is what each route writes, traced from its handler:
+  //   /api/loot/scan     LootDetector.scan -> emit: one `loot` row when the
+  //                      text has a match (this text: generic_api_key);
+  //   /api/screenshot    the agent's own row (the stand-in above writes one);
+  //   /api/export/bundle exportBundle (no exporter configured here): a
+  //                      `logged_tier_digest` row, only when the logged tier
+  //                      has rows, then the `export_sealed` seal. `setup`
+  //                      writes one logged row first so both are driven.
+  const ROUTES: Array<{ route: string; body: Record<string, unknown>; status: number; rows: Array<[string, string | null]>; setup?: () => void }> = [
+    { route: '/api/loot/scan', body: { text: fakeCredential('Th1rd', 'S3cret', 'Value!') }, status: 200, rows: [['loot', 'credential_detected']] },
+    { route: '/api/screenshot', body: {}, status: 200, rows: [['screenshot', null]] },
+    { route: '/api/export/bundle', body: {}, status: 201, rows: [['system', 'logged_tier_digest'], ['system', 'export_sealed']],
+      setup: () => { expect(ingestMod.ingestEvent('dns', { subtype: 'dns_query', qname: 'export-doors.test' }, who)?.tier).toBe('logged') } }
   ]
   for (const r of ROUTES) {
     it(`${r.route}: every row it causes is legacy-api`, async () => {
+      r.setup?.()
       const rows = await newRows(() => send(r.route, r.body), r.status)
-      expect(rows.map((x) => x.agent_type)).toEqual(r.kinds)
+      expect(rows.map((x) => [x.agent_type, x.subtype])).toEqual(r.rows)
       expect(rows.map((x) => door(x.stamp))).toEqual(rows.map(() => LEGACY_API))
     })
   }
   it('/api/sanitize: its system.sanitized row is legacy-api', async () => {
-    const ev = ingestMod.ingestEvent('shell', { subtype: 'command_start', command: 'cat secret-file', terminalId: 't-z', pid: 14 }, who)!
-    const rows = await newRows(() => send('/api/sanitize', { event_ids: [ev.id], fields: ['command'], reason: 'doors' }), 201)
-    expect(rows.map((x) => x.subtype)).toContain('sanitized')
-    expect(rows.map((x) => door(x.stamp))).toEqual(rows.map(() => LEGACY_API))
+    // sanitize() masks only spans redaction recorded at write time, and
+    // answers a request with nothing to mask as a dry run (200, no row). A
+    // denylisted word in the command gives it one span to apply.
+    const redaction = await import('../src/core/redaction')
+    redaction.configureRedaction({ denylist: ['doors-redact-me'] })
+    try {
+      const ev = ingestMod.ingestEvent('shell', { subtype: 'command_start', command: 'cat doors-redact-me.txt', terminalId: 't-z', pid: 14 }, who)!
+      expect(ev.data.redactions).toEqual(expect.arrayContaining([expect.objectContaining({ field: 'command' })]))
+      let answer: Record<string, unknown> = {}
+      const rows = await newRows(async () => {
+        const res = await send('/api/sanitize', { event_ids: [ev.id], fields: ['command'], reason: 'doors' })
+        answer = await res.clone().json() as Record<string, unknown>
+        return res
+      }, 201)
+      expect(answer).toMatchObject({ dryRun: false, applied: 1 })
+      expect(rows.map((x) => [x.agent_type, x.subtype])).toEqual([['system', 'sanitized']])
+      expect(rows.map((x) => door(x.stamp))).toEqual([LEGACY_API])
+    } finally {
+      redaction.configureRedaction(redaction.DEFAULT_RULES)
+    }
   })
   // Not driven here: POST /api/anchors and the upgrade routes need a calendar
   // (their only row is anchor_failed), and POST /api/recording's row is
