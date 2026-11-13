@@ -263,7 +263,7 @@
   > **Superseded（2026-11-13，修訂 B7）**：不寫鏡像。新格式的專案檔不含 `operator`；較舊版本開啟新格式專案時 operator 回到它的預設值，不在本規格的保證之內（plan D12）。
 - **FR-01A** 設定頁的每個機器範圍欄位標示它目前的來源。被專案覆寫的欄位提供「改用此電腦的值」；這個動作寫一列設定變更紀錄。繼承機器值本身不寫紀錄（承接 Spec 051 FR-007、FR-008）。不新增頁面或分頁。
 - **FR-01B** 個人流量規則的鍵改為 `personalTraffic`，歸屬機器層，預設為空（不含 localhost）。舊檔的 `scope.personalDomains` 讀為 `personalTraffic` 的專案覆寫。設定頁把它移出範圍分組。
-  > **指標（2026-11-13 深夜，[Spec 077](../077-personal-content-and-delivery/spec.md) 修訂 S4、S6）**：077 以 `delivery.excludeRules[]`（排除規則，只有 `withhold`；層級是 077 Q7）取代 `personalTraffic`，沒有 `personal.followShellHistory`。077 FR-115 另要求 `config-store` 在開專案、套用存檔與建立匯出計畫前比對磁碟上的有效範圍（含 `scopeFile` 內容）與鏈上最後的範圍版本，不同就先寫一列 `config_changed{basis:'observed'}`；今天 `commit(…, {reason:'create'})` 不寫任何鏈上紀錄（`src/main/config-store.ts:84-88`）。
+  > **指標（2026-11-13 深夜，[Spec 077](../077-personal-content-and-delivery/spec.md) 修訂 S4、S6）**：077 以排除規則取代 `personalTraffic`：預設在專案 `config.yaml` 的 `delivery.rules[]`（`action: withhold`），操作者明確選擇時在 `machine.yaml` 的 `delivery.excludeRules[]`（077 Q7 已裁定，修訂 S10），沒有 `personal.followShellHistory`。077 FR-115 另要求 `config-store` 在開專案、套用存檔與建立匯出計畫前比對磁碟上的有效範圍（含 `scopeFile` 內容）與鏈上最後的範圍版本，不同就先寫一列 `config_changed{basis:'observed'}`；今天 `commit(…, {reason:'create'})` 不寫任何鏈上紀錄（`src/main/config-store.ts:84-88`）。
 - **FR-01C** 必須在不重啟的情況下即時生效的機器層鍵（至少：operator、`network.*` 中屬於機器的鍵、`httpCapture.port`／`listenHost`），存檔後依 FR-013 套用到開著的 session。
 - **FR-01D**（修訂 B7，2026-11-13）`operator.id`、`operator.name` 歸屬機器層且不可覆寫（登記表 `overridable: false`）。
   1. 有效的 operator 只來自機器層（未設定時為內建預設值）；session token 的 operator、071 的蓋章（071 FR-009）、API 的主要操作者、交接目錄的身分檔都讀它。

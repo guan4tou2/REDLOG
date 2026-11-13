@@ -43,9 +43,13 @@
 | R19 | **「個人／私人」分類取消，改成中性的「不納入交付」**：同一個動作，可套用到任意事件或時間區間，不需要先判斷它是不是私人 | 修訂 S4 |
 | R20 | **被排除交付的列照常可搜尋與檢視**，列上標示它不會被交付。所有已保存的事件都能搜尋、檢視與追溯 | 修訂 S5 |
 | R21 | **三種操作各自獨立**：交付排除（列仍在本機，只是不交出去）、遮蔽（交出去的內容被替換）、清除原始內容（本機的內容真的消失，不可逆，鏈上留紀錄）。交付排除不保護已寫入本機的敏感資料；要讓它不存在，只有事前暫停或事後清除 | B、F、G 段 |
+| R23 | **範圍外的 DNS 與樞紐建立列待確認**（Q6 (B)）：`dns` 種類與建立代理或跳板連線的指令，目標判為範圍外時改為待確認、依主機分組詢問；掃描、HTTP 等其餘範圍外的列仍預設不交付（R9）。代價（匯出時要回答的組變多）由擁有者接受 | FR-021、FR-022 第 4 項、FR-025 |
+| R24 | **排除規則兩層都可設，預設這個專案**（Q7，擁有者提出的第三種）：套用到這台機器的所有專案要由操作者明確選擇 | FR-013、FR-020、FR-023 |
+| R25 | **機器層排除規則遇到在目前專案範圍內的列 → 待確認**，並說明是哪一條規則與範圍相衝突；不由規則靜默扣下，也不由範圍靜默交付 | FR-004 (3b)、FR-112 |
+| R26 | **「依事件當時的範圍交付」不出現在匯出面**（Q8 (A)）：只作為 API 與 CLI 的參數；閱讀器仍可查某一列當時是否在範圍內，每次交付記下所用的範圍版本 | FR-117、FR-118 |
 | R22 | **優先順序**：Spec 071 擷取完整性 → 本規格的交付邊界 → 範圍版本與交付重新判定 → 匯入與匯出的操作體驗 | plan「順序」；tasks |
 
-**推得、未單獨詢問**（DECISIONS §12 明記為推論）：依「只保留一套記錄流程」，R3 的另兩種「不記錄」——機器層忽略清單（FR-020 的 `action: skip`）與遵循 shell 的歷史排除（FR-082）——理解為**一併取消**而不是暫緩（修訂 S6）。需要擁有者確認；確認前 Phase 6 標為取消、不刪除。
+**R3 的另兩種「不記錄」一併取消**（擁有者確認，DECISIONS §12）：機器層忽略清單（FR-020 的 `action: skip`）與遵循 shell 的歷史排除（FR-082）是取消，不是暫緩（修訂 S6）。先由「只保留一套記錄流程」推得，之後單獨問過擁有者，答覆相同。
 
 ### 五條不變條件
 
@@ -70,8 +74,12 @@
 | S3 | **私人終端機取消**（R18）：FR-014、FR-083 的私人終端機部分、US8 情境 4、情境對照「在私人終端機打了攻擊指令」、Edge Case「綁定控制項設為私人」、plan D12、D16、tasks T035 取消；停止原因 `private` 不存在（073 FR-041、071 FR-087、076 FR-044 已加指標） | 各處 Superseded |
 | S4 | **「個人」改為中性的「不納入交付」**（R19）。識別字一次改定、之後不再改：交付狀態與 stub 的理由 `personal` → **`operator-excluded`**（`DeliverySummary.withheld.operatorExcluded`、查詢值 `delivery:operator-excluded`）；註記理由 `personal` → `operator-excluded`，`private-terminal` 刪除；匯出面「個人」行 → 「已排除」；閱讀器 `不交付·個人` → `不交付·已排除`；機器層 `personal.rules[]`（私人規則）→ `delivery.excludeRules[]`（排除規則，只有 `withhold`）；設定中「私人」一列 → 「排除規則」一列；Exporter 載入錯誤 `withheld-personal-not-allowed` → `withheld-excluded-not-allowed`；SC-003 的標註 `work｜personal` → `deliver｜exclude`。識別字選 `operator-excluded` 而非 `excluded`，因為 `excluded` 已是 API 回應中扣下總數的欄位名（FR-045）。下文的規範性條文已直接改用新名 | A–E、H 段；plan、tasks |
 | S5 | **被排除的列照常可搜尋與檢視**（R20）：FR-007、FR-015 的收合、FR-017 的「不計」取消，改為列上一個「不交付」標示；plan D10 取消；Q2 的答覆隨之失效 | B 段 |
-| S6 | **「不記錄」一併取消（推得，待確認）**：R3、FR-018、FR-020 的 `skip`、FR-080–FR-083、plan D4 的 `skip` 一半、D11、tasks Phase 6（T070–T073）；Q1 不再適用 | I 段；tasks Phase 6 |
+| S6 | **「不記錄」一併取消（擁有者確認）**：R3、FR-018、FR-020 的 `skip`、FR-080–FR-083、plan D4 的 `skip` 一半、D11、tasks Phase 6（T070–T073）；Q1 不再適用 | I 段；tasks Phase 6 |
 | S7 | 擁有者的例子寫成驗收情境；與既有規則不同的兩處列為 Q6；排除規則的層級列為 Q7；依當時範圍交付的入口列為 Q8 | 情境對照；開放問題 |
+| S9 | Q6 裁定 (B)：FR-021 加一列、FR-022 第 4 項、FR-025 的 `host:` 組；E4、E9 改為一致 | C 段；tasks T023 |
+| S10 | Q7 裁定（兩層、預設本專案）：FR-013、FR-020、FR-023、FR-024；交付規則仍只在專案層 | B、C 段；tasks T033、T034、T038 |
+| S11 | 機器層規則與範圍衝突 → `ask`，理由 `rule-scope-conflict`：FR-001、FR-004 的 (3b)、FR-025 的 `rule:` 組、FR-112 第 (8) 項；專案層排除規則不是衝突 | A、C、L 段；tasks T037 |
+| S12 | Q8 裁定 (A)：FR-118 | M 段 |
 | S8 | 優先順序（R22）反映在 plan 與 tasks：Phase 1 的不變條件 gate 不等 074；範圍版本是 Phase 10，在 Phase 1–4 之後 | plan「順序」；tasks |
 
 ### 本規格自行決定的（理由與被否決的替代方案見 plan.md）
@@ -256,7 +264,14 @@ bundle 中 40 列被扣下（12 已排除、20 範圍外、8 待確認）。客�
 
 在待確認區段勾「以後一律」不交付 `host: *.mybank.example`，之後所有專案中它都直接計入「個人」。在設定既有的「私人」一列下，他把一條規則的動作從「不交付」改為「不記錄」。在來源列上，他把一個 tmux pane 的綁定改為「私人」。
 
-> **Superseded（2026-11-13，修訂 S3、S4、S6）**：本故事只剩「以後一律」的排除規則：勾「以後一律」不交付 `host: *.mybank.example`，之後它直接計入「已排除」（規則的層級見 Q7）；在設定的「排除規則」一列下檢視或刪除。「不記錄」的動作（S6）與來源列的「私人」（S3）取消。Independent Test 只剩 (a)、(c)；情境 2–4 取消，情境 1 的「個人」讀作「已排除」。
+> **Superseded（2026-11-13，修訂 S3、S4、S6）**：本故事只剩「以後一律」的排除規則：勾「以後一律」不交付 `host: *.mybank.example`，之後它直接計入「已排除」（層級預設本專案、可選所有專案，情境 5–8）；在設定的「排除規則」一列下檢視或刪除。「不記錄」的動作（S6）與來源列的「私人」（S3）取消。Independent Test 只剩 (a)、(c)；情境 2–4 取消，情境 1 的「個人」讀作「已排除」。
+
+（修訂 S10、S11）另加四個情境，測試 T037、T038：
+
+5. **Given** 在待確認區段對 `host:*.mybank.example` 回答「不交付」並勾「以後一律」、層級不動，**Then** 本專案 `config.yaml` 的 `delivery.rules[]` 多一條 `action: withhold`，鏈上一列 `system:delivery_rule{scope:'project'}`；另一個專案不受影響。
+6. **Given** 同上但把層級改為「這台機器的所有專案」，**Then** 規則寫進 `machine.yaml` 的 `delivery.excludeRules[]`，每個專案開啟時在自己的鏈上留 `system:delivery_rule{scope:'machine'}`（只含雜湊）。
+7. **Given** 客戶 A 的行動中把主機 H 設為機器層「不交付」；之後客戶 B 的專案把 H 列入範圍，**When** B 匯出，**Then** H 的列既不計入「已排除」也不計入「範圍內」，而是待確認中的一組 `rule:<規則 id>`，標籤寫出那條機器層規則與 B 範圍中的 `H`；未回答時依 Q4 扣下為 `unanswered`；回答「交付」寫註記，該組之後不再出現，規則本身不變。
+8. **Given** 在 B 專案內對 H 建立**專案層**排除規則，**Then** H 的列 `withhold`／`operator-excluded`，即使 H 在 B 的範圍內——這是操作者在這個專案裡的選擇，不是衝突。
 
 **Independent Test**：(a) 規則評估表；(b) `skip` 規則的 hook 向量：不送、不寫交接檔、用掉序號、計 `ignored-rule`；(c) `since` 之前的列不受影響；(d) 綁定控制項「私人」：寫終端機狀態檔的停止原因，hook 下一個 prompt 停送；該終端機已記錄的列計入「個人」。
 
@@ -315,12 +330,12 @@ bundle 中 40 列被扣下（12 已排除、20 範圍外、8 待確認）。客�
 | E1 | 掃描範圍內主機 | 交付 | `deliver`／`in-scope` | FR-021 第 1 列 | 是 |
 | E2 | 掃描範圍外主機 | 排除 | `withhold`／`out-of-scope` | FR-021 第 2 列、R9 | 是 |
 | E3 | 無法判斷目標的 shell 指令（`whoami`、`ip route`） | 待確認 | `ask`，組 `cmd:whoami` | FR-022「不是確定的目標」、FR-025 | 是 |
-| E4 | 範圍外但相關的 DNS 查詢 | 待確認 | `withhold`／`out-of-scope`：`dns_query` 的查詢名稱是擷取的確定目標，範圍有名稱型項目時判範圍外；只有在範圍只有位址型項目且沒有對應、或 `no-scope` 時才是 `ask` | FR-022 第 1 項、FR-101 第 1、6 條 | **否 → Q6** |
+| E4 | 範圍外但相關的 DNS 查詢 | 待確認 | `withhold`／`out-of-scope`：`dns_query` 的查詢名稱是擷取的確定目標，範圍有名稱型項目時判範圍外；只有在範圍只有位址型項目且沒有對應、或 `no-scope` 時才是 `ask` | FR-022 第 1 項、FR-101 第 1、6 條 | 原為否；**Q6 裁定 (B) 後一致**：`ask`，組 `host:`（FR-021 第 3 列，修訂 S9） |
 | E5 | 操作者標記不交付 | 排除 | `withhold`／`operator-excluded` | FR-004 (2) | 是 |
 | E6 | 錯誤與失敗的指令 | 依政策 | 沒有專屬類別：與其他列同一個判斷；操作者以一個鍵排除 | FR-004、FR-010 | 是（不新增結束碼規則） |
 | E7 | 登入自己的 GitHub 帳號 | 記錄；不得自動交付 | 目標 `github.com`：範圍有名稱型項目 → `withhold`／`out-of-scope`；範圍只有位址型且沒有對應、或 `no-scope` → `ask`。不論哪一種，都不是 `deliver` | FR-021、FR-101 | 是 |
 | E8 | 處理另一個客戶的資料 | 記錄；不得自動交付 | 對方主機不在本專案範圍 → `withhold`；本機檔案（`cat ~/clientB/…`）、AI 回合 → 沒有確定目標 → `ask` | FR-021、FR-022 | 是，兩個例外見下 |
-| E9 | 建立代理連線（`ssh -D 1080 me@vps`、`chisel client`） | 「可能沒有明確的範圍目標，卻是證據」（R17；擁有者的表未列結果） | 指令自己的目標是樞紐主機（操作者自己的機器）→ 不在範圍 → `withhold`／`out-of-scope` | FR-022 第 4 項 | **待確認 → Q6** |
+| E9 | 建立代理連線（`ssh -D 1080 me@vps`、`chisel client`） | 「可能沒有明確的範圍目標，卻是證據」（R17；擁有者的表未列結果） | 指令自己的目標是樞紐主機（操作者自己的機器）→ 不在範圍 → `withhold`／`out-of-scope` | FR-022 第 4 項 | 原為待確認；**Q6 裁定 (B)**：`ask`，組 `host:<樞紐主機>`（FR-021 第 3 列，修訂 S9） |
 
 E7、E8 是「範圍無法單獨決定」的典型：它們之所以從不自動交付，是因為範圍外預設扣下、未知預設待確認，而不是因為 RedLog 判斷它「私人」。兩個例外都來自操作者自己的決定，不是預設：(a) 對方的主機與本專案範圍重疊（同一 CIDR、共用主機）時範圍判它範圍內——K 段第 4 條在「位址在範圍內、名稱已知且不在範圍內」時改問；位址與名稱都在範圍內時只能靠操作者排除；(b) 本專案先前以「以後一律」交付了某一組（例如 `cmd:cat`），之後符合的新列依規則交付。任意事件與任意時間區間的「不納入交付」（US3 情境 4）就是為這兩種情況存在，而且不需要先標成「私人」。
 
@@ -328,7 +343,7 @@ E7、E8 是「範圍無法單獨決定」的典型：它們之所以從不自動
 
 - 被扣下的列已經在之前交付過：新的註記只影響之後的交付；`export_sealed` 的 `selectedEventIds` 可查。
 - 時間區間型選擇器在讀取時評估，晚到的列（`timestamp` 落在區間內）一樣被涵蓋；id 型選擇器不涵蓋它。
-- 一列同時符合 `withhold` 與 `deliver` 規則：`withhold` 勝。
+- 一列同時符合 `withhold` 與 `deliver` 規則：`withhold` 勝。（修訂 S11：只限兩條都是專案層；機器層排除規則與專案層交付規則同時符合是 `rule-scope-conflict`，FR-004 (3b)。）
 - 範圍在行動中改變：範圍關係以匯出計畫凍結的範圍快照計算（`export-plan.ts:323-337`）。（修訂 S2）快照所屬的範圍版本記入 `DeliveryRecord`（FR-113、FR-116）；事件當時的範圍另外可查（FR-117）。
 - 推導列（`loot`、`credential_use`、`pivot`、`scope_violation`）的狀態等於它第一個 `_causes` 來源列的狀態；沒有來源者依自己的目標。
 - 系統列與標記：預設交付；只有 id 型選擇器能扣下它們；時間區間型選擇器只涵蓋 `commands`、`traffic`、`ai`、`artifacts` 四個家族（072 `KindFamily`）。
@@ -344,10 +359,11 @@ E7、E8 是「範圍無法單獨決定」的典型：它們之所以從不自動
 
 #### A. 交付狀態（R2、R7）
 
-- **FR-001** 每一列（兩層）在任一時刻恰好有一個**交付狀態**：`deliver`、`withhold` 或 `ask`；以及一個**理由**：`in-scope`、`answer`、`rule`、`included-this-export`（`deliver`）；`operator-excluded`、`out-of-scope`、`unanswered`、`cleared`（`withhold`；`ask` 在交付時成為 `withhold`／`unanswered`）。（修訂 S4：`operator-excluded` 原為 `personal`。）
+- **FR-001** 每一列（兩層）在任一時刻恰好有一個**交付狀態**：`deliver`、`withhold` 或 `ask`；以及一個**理由**：`in-scope`、`answer`、`rule`、`included-this-export`（`deliver`）；`operator-excluded`、`out-of-scope`、`unanswered`、`cleared`（`withhold`；`ask` 在交付時成為 `withhold`／`unanswered`）。（修訂 S4：`operator-excluded` 原為 `personal`。）（修訂 S11）`ask` 也帶理由：`rule-scope-conflict`（FR-004 (3b)）或 `undetermined`（其他每一種，FR-112）；交付時兩者都成為 `withhold`／`unanswered`，stub 的四個理由碼不變。被排除規則（任一層）扣下的列理由是 `operator-excluded`：規則是操作者事先的決定。
 - **FR-002** 操作者的決定只以一種形式存在：上鏈的 `system:delivery_mark`（`role: annotation`、`tier: chained`、`pause: exempt`、`writers: ['in-process']`，072 登記），欄位 `{v:1, decision:'withhold'|'deliver'|'clear', reason:'operator-excluded'|'answer', selector, note?}`（修訂 S4：原為 `'personal'|'answer'|'private-terminal'`）。`clear` 撤回之前對這些列的決定。它從不修改被指到的列。只有操作者憑證（app 內的動作）能寫它。
 - **FR-003** 選擇器是封閉聯集（形狀見 plan「資料形狀」）：`ids`（≤ 5000，超過時分多列並以 `batch` 相連）、`command_id`、`terminal`（終端機 id＋`from`／`to`）、`ai_session`（＋可選 `from`／`to`）、`flow_ids`、`producer`（＋`from`／`to`）、`host`（只存 `sha256(正規化主機)`＋時間界）。「目前篩選的全部列」解析成 `ids` 寫入（附查詢字串供閱讀），不存查詢本身。
 - **FR-004** 狀態由純函式 `deliveryOf(row, context)`（`src/core/delivery/state.ts`）決定，優先序：(1) 已清除 → `withhold`／`cleared`；(2) 涵蓋該列的最新一筆不是 `clear` 的 `delivery_mark` → 其決定；(3) 生效中的規則（FR-020、FR-023），兩者都符合時 `withhold`；(4) 範圍關係（FR-021、K 段）；(5) `ask`。推導列先改用來源列的結果。匯出請求的「這次包含範圍外」只把 (4) 的 `out-of-scope` 改為 `deliver`／`included-this-export`。
+  > **Superseded（2026-11-13 深夜，修訂 S10、S11；R24、R25）**：(3) 拆成兩步，其餘不變：(3a) **專案層規則**（FR-023）：符合排除規則 → `withhold`／`operator-excluded`（即使該列在範圍內——操作者在這個專案裡做的選擇，不是衝突）；符合交付規則 → `deliver`／`rule`；兩者都符合 → `withhold`。(3b) **機器層排除規則**（FR-020），只在 (3a) 沒有給出 `withhold` 時評估：符合，且 (3a) 給了 `deliver` 或 (4) 會給 `deliver`／`in-scope` → `ask`／`rule-scope-conflict`，帶 `{ruleId, scopeEntry}`（相衝突的機器層規則與範圍項目；後者在 (3a) 的情況為交付規則的 id）；符合而沒有衝突 → `withhold`／`operator-excluded`。衝突從不靜默成為 `withhold` 或 `deliver`；操作者回答該組（FR-026）寫的註記在 (2) 勝過它。
 - **FR-005** 074 新增投影 `delivery_state(event_id, tier, mark_state, rule_id?, target_name?, target_addr?, target_basis)`，放在 `derived.db`，遵守 074 FR-030–040。範圍關係依賴範圍與對應，在讀取時以請求的快照計算；投影只物化 (1)–(3) 與目標的兩面。
 - **FR-006** 074 的讀取契約加共用參數 `delivery: 'operator' | 'deliver'`：`operator`（app 內的操作者讀取）回傳全部列並附 `delivery` 欄；`deliver`（每一個交付出口）只回傳交付的列與 stub 計數。查詢語言加鍵 `delivery:`（值 `deliver`、`withhold`、`ask`、`operator-excluded`、`out-of-scope`），只是篩選。
 - **FR-007** 私人列在 `operator` 讀取中**預設不出現在搜尋結果**（`/api/events/search`、⌘K、活動紀錄的文字搜尋）；查詢含 `delivery:personal` 時才出現。
@@ -360,7 +376,8 @@ E7、E8 是「範圍無法單獨決定」的典型：它們之所以從不自動
 - **FR-010** 活動紀錄：選取一列或多列後，一個鍵（`lib/shortcuts.ts` 單一表中的一個鍵，預設 `p`，plan D14）切換「不納入交付」：選取中有任何列不是 `withhold`／`operator-excluded` → 對全部寫 `withhold`；否則寫 `clear`。（修訂 S4：原為「個人」；可套用到任意事件，不需要先判斷是否私人，R19。）同一動作在列的右鍵選單出現一次。它**不是**標記（DECISIONS §4 的單一標記動作不變），不在工具列放按鈕。
 - **FR-011** 選取延伸沿用既有的清單鍵盤與 Shift 選取；另外三個延伸只在同一右鍵選單：「這個終端機從這裡到……」（`terminal` 選擇器）、「這個指令」（`command_id`）、「這個 AI 工作階段」（`ai_session`）；「目前篩選的全部列」也在此。
 - **FR-012** **沒有任何隱私、個人、扣下或清除的終端機動詞**（R11）。
-- **FR-013** 「以後一律」只出現在匯出面待確認區段的每一組（FR-026），以及 FR-010 的右鍵選單：`withhold` → 排除規則（FR-020；層級見 Q7）；`deliver` → 專案層交付規則（FR-023）。規則的 `match` 取自分組鍵。規則在設定既有的「資料與隱私」分組中的一列（「排除規則」）下檢視或刪除；不新增設定頁。（修訂 S4、S6：原為「私人」一列、可編輯動作「不交付／不記錄」。）
+- **FR-013** 「以後一律」只出現在匯出面待確認區段的每一組（FR-026），以及 FR-010 的右鍵選單：`withhold` → 排除規則（FR-020；層級預設本專案，修訂 S10）；`deliver` → 專案層交付規則（FR-023）。規則的 `match` 取自分組鍵。規則在設定既有的「資料與隱私」分組中的一列（「排除規則」）下檢視或刪除；不新增設定頁。（修訂 S4、S6：原為「私人」一列、可編輯動作「不交付／不記錄」。）
+  > **Superseded（2026-11-13 深夜，修訂 S10；R24）**：「以後一律」仍是每組（與 FR-010 右鍵選單）的一個勾選。回答「不交付」並勾選時，勾選旁顯示它的層級，值為「本專案」（預設）；點這個值是一個兩項的選單，另一項是「這台機器的所有專案」——一個控制項、一個預設、另一個值一步之遙，沒有說明文字。回答「交付」並勾選時不顯示層級：交付規則只有專案層。設定「資料與隱私」中既有的一列「排除規則」列出本專案的交付與排除規則以及這台機器的排除規則，每條一行顯示比對、動作與層級（「本專案」或「所有專案」），每條可刪除；不新增頁面，也不能在那裡改層級（改層級＝刪除後重答）。
 - **FR-014** 私人終端機（R3、R11）：075 每個 shell 一列的來源列上，既有的綁定控制項有兩個值「綁定到本專案」「私人」。選「私人」：app 寫終端機狀態檔的停止原因 `private`（073 FR-041 的封閉清單），hook 在下一個 prompt 讀到後不送任何項目、不寫交接檔、不計數；app 同時寫一列 `delivery_mark{decision:'withhold', reason:'private-terminal', selector:{terminal, from:<該終端機第一列>, to:<現在>}}`。改回「綁定」撤銷停止原因；先前的扣下不自動撤回。
   > **Superseded（2026-11-13，修訂 S3，R18）**：私人終端機取消。綁定控制項沒有「私人」值，終端機狀態檔沒有停止原因 `private`，hook 沒有對應的分支；不想被記錄時用暫停（Spec 071 FR-080–FR-084）。
 - **FR-015** 活動紀錄與時間軸：`withhold`／`personal` 的連續列（同一來源、中間沒有其他列）收合為一列：固定符號＋數字，沒有說明文字；展開後以次要文字色顯示。範圍外與待確認的列不改外觀。固定篩選列不變；交付狀態只經篩選選單或查詢鍵 `delivery:`。
@@ -373,12 +390,13 @@ E7、E8 是「範圍無法單獨決定」的典型：它們之所以從不自動
 
 #### C. 交付由範圍決定、分組詢問（R7、R9、R10、R12）
 
-- **FR-020** 機器層排除規則（修訂 S4、S6；原為「私人規則」`personal.rules[]`、`action:'withhold'|'skip'`）：`~/.redlog/machine.yaml` 的 `delivery.excludeRules[]`（073 擁有檔案；層級見 Q7），每條 `{id, match:{kind:'host'|'command'|'ai-path', pattern}, since}`，動作只有 `withhold`、理由 `rule`。`host` 用 `classifyScope` 的樣式語法，對名稱與位址兩面都比對（K 段）；`command` 是可執行檔名或整行 glob；`ai-path` 是工作路徑前綴。規則只影響 `created_at ≥ since` 的列。這張表取代 `scope.personalDomains` 與 073 FR-01B 的 `personalTraffic`。
+- **FR-020** （修訂 S10：排除規則有兩層，**預設專案層**，存在專案 `config.yaml` 的 `delivery.rules[]`、`action: 'withhold'`，與交付規則同一張表（FR-023）；下文描述的是**機器層**，只在操作者明確選「這台機器的所有專案」時建立，與目前專案範圍衝突時見 FR-004 (3b)。）機器層排除規則（修訂 S4、S6；原為「私人規則」`personal.rules[]`、`action:'withhold'|'skip'`）：`~/.redlog/machine.yaml` 的 `delivery.excludeRules[]`（073 擁有檔案），每條 `{id, match:{kind:'host'|'command'|'ai-path', pattern}, since}`，動作只有 `withhold`、理由 `rule`。`host` 用 `classifyScope` 的樣式語法，對名稱與位址兩面都比對（K 段）；`command` 是可執行檔名或整行 glob；`ai-path` 是工作路徑前綴。規則只影響 `created_at ≥ since` 的列。這張表取代 `scope.personalDomains` 與 073 FR-01B 的 `personalTraffic`。
 - **FR-021** **範圍關係**以凍結的範圍快照、K 段的比對規則計算，只用確定的目標（FR-022）：
   | 目標 | 關係 |
   |---|---|
   | 確定的目標，K 段判為範圍內 | `deliver`／`in-scope` |
-  | 確定的目標，K 段判為範圍外（含宣告的排除 `!host`） | `withhold`／`out-of-scope`（R9） |
+  | 確定的目標，K 段判為範圍外（含宣告的排除 `!host`），且該列是 `dns` 種類（`dns_query`、`dns_response`）或 FR-022 第 4 項的樞紐建立指令（修訂 S9，R23） | `ask`／`undetermined`，組 `host:`（FR-025） |
+  | 確定的目標，K 段判為範圍外（含宣告的排除 `!host`）；上一列以外的每一種列（掃描、HTTP 等） | `withhold`／`out-of-scope`（R9） |
   | 確定的目標，K 段判為無法確認（`no-scope`、衝突、只有一面且沒有對應） | `ask` |
   | 沒有確定的目標 | `ask` |
   | 標記、`system:*` | `deliver`／`in-scope` |
@@ -386,13 +404,14 @@ E7、E8 是「範圍無法單獨決定」的典型：它們之所以從不自動
   1. `target_via: explicit`、`extracted`、`operator-selected`（071 FR-010、O16）。
   2. `target_via: command`：背景輸出承接它所屬的指令。
   3. **工作階段指令的輸出**：開啟互動工作階段的指令（`ssh`、`evil-winrm`、`psexec.py` 等，擷取規則能從參數取出主機者）的整段互動是那一條指令的輸出列；它們承接該指令擷取的目標，`target_basis: session-command`。目標是**最終目的地**：`ssh -J`／`-o ProxyJump`／`ProxyCommand` 指名的主機是跳轉，不是目標（目標擷取的改動見 tasks）。互動中的巢狀跳轉（在遠端再 `ssh` 到另一台）仍屬外層指令的輸出，承接外層的目標；RedLog 不切開輸出。
-  4. **經樞紐的工具**：`proxychains`、SOCKS 等包裝下的指令，以被包裝工具的參數擷取目標（`wrappers` 解析）；樞紐本身（`ssh -D`、`sshuttle -r`、`chisel client`、`ligolo -connect` 的主機）不是那些流量的目標，那一條指令自己的目標是樞紐主機。
+  4. **經樞紐的工具**：`proxychains`、SOCKS 等包裝下的指令，以被包裝工具的參數擷取目標（`wrappers` 解析）；樞紐本身（`ssh -D`、`sshuttle -r`、`chisel client`、`ligolo -connect` 的主機）不是那些流量的目標，那一條指令自己的目標是樞紐主機。（修訂 S9）這些**樞紐建立指令**（`ssh -D`、`sshuttle -r`、`chisel client`、`ligolo -connect`；清單只隨目標擷取的樞紐規則改變，T061）的目標判為範圍外時不扣下而是 `ask`（FR-021 第 3 列）：樞紐主機多半是操作者自己的機器，是證據的一部分，不是被操作的對象（R17）。
   5. 推導列承接第一個 `_causes` 來源列；O18 的確定因果落地後，帶確定 `_causes` 的列依其來源。
   6. 遠端 hook 的列（`_ingest.producer = remote:*`）：依 1–5 擷取它自己的目標；遠端主機本身是操作者自己的機器（R12），從不作為目標。
   **不是**確定的目標，因此進「詢問」：`terminal-last`；`none`；沒有目標參數的工作階段（`nc -lvnp` 收到的反向 shell、`msfconsole`、本機的 REPL）；只出現在輸出文字中的主機。
 - **FR-023** 專案層交付規則：專案 `config.yaml` 的 `delivery.rules[]`，形狀同 FR-020，`action` 只有 `deliver`；只在該專案生效。沒有機器層的「一律交付」。
+  > **修訂（2026-11-13 深夜，S10）**：同一張表也放專案層的排除規則：`action: 'deliver' | 'withhold'`。交付規則**只**在專案層——機器層的「一律交付」不存在，也不能以任何設定或答案產生（交付是對這一個客戶的承諾）；機器層只有排除規則（FR-020）。
 - **FR-024** 規則的增刪在受影響的專案鏈上寫 `system:delivery_rule{op:'add'|'remove', rule_id, scope:'machine'|'project', match_kind, pattern_sha256, action, since}`；機器層規則的原文從不寫進專案，專案層的寫 `pattern`。機器規則在專案關著時改變：下一次開專案時寫。
-- **FR-025** 匯出時每一列 `ask` 恰好屬於一個**問題組**；分組鍵依序取第一個成立的（演算法與量測見 plan D15）：`ai:<工作階段>`、`remote:<名稱>`、`conflict:<名稱>|<位址>`、`host:<可註冊網域或 /24>`（有目標但無法確認）、`cmd:<可執行檔>`（`wrappers` 解析）、`file:<種類>`、`kind:<家族>`。組依列數排列；每組顯示鍵、列數、跨幾個終端機或工作階段、該終端機最後的確定目標（只是提示）。
+- **FR-025** 匯出時每一列 `ask` 恰好屬於一個**問題組**；分組鍵依序取第一個成立的（演算法與量測見 plan D15）：（修訂 S11）`rule:<機器層規則 id>`（`rule-scope-conflict`；組的標籤寫出那條規則與相衝突的範圍項目，兩者都是已在設定中的字，不加說明文字）、`ai:<工作階段>`、`remote:<名稱>`、`conflict:<名稱>|<位址>`、`host:<可註冊網域或 /24>`（有目標但無法確認；修訂 S9：以及 FR-021 第 3 列的範圍外 DNS 與樞紐建立列）、`cmd:<可執行檔>`（`wrappers` 解析）、`file:<種類>`、`kind:<家族>`。組依列數排列；每組顯示鍵、列數、跨幾個終端機或工作階段、該終端機最後的確定目標（只是提示）。
 - **FR-026** 每組恰好一個回答：「交付」或「不交付」，加「以後一律」勾選。回答寫一列 `delivery_mark{reason:'answer'}`，選擇器是該組在本次計畫快照中的 `ids`。組可「依終端機分開」成多組。沒有逐列回答的介面；逐列回到活動紀錄用 FR-010。
 - **FR-027** 未回答的組本次為 `withhold`／`unanswered`；匯出從不被擋。回答在鏈上，所以下一次只出現新的 `ask` 列。
 - **FR-028** 量測目標：SC-003。
@@ -465,7 +484,7 @@ E7、E8 是「範圍無法單獨決定」的典型：它們之所以從不自動
 
 #### I. 不記錄（R3，次要、選用）
 
-> **Superseded（2026-11-13，修訂 S3、S6）**：本段整段取消。只有一套錄製流程；唯一的「不收集」是暫停，由 Spec 071 FR-080–FR-084 擁有（即時入口依收到時間判斷，交接目錄依已記錄的暫停區間判斷），本規格不重述。(a) 私人終端機由擁有者取消（R18）；(b)(c) 是從「只保留一套記錄流程」**推得**的取消，未單獨詢問，需要擁有者確認（DECISIONS §12）。確認前條文保留於下，不實作。
+> **Superseded（2026-11-13，修訂 S3、S6）**：本段整段取消。只有一套錄製流程；唯一的「不收集」是暫停，由 Spec 071 FR-080–FR-084 擁有（即時入口依收到時間判斷，交接目錄依已記錄的暫停區間判斷），本規格不重述。(a) 私人終端機由擁有者取消（R18）；(b)(c) 也由擁有者確認取消（DECISIONS §12）。條文依慣例保留於下，不實作。
 
 - **FR-080** 不記錄只有三種，全部選用：(a) 私人終端機（FR-014）；(b) 機器層規則 `action: skip`（FR-020）；(c) 遵循 shell 自己的歷史排除（FR-082）。沒有一種預設開啟，沒有一種需要操作者改變輸入方式。
 - **FR-081** `skip` 規則在來源端評估：`command` 規則由 hook（app 寫出編譯後的 `~/.redlog/personal-skip.json`，0600，與 `command-class.json` 的 overlay 同一讀法）；`host` 規則由 mitmproxy addon 與接收端在 commit 前評估（內容不落盤）；`ai-path` 規則由 AI tailer 的 `excludedPaths`。每次略過用掉一個序號並計為 071 的有意遺失 `ignored-rule`。
@@ -525,7 +544,7 @@ E7、E8 是「範圍無法單獨決定」的典型：它們之所以從不自動
   2. **行為**：對每一個入口（API `POST /api/events`、`spool-replay` 重放一個交接檔、程序內 `ingest` 的 marker 與終端機列）× 每一種範圍關係（允許清單內、`!host` 明確排除、不在允許清單、`no-scope`），同一筆輸入只換目標：每一筆都落盤，且落盤的 `data` 除目標欄位外逐位元組相同（大輸出的截斷與 sidecar 也相同）。
   這條守的是今天已成立的行為：RED 以突變證明——在 `ingest` 的 commit 前加一條「範圍外即 return」，兩半都必須失敗。
 - **FR-111**（I2 範圍不修改原始證據）改範圍（`configStore.patch`）、隨後的範圍重算、以及一次交付的計畫與執行，都不改寫任何既有列：之前存在的每一列的 `id`、`hash`、`prev_hash`、`data` 逐位元組不變；新增的只有 `system:config_changed`、`system:scope_recomputed` 與其推導列、`DeliveryRecord`（FR-113）。`derived.db` 的投影（074）可以改變，它不是證據。Gate：`test/delivery/scope-change-append-only.test.ts`；RED 以突變證明（讓重算以 UPDATE 改一列的 `data`：trigger 擋下之外，測試本身也必須失敗）。
-- **FR-112**（I3 未知不是安全、也不是範圍外）每一處無法判定的位置都給 `ask`，並在交付時成為**自己的**理由 `unanswered`，從不併入 `deliver`、`out-of-scope` 或 `operator-excluded`（Q4 的「扣下」因此不是默默排除：它在匯出面、manifest、stub、verifier、API 的 `excluded` 都以 `unanswered` 單獨計數，且下一次可以回答）。無法判定的位置是封閉清單：(1) `no-scope`（FR-021、FR-101 第 7 條；修正 `scope-evaluator.ts:233-235,244` 把沒設範圍當範圍內）；(2) 沒有確定目標（FR-022）；(3) 只有一面且沒有對應（FR-101 第 6 條）；(4) 衝突（FR-101 第 2 條）；(5) 不理解的註記、選擇器或種類（Edge Cases）；(6) 推導列沒有來源且自己沒有確定目標；(7) 事件當時的範圍無法確認（FR-117 的 `unknown`，只在 `scopeBasis: at-event` 時進入交付）。**不是**未知、而是規則的：標記與 `system:*` 交付（FR-021 末列）；位址在範圍內而名稱未知時依位址（FR-101 第 5 條）。Gate：決策表（FR-095）與 FR-091 的每個案例斷言 `DeliverySummary.withheld.unanswered` 等於 `deliveryOf` 給出 `ask` 的列數；FR-093 的兩個新突變必須被殺死。
+- **FR-112**（I3 未知不是安全、也不是範圍外）每一處無法判定的位置都給 `ask`，並在交付時成為**自己的**理由 `unanswered`，從不併入 `deliver`、`out-of-scope` 或 `operator-excluded`（Q4 的「扣下」因此不是默默排除：它在匯出面、manifest、stub、verifier、API 的 `excluded` 都以 `unanswered` 單獨計數，且下一次可以回答）。無法判定的位置是封閉清單：(1) `no-scope`（FR-021、FR-101 第 7 條；修正 `scope-evaluator.ts:233-235,244` 把沒設範圍當範圍內）；(2) 沒有確定目標（FR-022）；(3) 只有一面且沒有對應（FR-101 第 6 條）；(4) 衝突（FR-101 第 2 條）；(5) 不理解的註記、選擇器或種類（Edge Cases）；(6) 推導列沒有來源且自己沒有確定目標；(7) 事件當時的範圍無法確認（FR-117 的 `unknown`，只在 `scopeBasis: at-event` 時進入交付）；(8)（修訂 S11）機器層排除規則與目前專案的範圍（或專案層交付規則）衝突（FR-004 (3b)，理由 `rule-scope-conflict`）。(1)–(7) 的 `ask` 理由是 `undetermined`。**不是**未知、而是規則的：標記與 `system:*` 交付（FR-021 末列）；位址在範圍內而名稱未知時依位址（FR-101 第 5 條）。Gate：決策表（FR-095）與 FR-091 的每個案例斷言 `DeliverySummary.withheld.unanswered` 等於 `deliveryOf` 給出 `ask` 的列數；FR-093 的兩個新突變必須被殺死。
 - **FR-113**（I4 交付政策集中執行，並保留政策版本與結果）
   1. **出口清單**（`main@b2d56fb7`）。`deliver`（只經 `deliver()`）：匯出計畫的預覽與執行（`data:resolveExportPlan`、`data:executeExportPlan`，`src/main/ipc/data-export.ts:93,118`；格式 `json`、`ndjson`、`timeline`、`bundle`、`har`，`src/core/export-capabilities.ts:7`；076 FR-084 的 CSV）；API `GET /api/events`（`api-server.ts:418`）、`/api/events/search`（`:430`）、`/api/export/har`（`:476`）、`/api/http-body/:sha`（`:495`）、`/api/terminal/replay`（`:670`）、`/api/export/bundle`（`:756`）；CLI `cli/redlog-cli.js` 的 `search`（`:192`）、事件查詢（`:212`）、`replay`（`:275`）、`export bundle`（`:419`），全部經上列 API；076 的 `redlog last`／`redlog export`；暫緩的 L0 讀取、L2 面板資料、Exporter 批次（H 段、Phase 8）。`operator`（操作者自己的畫面與動作，FR-006；plan「18 條路徑」P16、P18）：`events:*`、`content:*` IPC，含 `content:copySaved`、`content:save`（`src/main/ipc/events.ts:101,107`）與活動紀錄的「複製 JSON」（`Timeline.tsx:1659-1670`）。`no-event-content`：`/api/events/count`、`/api/chain`、`/api/anchors*`、`/api/bookmarks`（操作者輸入的書籤表，不是事件）、`/api/status`、`/api/capture`、`/api/config`、`/api/scope`、`/api/operators`、`/api/clock`、`/api/recording`、`/api/whoami`、`/api/health`、設定檔匯出（`profile-export.ts`，只含範圍，DECISIONS §10）。`/api/sanitize` 刪除（Phase 4）。
   2. **Gate**：FR-090 的 `test/delivery/single-exit.test.ts` 另持一張表，列出 `api-server.ts` 的每一個 `route ===`／`route.match`、每一個回傳事件內容的 `ipcMain.handle` 頻道與 `redlog-cli` 的每一個子指令，各標 `deliver`、`operator` 或 `no-event-content:<理由>`；表外出現新的路由、頻道或子指令即失敗，標 `deliver` 的處理函式不經 `deliver()` 也失敗。
@@ -542,7 +561,7 @@ E7、E8 是「範圍無法單獨決定」的典型：它們之所以從不自動
   **範圍版本**＝`scope.effective.to` 生效中的那一列的 `id`；兩個版本是否相同以 `hash` 判斷。第一列之前沒有版本（`null`，即未知）。限制：在 app 外的變更以「RedLog 觀察到的時間」記錄，不是「被改的時間」；不加設定檔監看（plan D25）。
 - **FR-116**（交付記下範圍版本）`DeliveryRecord.basis.scopeVersion` 是計畫凍結的範圍快照所屬的版本；建立計畫前的 FR-115 第 2 項檢查保證快照的 `hash` 等於鏈上某一列的 `to.hash`，不相等時計畫建立失敗（不可能交付一個鏈上沒有的範圍）。
 - **FR-117**（每列「當時是否在範圍內」）純函式 `scopeAtEvent(row) → 'yes' | 'no' | 'unknown'`（`src/core/delivery/scope-history.ts`）：以該列發生時間（071 的蓋章時間）當時生效的範圍版本、與早於該時間的對應（FR-103），經同一個 `classifyTarget` 分類。`unknown` 當：該時間之前沒有版本；或該列落在某版本與其後一列 `observed` 之間、而 `observed` 的 `from` 不等於該版本的 `to`（中間有不在鏈上的變更）且兩個版本對它的分類不同；或分類本身是 `ask`。它從不改變「現在的範圍關係」（FR-021），也從不寫進列（R16：重新判定，不重新定義）。操作者看得到：閱讀器第一行（FR-016）在它與現在的關係不同時多一個字「當時範圍外」或「當時無法確認」；查詢鍵 `scope-then:`（值 `yes`、`no`、`unknown`；074 的查詢語言）。
-- **FR-118**（依當時的範圍交付，選用）`deliver` 的請求欄位 `scopeBasis: 'current' | 'at-event'`，預設 `current`（R16：一般交付以目前的範圍重新評估）。`at-event` 時 FR-021 的範圍關係改用 FR-117：`yes` → `in-scope`、`no` → `out-of-scope`、`unknown` → `ask`；記入 `DeliveryRecord.basis.scopeBasis`。API 與 CLI 的參數；是否出現在匯出面是 Q8，答覆前不出現。
+- **FR-118**（依當時的範圍交付，選用）`deliver` 的請求欄位 `scopeBasis: 'current' | 'at-event'`，預設 `current`（R16：一般交付以目前的範圍重新評估）。`at-event` 時 FR-021 的範圍關係改用 FR-117：`yes` → `in-scope`、`no` → `out-of-scope`、`unknown` → `ask`；記入 `DeliveryRecord.basis.scopeBasis`。API 與 CLI 的參數；**不出現在匯出面**（Q8 已裁定 (A)，R26）。閱讀器照 FR-117 顯示當時的關係，每次交付照 FR-116 記下範圍版本。
 - **FR-119**（四個問題各自可答）當時做了什麼 → 列本身（不變，FR-111）；事件發生時的範圍 → FR-117；現在的範圍 → FR-021；某次交付用了哪個範圍版本與哪些人工決定 → 該次的 `DeliveryRecord`（`basis.scopeVersion`、`basis.chainHead` 之前的註記、回答與規則）。Gate：`test/delivery/scope-history.test.ts`，以擁有者的例子為主案例：14:00 掃描 `10.0.0.5`、14:30 把 `10.0.0.0/24` 加入範圍 → 現在的關係 `deliver`／`in-scope`；`scopeAtEvent` 為 `no`；`scopeBasis: at-event` 時 `withhold`／`out-of-scope`；`DeliveryRecord.basis.scopeVersion` 是 14:30 那一列。另三案：建立時帶範圍、從未改過 → 第一次開啟寫 `observed`，之後的列 `yes`；關著時手改 `config.yaml` 再開 → `observed` 一列，落差期間分類不同的列 `unknown`；只改 `scopeFile` 的內容 → 同上。
 
 ### Key Entities
@@ -550,7 +569,8 @@ E7、E8 是「範圍無法單獨決定」的典型：它們之所以從不自動
 - **交付狀態**：`deliver`／`withhold`／`ask`＋理由（FR-001）。
 - **交付註記**：`system:delivery_mark`（FR-002）。
 - **選擇器**：FR-003。
-- **排除規則**：`withhold`（FR-020；修訂 S4、S6：原為「私人規則」，`skip` 取消；層級見 Q7）。
+- **排除規則**：`withhold`；專案層（預設，`delivery.rules[]`）或機器層（明確選擇，`delivery.excludeRules[]`）（FR-013、FR-020、FR-023；修訂 S4、S6、S10）。
+- **規則與範圍衝突**：`ask`／`rule-scope-conflict`（FR-004 (3b)）。
 - **交付規則**：專案層，`deliver`（FR-023）。
 - **確定的目標**：FR-022。
 - **範圍關係**：FR-021、FR-101。
@@ -613,10 +633,10 @@ E7、E8 是「範圍無法單獨決定」的典型：它們之所以從不自動
 | `target-extractor.ts:31,57-59` | `ssh -J` 取跳板；樞紐指令取樞紐主機 | FR-022：最終目的地；樞紐不是被包裝工具的目標 | tasks T061 |
 | DECISIONS §5 #1「提供把這個 shell 設為私人的指令」；071 A6、FR-086、FR-087；073 B4；076 決定 11、US5、FR-043、FR-044、FR-050 | `redlog private` 終端機指令 | R11：只在 app 的綁定控制項（FR-014） | 由協調者修改（報告列出） |
 | 同上（修訂 S3）；073 FR-041 的停止原因 `private`；075 每個 shell 一列的綁定控制項；076 E8、決定 11、US5 情境 2–3、FR-044；071 FR-087 | 私人終端機（指令或綁定控制項的「私人」值） | R18：私人終端機整個取消；不想被記錄用暫停（071 FR-080–FR-084） | 各規格已加 2026-11-13 指標 |
-| DECISIONS §8 第 6 項（「不記錄」暫緩）；071 FR-050 的 `ignored-rule`、`shell-history-rule`（本規格原本要求加入） | 暫緩，重新排入時再做 | 修訂 S6：取消（推得，待擁有者確認） | 071 指標已加；不新增這兩個原因 |
+| DECISIONS §8 第 6 項（「不記錄」暫緩）；071 FR-050 的 `ignored-rule`、`shell-history-rule`（本規格原本要求加入） | 暫緩，重新排入時再做 | 修訂 S6：取消（擁有者確認） | 071 指標已加；不新增這兩個原因 |
 | Spec 071 FR-130–134（遠端 hook） | 沒有限制安裝主機 | R12：只裝在操作者自己的主機 | 由協調者修改（報告列出） |
 | Spec 072 FR-008 | 索引不依種類過濾 | 不衝突：排除在讀取時 | 記錄即可 |
-| Spec 073 FR-01B `personalTraffic`；US4 情境 3 | 機器層的個人流量清單，匯出時排除 | `delivery.excludeRules[]`（`host`；修訂 S4，原為 `personal.rules[]`；層級見 Q7） | 073 需改寫（報告列出） |
+| Spec 073 FR-01B `personalTraffic`；US4 情境 3 | 機器層的個人流量清單，匯出時排除 | `delivery.excludeRules[]`（`host`；修訂 S4，原為 `personal.rules[]`；修訂 S10：兩層，預設專案層 `delivery.rules[]`） | 073 需改寫（報告列出） |
 | Spec 074 FR-032（`sanitized_events`、`do_not_export`）、FR-065 的「不匯出標記」topic | 兩表存在 | 刪除；topic 為 `delivery` | 指標已加 |
 | Spec 076 FR-072（「不得匯出或私人」「個人流量規則」）、US9 情境 2 | 舊機制名 | 「交付狀態為 `deliver` 的列」（FR-070） | 指標已加 |
 | Spec 076 FR-084 對齊列 | 沒有摘要列 | FR-045 的最後一列 | 076 契約 §7 需加 |
@@ -628,14 +648,14 @@ E7、E8 是「範圍無法單獨決定」的典型：它們之所以從不自動
 
 | # | 問題 | 建議 |
 |---|---|---|
-| Q1 | 「遵循 shell 歷史排除」預設開或關？ | **關**。Ubuntu 等預設 `HISTCONTROL=ignoreboth`，從筆記貼上的指令常帶前導空白；預設開會讓攻擊指令無聲地不被記錄，違反 R2。開啟是機器層一個開關 **已裁定（2026-11-13，DECISIONS §9）**：不適用：「不記錄」已暫緩（DECISIONS §8 第 6 項），重新排入時再答 **2026-11-13 深夜（修訂 S6）**：不再適用：遵循 shell 歷史排除隨「不記錄」一併取消（推得，待確認） |
+| Q1 | 「遵循 shell 歷史排除」預設開或關？ | **關**。Ubuntu 等預設 `HISTCONTROL=ignoreboth`，從筆記貼上的指令常帶前導空白；預設開會讓攻擊指令無聲地不被記錄，違反 R2。開啟是機器層一個開關 **已裁定（2026-11-13，DECISIONS §9）**：不適用：「不記錄」已暫緩（DECISIONS §8 第 6 項），重新排入時再答 **2026-11-13 深夜（修訂 S6）**：不再適用：遵循 shell 歷史排除隨「不記錄」一併取消（擁有者確認） |
 | Q2 | 「不索引」：私人列要不要從全文索引實際移除？ | 不移除；讀取時排除（FR-007），實際移除只由清除內容。撤回時不需重建索引；「不被搜到」已達成；磁碟上不留內容是 R4 的工作 **已裁定（2026-11-13，DECISIONS §9）**：不移除，讀取時排除 **2026-11-13 深夜（修訂 S5，R20）**：答覆的「讀取時排除」被取代——被排除的列照常出現在搜尋中；「不從索引移除」不變 |
 | Q3 | `terminal-last` 承接的目標不算（FR-022），所以沒有目標的本機指令一律詢問。接受嗎？ | 接受。這是「只允許確定的承接」的直接結果；代價由分組（SC-003）吸收；O18 落地後自動改善 **已裁定（2026-11-13，DECISIONS §9）**：接受 |
 | Q4 | 未回答就匯出時，待確認的列扣下還是交付？ | 扣下（stub `unanswered`），對話框寫數字，從不擋匯出。交付出去的無法收回，扣下的下一次可以補交 **已裁定（2026-11-13，DECISIONS §9）**：扣下 |
 | Q5 | 不在離線時，RedLog 查詢範圍內名稱（FR-105）預設開或關？ | **關**；範圍設定中一個「解析範圍內的名稱」動作，按一次查一次。理由見 plan D18：加入範圍項目的時刻常早於 VPN 或樞紐就緒，系統解析器會把客戶的名稱（含內部名稱）送到當時的 ISP、公司或公用解析器；被動的對應（代理、DNS 模式、hosts 檔）在大多數行動中已足夠，不足時操作者明確按一次，且每次都上鏈 **已裁定（2026-11-13，DECISIONS §9）**：關 |
-| Q6（2026-11-13 新增） | 擁有者的例子把「範圍外但相關的 DNS 查詢」列為**待確認**，R17 也把「建立代理連線」列為可能的證據；本規格的規則對兩者都給 `withhold`／`out-of-scope`（E4、E9：DNS 的查詢名稱、樞紐指令的樞紐主機都是確定的目標，FR-022、FR-101；R9 範圍外預設扣下）。哪一個為準？ (A) 維持本規格：確定的範圍外目標一律扣下；操作者以「這次包含」或「交付」註記改變。 (B) 依擁有者的表：`dns` 種類（`dns_query`、`dns_response`）與 FR-022 第 4 項的樞紐建立指令，目標判為範圍外時改為 `ask`，以 `host:` 分組；掃描、HTTP 等其他種類維持 R9 | **(B)**。這兩類列的目標是基礎設施（名稱查詢、操作者自己的跳板），不是被操作的對象，所以「範圍外」說的不是「與這次任務無關」（R17）；改為待確認後每個網域或跳板只問一次，並可「以後一律」；R9 的主要對象（對範圍外主機的掃描與請求）不受影響。代價是 SC-003 的問題數，以同一份 fixture 量測。答覆前 FR-021 依 (A) 撰寫 |
-| Q7（2026-11-13 新增） | 「以後一律不交付」產生的排除規則（FR-020）在哪一層？原本放在機器層的理由是「私人是對自己的」（plan D5），這個分類已由 R19 取消。 (A) 維持機器層（`machine.yaml`，所有專案生效）。 (B) 改為專案層，與交付規則同一張表 `delivery.rules[]`（`action: deliver | withhold`），只在該專案生效 | **(B)**。沒有「私人」這個前提後，機器層規則沒有依據說它對每個客戶都成立；它反而會越過另一個專案的範圍：在 A 專案對另一個客戶的主機答「以後一律不交付」，到了那個客戶自己的 B 專案，同一條規則讓範圍內的列被扣下（規則優先於範圍，FR-004）。代價是同一個習慣性的排除（例如自己的銀行網站）在每個專案要答一次。答覆前 FR-020 依 (A) 撰寫 |
-| Q8（2026-11-13 新增） | 「依事件當時的範圍交付」（FR-118 `scopeBasis: at-event`）要不要出現在匯出面？ (A) 只是 API 與 CLI 的參數，匯出面不變。 (B) 匯出面包含區段多一個選擇「依事件當時的範圍」 | **(A)**。擁有者要求的是「涉及授權合規時要能查」：閱讀器與查詢鍵 `scope-then:`（FR-117）已讓操作者查得到，每次交付記下用了哪個範圍版本（FR-116）；匯出面多一個選擇違反一頁一個主動作與「不加說明文字」的形狀（R6、R13）。有人真的需要依當時的範圍交付一份檔案時再加 |
+| Q6（2026-11-13 新增） | 擁有者的例子把「範圍外但相關的 DNS 查詢」列為**待確認**，R17 也把「建立代理連線」列為可能的證據；本規格的規則對兩者都給 `withhold`／`out-of-scope`（E4、E9：DNS 的查詢名稱、樞紐指令的樞紐主機都是確定的目標，FR-022、FR-101；R9 範圍外預設扣下）。哪一個為準？ (A) 維持本規格：確定的範圍外目標一律扣下；操作者以「這次包含」或「交付」註記改變。 (B) 依擁有者的表：`dns` 種類（`dns_query`、`dns_response`）與 FR-022 第 4 項的樞紐建立指令，目標判為範圍外時改為 `ask`，以 `host:` 分組；掃描、HTTP 等其他種類維持 R9 | **(B)**。這兩類列的目標是基礎設施（名稱查詢、操作者自己的跳板），不是被操作的對象，所以「範圍外」說的不是「與這次任務無關」（R17）；改為待確認後每個網域或跳板只問一次，並可「以後一律」；R9 的主要對象（對範圍外主機的掃描與請求）不受影響。代價是 SC-003 的問題數，以同一份 fixture 量測。答覆前 FR-021 依 (A) 撰寫 **已裁定（2026-11-13 深夜，擁有者）**：**(B)**，與建議相同：`dns` 種類與樞紐建立指令目標判為範圍外時待確認、依主機分組；掃描、HTTP 等其餘範圍外的列仍預設不交付；擁有者接受組變多的代價（R23；FR-021、FR-022、FR-025 已改寫） |
+| Q7（2026-11-13 新增） | 「以後一律不交付」產生的排除規則（FR-020）在哪一層？原本放在機器層的理由是「私人是對自己的」（plan D5），這個分類已由 R19 取消。 (A) 維持機器層（`machine.yaml`，所有專案生效）。 (B) 改為專案層，與交付規則同一張表 `delivery.rules[]`（`action: deliver | withhold`），只在該專案生效 | **(B)**。沒有「私人」這個前提後，機器層規則沒有依據說它對每個客戶都成立；它反而會越過另一個專案的範圍：在 A 專案對另一個客戶的主機答「以後一律不交付」，到了那個客戶自己的 B 專案，同一條規則讓範圍內的列被扣下（規則優先於範圍，FR-004）。代價是同一個習慣性的排除（例如自己的銀行網站）在每個專案要答一次。答覆前 FR-020 依 (A) 撰寫 **已裁定（2026-11-13 深夜，擁有者）**：**兩者皆非，擁有者提出第三種**：兩層都可設，預設這個專案；套用到這台機器的所有專案由操作者明確選擇（R24；FR-013、FR-020、FR-023）。另裁定機器層規則遇到範圍內的列為待確認（R25；FR-004 (3b)） |
+| Q8（2026-11-13 新增） | 「依事件當時的範圍交付」（FR-118 `scopeBasis: at-event`）要不要出現在匯出面？ (A) 只是 API 與 CLI 的參數，匯出面不變。 (B) 匯出面包含區段多一個選擇「依事件當時的範圍」 | **(A)**。擁有者要求的是「涉及授權合規時要能查」：閱讀器與查詢鍵 `scope-then:`（FR-117）已讓操作者查得到，每次交付記下用了哪個範圍版本（FR-116）；匯出面多一個選擇違反一頁一個主動作與「不加說明文字」的形狀（R6、R13）。有人真的需要依當時的範圍交付一份檔案時再加 **已裁定（2026-11-13 深夜，擁有者）**：**(A)**，與建議相同（R26；FR-118） |
 
 ## Domain References
 

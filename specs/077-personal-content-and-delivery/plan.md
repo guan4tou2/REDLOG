@@ -17,7 +17,7 @@
 
 **Language/Version**：TypeScript（core、main、renderer）；Python 3（`tools/redlog-verify.py`、`hooks/redlog-relay.py`、`hooks/mitmproxy-addon.py`）；POSIX shell、PowerShell（hook 的 skip 規則讀取）。
 **Primary Dependencies**：不新增執行期套件。property test 用 `fast-check`（若尚未在 devDependencies，Phase 1 加入，只在測試）。
-**Storage**：專案 `timeline.db` 只多新種類的列（`system:delivery_mark`、`system:delivery_rule`、`system:redacted`、`system:content_cleared`、`system:name_mapping`、`system:name_resolved`）與一張只在清除交易中有內容的 `content_clear_authorized`；`derived.db` 多 `delivery_state` 投影（074）；`machine.yaml` 多 `delivery.excludeRules[]`、`network.resolveScopeNames`（073 擁有檔案；修訂 S4、S6：原為 `personal.rules[]`、`personal.followShellHistory`，且有 hook 讀的 `~/.redlog/personal-skip.json`，皆取消；排除規則的層級見 spec Q7）；專案 `config.yaml` 多 `delivery.rules[]`；`system:config_changed` 多鍵 `scope.effective`、`system:export_sealed` 多欄 `delivery`（不新增種類）。刪除 `do_not_export`、`sanitized_events` 兩張表。
+**Storage**：專案 `timeline.db` 只多新種類的列（`system:delivery_mark`、`system:delivery_rule`、`system:redacted`、`system:content_cleared`、`system:name_mapping`、`system:name_resolved`）與一張只在清除交易中有內容的 `content_clear_authorized`；`derived.db` 多 `delivery_state` 投影（074）；`machine.yaml` 多 `delivery.excludeRules[]`、`network.resolveScopeNames`（073 擁有檔案；修訂 S4、S6：原為 `personal.rules[]`、`personal.followShellHistory`，且有 hook 讀的 `~/.redlog/personal-skip.json`，皆取消；排除規則的層級：兩層都可設、預設專案層，spec R24、D27）；專案 `config.yaml` 多 `delivery.rules[]`；`system:config_changed` 多鍵 `scope.effective`、`system:export_sealed` 多欄 `delivery`（不新增種類）。刪除 `do_not_export`、`sanitized_events` 兩張表。
 **Testing**：Vitest（決策表、property、突變、共用向量、清除後掃描）；pytest 風格的 Python verifier 向量經 `test/evidence-vectors.test.ts` 驅動；e2e 一支（預覽＝位元組），依專案記憶交給 CI。
 **Constraints**：不新增頁面；不改事件的雜湊與簽章算法；不改寫既有列（清除內容是唯一例外，FR-062）；不相容舊格式（R8）；元件不在元件內宣告。
 
@@ -148,13 +148,14 @@ type EffectiveScope = { hash /* scopeHash */, targets, excludeTargets,
 **被否決**：`terminal-last` 算範圍內——`cd ~/personal`、`vim ~/notes.md` 會承接前一條 `nmap` 的目標而直接交付；它由資料決定，但不是「這一列與那個目標有關」的證據（071 O18 正是為此而存在）。工作階段指令的輸出則不同：互動紀錄**就是**那一條指令的輸出列，目標由同一列的參數擷取，沒有推測。
 
 ### D4 一張私人規則表、兩種動作
-> **Superseded（2026-11-13，修訂 S4、S6）**：只剩一種動作 `withhold`，表名 `delivery.excludeRules[]`（排除規則）；`skip`（不記錄）隨「只有一套錄製流程」取消（推得，待確認）。層級是 spec Q7。下文保留原決定。
+> **Superseded（2026-11-13，修訂 S4、S6）**：只剩一種動作 `withhold`，表名 `delivery.excludeRules[]`（排除規則）；`skip`（不記錄）隨「只有一套錄製流程」取消（擁有者確認）。層級依 spec Q7 的答覆：兩層都可設、預設本專案（D27）。下文保留原決定。
 
 **決定**：`personal.rules[]` 每條 `action: withhold | skip`。兩者都需要：`withhold` 是 R2 的主路徑（可撤回、內容在本機）；`skip` 是 R3 的次路徑，給「內容連落盤都不該」的東西（密碼管理器、銀行）。
 **被否決**：兩份清單（忽略清單與自動標記規則）——同一個樣式語法、同一個設定列、同一個概念（「這是私人的」）在兩處維護，違反 §26.5；把一條規則從「不交付」改成「不記錄」只是改一個欄位。**也否決**只留 `withhold`：R3 明定忽略清單存在。
 
 ### D5 「一律交付」只在專案層
 > **注（2026-11-13，修訂 S4）**：本節「私人是對自己的」是排除規則放在機器層的唯一理由，R19 取消了這個分類；spec Q7 據此建議排除規則也改為專案層。「一律交付」只在專案層不變。
+> **注（2026-11-13 深夜，修訂 S10）**：Q7 的答覆是兩層都可設、預設專案層（D27）；「一律交付」仍只在專案層。
 
 **決定**：專案 `config.yaml` 的 `delivery.rules[]`。
 **被否決**：機器層的「一律交付」——在 A 客戶專案答的「`cd` 一律交付」會在 B 客戶專案生效；交付是對某個客戶的承諾，私人是對自己的。
@@ -183,7 +184,7 @@ type EffectiveScope = { hash /* scopeHash */, targets, excludeTargets,
 **被否決**：標記時刪 FTS、撤回時重建——每次撤回要重讀列、重算索引；「不被搜到」已由讀取排除達成；磁碟上的 token 是清除內容的工作。列為 Q2。
 
 ### D11 遵循 shell 歷史排除預設關
-> **Superseded（2026-11-13，修訂 S6）**：遵循 shell 歷史排除取消（推得，待確認）；本節的理由（前導空白會讓攻擊指令無聲遺失）也是取消它的理由之一。
+> **Superseded（2026-11-13，修訂 S6）**：遵循 shell 歷史排除取消（擁有者確認）；本節的理由（前導空白會讓攻擊指令無聲遺失）也是取消它的理由之一。
 
 **決定**：機器層開關，預設關；永遠不遵循忽略重複。
 **理由**：許多發行版預設 `HISTCONTROL=ignoreboth`；從筆記或網頁貼上的指令常帶前導空白；預設開會讓攻擊指令無聲遺失，而 RedLog 的第一個承諾是完整（R2）。bash hook 的註解已記錄今天刻意照記前導空白的行（`shell-bash-hook.sh:358-379`）。
@@ -205,6 +206,7 @@ type EffectiveScope = { hash /* scopeHash */, targets, excludeTargets,
 
 ### D15 問題組與量測
 **分組演算法**（每列恰好一組，依序取第一個成立的鍵）：
+0. （修訂 S11）`rule:<rule_id>`：機器層排除規則與範圍衝突的列（`rule-scope-conflict`），一條規則一組。
 1. `ai:<session>`：AI 種類，以工作階段 id。
 2. `remote:<名稱>`：`_ingest.producer = remote:*`。
 3. `conflict:<名稱>|<位址>`：K 段第 2 條。
@@ -214,7 +216,7 @@ type EffectiveScope = { hash /* scopeHash */, targets, excludeTargets,
 7. `kind:<家族>`：其他。
 組依列數由多到少；「依終端機分開」把一組拆成 `<鍵>@<終端機>`。
 
-**量測**：`test/fixtures/delivery/engagement-a.ndjson`（2,000 列）與 `engagement-a-day2.ndjson`（+500 列），每列帶標註 `_label: deliver | exclude`（修訂 S4：原為 `work | personal`）。來源：以公開 walkthrough 的指令序列合成的行動（`nmap`、`curl`、`ssh`、`impacket`、AI 回合）穿插典型的不該交付的操作（`cd`、`ls`、`vim ~/notes`、瀏覽、`brew`），比例依擁有者描述的實際混合（約 30% 沒有目標）；擁有者自己的匿名化樣本若可取得，另以同一腳本在本機量測、不進 repo。`scripts/measure-delivery-questions.mjs` 以「每組依多數標註回答、勾以後一律」模擬操作者，印出：第一次回答數、第二次回答數、分組錯誤列數（組內少數標註的列數）。門檻見 SC-003。
+**量測**：`test/fixtures/delivery/engagement-a.ndjson`（2,000 列）與 `engagement-a-day2.ndjson`（+500 列），每列帶標註 `_label: deliver | exclude`（修訂 S4：原為 `work | personal`）。來源：以公開 walkthrough 的指令序列合成的行動（`nmap`、`curl`、`ssh`、`impacket`、AI 回合）穿插典型的不該交付的操作（`cd`、`ls`、`vim ~/notes`、瀏覽、`brew`），比例依擁有者描述的實際混合（約 30% 沒有目標）；擁有者自己的匿名化樣本若可取得，另以同一腳本在本機量測、不進 repo。`scripts/measure-delivery-questions.mjs` 以「每組依多數標註回答、勾以後一律」模擬操作者，印出：第一次回答數、第二次回答數、分組錯誤列數（組內少數標註的列數）。門檻見 SC-003。（修訂 S9）fixture 包含範圍外的 DNS 列與樞紐建立指令，它們現在依 `host:` 成組詢問；擁有者接受組變多的代價，三個數字照常印出，門檻是否需要調整由 T030 的第一次量測決定並記在本節。
 **被否決**：(a) 依終端機區段分組為主——一個終端機混著工作與私人，正是 R2 的前提；(b) 依指令類別（`command-class.json`）——它是執行方式（relay／pty／native），`vim` 與 `nc` 同為 native；(c) 推測「可能私人」的訊號——R7 已否決。
 
 ### D16 在 app 內選「私人」也扣下已記錄的列
@@ -368,6 +370,16 @@ trigger 例外：SQLite 的主資料庫 trigger 不能參照 temp 表，所以 `
 **理由**：條文允許二擇一，但 stub 只證明「哪些位置被扣下、理由碼是什麼」，不證明理由正確；收件者若只看 `VERIFIED` 與 `complete-chain`，會把它讀成完整的原始鏈——這正是條文禁止的。一個欄位與一行輸出的代價很小。
 **被否決**：只做其一。
 
+### D27 排除規則兩層、預設專案層（擁有者對 Q7 的答覆）
+**決定**：專案層存在 `config.yaml` 的 `delivery.rules[]`（`action: deliver | withhold`），機器層存在 `machine.yaml` 的 `delivery.excludeRules[]`（只有 `withhold`）。「以後一律」勾選旁的層級值預設「本專案」，兩項選單的另一項是「這台機器的所有專案」。交付規則只有專案層。
+**理由**：擁有者的第三種答案；層級是那一次回答的一個值，不是另一個控制項或頁面（R6、R13、UIUX §26）。
+**被否決**：(a) 第二個勾選「套用到所有專案」——兩個並排的勾選需要說明它們的關係；(b) 在設定中改層級——同一條規則換層級等於換對象，刪除重答更清楚，且機器層規則在其他專案的鏈上已留紀錄。
+
+### D28 機器層排除規則與範圍衝突 → `ask`（擁有者裁定）
+**決定**：FR-004 (3b)：機器層規則只在本專案沒有自己的判斷時生效；本專案的範圍或交付規則說「交付」時，成為 `ask`／`rule-scope-conflict`，一條規則一組。專案層排除規則不是衝突。
+**理由**：機器層規則是在別的專案裡做的決定；範圍與專案層規則是這個專案的決定。兩者相反時，任何一方靜默勝出都是用一個專案的事實覆寫另一個（R25）。把「專案層交付規則」與「範圍內」同樣看待是本計畫的延伸：兩者都是本專案說「交付」。
+**被否決**：(a) 規則勝（原 FR-004 的優先序）——擁有者裁定否決；(b) 範圍勝——機器層規則形同不存在於範圍內的列，而它正是為範圍無法判斷的情況（另一個客戶的主機）而設。
+
 ## 順序（spec R22，擁有者的優先順序）
 
 Spec 071 擷取完整性 → 本規格的交付邊界 → 範圍版本與交付重新判定 → 匯入與匯出的操作體驗。
@@ -375,7 +387,7 @@ Spec 071 擷取完整性 → 本規格的交付邊界 → 範圍版本與交付�
 | 可以現在開始（不等 074 的讀取契約） | 要等 |
 |---|---|
 | Phase 0；Phase 1 的 gate 與決策表 T001–T009（I1、I2 的守衛只讀今天的寫入路徑；T006 的基準在 071 單一入口合併時移到新檔）；純函式 T011–T013；T014 的 writer；T015；T016 以今天的讀取路徑呼叫同一個 `deliver`（過渡，T013 已寫明）；T021、T022 | T019（查詢鍵，需要 074 的 `parseQuery` 契約）；FR-005 的 `delivery_state` 投影（074 Phase 4–5）；FR-006 讀取參數的正式形狀；FR-022 第 1 項的 `target_via`（071 FR-010；之前以今天的承接過渡，T012） |
-| Phase 3（stub、bundle 第 5 版，與 072 T063–T065 配對）；Phase 4（遮蔽） | Phase 2 的 T033 規則的儲存（073 Phase 4；過渡已寫明；層級依 Q7） |
+| Phase 3（stub、bundle 第 5 版，與 072 T063–T065 配對）；Phase 4（遮蔽） | Phase 2 的 T033 機器層規則的儲存（073 Phase 4；過渡已寫明）；專案層規則在今天的 `config.yaml` 即可 |
 | — | Phase 10（範圍版本）：依擁有者順序排在 Phase 1–4 之後；T100 動到 073 的 `config-store`，與 073 Phase 4 協調 |
 | — | 匯入與匯出的操作體驗（DECISIONS §12「同時定下的幾件事」）不屬本規格 |
 
@@ -385,7 +397,7 @@ Spec 071 擷取完整性 → 本規格的交付邊界 → 範圍版本與交付�
 |---|---|---|
 | 071 | `append(delivery_mark)` 能力；有意遺失原因 `ignored-rule`、`shell-history-rule`；skip 規則在 hook 的觀察點；`target_via` 落地；遠端 hook 只裝在自己的主機（R12）；`redlog private` 移除（R11）。**修訂 S3、S6**：不需要 `ignored-rule`、`shell-history-rule` 與 hook 的 skip 觀察點；FR-087 的私人終端機取消；暫停（FR-080–FR-084）是唯一的「不收集」；單一入口落地時加入 FR-110 的擷取路徑清單 | 指標已加（2026-11-13 深夜） |
 | 072 | 新種類：`system:delivery_mark`、`system:delivery_rule`、`system:redacted`、`system:content_cleared`、`system:name_mapping`、`system:name_resolved`；閱讀器第一行的交付字。**修訂 S1、S2**：不新增種類；既有 `system:config_changed` 多 `scope.effective` 鍵與 `basis` 欄，既有 `system:export_sealed` 多 `delivery` 欄，且每種格式的交付都寫；`kinds.json`、`intervals.jsonl` 照 DECISIONS §11 併入第 5 版 | tasks T010、T022、T100；指標已加 |
-| 073 | `machine.yaml` 的 `personal.*`、`network.resolveScopeNames`；專案 `delivery.rules[]`；終端機狀態檔停止原因 `private`（由 app 寫）；刪除 `personalTraffic`。**修訂 S2、S3、S4、S6**：`personal.*` 改為 `delivery.excludeRules[]`（層級 Q7），沒有 `followShellHistory`；停止原因沒有 `private`；`config-store` 在開專案、套用存檔、建立匯出計畫前做 FR-115 的觀察檢查 | 指標已加（2026-11-13 深夜） |
+| 073 | `machine.yaml` 的 `personal.*`、`network.resolveScopeNames`；專案 `delivery.rules[]`；終端機狀態檔停止原因 `private`（由 app 寫）；刪除 `personalTraffic`。**修訂 S2、S3、S4、S6**：`personal.*` 改為 `delivery.excludeRules[]`（機器層；專案層的排除規則在專案 `delivery.rules[]`，修訂 S10），沒有 `followShellHistory`；停止原因沒有 `private`；`config-store` 在開專案、套用存檔、建立匯出計畫前做 FR-115 的觀察檢查 | 指標已加（2026-11-13 深夜） |
 | 074 | `delivery_state` 投影；讀取參數 `delivery`；查詢鍵 `delivery:`；topic `delivery`；刪除兩張證據表。**修訂 S2、S4、S5**：查詢值 `operator-excluded`（原 `personal`）；查詢鍵 `scope-then:`；`operator` 讀取不隱藏任何列 | 指標已加（2026-11-13 深夜） |
 | 075 | 狀態讀數的「略過 N」；shell 列的綁定控制項「私人」。**修訂 S3、S6**：兩者都不需要；本規格對 075 沒有需求 | 指標已加（2026-11-13 深夜） |
 | 076 | Exporter、L0、L2 經 `deliver`；`reads.withheld`；對齊列的最後一列；Q4 條件。**修訂 S3、S4**：FR-043 提示中的 `redlog private`、FR-044 與 `capture_stopped{reason:"private"}` 取消；`reads.withheld` 的理由 `operator-excluded`（原 `personal`） | 指標已加（2026-11-13 深夜） |

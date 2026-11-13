@@ -16,7 +16,7 @@
 
 ## Phase 0 — 工作流程前置
 
-- [ ] T000 依憲章執行 Clarify、Checklist、Analyze，結果記入 `verification.md` 的 Gates；Q1–Q5 的答覆記在 spec。Q5 答覆前，T075 只實作「操作者按下才查」的路徑。（2026-11-13 深夜）Q6–Q8 的答覆記在 spec；Q6 答覆前 T003 的決策表依 (A)，Q7 答覆前 T033 依機器層，Q8 答覆前 T103 不碰匯出面。
+- [ ] T000 依憲章執行 Clarify、Checklist、Analyze，結果記入 `verification.md` 的 Gates；Q1–Q5 的答覆記在 spec。Q5 答覆前，T075 只實作「操作者按下才查」的路徑。（2026-11-13 深夜）Q6–Q8 已裁定（spec R23–R26）：T003、T023 依 Q6 (B)；T033、T038 依 Q7 的兩層；T103 不碰匯出面（Q8 (A)）。
 
 ## Phase 1 — 匯出面的包含數字端到端（單一交付點＋排除；R2 從此成立）
 
@@ -44,6 +44,7 @@
   > **Superseded（2026-11-13，修訂 S5）**：不排除。T019 只做查詢鍵 `delivery:`（值含 `operator-excluded`）；另加 RED：同一個文字搜尋在一列被排除前後回傳相同的 id 集合。
 - [ ] T021 [P] RED：I4 出口表（FR-113 第 1、2 項）：`test/delivery/single-exit.test.ts` 加一張表，列出 `api-server.ts` 每個 `route ===`／`route.match`、每個回傳事件內容的 `ipcMain.handle` 頻道、`cli/redlog-cli.js` 每個子指令，各標 `deliver`／`operator`／`no-event-content:<理由>`；表外一條即失敗，標 `deliver` 而不經 `deliver()` 也失敗（今天 6 條 API 路由與 2 個 IPC 頻道為紅，是 T001 的基準）。
 - [ ] T022 I4 交付紀錄（FR-113 第 3 項）：RED `test/delivery/delivery-record.test.ts`（截到 `chainHead` 重跑，摘要相同）；`src/core/delivery/record.ts`；`system:export_sealed` 的 `delivery` 欄，非 bundle 格式在檔案寫完後也寫一列 seal；API 讀取回應帶 `delivery`；計畫指紋涵蓋 `basis`（FR-041）。072 登記 `export_sealed` 的新欄位（072 T010 同一處）。
+- [ ] T023 [P] RED（修訂 S9，R23）：`test/delivery/state.test.ts` 加格：範圍外的 `dns_query`、`dns_response` → `ask`／`undetermined`，組 `host:`；範圍外的 `ssh -D`、`sshuttle -r`、`chisel client`、`ligolo -connect` → `ask`，組 `host:<樞紐>`；同一主機的 `nmap` 與 HTTP 列 → `withhold`／`out-of-scope`；勾「這次包含範圍外」不改變前兩者。今天沒有 `deliveryOf`，全紅；T011–T013 翻綠，樞紐的格等 T061。
 - [ ] T020 刪除：`do_not_export` 表與 `db/do-not-export.ts`、IPC `events:toggleDoNotExport`／`events:isDoNotExport`、`TimelineEventInspector` 的切換鈕與四個 i18n 鍵；`scope.personalDomains` 設定鍵與其讀者；`export.preview.dropped`、`personalDropped`、`maskScope*`、`policy*` 等 i18n 鍵；`verify:i18n` 會指出斷言它們的測試，一併改寫（CLAUDE.md「Changing behaviour」）。
 - **Gate**：五道 gate；T001 為 0 違規；T002、T003（單面）、T005 綠；T006–T009、T021、T022 綠且各自的突變被殺死（SC-011）；e2e「預覽＝位元組」一支（`e2e/export-delivery-counts.spec.ts`，CI）。
 
@@ -52,8 +53,10 @@
 - [ ] T030 [P] `test/fixtures/delivery/engagement-a.ndjson`（2,000 列）、`engagement-a-day2.ndjson`（+500）與標註；`scripts/measure-delivery-questions.mjs`（plan D15）。RED：門檻（SC-003）。
 - [ ] T031 `src/core/delivery/groups.ts`（FR-025）；「依終端機分開」。
 - [ ] T032 [US2] `ExportMenu.tsx`：待確認行展開為問題組（FR-026、FR-035）；回答寫 `delivery_mark{reason:'answer'}` 並重新解析計畫。
-- [ ] T033 [US8] `src/core/delivery/rules.ts`：排除規則 `delivery.excludeRules[]`（修訂 S4，原 `personal.rules[]`；機器層依 Q7 的答覆，答覆為專案層時併入 `delivery.rules[]`；機器層的過渡：073 Phase 4 前存在 `~/.redlog/delivery-exclude-rules.json`，0600，073 落地時搬入，不留兩份）、專案層 `delivery.rules[]`；`since`；`system:delivery_rule`（FR-020、FR-023、FR-024）。「以後一律」勾選（FR-013）。
-- [ ] T034 [US8] 設定「資料與隱私」分組中既有位置的一列「排除規則」：檢視、刪除規則（修訂 S4、S6：原為「私人」一列、可改動作）。不新增頁面。
+- [ ] T033 [US8] `src/core/delivery/rules.ts`：排除規則兩層（修訂 S10）：專案層在 `delivery.rules[]`（`action: deliver | withhold`），機器層在 `delivery.excludeRules[]`（修訂 S4，原 `personal.rules[]`；機器層的過渡：073 Phase 4 前存在 `~/.redlog/delivery-exclude-rules.json`，0600，073 落地時搬入，不留兩份）、專案層 `delivery.rules[]`；`since`；`system:delivery_rule`（FR-020、FR-023、FR-024）。「以後一律」勾選（FR-013）。
+- [ ] T034 [US8] 設定「資料與隱私」分組中既有位置的一列「排除規則」：檢視、刪除規則（修訂 S4、S6：原為「私人」一列、可改動作）。不新增頁面。（修訂 S10）每條顯示層級（本專案／所有專案）；不能改層級。
+- [ ] T037 [P] RED（修訂 S11，R25）：`test/delivery/rule-scope-conflict.test.ts`：US8 情境 7、8——客戶 A 建立機器層規則 H，客戶 B 的範圍含 H：`ask`／`rule-scope-conflict`，組 `rule:<id>`，標籤含規則與範圍項目；B 的專案層排除規則 H：`withhold`／`operator-excluded`；機器層規則＋B 的專案層交付規則：`ask`／`rule-scope-conflict`；機器層規則＋範圍外：`withhold`／`operator-excluded`；回答後註記勝。FR-093 加突變「衝突時規則勝」「衝突時範圍勝」，兩者都必須被殺死。T011、T033 翻綠。
+- [ ] T038 [US8] RED 後實作（修訂 S10，R24）：`ExportMenu.tsx` 每組的「以後一律」：回答「不交付」時勾選旁的層級值（預設「本專案」，兩項選單）；回答「交付」時沒有層級；US8 情境 5、6；對話框快照（主動作唯一、沒有新增說明文字，SC-008）。
 - [ ] ~~T035~~ [US8] 來源列綁定控制項的「私人」值（FR-014）；需要 075 每個 shell 一列的來源列與 073 FR-041 的停止原因（等待 075 Phase 3–6；之前不實作，不以其他介面代替）。
   > **Superseded（2026-11-13，修訂 S3）**：私人終端機取消，本任務不做。
 - [ ] T036 刪除 076 FR-050／T071 計畫中的 `private` 動詞與 hook 中的 `redlog private`（若已實作）；協調者修改 071／073／076 的條文後執行（R11）。（修訂 S3）也包括終端機狀態檔的停止原因 `private` 與它在 hook、relay、`terminal-enrollment.ts` 中的分支（若已實作）；071／073／075／076 的指標已加。
@@ -98,7 +101,7 @@
 
 > **暫緩（2026-11-13，DECISIONS §8 第 6 項）**：不排入第一版。任務保留，重新排入前不要動手。
 >
-> **取消（2026-11-13 深夜，spec 修訂 S6）**：只保留一套錄製流程（DECISIONS §12）；唯一的「不收集」是 Spec 071 的暫停。這是從擁有者的答覆**推得**的，沒有單獨問過；擁有者確認前任務保留於下、不做。
+> **取消（2026-11-13 深夜，spec 修訂 S6）**：只保留一套錄製流程（DECISIONS §12）；唯一的「不收集」是 Spec 071 的暫停。擁有者已確認取消（不是暫緩）；任務依慣例保留於下，不做。
 
 - [ ] T070 [P] RED：hook 共用向量（071 格式）：`skip` 命令規則、`followShellHistory` 的 bash／zsh 各規則、`ignoredups` 永遠不遵循。
 - [ ] T071 app 寫 `~/.redlog/personal-skip.json`；`hooks/redlog-relay.py`、`shell-bash-hook.sh`、`shell-zsh-hook.zsh` 在觀察點讀它與歷史設定；略過用掉序號並計 `ignored-rule`／`shell-history-rule`（需要 071 FR-050 加這兩個原因）。PowerShell：只有 `skip` 命令規則。
