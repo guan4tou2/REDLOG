@@ -574,6 +574,68 @@
   "attachmentDigest": "",
   "attachments": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
  },
+ "har-selection-http-window": {
+  "counts": {
+   "exchanges": 0,
+   "examined": 0,
+   "included": 0,
+   "excludedDoNotExport": 0,
+   "excludedPersonal": 0,
+   "outOfScopeHttpFlows": 0,
+   "maskedOutOfScope": 0,
+   "sanitized": 0,
+   "attachmentsIncluded": 0,
+   "attachmentsMissing": 0,
+   "attachmentsUnattributed": 0,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 0,
+   "truncatedOutputs": 0,
+   "pauseWindows": 0,
+   "captureGaps": [],
+   "interruptedRecordings": 0,
+   "interruptedCommands": 0,
+   "partialHttpFlows": 0,
+   "partialHttpFlowsOutside": 6
+  },
+  "ids": {
+   "n": 0,
+   "sha": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "evidence": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "attachmentDigest": "",
+  "attachments": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+ },
+ "har-selection-http-window-host": {
+  "counts": {
+   "exchanges": 0,
+   "examined": 0,
+   "included": 0,
+   "excludedDoNotExport": 0,
+   "excludedPersonal": 0,
+   "outOfScopeHttpFlows": 0,
+   "maskedOutOfScope": 0,
+   "sanitized": 0,
+   "attachmentsIncluded": 0,
+   "attachmentsMissing": 0,
+   "attachmentsUnattributed": 0,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 0,
+   "truncatedOutputs": 0,
+   "pauseWindows": 0,
+   "captureGaps": [],
+   "interruptedRecordings": 0,
+   "interruptedCommands": 0,
+   "partialHttpFlows": 0,
+   "partialHttpFlowsOutside": 1
+  },
+  "ids": {
+   "n": 0,
+   "sha": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "evidence": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "attachmentDigest": "",
+  "attachments": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+ },
  "har-selection-http-text": {
   "counts": {
    "exchanges": 8,

@@ -43,7 +43,7 @@ describe('buildExportPlan', () => {
     const request = planCases(fixture.activity).find(([n]) => n === name)![1]
     // A single JSON round trip drops `undefined` the way the golden file did.
     const seen = JSON.parse(JSON.stringify(observePlan(fixture.dir, request)))
-    if (!name.endsWith('empty')) expect(seen.ids.n).toBeGreaterThan(0)
+    if (!/empty|window/.test(name)) expect(seen.ids.n).toBeGreaterThan(0)
     if (process.env.REDLOG_PRINT_GOLDEN) console.log(`GOLDEN ${name} ${JSON.stringify(seen)}`)
     else expect(seen).toEqual((GOLDEN as Record<string, unknown>)[name])
   })
@@ -56,9 +56,9 @@ describe('buildExportPlan', () => {
     }
     expect(seen.counts.captureGaps!.length).toBeGreaterThan(1)
     expect(observePlan(fixture.dir, { format: 'har' }).counts.partialHttpFlows).toBeGreaterThan(0)
-    const outside = observePlan(fixture.dir, { format: 'har', subset: { kind: 'selection', projection: 'http', filter: {}, http: { statusPrefix: '4' } } }).counts
-    expect(outside.partialHttpFlowsOutside).toBeDefined()
-    expect(outside.exchanges).toBeGreaterThan(0)
+    const outside = observePlan(fixture.dir, { format: 'har', subset: { kind: 'selection', projection: 'http', filter: { since: 3400, before: 3700 } } }).counts
+    expect(outside.partialHttpFlowsOutside).toBeGreaterThan(0)
+    expect(observePlan(fixture.dir, { format: 'har', subset: { kind: 'selection', projection: 'http', filter: {}, http: { statusPrefix: '4' } } }).counts.exchanges).toBeGreaterThan(0)
     expect(observePlan(fixture.dir, { format: 'bundle' }).counts.attachmentsIncluded).toBeGreaterThan(0)
   })
 })

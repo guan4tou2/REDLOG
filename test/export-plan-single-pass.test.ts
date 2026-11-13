@@ -77,7 +77,8 @@ describe('the export plan reads the snapshot once for the event formats', () => 
     const ndjson = measured({ format: 'ndjson' })
     // selection + figures are one walk, as for any format; the rest is
     // listExportAttachments and countExportAttachments.
+    // Measured: 1 (selection and every figure) + the attachment listing's reads. The old plan made 15 here.
+    expect(bundle.starts).toBe(9)
     expect(bundle.starts).toBeGreaterThan(ndjson.starts)
-    expect(bundle.starts).toBeLessThanOrEqual(ndjson.starts + 9)
   })
 })

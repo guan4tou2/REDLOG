@@ -116,6 +116,9 @@ export const planCases = (activity: PlanFixture['activity']): Array<[string, Exp
   ['json-selection-filter', { format: 'ndjson', subset: { kind: 'selection', projection: 'events', filter: { targetId: 'out.test' } } }],
   ['har-selection-http', { format: 'har', subset: { kind: 'selection', projection: 'http', filter: {}, http: { statusPrefix: '4' } } }],
   ['har-selection-http-host', { format: 'har', subset: { kind: 'selection', projection: 'http', filter: { since: 3000, before: 3200 }, http: { host: 'in.test' } } }],
+  // Stream-only flows (ws, chunk-only) the HTTP view leaves out: the one count that needs a second look at flows the selection did not pick.
+  ['har-selection-http-window', { format: 'har', subset: { kind: 'selection', projection: 'http', filter: { since: 3400, before: 3700 } } }],
+  ['har-selection-http-window-host', { format: 'har', subset: { kind: 'selection', projection: 'http', filter: { since: 3400, before: 3700 }, http: { host: 'in.test' } } }],
   ['har-selection-http-text', { format: 'har', subset: { kind: 'selection', projection: 'http', filter: {}, http: { text: 'p1' } } }],
   ['json-selection-http', { format: 'json', maskOutOfScope: false, subset: { kind: 'selection', projection: 'http', filter: {} } }],
   ['json-activity', { format: 'json', maskOutOfScope: false, subset: { kind: 'activity', ...activity } }],
