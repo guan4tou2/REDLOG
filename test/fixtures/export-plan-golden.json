@@ -1,0 +1,995 @@
+{
+ "json-all": {
+  "counts": {
+   "examined": 254,
+   "included": 210,
+   "excludedDoNotExport": 4,
+   "excludedPersonal": 40,
+   "outOfScopeHttpFlows": 20,
+   "maskedOutOfScope": 0,
+   "sanitized": 4,
+   "attachmentsIncluded": 0,
+   "attachmentsMissing": 0,
+   "attachmentsUnattributed": 0,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 6,
+   "truncatedOutputs": 28,
+   "pauseWindows": 4,
+   "captureGaps": [
+    {
+     "reason": "delivery-unconfirmed",
+     "gaps": 1,
+     "skippedUnits": 0,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "queue-full",
+     "gaps": 2,
+     "skippedUnits": 4,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "spool",
+     "gaps": 1,
+     "skippedUnits": 0,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "unspecified",
+     "gaps": 1,
+     "skippedUnits": 2,
+     "unknownAmount": 0
+    }
+   ],
+   "interruptedRecordings": 2,
+   "interruptedCommands": 2
+  },
+  "ids": {
+   "n": 210,
+   "sha": "f5165602fd2a0c38f22f69b6142b11e0f27f979cba957ded049b46ce4fead065"
+  },
+  "evidence": "f415a97e2154f06eb910c4bacd7f29fdd37d8a3f2fb08b83e40e485931ecdc66",
+  "attachmentDigest": "",
+  "attachments": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+ },
+ "json-masked": {
+  "counts": {
+   "examined": 254,
+   "included": 210,
+   "excludedDoNotExport": 4,
+   "excludedPersonal": 40,
+   "outOfScopeHttpFlows": 20,
+   "maskedOutOfScope": 93,
+   "sanitized": 66,
+   "attachmentsIncluded": 0,
+   "attachmentsMissing": 0,
+   "attachmentsUnattributed": 0,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 5,
+   "truncatedOutputs": 28,
+   "pauseWindows": 4,
+   "captureGaps": [
+    {
+     "reason": "delivery-unconfirmed",
+     "gaps": 1,
+     "skippedUnits": 0,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "queue-full",
+     "gaps": 2,
+     "skippedUnits": 4,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "spool",
+     "gaps": 1,
+     "skippedUnits": 0,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "unspecified",
+     "gaps": 1,
+     "skippedUnits": 2,
+     "unknownAmount": 0
+    }
+   ],
+   "interruptedRecordings": 2,
+   "interruptedCommands": 2
+  },
+  "ids": {
+   "n": 210,
+   "sha": "f5165602fd2a0c38f22f69b6142b11e0f27f979cba957ded049b46ce4fead065"
+  },
+  "evidence": "3db5770268d9d276853d12998007a4ebfeb1cf9f432362eab385e8559d486d38",
+  "attachmentDigest": "",
+  "attachments": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+ },
+ "json-scrub": {
+  "counts": {
+   "examined": 254,
+   "included": 210,
+   "excludedDoNotExport": 4,
+   "excludedPersonal": 40,
+   "outOfScopeHttpFlows": 20,
+   "maskedOutOfScope": 93,
+   "sanitized": 66,
+   "attachmentsIncluded": 0,
+   "attachmentsMissing": 0,
+   "attachmentsUnattributed": 0,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 5,
+   "truncatedOutputs": 28,
+   "pauseWindows": 4,
+   "captureGaps": [
+    {
+     "reason": "delivery-unconfirmed",
+     "gaps": 1,
+     "skippedUnits": 0,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "queue-full",
+     "gaps": 2,
+     "skippedUnits": 4,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "spool",
+     "gaps": 1,
+     "skippedUnits": 0,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "unspecified",
+     "gaps": 1,
+     "skippedUnits": 2,
+     "unknownAmount": 0
+    }
+   ],
+   "interruptedRecordings": 2,
+   "interruptedCommands": 2
+  },
+  "ids": {
+   "n": 210,
+   "sha": "f5165602fd2a0c38f22f69b6142b11e0f27f979cba957ded049b46ce4fead065"
+  },
+  "evidence": "3db5770268d9d276853d12998007a4ebfeb1cf9f432362eab385e8559d486d38",
+  "attachmentDigest": "",
+  "attachments": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+ },
+ "ndjson-all": {
+  "counts": {
+   "examined": 254,
+   "included": 210,
+   "excludedDoNotExport": 4,
+   "excludedPersonal": 40,
+   "outOfScopeHttpFlows": 20,
+   "maskedOutOfScope": 0,
+   "sanitized": 4,
+   "attachmentsIncluded": 0,
+   "attachmentsMissing": 0,
+   "attachmentsUnattributed": 0,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 6,
+   "truncatedOutputs": 28,
+   "pauseWindows": 4,
+   "captureGaps": [
+    {
+     "reason": "delivery-unconfirmed",
+     "gaps": 1,
+     "skippedUnits": 0,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "queue-full",
+     "gaps": 2,
+     "skippedUnits": 4,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "spool",
+     "gaps": 1,
+     "skippedUnits": 0,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "unspecified",
+     "gaps": 1,
+     "skippedUnits": 2,
+     "unknownAmount": 0
+    }
+   ],
+   "interruptedRecordings": 2,
+   "interruptedCommands": 2
+  },
+  "ids": {
+   "n": 210,
+   "sha": "f5165602fd2a0c38f22f69b6142b11e0f27f979cba957ded049b46ce4fead065"
+  },
+  "evidence": "f415a97e2154f06eb910c4bacd7f29fdd37d8a3f2fb08b83e40e485931ecdc66",
+  "attachmentDigest": "",
+  "attachments": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+ },
+ "ndjson-masked": {
+  "counts": {
+   "examined": 254,
+   "included": 210,
+   "excludedDoNotExport": 4,
+   "excludedPersonal": 40,
+   "outOfScopeHttpFlows": 20,
+   "maskedOutOfScope": 93,
+   "sanitized": 66,
+   "attachmentsIncluded": 0,
+   "attachmentsMissing": 0,
+   "attachmentsUnattributed": 0,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 5,
+   "truncatedOutputs": 28,
+   "pauseWindows": 4,
+   "captureGaps": [
+    {
+     "reason": "delivery-unconfirmed",
+     "gaps": 1,
+     "skippedUnits": 0,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "queue-full",
+     "gaps": 2,
+     "skippedUnits": 4,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "spool",
+     "gaps": 1,
+     "skippedUnits": 0,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "unspecified",
+     "gaps": 1,
+     "skippedUnits": 2,
+     "unknownAmount": 0
+    }
+   ],
+   "interruptedRecordings": 2,
+   "interruptedCommands": 2
+  },
+  "ids": {
+   "n": 210,
+   "sha": "f5165602fd2a0c38f22f69b6142b11e0f27f979cba957ded049b46ce4fead065"
+  },
+  "evidence": "3db5770268d9d276853d12998007a4ebfeb1cf9f432362eab385e8559d486d38",
+  "attachmentDigest": "",
+  "attachments": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+ },
+ "timeline-range": {
+  "counts": {
+   "examined": 161,
+   "included": 133,
+   "excludedDoNotExport": 2,
+   "excludedPersonal": 26,
+   "outOfScopeHttpFlows": 13,
+   "maskedOutOfScope": 54,
+   "sanitized": 46,
+   "attachmentsIncluded": 0,
+   "attachmentsMissing": 0,
+   "attachmentsUnattributed": 0,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 1,
+   "truncatedOutputs": 21,
+   "pauseWindows": 4,
+   "captureGaps": [
+    {
+     "reason": "delivery-unconfirmed",
+     "gaps": 1,
+     "skippedUnits": 0,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "queue-full",
+     "gaps": 2,
+     "skippedUnits": 4,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "spool",
+     "gaps": 1,
+     "skippedUnits": 0,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "unspecified",
+     "gaps": 1,
+     "skippedUnits": 2,
+     "unknownAmount": 0
+    }
+   ],
+   "interruptedRecordings": 2,
+   "interruptedCommands": 2
+  },
+  "ids": {
+   "n": 133,
+   "sha": "33a5b2811504856eb050c16e2fd1907ea437c7f86c91420f96a3b677124e3979"
+  },
+  "evidence": "1ddabd3bf89d7c03cdd3cbba49d02eb4ee29ca293b9bb586cf67def20a2c49c3",
+  "attachmentDigest": "",
+  "attachments": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+ },
+ "json-range-target": {
+  "counts": {
+   "examined": 93,
+   "included": 91,
+   "excludedDoNotExport": 2,
+   "excludedPersonal": 0,
+   "outOfScopeHttpFlows": 0,
+   "maskedOutOfScope": 0,
+   "sanitized": 0,
+   "attachmentsIncluded": 0,
+   "attachmentsMissing": 0,
+   "attachmentsUnattributed": 0,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 3,
+   "truncatedOutputs": 10,
+   "pauseWindows": 0,
+   "captureGaps": [
+    {
+     "reason": "delivery-unconfirmed",
+     "gaps": 1,
+     "skippedUnits": 0,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "queue-full",
+     "gaps": 2,
+     "skippedUnits": 4,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "spool",
+     "gaps": 1,
+     "skippedUnits": 0,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "unspecified",
+     "gaps": 1,
+     "skippedUnits": 2,
+     "unknownAmount": 0
+    }
+   ],
+   "interruptedRecordings": 2,
+   "interruptedCommands": 2
+  },
+  "ids": {
+   "n": 91,
+   "sha": "84e23a2cf05cfecbb2532b3818d75e2ef1c18c05a40f08af5a49293867e891f6"
+  },
+  "evidence": "502b160ac467e19f3465db39660fad685183e76d3b15c9b26c390d2fdd658a48",
+  "attachmentDigest": "",
+  "attachments": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+ },
+ "json-empty": {
+  "counts": {
+   "examined": 0,
+   "included": 0,
+   "excludedDoNotExport": 0,
+   "excludedPersonal": 0,
+   "outOfScopeHttpFlows": 0,
+   "maskedOutOfScope": 0,
+   "sanitized": 0,
+   "attachmentsIncluded": 0,
+   "attachmentsMissing": 0,
+   "attachmentsUnattributed": 0,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 0,
+   "truncatedOutputs": 0,
+   "pauseWindows": 0,
+   "captureGaps": [],
+   "interruptedRecordings": 0,
+   "interruptedCommands": 0
+  },
+  "ids": {
+   "n": 0,
+   "sha": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "evidence": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "attachmentDigest": "",
+  "attachments": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+ },
+ "har-all": {
+  "counts": {
+   "examined": 98,
+   "included": 76,
+   "excludedDoNotExport": 2,
+   "excludedPersonal": 20,
+   "outOfScopeHttpFlows": 20,
+   "maskedOutOfScope": 48,
+   "sanitized": 5,
+   "attachmentsIncluded": 0,
+   "attachmentsMissing": 0,
+   "attachmentsUnattributed": 0,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 1,
+   "truncatedOutputs": 2,
+   "pauseWindows": 0,
+   "captureGaps": [],
+   "interruptedRecordings": 0,
+   "interruptedCommands": 0,
+   "partialHttpFlows": 6
+  },
+  "ids": {
+   "n": 76,
+   "sha": "5f9b12bd290c534aedbccb7187ce2c292ecd9b51c662ecfb0a1f7cbfafd98bf0"
+  },
+  "evidence": "e3fdd4f07c25afab312abea5e9f049ebe834a340c34246b7b5d32418eb5c0948",
+  "attachmentDigest": "",
+  "attachments": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+ },
+ "har-range": {
+  "counts": {
+   "examined": 56,
+   "included": 42,
+   "excludedDoNotExport": 2,
+   "excludedPersonal": 12,
+   "outOfScopeHttpFlows": 13,
+   "maskedOutOfScope": 26,
+   "sanitized": 3,
+   "attachmentsIncluded": 0,
+   "attachmentsMissing": 0,
+   "attachmentsUnattributed": 0,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 1,
+   "truncatedOutputs": 2,
+   "pauseWindows": 0,
+   "captureGaps": [],
+   "interruptedRecordings": 0,
+   "interruptedCommands": 0,
+   "partialHttpFlows": 0
+  },
+  "ids": {
+   "n": 42,
+   "sha": "24bb6bfbcd9c1531da3f2cef6494c5abcfc00f2f103fffe9f46bcca84114a04c"
+  },
+  "evidence": "fb059d315e044cd2bca2e5e25130e7693b9b772b6cde4ab44f78cb0aa858eae0",
+  "attachmentDigest": "",
+  "attachments": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+ },
+ "json-selection-query": {
+  "counts": {
+   "examined": 31,
+   "included": 26,
+   "excludedDoNotExport": 1,
+   "excludedPersonal": 4,
+   "outOfScopeHttpFlows": 0,
+   "maskedOutOfScope": 10,
+   "sanitized": 16,
+   "attachmentsIncluded": 0,
+   "attachmentsMissing": 0,
+   "attachmentsUnattributed": 0,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 0,
+   "truncatedOutputs": 5,
+   "pauseWindows": 0,
+   "captureGaps": [],
+   "interruptedRecordings": 0,
+   "interruptedCommands": 0
+  },
+  "ids": {
+   "n": 26,
+   "sha": "9378d67b8a4498b8427e52d8fb9bca13eec66b024544f984af9cd14ca1a19a9b"
+  },
+  "evidence": "1a42607163410086d6fa4ba16c6baaf89f7415177660efcd7785356ee9f3d2f6",
+  "attachmentDigest": "",
+  "attachments": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+ },
+ "json-selection-filter": {
+  "counts": {
+   "examined": 48,
+   "included": 48,
+   "excludedDoNotExport": 0,
+   "excludedPersonal": 0,
+   "outOfScopeHttpFlows": 10,
+   "maskedOutOfScope": 48,
+   "sanitized": 25,
+   "attachmentsIncluded": 0,
+   "attachmentsMissing": 0,
+   "attachmentsUnattributed": 0,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 2,
+   "truncatedOutputs": 4,
+   "pauseWindows": 0,
+   "captureGaps": [],
+   "interruptedRecordings": 0,
+   "interruptedCommands": 0
+  },
+  "ids": {
+   "n": 48,
+   "sha": "05f2da52559dd486a9764ab0845a82645e2b3acc68ff6a3dc2c11a147418cd9c"
+  },
+  "evidence": "85882194411a8d9e18627209850e01dc48585aa06e1b41f287771b34884dd14d",
+  "attachmentDigest": "",
+  "attachments": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+ },
+ "har-selection-http": {
+  "counts": {
+   "exchanges": 10,
+   "examined": 35,
+   "included": 26,
+   "excludedDoNotExport": 1,
+   "excludedPersonal": 8,
+   "outOfScopeHttpFlows": 6,
+   "maskedOutOfScope": 14,
+   "sanitized": 1,
+   "attachmentsIncluded": 0,
+   "attachmentsMissing": 0,
+   "attachmentsUnattributed": 0,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 1,
+   "truncatedOutputs": 1,
+   "pauseWindows": 0,
+   "captureGaps": [],
+   "interruptedRecordings": 0,
+   "interruptedCommands": 0,
+   "partialHttpFlows": 0,
+   "partialHttpFlowsOutside": 0
+  },
+  "ids": {
+   "n": 26,
+   "sha": "777e56449dfbdbd93f74f7d5b63cfbf8011feca0d2df4d1f2e04a9b8ea0771b1"
+  },
+  "evidence": "3f6eb1bd99ffcb46abce5ca00ff704aa16bb56c7a5572ff134b026860788bb8d",
+  "attachmentDigest": "",
+  "attachments": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+ },
+ "har-selection-http-host": {
+  "counts": {
+   "exchanges": 10,
+   "examined": 24,
+   "included": 23,
+   "excludedDoNotExport": 1,
+   "excludedPersonal": 0,
+   "outOfScopeHttpFlows": 0,
+   "maskedOutOfScope": 0,
+   "sanitized": 0,
+   "attachmentsIncluded": 0,
+   "attachmentsMissing": 0,
+   "attachmentsUnattributed": 0,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 1,
+   "truncatedOutputs": 2,
+   "pauseWindows": 0,
+   "captureGaps": [],
+   "interruptedRecordings": 0,
+   "interruptedCommands": 0,
+   "partialHttpFlows": 0,
+   "partialHttpFlowsOutside": 0
+  },
+  "ids": {
+   "n": 23,
+   "sha": "867de674a8deef519e823624079f0ec7bd6c5bb50a4881fbd4cc0bc75da673be"
+  },
+  "evidence": "2f6ce3908c1fa952c8d7cb663525fdaaee8ba07c3a778039fe6354bcfc010f9f",
+  "attachmentDigest": "",
+  "attachments": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+ },
+ "har-selection-http-window": {
+  "counts": {
+   "exchanges": 0,
+   "examined": 0,
+   "included": 0,
+   "excludedDoNotExport": 0,
+   "excludedPersonal": 0,
+   "outOfScopeHttpFlows": 0,
+   "maskedOutOfScope": 0,
+   "sanitized": 0,
+   "attachmentsIncluded": 0,
+   "attachmentsMissing": 0,
+   "attachmentsUnattributed": 0,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 0,
+   "truncatedOutputs": 0,
+   "pauseWindows": 0,
+   "captureGaps": [],
+   "interruptedRecordings": 0,
+   "interruptedCommands": 0,
+   "partialHttpFlows": 0,
+   "partialHttpFlowsOutside": 6
+  },
+  "ids": {
+   "n": 0,
+   "sha": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "evidence": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "attachmentDigest": "",
+  "attachments": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+ },
+ "har-selection-http-window-host": {
+  "counts": {
+   "exchanges": 0,
+   "examined": 0,
+   "included": 0,
+   "excludedDoNotExport": 0,
+   "excludedPersonal": 0,
+   "outOfScopeHttpFlows": 0,
+   "maskedOutOfScope": 0,
+   "sanitized": 0,
+   "attachmentsIncluded": 0,
+   "attachmentsMissing": 0,
+   "attachmentsUnattributed": 0,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 0,
+   "truncatedOutputs": 0,
+   "pauseWindows": 0,
+   "captureGaps": [],
+   "interruptedRecordings": 0,
+   "interruptedCommands": 0,
+   "partialHttpFlows": 0,
+   "partialHttpFlowsOutside": 1
+  },
+  "ids": {
+   "n": 0,
+   "sha": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "evidence": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "attachmentDigest": "",
+  "attachments": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+ },
+ "har-selection-http-text": {
+  "counts": {
+   "exchanges": 8,
+   "examined": 24,
+   "included": 18,
+   "excludedDoNotExport": 0,
+   "excludedPersonal": 6,
+   "outOfScopeHttpFlows": 6,
+   "maskedOutOfScope": 13,
+   "sanitized": 2,
+   "attachmentsIncluded": 0,
+   "attachmentsMissing": 0,
+   "attachmentsUnattributed": 0,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 0,
+   "truncatedOutputs": 0,
+   "pauseWindows": 0,
+   "captureGaps": [],
+   "interruptedRecordings": 0,
+   "interruptedCommands": 0,
+   "partialHttpFlows": 0,
+   "partialHttpFlowsOutside": 0
+  },
+  "ids": {
+   "n": 18,
+   "sha": "c844ed3dd28fafd08fff6ec895b2e9b0b67ef34f2b253147e69c62c74378b3f6"
+  },
+  "evidence": "78d080f9336483a56dec3ba7118362d79f74d20566c13a413417e701bb188e49",
+  "attachmentDigest": "",
+  "attachments": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+ },
+ "json-selection-http": {
+  "counts": {
+   "exchanges": 30,
+   "examined": 87,
+   "included": 65,
+   "excludedDoNotExport": 2,
+   "excludedPersonal": 20,
+   "outOfScopeHttpFlows": 20,
+   "maskedOutOfScope": 0,
+   "sanitized": 1,
+   "attachmentsIncluded": 0,
+   "attachmentsMissing": 0,
+   "attachmentsUnattributed": 0,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 2,
+   "truncatedOutputs": 2,
+   "pauseWindows": 0,
+   "captureGaps": [],
+   "interruptedRecordings": 0,
+   "interruptedCommands": 0
+  },
+  "ids": {
+   "n": 65,
+   "sha": "341909c73c7de20a56bdb06b0689060a536461b00f3c86fd276150da93247fc3"
+  },
+  "evidence": "4cf99c884ffa7dc400551d59b8e1b275831dbb7cfdc2ae9ff8defe5cfc51f6d7",
+  "attachmentDigest": "",
+  "attachments": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+ },
+ "json-activity": {
+  "counts": {
+   "examined": 3,
+   "included": 3,
+   "excludedDoNotExport": 0,
+   "excludedPersonal": 0,
+   "outOfScopeHttpFlows": 0,
+   "maskedOutOfScope": 0,
+   "sanitized": 0,
+   "attachmentsIncluded": 0,
+   "attachmentsMissing": 0,
+   "attachmentsUnattributed": 0,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 0,
+   "truncatedOutputs": 1,
+   "pauseWindows": 0,
+   "captureGaps": [],
+   "interruptedRecordings": 0,
+   "interruptedCommands": 0
+  },
+  "ids": {
+   "n": 3,
+   "sha": "73b942d6f557a5808ddef7eb8bfee062a8915057ebca3c9e480e88ca1cd723bf"
+  },
+  "evidence": "50771c5961bc2090c4f262adf8bd77dfcbd8878fb7722115145a51cfa8b9cb74",
+  "attachmentDigest": "",
+  "attachments": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+ },
+ "ndjson-session": {
+  "counts": {
+   "examined": 4,
+   "included": 4,
+   "excludedDoNotExport": 0,
+   "excludedPersonal": 0,
+   "outOfScopeHttpFlows": 0,
+   "maskedOutOfScope": 1,
+   "sanitized": 1,
+   "attachmentsIncluded": 0,
+   "attachmentsMissing": 0,
+   "attachmentsUnattributed": 0,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 0,
+   "truncatedOutputs": 1,
+   "pauseWindows": 0,
+   "captureGaps": [],
+   "interruptedRecordings": 0,
+   "interruptedCommands": 0
+  },
+  "ids": {
+   "n": 4,
+   "sha": "ed0a19ebd248838c911fad50223b9ad7ae017378e4aca66609aaef38d07fcd2e"
+  },
+  "evidence": "f4e105d27591af5a30bfc5f25792da39430d0420672195390f1e6760673faa94",
+  "attachmentDigest": "",
+  "attachments": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+ },
+ "bundle-all": {
+  "counts": {
+   "examined": 254,
+   "included": 210,
+   "excludedDoNotExport": 4,
+   "excludedPersonal": 40,
+   "outOfScopeHttpFlows": 20,
+   "maskedOutOfScope": 0,
+   "sanitized": 4,
+   "attachmentsIncluded": 9,
+   "attachmentsMissing": 4,
+   "attachmentsUnattributed": 4,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 0,
+   "truncatedOutputs": 28,
+   "pauseWindows": 4,
+   "captureGaps": [
+    {
+     "reason": "delivery-unconfirmed",
+     "gaps": 1,
+     "skippedUnits": 0,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "queue-full",
+     "gaps": 2,
+     "skippedUnits": 4,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "spool",
+     "gaps": 1,
+     "skippedUnits": 0,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "unspecified",
+     "gaps": 1,
+     "skippedUnits": 2,
+     "unknownAmount": 0
+    }
+   ],
+   "interruptedRecordings": 2,
+   "interruptedCommands": 2
+  },
+  "ids": {
+   "n": 210,
+   "sha": "f5165602fd2a0c38f22f69b6142b11e0f27f979cba957ded049b46ce4fead065"
+  },
+  "evidence": "f415a97e2154f06eb910c4bacd7f29fdd37d8a3f2fb08b83e40e485931ecdc66",
+  "attachmentDigest": "23cbee8b34b2d4ac9014ab71d28d2cba9550619206c4b1541736044b2c28edc4",
+  "attachments": "658bc215ccdeabd56e1aaacb323716d460563c93ce43165ce205cb4150767e83"
+ },
+ "bundle-masked": {
+  "counts": {
+   "examined": 254,
+   "included": 210,
+   "excludedDoNotExport": 4,
+   "excludedPersonal": 40,
+   "outOfScopeHttpFlows": 20,
+   "maskedOutOfScope": 93,
+   "sanitized": 66,
+   "attachmentsIncluded": 8,
+   "attachmentsMissing": 2,
+   "attachmentsUnattributed": 5,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 0,
+   "truncatedOutputs": 28,
+   "pauseWindows": 4,
+   "captureGaps": [
+    {
+     "reason": "delivery-unconfirmed",
+     "gaps": 1,
+     "skippedUnits": 0,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "queue-full",
+     "gaps": 2,
+     "skippedUnits": 4,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "spool",
+     "gaps": 1,
+     "skippedUnits": 0,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "unspecified",
+     "gaps": 1,
+     "skippedUnits": 2,
+     "unknownAmount": 0
+    }
+   ],
+   "interruptedRecordings": 2,
+   "interruptedCommands": 2
+  },
+  "ids": {
+   "n": 210,
+   "sha": "f5165602fd2a0c38f22f69b6142b11e0f27f979cba957ded049b46ce4fead065"
+  },
+  "evidence": "3db5770268d9d276853d12998007a4ebfeb1cf9f432362eab385e8559d486d38",
+  "attachmentDigest": "2394f41acb68ddcc455c0ec03bfd98e372bc28bd2f61e77a7a8b61b4377279be",
+  "attachments": "cf985388ba7a71b984dd8a897a8613722848a53575ef700caeee47bac4445316"
+ },
+ "bundle-exclude": {
+  "counts": {
+   "examined": 254,
+   "included": 210,
+   "excludedDoNotExport": 4,
+   "excludedPersonal": 40,
+   "outOfScopeHttpFlows": 20,
+   "maskedOutOfScope": 93,
+   "sanitized": 66,
+   "attachmentsIncluded": 5,
+   "attachmentsMissing": 2,
+   "attachmentsUnattributed": 3,
+   "attachmentsExcludedByOperator": 3,
+   "unsupported": 0,
+   "truncatedOutputs": 28,
+   "pauseWindows": 4,
+   "captureGaps": [
+    {
+     "reason": "delivery-unconfirmed",
+     "gaps": 1,
+     "skippedUnits": 0,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "queue-full",
+     "gaps": 2,
+     "skippedUnits": 4,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "spool",
+     "gaps": 1,
+     "skippedUnits": 0,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "unspecified",
+     "gaps": 1,
+     "skippedUnits": 2,
+     "unknownAmount": 0
+    }
+   ],
+   "interruptedRecordings": 2,
+   "interruptedCommands": 2
+  },
+  "ids": {
+   "n": 210,
+   "sha": "f5165602fd2a0c38f22f69b6142b11e0f27f979cba957ded049b46ce4fead065"
+  },
+  "evidence": "3db5770268d9d276853d12998007a4ebfeb1cf9f432362eab385e8559d486d38",
+  "attachmentDigest": "0b359b1db9f37b564b1873434324745eb7761ccd3ef1e0140460556437e4249c",
+  "attachments": "c60634b34613e5229ede9f612cecdfab6cb3a886fc8a45b53bb65c3f93780f0b"
+ },
+ "bundle-range": {
+  "counts": {
+   "examined": 244,
+   "included": 200,
+   "excludedDoNotExport": 4,
+   "excludedPersonal": 40,
+   "outOfScopeHttpFlows": 20,
+   "maskedOutOfScope": 91,
+   "sanitized": 65,
+   "attachmentsIncluded": 8,
+   "attachmentsMissing": 1,
+   "attachmentsUnattributed": 5,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 0,
+   "truncatedOutputs": 27,
+   "pauseWindows": 4,
+   "captureGaps": [
+    {
+     "reason": "delivery-unconfirmed",
+     "gaps": 1,
+     "skippedUnits": 0,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "queue-full",
+     "gaps": 2,
+     "skippedUnits": 4,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "spool",
+     "gaps": 1,
+     "skippedUnits": 0,
+     "unknownAmount": 1
+    },
+    {
+     "reason": "unspecified",
+     "gaps": 1,
+     "skippedUnits": 2,
+     "unknownAmount": 0
+    }
+   ],
+   "interruptedRecordings": 2,
+   "interruptedCommands": 2
+  },
+  "ids": {
+   "n": 200,
+   "sha": "cf4889053f739e461bdc1471a88c2f4e569d227d00b2280957af9e846c47ae97"
+  },
+  "evidence": "74dedfd627489db0b9959ed8b6219e47d039394440284bed34ff7cac41568acd",
+  "attachmentDigest": "2394f41acb68ddcc455c0ec03bfd98e372bc28bd2f61e77a7a8b61b4377279be",
+  "attachments": "c01cff126c4626dd8a90a63fc18fda145d82e2657bd00e4cbe6b7e051d4c3500"
+ },
+ "bundle-session": {
+  "counts": {
+   "examined": 4,
+   "included": 4,
+   "excludedDoNotExport": 0,
+   "excludedPersonal": 0,
+   "outOfScopeHttpFlows": 0,
+   "maskedOutOfScope": 0,
+   "sanitized": 0,
+   "attachmentsIncluded": 1,
+   "attachmentsMissing": 0,
+   "attachmentsUnattributed": 0,
+   "attachmentsExcludedByOperator": 0,
+   "unsupported": 0,
+   "truncatedOutputs": 1,
+   "pauseWindows": 0,
+   "captureGaps": [],
+   "interruptedRecordings": 0,
+   "interruptedCommands": 0
+  },
+  "ids": {
+   "n": 4,
+   "sha": "ed0a19ebd248838c911fad50223b9ad7ae017378e4aca66609aaef38d07fcd2e"
+  },
+  "evidence": "a90ee00b57221005be26512196ca993627f0a71ab8b3409b836d9b3839247b10",
+  "attachmentDigest": "b9737aa3da1d307a11980057c6b6e84b413998cf72999a5e37ef320b2040421e",
+  "attachments": "10a9845ca7c247b583064a54ee8bf7e1c9edfbc1295fb0403f8f4c7921f8bc94"
+ }
+}

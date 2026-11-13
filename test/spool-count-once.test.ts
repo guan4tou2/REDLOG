@@ -422,8 +422,8 @@ sqlite.describe('the spool drain counts each file once (review round 3)', () => 
     // Not written to the record, but kept.
     expect(commands()).toEqual([])
     expect(files()).toEqual([`quarantine/${ENG}/pause-end-unknown--0001.json`])
-    const all = gapRows().map((r) => ({ agentType: 'system', data: r.data })) as unknown as Parameters<typeof plan.countCaptureGaps>[0]
-    expect(plan.countCaptureGaps(all)).toEqual([{ reason: 'pause-end-unknown', gaps: 1, skippedUnits: 1, unknownAmount: 0 }])
+    const all = gapRows().map((r) => ({ agentType: 'system', data: r.data })) as unknown as Parameters<typeof plan.foldEvents>[1]
+    expect(plan.foldEvents(plan.captureGapsFold(), all)).toEqual([{ reason: 'pause-end-unknown', gaps: 1, skippedUnits: 1, unknownAmount: 0 }])
   })
 
   sqlite.it('R3: a pause carried across a reopen and resumed later: before the reopen is a loss, after it a pause', () => {
