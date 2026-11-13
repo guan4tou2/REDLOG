@@ -40,7 +40,7 @@ import { mergeKnownTargets } from '../../src/renderer/src/lib/knownLists'
 import { buildCard } from '../../src/renderer/src/lib/timelineCard'
 import { buildSessionBands } from '../../src/renderer/src/lib/timelineSessionBands'
 import { sessionBoundaries } from '../../src/renderer/src/lib/timelineIncremental'
-import { countCaptureGaps, countInterrupted, countPartialHttpFlows, countPauseWindows, countTruncatedOutputs } from '../../src/core/export-plan'
+import { captureGapsFold, foldEvents, interruptedFold, partialHttpFlowsFold, pauseWindowsFold, truncatedOutputsFold } from '../../src/core/export-plan'
 import { storedArtifactOf } from '../../src/core/export-attachments'
 import { commandOutputState, BODY_SOURCE_PREDICATE } from '../../src/core/content-contract'
 import { EVIDENCE_SQL, HOUSEKEEPING_SQL } from '../../src/core/db/event-queries'
@@ -221,8 +221,8 @@ export const TABLES: TableSpec[] = [
     TRANSCRIPT_BUCKETS: { file: 'src/renderer/src/components/TranscriptView.tsx', name: 'TRANSCRIPT_BUCKETS' },
     entries: { file: 'src/renderer/src/components/TranscriptView.tsx', fn: /const sub = String\(d\.subtype \?\? ''\)/ } } },
   { n: 24, name: 'export summary counts', location: 'src/core/export-plan.ts', evaluate: (e) => ({
-    truncated: countTruncatedOutputs([e.row]), interrupted: countInterrupted([e.row]), pauses: countPauseWindows([e.row]),
-    gaps: countCaptureGaps([e.row]), partialHttp: countPartialHttpFlows([e.row]) }) },
+    truncated: foldEvents(truncatedOutputsFold(), [e.row]), interrupted: foldEvents(interruptedFold(), [e.row]), pauses: foldEvents(pauseWindowsFold(), [e.row]),
+    gaps: foldEvents(captureGapsFold(), [e.row]), partialHttp: foldEvents(partialHttpFlowsFold(), [e.row]) }) },
   { n: 25, name: 'export attachments', location: 'src/core/export-attachments.ts', evaluate: (e) => storedArtifactOf(e.row),
     extract: { listExportAttachments: { file: 'src/core/export-attachments.ts', name: 'listExportAttachments' } } },
   { n: 26, name: 'HTTP export companions', location: 'src/core/export-selection.ts', extract: { iterateExportSelection: { file: 'src/core/export-selection.ts', name: 'iterateExportSelection' } } },
