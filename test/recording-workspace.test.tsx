@@ -4,7 +4,12 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import RecordingWorkspace from '../src/renderer/src/components/RecordingWorkspace'
 
-vi.mock('../src/renderer/src/components/SearchPanel', () => ({ SearchPanel: ({ controlledQuery, viewMode, active, browse }: any) => <div data-testid="workspace-search" data-active={active} data-mode={viewMode} data-browse={browse}>{controlledQuery}</div> }))
+// The stand-in portals a count into the slot the workspace hands it, as
+// ActivityResults does, so the row it lands in can be checked here.
+vi.mock('../src/renderer/src/components/SearchPanel', async () => {
+  const { createPortal } = await import('react-dom')
+  return { SearchPanel: ({ controlledQuery, viewMode, active, browse, statsSlot }: any) => <div data-testid="workspace-search" data-active={active} data-mode={viewMode} data-browse={browse}>{controlledQuery}{statsSlot && active ? createPortal(<span data-testid="activity-stats">3 activities</span>, statsSlot) : null}</div> }
+})
 vi.mock('../src/renderer/src/components/TranscriptView', () => ({ default: ({ reading, externalQuery, active }: any) => <div data-testid={`workspace-${reading}`} data-active={active}><input aria-label={`position-${reading}`} defaultValue="" />{externalQuery}</div> }))
 vi.mock('../src/renderer/src/components/SourceSessionPicker', () => ({default: () => null}))
 // Stitch 04: the title row reads the project total, capture health and the
@@ -65,5 +70,28 @@ describe('recording workspace title row (Stitch 04)', () => {
     expect(pill.textContent).toContain('4 events')
     expect(pill.textContent).toContain('each source confirmed on its own')
     expect(await screen.findByText('Recording')).toBeTruthy()
+  })
+})
+
+describe('recording workspace density (2026-11-14)', () => {
+  it('states the time zone once, for every reading', () => {
+    render(<I18nProvider><RecordingWorkspace onOpenInTimeline={vi.fn()} onOpenTimeline={vi.fn()} /></I18nProvider>)
+    expect(screen.getAllByText(/Time zone:/)).toHaveLength(1)
+    fireEvent.click(screen.getByRole('tab', { name: 'Input / output' }))
+    expect(screen.getAllByText(/Time zone:/)).toHaveLength(1)
+  })
+
+  it('puts the activity count in the tab row beside the way to the Timeline, outside the tablist', () => {
+    render(<I18nProvider><RecordingWorkspace onOpenInTimeline={vi.fn()} onOpenTimeline={vi.fn()} /></I18nProvider>)
+    const row = screen.getByTestId('activity-tab-row')
+    const stats = screen.getByTestId('activity-stats')
+    expect(row.contains(stats)).toBe(true)
+    expect(screen.getByRole('tablist').contains(stats)).toBe(false)
+    // Right side: after the tabs, before 開啟時間軸.
+    const open = screen.getByTestId('workspace-open-timeline')
+    expect(stats.compareDocumentPosition(open) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // Only while the activity reading is the one shown.
+    fireEvent.click(screen.getByRole('tab', { name: 'Input / output' }))
+    expect(screen.queryByTestId('activity-stats')).toBeNull()
   })
 })

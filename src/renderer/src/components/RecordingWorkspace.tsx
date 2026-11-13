@@ -75,6 +75,9 @@ export default function RecordingWorkspace({ active = true, onOpenInTimeline, on
   const effectiveQuery=[query,reading==='ai' && provider ? `provider:${provider}` : '',picked ? `source:${picked.token}` : ''].filter(Boolean).join(' ')
   const [visited, setVisited] = useState<Set<Reading>>(new Set(['activities']))
   const field = useRef<HTMLInputElement>(null)
+  // State, not a ref: the list portals its count in, and has to render again
+  // once the slot exists.
+  const [statsSlot, setStatsSlot] = useState<HTMLDivElement | null>(null)
   useEffect(() => {
     if (!externalQuery) return
     setQuery(externalQuery.text)
@@ -118,25 +121,31 @@ export default function RecordingWorkspace({ active = true, onOpenInTimeline, on
           <option value="">{t('activity.sourceAll')}</option>
           {knownAgentTypes.map(at => <option key={at} value={at}>{agentTypeLabel(at, t)}</option>)}
         </select>}
+        {/* Stated once for every reading. The date separators only exist in
+            the activity list, and only once it has rows; the I/O, AI and raw
+            event readings print times with nothing else naming the zone. */}
+        <span data-testid="activity-zone" className="text-xs text-redlog-text-dim whitespace-nowrap">{t('activity.zone', { zone: zoneLabel(zone, t) })}</span>
       </div>
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span data-testid="activity-zone" className="ml-auto text-redlog-text-dim">{t('activity.zone', { zone: zoneLabel(zone, t) })}</span>
-      </div>
-      <div role="tablist" aria-label={t('activity.view')} className="flex flex-wrap gap-1 border-b border-redlog-border">
-        {READINGS.map((mode, index) => <button key={mode} type="button" role="tab"
-          id={`reading-tab-${mode}`} aria-controls={mode === 'activities' || mode === 'events' ? 'reading-panel-search' : `reading-panel-${mode}`} aria-selected={reading === mode}
-          tabIndex={reading === mode ? 0 : -1} onClick={() => choose(mode)}
-          onKeyDown={e => {
-            const next = e.key === 'ArrowRight' ? READINGS[(index + 1) % READINGS.length]
-              : e.key === 'ArrowLeft' ? READINGS[(index + READINGS.length - 1) % READINGS.length]
-                : e.key === 'Home' ? READINGS[0] : e.key === 'End' ? READINGS.at(-1) : undefined
-            if (next) { e.preventDefault(); choose(next); document.getElementById(`reading-tab-${next}`)?.focus() }
-          }}
-          className={`px-3 py-2 text-xs border-b-2 ${reading === mode ? 'border-redlog-accent text-redlog-text' : 'border-transparent text-redlog-text-dim hover:text-redlog-text'}`}
-        >{t(`workspace.reading.${mode}`)}</button>)}
+      <div data-testid="activity-tab-row" className="flex flex-wrap items-center gap-x-2 border-b border-redlog-border">
+        <div role="tablist" aria-label={t('activity.view')} className="flex flex-wrap gap-1">
+          {READINGS.map((mode, index) => <button key={mode} type="button" role="tab"
+            id={`reading-tab-${mode}`} aria-controls={mode === 'activities' || mode === 'events' ? 'reading-panel-search' : `reading-panel-${mode}`} aria-selected={reading === mode}
+            tabIndex={reading === mode ? 0 : -1} onClick={() => choose(mode)}
+            onKeyDown={e => {
+              const next = e.key === 'ArrowRight' ? READINGS[(index + 1) % READINGS.length]
+                : e.key === 'ArrowLeft' ? READINGS[(index + READINGS.length - 1) % READINGS.length]
+                  : e.key === 'Home' ? READINGS[0] : e.key === 'End' ? READINGS.at(-1) : undefined
+              if (next) { e.preventDefault(); choose(next); document.getElementById(`reading-tab-${next}`)?.focus() }
+            }}
+            className={`px-3 py-2 text-xs border-b-2 ${reading === mode ? 'border-redlog-accent text-redlog-text' : 'border-transparent text-redlog-text-dim hover:text-redlog-text'}`}
+          >{t(`workspace.reading.${mode}`)}</button>)}
+        </div>
+        {/* The activity count lands here (ActivityResults portals it in),
+            beside the way to the Timeline, rather than on a row of its own. */}
+        <div ref={setStatsSlot} data-testid="activity-stats-slot" className="ml-auto self-center flex items-center" />
         {onOpenTimeline && (
           <button type="button" onClick={onOpenTimeline} data-testid="workspace-open-timeline"
-            className="ml-auto px-3 py-2 text-xs text-redlog-text-dim hover:text-redlog-text"
+            className="px-3 py-2 text-xs text-redlog-text-dim hover:text-redlog-text"
           >{t('workspace.openTimeline')} ↗</button>
         )}
       </div>
@@ -149,7 +158,7 @@ export default function RecordingWorkspace({ active = true, onOpenInTimeline, on
     </div>
     <div role="tabpanel" id="reading-panel-search" aria-labelledby={`reading-tab-${reading === 'events' ? 'events' : 'activities'}`}
       hidden={!searching} className={searching ? 'flex-1 min-h-0' : undefined}>
-      <SearchPanel browse controlledQuery={query} viewMode={reading === 'events' ? 'events' : 'activities'} onClearQuery={() => setQuery('')} active={active && searching} onOpenInTimeline={onOpenInTimeline} />
+      <SearchPanel browse statsSlot={statsSlot} controlledQuery={query} viewMode={reading === 'events' ? 'events' : 'activities'} onClearQuery={() => setQuery('')} active={active && searching} onOpenInTimeline={onOpenInTimeline} />
     </div>
     {query.trim() && <details className="shrink-0 px-pad pb-2 text-xs text-redlog-text-dim"><summary>{t('workspace.searchCoverage')}</summary><p className="pt-1">{t('workspace.coverageBoundary')}</p></details>}
     {(['io', 'ai'] as const).filter(mode => visited.has(mode)).map(mode => <div key={mode} role="tabpanel"
