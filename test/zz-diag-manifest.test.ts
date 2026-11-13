@@ -24,5 +24,14 @@ it('prints every file of a regenerated bundle', async () => {
   const { files: _files, ...rest } = manifest
   console.log(`[DIAG] manifest-without-files ${JSON.stringify(rest)}`)
   for (const name of ['README.md', 'verify.sh', 'verify.cmd']) console.log(`[DIAG] head ${name}: ${JSON.stringify(fs.readFileSync(path.join(dir, name), 'utf8').slice(0, 400))}`)
+  const h = (v: unknown): string => crypto.createHash('sha256').update(typeof v === 'string' ? v : JSON.stringify(v) ?? 'undefined').digest('hex').slice(0, 8)
+  fs.readFileSync(path.join(dir, 'events.jsonl'), 'utf8').split('\n').filter(Boolean).forEach((line, i) => {
+    const row = JSON.parse(line) as Record<string, unknown>
+    console.log(`[DIAGROW] ${i} line=${h(line)} keys=${Object.keys(row).join(',')}`)
+    console.log(`[DIAGROW] ${i} ` + Object.entries(row).map(([k, v]) => `${k}=${h(v)}`).join(' '))
+    const sig = String(row.signature ?? '')
+    console.log(`[DIAGROW] ${i} subtype=${String(row.subtype)} sigLen=${sig.length} sigHead=${sig.slice(0, 12)} data=${String(row.data).slice(0, 160)}`)
+  })
+  console.log(`[DIAG] openssl=${process.versions.openssl}`)
   expect(true).toBe(true)
 }, 120_000)
