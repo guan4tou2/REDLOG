@@ -218,7 +218,10 @@ describeDB('work of the main-thread reads, today', () => {
     if (process.env.PRINT_WORK) {
       for (const size of SIZES) for (const [name, { work, scans }] of profiles.get(size)!) console.log(`${size}\t${name}\t${JSON.stringify(workTuple(work))}${size === 10_000 ? scans.map((q) => `\n\t\t> ${q.replace(/\s+/g, ' ').slice(0, 110)}`).join('') : ''}`)
     }
-  }, 120_000)
+  // Seeding 110k rows and 2 200 body files takes about 23 s on macOS; the
+  // Windows runner has been 6-15x slower on database-heavy files, so the
+  // budget is generous. It bounds a hang, it does not assert a speed.
+  }, 420_000)
   afterAll(() => {
     uninstallWorkCounter()
     for (const d of dirs) fs.rmSync(d, { recursive: true, force: true })
