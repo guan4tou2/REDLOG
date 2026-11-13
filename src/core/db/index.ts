@@ -439,8 +439,27 @@ function applySchema(): void {
   // Index decoded values, not JSON serialization: `\\nword` otherwise
   // becomes the FTS token "nword". Only rowids are read from these contentless
   // indexes; the original evidence remains in the event tables, once.
+  //
+  // Spec 071 FR-025: the receiver's stamp `data._ingest` is left out, key and
+  // values — every new row carries one, so `door` or `in-process` would
+  // otherwise find every row. json_tree spells the key `$."_ingest"` (it
+  // quotes a key that starts with `_`); the unquoted form is matched too, in
+  // case a SQLite build spells it that way. `substr` rather than LIKE: `_` is
+  // a LIKE wildcard. Only the top-level key is the stamp; `_ingest` deeper in
+  // a producer's payload is content.
   {
     const decoded = (data: string): string => `(SELECT group_concat(
+      CASE WHEN typeof(key) = 'text' THEN key || ' ' ELSE '' END ||
+      CASE type WHEN 'true' THEN 'true' WHEN 'false' THEN 'false'
+        WHEN 'null' THEN 'null' ELSE COALESCE(CAST(atom AS TEXT), '') END, ' ')
+      FROM json_tree(${data})
+      WHERE fullkey NOT IN ('$."_ingest"', '$._ingest')
+        AND substr(fullkey, 1, 12) NOT IN ('$."_ingest".', '$."_ingest"[')
+        AND substr(fullkey, 1, 10) NOT IN ('$._ingest.', '$._ingest['))`
+    // The insert trigger every project had before T033. It indexed `_ingest`,
+    // but no row written before T033 has a receiver stamp, so what it indexed
+    // is what the trigger above would have: swapping it needs no rebuild.
+    const preT033Decoded = (data: string): string => `(SELECT group_concat(
       CASE WHEN typeof(key) = 'text' THEN key || ' ' ELSE '' END ||
       CASE type WHEN 'true' THEN 'true' WHEN 'false' THEN 'false'
         WHEN 'null' THEN 'null' ELSE COALESCE(CAST(atom AS TEXT), '') END, ' ')
@@ -451,15 +470,18 @@ function applySchema(): void {
         const ftsSql = `CREATE VIRTUAL TABLE ${fts} USING fts5(
           data, target_id, agent_type, content='', contentless_delete=1,
           tokenize='unicode61 remove_diacritics 2', prefix='2 3')`
-        const insertSql = `CREATE TRIGGER ${fts}_ai AFTER INSERT ON ${table} BEGIN
+        const insertTrigger = (text: (data: string) => string): string => `CREATE TRIGGER ${fts}_ai AFTER INSERT ON ${table} BEGIN
           INSERT INTO ${fts}(rowid, data, target_id, agent_type)
-          VALUES (new.rowid, ${decoded('new.data')}, new.target_id, new.agent_type);
+          VALUES (new.rowid, ${text('new.data')}, new.target_id, new.agent_type);
         END`
+        const insertSql = insertTrigger(decoded)
         const definition = db!.prepare('SELECT sql FROM sqlite_master WHERE name = ?')
         // A changed derived definition is rebuilt atomically. An ordinary
-        // reopen must not rescan a large project or touch its evidence.
+        // reopen must not rescan a large project or touch its evidence. The
+        // pre-T033 insert trigger is replaced without a rebuild (see above).
+        const storedInsert = (definition.get(`${fts}_ai`) as { sql: string } | undefined)?.sql
         const rebuild = (definition.get(fts) as { sql: string } | undefined)?.sql !== ftsSql
-          || (definition.get(`${fts}_ai`) as { sql: string } | undefined)?.sql !== insertSql
+          || (storedInsert !== insertSql && storedInsert !== insertTrigger(preT033Decoded))
         // Only the logged tier cleans its index on DELETE; the chained tier is
         // append-only, so `events_fts_ad` must not exist at all.
         const deleteSql = table === 'events_logged'
@@ -467,7 +489,7 @@ function applySchema(): void {
           DELETE FROM ${fts} WHERE rowid = old.rowid;
         END`
           : null
-        const triggersCurrent = !rebuild
+        const triggersCurrent = !rebuild && storedInsert === insertSql
           && (definition.get(`${fts}_ad`) as { sql: string } | undefined)?.sql === (deleteSql ?? undefined)
         // A current definition is not dropped and recreated: that was a write
         // on every open of an unchanged project.

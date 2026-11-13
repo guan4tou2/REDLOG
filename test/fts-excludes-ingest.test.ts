@@ -156,7 +156,7 @@ sqlite.describe('swapping the trigger does not rebuild the index (plan: replace 
     for (const table of ['events', 'events_logged']) {
       const sql = (dbMod.getDB().prepare('SELECT sql FROM sqlite_master WHERE name = ?').get(`${table}_fts_ai`) as { sql: string }).sql
       expect(sql, table).not.toBe(PRE_T033_INSERT_TRIGGER(table))
-      expect(sql, table).toContain("'$._ingest'")
+      expect(sql, table).toContain(`'$."_ingest"'`)
     }
     // A second open of the now-current project writes no trigger at all.
     dbMod.closeDB()
