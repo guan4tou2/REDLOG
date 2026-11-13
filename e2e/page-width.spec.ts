@@ -81,9 +81,23 @@ async function checkPage(page: Page, spec: PageSpec, lefts: Record<string, numbe
   const zoom = await page.evaluate(() => Number(getComputedStyle(document.body).zoom) || 1)
   const pad = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--pad'))) * zoom
   lefts[spec.name] = first.left - root.left
+  // A page that overflows scrolls inside the pane, and its scrollbar takes its
+  // width from the content: the dashboard measured 23.4px from the pane edge
+  // where the padding is 14.4px, the difference being the scrollbar. Both
+  // numbers here are CSS pixels of one element (offsetWidth - clientWidth),
+  // scaled by the zoom once, so they can be added to the padding.
+  const scrollbar = await page.evaluate((s) => {
+    const el = Array.from(document.querySelectorAll(s.split(' >> ')[0])).find(e => e.getClientRects().length > 0) as HTMLElement | undefined
+    for (let a = el?.parentElement ?? null; a; a = a.parentElement) {
+      if (a.dataset.testid === 'view-root') break
+      const gutter = a.offsetWidth - a.clientWidth
+      if (gutter > 0 && /(auto|scroll)/.test(getComputedStyle(a).overflowY)) return gutter
+    }
+    return 0
+  }, spec.body) * zoom
   // The body reaches the right padding: nothing narrower than the pane minus its padding.
   const gap = root.right - body.right
-  expect(gap, `${spec.name}: body (${spec.body}) stops ${gap}px short of the pane edge (padding ${pad}px)`).toBeLessThanOrEqual(pad + 1.5)
+  expect(gap, `${spec.name}: body (${spec.body}) stops ${gap}px short of the pane edge (padding ${pad}px, scrollbar ${scrollbar}px)`).toBeLessThanOrEqual(pad + scrollbar + 1.5)
 }
 
 test('every page starts at one left edge and fills the pane to its right padding', async () => {
