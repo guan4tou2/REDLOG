@@ -33,7 +33,10 @@ const PAGES = [
 const VARIANTS: Array<{ name: string; size: [number, number]; zoom: number }> = [
   { name: 'desktop', size: [1440, 900], zoom: 1 },
   { name: 'large-text', size: [1440, 900], zoom: 1.25 },
-  { name: 'narrow', size: [800, 900], zoom: 1.25 }
+  { name: 'narrow', size: [800, 900], zoom: 1.25 },
+  // The smallest window the app allows (windows.ts minWidth/minHeight). The
+  // other variants are all 900 tall, so nothing else shows a short window.
+  { name: 'min-window', size: [800, 500], zoom: 1 }
 ]
 
 let app: ElectronApplication
