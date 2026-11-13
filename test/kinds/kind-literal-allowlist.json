@@ -1,0 +1,4 @@
+{
+  "$comment": "Spec 072 T005 / plan D3. A literal kind comparison that is allowed to stay (a reader judging its own content, say) is listed here with its reason and is not counted by kind-literal-ratchet.test.ts. An entry that no longer matches anything fails the test. Empty today: nothing is exempt yet.",
+  "entries": []
+}

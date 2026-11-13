@@ -1,0 +1,35 @@
+{
+ "location": "src/renderer/src/components/TranscriptView.tsx",
+ "mode": "extracted",
+ "n": 23,
+ "table": "Transcript inclusion",
+ "words": {
+  "TRANSCRIPT_BUCKETS": [
+   "agent",
+   "loot",
+   "marker",
+   "pivot",
+   "scanner",
+   "shell",
+   "system"
+  ],
+  "entries": [
+   "agent",
+   "amended",
+   "assistant_message",
+   "command_end",
+   "http_request_start",
+   "http_response",
+   "loot",
+   "marker",
+   "scanner",
+   "session_output",
+   "shell",
+   "thinking",
+   "tool_call",
+   "tool_interrupted",
+   "tool_result",
+   "user_message"
+  ]
+ }
+}
