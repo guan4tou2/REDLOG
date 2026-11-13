@@ -1,0 +1,1017 @@
+{
+ "rows": [
+  {
+   "step": "shell-hook",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "shell",
+    "subtype": "command_start",
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": null,
+    "raw_ref": null,
+    "mapper": "{\"id\":\"identity\",\"version\":\"1\"}",
+    "schema_version": 1,
+    "ts_source": 1793527200000,
+    "source": "api",
+    "transcript_uuid": null
+   },
+   "data": {
+    "subtype": "command_start",
+    "command": "nmap -sV 10.0.0.5",
+    "shell": "zsh",
+    "pid": 4101,
+    "terminalId": "term-zsh-1",
+    "command_id": "c-zsh-1",
+    "cwd": "/work/engagement",
+    "source_timestamp": 1793527200000
+   }
+  },
+  {
+   "step": "shell-hook",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "shell",
+    "subtype": "command_end",
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": null,
+    "raw_ref": null,
+    "mapper": "{\"id\":\"identity\",\"version\":\"1\"}",
+    "schema_version": 1,
+    "ts_source": 1793527201000,
+    "source": "api",
+    "transcript_uuid": null
+   },
+   "data": {
+    "subtype": "command_end",
+    "command": "nmap -sV 10.0.0.5",
+    "shell": "zsh",
+    "pid": 4101,
+    "terminalId": "term-zsh-1",
+    "command_id": "c-zsh-1",
+    "cwd": "/work/engagement",
+    "exit_code": 0,
+    "stdout": "22/tcp open ssh\n80/tcp open http\n",
+    "output_started_at": 1793527200600,
+    "source_timestamp": 1793527201000,
+    "_causes": [
+     "<row 0>"
+    ]
+   }
+  },
+  {
+   "step": "shell-hook",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "shell",
+    "subtype": "command_start",
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": "10.0.0.5",
+    "raw_ref": null,
+    "mapper": "{\"id\":\"identity\",\"version\":\"1\"}",
+    "schema_version": 1,
+    "ts_source": 1793527202000,
+    "source": "api",
+    "transcript_uuid": null
+   },
+   "data": {
+    "subtype": "command_start",
+    "command": "curl -si http://10.0.0.5/login",
+    "shell": "bash",
+    "pid": 4202,
+    "terminalId": "term-bash-1",
+    "command_id": "c-bash-1",
+    "cwd": "/work/engagement",
+    "source_timestamp": 1793527202000,
+    "detectedTarget": "10.0.0.5"
+   }
+  },
+  {
+   "step": "shell-hook",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "shell",
+    "subtype": "command_end",
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": "10.0.0.5",
+    "raw_ref": null,
+    "mapper": "{\"id\":\"identity\",\"version\":\"1\"}",
+    "schema_version": 1,
+    "ts_source": 1793527203000,
+    "source": "api",
+    "transcript_uuid": null
+   },
+   "data": {
+    "subtype": "command_end",
+    "command": "curl -si http://10.0.0.5/login",
+    "shell": "bash",
+    "pid": 4202,
+    "terminalId": "term-bash-1",
+    "command_id": "c-bash-1",
+    "cwd": "/work/engagement",
+    "exit_code": 22,
+    "stdout": "HTTP/1.1 404 Not Found\n",
+    "source_timestamp": 1793527203000,
+    "_causes": [
+     "<row 2>"
+    ],
+    "detectedTarget": "10.0.0.5"
+   }
+  },
+  {
+   "step": "ai-claude-code",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "agent",
+    "subtype": "user_message",
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": null,
+    "raw_ref": null,
+    "mapper": null,
+    "schema_version": 1,
+    "ts_source": null,
+    "source": null,
+    "transcript_uuid": "u1"
+   },
+   "data": {
+    "subtype": "user_message",
+    "agent": "claude-code",
+    "session_id": "aaaaaaaa-bbbb-cccc-dddd-000000000001",
+    "transcript_uuid": "u1",
+    "source_timestamp": 1794564001000,
+    "preview": "scan the web host and summarise",
+    "full_length": 31,
+    "full": "scan the web host and summarise",
+    "_source_time_rejected": {
+     "value": 1794564001000,
+     "reason": "1036796000ms in the future"
+    }
+   }
+  },
+  {
+   "step": "ai-claude-code",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "agent",
+    "subtype": "assistant_message",
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": null,
+    "raw_ref": null,
+    "mapper": null,
+    "schema_version": 1,
+    "ts_source": null,
+    "source": null,
+    "transcript_uuid": "u2"
+   },
+   "data": {
+    "subtype": "assistant_message",
+    "agent": "claude-code",
+    "session_id": "aaaaaaaa-bbbb-cccc-dddd-000000000001",
+    "transcript_uuid": "u2",
+    "transcript_parent_uuid": "u1",
+    "model": "claude-sample",
+    "usage_tokens_in": 12,
+    "usage_tokens_out": 7,
+    "source_timestamp": 1794564002000,
+    "_causes": [
+     "<row 4>"
+    ],
+    "preview": "Running a service scan.",
+    "full_length": 23,
+    "full": "Running a service scan.",
+    "_source_time_rejected": {
+     "value": 1794564002000,
+     "reason": "1036797000ms in the future"
+    }
+   }
+  },
+  {
+   "step": "ai-claude-code",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "agent",
+    "subtype": "tool_call",
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": null,
+    "raw_ref": null,
+    "mapper": null,
+    "schema_version": 1,
+    "ts_source": null,
+    "source": null,
+    "transcript_uuid": "u3"
+   },
+   "data": {
+    "subtype": "tool_call",
+    "agent": "claude-code",
+    "session_id": "aaaaaaaa-bbbb-cccc-dddd-000000000001",
+    "transcript_uuid": "u3",
+    "transcript_parent_uuid": "u2",
+    "source_timestamp": 1794564003000,
+    "_causes": [
+     "<row 5>"
+    ],
+    "tool_name": "Bash",
+    "tool_use_id": "toolu_basic_1",
+    "tool_input": {
+     "command": "nmap -sV 10.0.0.5"
+    },
+    "_source_time_rejected": {
+     "value": 1794564003000,
+     "reason": "1036798000ms in the future"
+    }
+   }
+  },
+  {
+   "step": "ai-claude-code",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "agent",
+    "subtype": "tool_result",
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": null,
+    "raw_ref": null,
+    "mapper": null,
+    "schema_version": 1,
+    "ts_source": null,
+    "source": null,
+    "transcript_uuid": "u4"
+   },
+   "data": {
+    "subtype": "tool_result",
+    "agent": "claude-code",
+    "session_id": "aaaaaaaa-bbbb-cccc-dddd-000000000001",
+    "transcript_uuid": "u4",
+    "transcript_parent_uuid": "u3",
+    "source_timestamp": 1794564004000,
+    "_causes": [
+     "<row 6>"
+    ],
+    "tool_use_id": "toolu_basic_1",
+    "output_length": 32,
+    "output": "22/tcp open ssh\n80/tcp open http",
+    "_source_time_rejected": {
+     "value": 1794564004000,
+     "reason": "1036799000ms in the future"
+    }
+   }
+  },
+  {
+   "step": "ai-codex",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "agent",
+    "subtype": "user_message",
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": null,
+    "raw_ref": null,
+    "mapper": null,
+    "schema_version": 1,
+    "ts_source": null,
+    "source": null,
+    "transcript_uuid": "codex:03fdfa49df37ef56"
+   },
+   "data": {
+    "subtype": "user_message",
+    "agent": "codex",
+    "session_id": "rollout-2026-11-13T10-00-00-basic",
+    "transcript_uuid": "codex:03fdfa49df37ef56",
+    "preview": "list the listening ports",
+    "full_length": 24,
+    "full": "list the listening ports"
+   }
+  },
+  {
+   "step": "ai-codex",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "agent",
+    "subtype": "tool_call",
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": null,
+    "raw_ref": null,
+    "mapper": null,
+    "schema_version": 1,
+    "ts_source": null,
+    "source": null,
+    "transcript_uuid": "codex:fc:call_basic_1"
+   },
+   "data": {
+    "subtype": "tool_call",
+    "agent": "codex",
+    "session_id": "rollout-2026-11-13T10-00-00-basic",
+    "transcript_uuid": "codex:fc:call_basic_1",
+    "tool_name": "shell_command",
+    "tool_use_id": "call_basic_1",
+    "tool_input": {
+     "command": "ss -ltn",
+     "workdir": "/work/engagement"
+    }
+   }
+  },
+  {
+   "step": "ai-codex",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "agent",
+    "subtype": "tool_result",
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": null,
+    "raw_ref": null,
+    "mapper": null,
+    "schema_version": 1,
+    "ts_source": null,
+    "source": null,
+    "transcript_uuid": "codex:fco:call_basic_1"
+   },
+   "data": {
+    "subtype": "tool_result",
+    "agent": "codex",
+    "session_id": "rollout-2026-11-13T10-00-00-basic",
+    "transcript_uuid": "codex:fco:call_basic_1",
+    "transcript_parent_uuid": "codex:fc:call_basic_1",
+    "_causes": [
+     "<row 9>"
+    ],
+    "tool_use_id": "call_basic_1",
+    "output_length": 23,
+    "output": "LISTEN 0 128 0.0.0.0:22"
+   }
+  },
+  {
+   "step": "ai-codex",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "agent",
+    "subtype": "assistant_message",
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": null,
+    "raw_ref": null,
+    "mapper": null,
+    "schema_version": 1,
+    "ts_source": null,
+    "source": null,
+    "transcript_uuid": "codex:866155a2a9dbff65"
+   },
+   "data": {
+    "subtype": "assistant_message",
+    "agent": "codex",
+    "session_id": "rollout-2026-11-13T10-00-00-basic",
+    "transcript_uuid": "codex:866155a2a9dbff65",
+    "preview": "Port 22 is listening.",
+    "full_length": 21,
+    "full": "Port 22 is listening."
+   }
+  },
+  {
+   "step": "mitmproxy-flow",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "credential_use",
+    "subtype": "session_cookie",
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": "10.0.0.5",
+    "raw_ref": null,
+    "mapper": "{\"id\":\"derived\",\"version\":\"1\"}",
+    "schema_version": 1,
+    "ts_source": null,
+    "source": "api",
+    "transcript_uuid": null
+   },
+   "data": {
+    "subtype": "session_cookie",
+    "url": "http://10.0.0.5:8080/search?next=%2Fadmin",
+    "host": "10.0.0.5",
+    "description": "Session cookie → 10.0.0.5",
+    "mitre_ttp": "T1078",
+    "_causes": [
+     "<row 26>"
+    ]
+   }
+  },
+  {
+   "step": "marker-ipc",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "marker",
+    "subtype": null,
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": "10.0.0.5",
+    "raw_ref": null,
+    "mapper": null,
+    "schema_version": 1,
+    "ts_source": null,
+    "source": null,
+    "transcript_uuid": null
+   },
+   "data": {
+    "title": "SSH exposed",
+    "notes": "open on 10.0.0.5",
+    "severity": "high",
+    "category": "finding",
+    "_causes": [
+     "<row 1>"
+    ]
+   }
+  },
+  {
+   "step": "marker-hud",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "marker",
+    "subtype": null,
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": null,
+    "raw_ref": null,
+    "mapper": null,
+    "schema_version": 1,
+    "ts_source": 1793527208000,
+    "source": null,
+    "transcript_uuid": null
+   },
+   "data": {
+    "title": "login page reached",
+    "notes": "via form",
+    "severity": "info",
+    "category": "custom",
+    "source_timestamp": 1793527208000,
+    "source": "hud"
+   }
+  },
+  {
+   "step": "marker-hud",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "marker",
+    "subtype": null,
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": null,
+    "raw_ref": null,
+    "mapper": null,
+    "schema_version": 1,
+    "ts_source": 1793527210000,
+    "source": null,
+    "transcript_uuid": null
+   },
+   "data": {
+    "title": "HUD mark <time of day>",
+    "notes": "",
+    "severity": "info",
+    "category": "custom",
+    "source_timestamp": 1793527210000,
+    "source": "hud-instant"
+   }
+  },
+  {
+   "step": "marker-api",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "marker",
+    "subtype": "finding",
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": "10.0.0.5",
+    "raw_ref": null,
+    "mapper": "{\"id\":\"identity\",\"version\":\"1\"}",
+    "schema_version": 1,
+    "ts_source": null,
+    "source": "api",
+    "transcript_uuid": null
+   },
+   "data": {
+    "subtype": "finding",
+    "title": "Default credentials page",
+    "notes": "reported by a script",
+    "severity": "medium",
+    "category": "custom"
+   }
+  },
+  {
+   "step": "export-early",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "system",
+    "subtype": "logged_tier_digest",
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": null,
+    "raw_ref": null,
+    "mapper": null,
+    "schema_version": 1,
+    "ts_source": null,
+    "source": null,
+    "transcript_uuid": null
+   },
+   "data": {
+    "subtype": "logged_tier_digest",
+    "count": 2,
+    "sha256": "be9cd29165b600101b67760a09b49eb9d6e0e1d0873beeeb4f6ddae05efc2eaf",
+    "oldest_at": 1793527207000,
+    "newest_at": 1793527207250,
+    "reason": "export",
+    "description": "export: logged-tier snapshot — 2 row(s), sha256 be9cd29165b6…"
+   }
+  },
+  {
+   "step": "export-early",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "system",
+    "subtype": "export_sealed",
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": null,
+    "raw_ref": null,
+    "mapper": null,
+    "schema_version": 1,
+    "ts_source": null,
+    "source": null,
+    "transcript_uuid": null
+   },
+   "data": {
+    "subtype": "export_sealed",
+    "sealVersion": 1,
+    "exportId": "00000000-0000-4000-8000-000000000023",
+    "bundleVersion": 4,
+    "manifestSha256": "a3d70eef8113daafc8239230607f4c1b12333f94d57f62e8d70d2024d9c2d8fe",
+    "events": {
+     "count": 18,
+     "bytes": 16777,
+     "sha256": "15a5d114d0cc0cc8ce846147e68e366f7dfabddc40c5a33549103cfb8f291017",
+     "headHash": "e7790fdeaa329688407d133a99cce42b875bd5a5ca90e423b7d998ab2c5c20d8"
+    },
+    "description": "export sealed: 18 chained row(s), 7 file(s), 0 omitted attachment(s)"
+   }
+  },
+  {
+   "step": "ai-session-end",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "agent",
+    "subtype": "transcript_snapshot",
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": null,
+    "raw_ref": null,
+    "mapper": null,
+    "schema_version": 1,
+    "ts_source": null,
+    "source": null,
+    "transcript_uuid": null
+   },
+   "data": {
+    "subtype": "transcript_snapshot",
+    "session_id": "aaaaaaaa-bbbb-cccc-dddd-000000000001",
+    "agent": "claude-code",
+    "snapshot_path": "<tmp>/project/agent-transcripts/claude-code-aaaaaaaa-bbbb-cccc-dddd-000000000001.jsonl",
+    "cumulative_bytes": 862,
+    "cumulative_sha256": "ae54790b3a70ce20b201a1fd02e3d5f97eff478cea0b0d4edd8afba2f9a3d090",
+    "line_count": 4,
+    "turns_emitted": 4,
+    "tool_calls_seen": 1,
+    "tool_calls_emitted": 1,
+    "reason": "session_close"
+   }
+  },
+  {
+   "step": "ai-session-end",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "agent",
+    "subtype": "session_end",
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": null,
+    "raw_ref": null,
+    "mapper": null,
+    "schema_version": 1,
+    "ts_source": null,
+    "source": null,
+    "transcript_uuid": null
+   },
+   "data": {
+    "subtype": "session_end",
+    "agent": "claude-code",
+    "session_id": "aaaaaaaa-bbbb-cccc-dddd-000000000001",
+    "turns_emitted": 4,
+    "lines_seen": 4,
+    "description": "Transcript source removed or tailer shutting down; no more events for this session."
+   }
+  },
+  {
+   "step": "ai-session-end",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "agent",
+    "subtype": "transcript_snapshot",
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": null,
+    "raw_ref": null,
+    "mapper": null,
+    "schema_version": 1,
+    "ts_source": null,
+    "source": null,
+    "transcript_uuid": null
+   },
+   "data": {
+    "subtype": "transcript_snapshot",
+    "session_id": "rollout-2026-11-13T10-00-00-basic",
+    "agent": "codex",
+    "snapshot_path": "<tmp>/project/agent-transcripts/codex-rollout-2026-11-13T10-00-00-basic.jsonl",
+    "cumulative_bytes": 914,
+    "cumulative_sha256": "e8555fd8b76d12dc9671f4eff3b8d463de340c7e53856393ffecb6d9a2ef6ed5",
+    "line_count": 5,
+    "turns_emitted": 4,
+    "tool_calls_seen": 0,
+    "tool_calls_emitted": 1,
+    "reason": "session_close"
+   }
+  },
+  {
+   "step": "ai-session-end",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "agent",
+    "subtype": "session_end",
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": null,
+    "raw_ref": null,
+    "mapper": null,
+    "schema_version": 1,
+    "ts_source": null,
+    "source": null,
+    "transcript_uuid": null
+   },
+   "data": {
+    "subtype": "session_end",
+    "agent": "codex",
+    "session_id": "rollout-2026-11-13T10-00-00-basic",
+    "turns_emitted": 4,
+    "lines_seen": 5,
+    "description": "Transcript source removed or tailer shutting down; no more events for this session."
+   }
+  },
+  {
+   "step": "screenshot-hotkey",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "screenshot",
+    "subtype": null,
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": null,
+    "raw_ref": null,
+    "mapper": null,
+    "schema_version": 1,
+    "ts_source": null,
+    "source": null,
+    "transcript_uuid": null
+   },
+   "data": {
+    "trigger": "manual",
+    "filePath": "<tmp>/project/screenshots/2026-11-01T10-00-16-000Z_manual.jpg",
+    "filename": "2026-11-01T10-00-16-000Z_manual.jpg",
+    "size": 64,
+    "width": 100,
+    "height": 100,
+    "sha256": "00514f7b576e0bc2ad98d369c5c5d55c31d6ce1f2a377e0da23768f5db349b1d",
+    "hash": "00514f7b576e0bc2",
+    "display_id": "2"
+   }
+  },
+  {
+   "step": "screenshot-hotkey",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "screenshot",
+    "subtype": null,
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": null,
+    "raw_ref": null,
+    "mapper": null,
+    "schema_version": 1,
+    "ts_source": null,
+    "source": null,
+    "transcript_uuid": null
+   },
+   "data": {
+    "trigger": "manual",
+    "filePath": "<tmp>/project/screenshots/2026-11-01T10-00-18-000Z_manual.jpg",
+    "filename": "2026-11-01T10-00-18-000Z_manual.jpg",
+    "size": 64,
+    "width": 100,
+    "height": 100,
+    "sha256": "00514f7b576e0bc2ad98d369c5c5d55c31d6ce1f2a377e0da23768f5db349b1d",
+    "hash": "00514f7b576e0bc2",
+    "display_id": "2",
+    "captured_at": 1793527217000,
+    "held_for_marker": true,
+    "_causes": [
+     "<row 13>"
+    ]
+   }
+  },
+  {
+   "step": "artifact-added",
+   "tier": "chained",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "file_transfer",
+    "subtype": "artifact_added",
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": null,
+    "raw_ref": null,
+    "mapper": null,
+    "schema_version": 1,
+    "ts_source": null,
+    "source": null,
+    "transcript_uuid": null
+   },
+   "data": {
+    "subtype": "artifact_added",
+    "source": "operator",
+    "path": "<tmp>/loot/notes.txt",
+    "stored": "artifacts/962ddf431b8e-notes.txt",
+    "sha256": "962ddf431b8ecbfdd51db3f4be3fd7d7196d72704db911b28143ad1c9f69e366",
+    "size": 34,
+    "mtime": 1793527140000
+   }
+  },
+  {
+   "step": "mitmproxy-flow",
+   "tier": "logged",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "scanner",
+    "subtype": "http_request_start",
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": "10.0.0.5",
+    "raw_ref": null,
+    "mapper": "{\"id\":\"identity\",\"version\":\"1\"}",
+    "schema_version": 1,
+    "ts_source": 1793527207000,
+    "source": "api"
+   },
+   "data": {
+    "cookies": [
+     {
+      "name": "session",
+      "value": "s-0001"
+     },
+     {
+      "name": "theme",
+      "value": "dark"
+     }
+    ],
+    "flow_id": "flow-0001",
+    "host": "10.0.0.5",
+    "http_version": "HTTP/1.1",
+    "method": "POST",
+    "params": {
+     "body_form": {
+      "page": "2",
+      "q": "openssh"
+     },
+     "query": {
+      "next": "/admin"
+     }
+    },
+    "path": "/search",
+    "port": 8080,
+    "request_body": {
+     "content_type": "application/x-www-form-urlencoded",
+     "data": "q=openssh&page=2",
+     "encoding": "text",
+     "sha256": "f5ddb181552502d1a982e44b81969f1b6f21ef42b4beeb0eb8ab947070b3e3de",
+     "size": 16,
+     "truncated": false
+    },
+    "request_body_preview": "q=openssh&page=2",
+    "request_headers": [
+     [
+      "Host",
+      "10.0.0.5:8080"
+     ],
+     [
+      "Content-Type",
+      "application/x-www-form-urlencoded"
+     ],
+     [
+      "Cookie",
+      "session=s-0001; theme=dark"
+     ]
+    ],
+    "scheme": "http",
+    "source_addr": "127.0.0.1:51234",
+    "source_timestamp": 1793527207000,
+    "subtype": "http_request_start",
+    "url": "http://10.0.0.5:8080/search?next=%2Fadmin"
+   }
+  },
+  {
+   "step": "mitmproxy-flow",
+   "tier": "logged",
+   "columns": {
+    "engagement_id": "eng-basic-paths",
+    "operator_id": "op-basic-paths",
+    "agent_type": "scanner",
+    "subtype": "http_response",
+    "hostname": "basic-paths-host",
+    "source_ip": null,
+    "target_id": "10.0.0.5",
+    "raw_ref": null,
+    "mapper": "{\"id\":\"identity\",\"version\":\"1\"}",
+    "schema_version": 1,
+    "ts_source": 1793527207250,
+    "source": "api"
+   },
+   "data": {
+    "content_length": 31,
+    "content_type": "text/html; charset=utf-8",
+    "duration_ms": 250,
+    "flow_id": "flow-0001",
+    "http_version": "HTTP/1.1",
+    "method": "POST",
+    "response_body": {
+     "content_type": "text/html; charset=utf-8",
+     "data": "<html><body>Found</body></html>",
+     "encoding": "text",
+     "sha256": "cd158f15a8b4564213f32a84841413a2f3de39ce0e6f1abb0d4ff1123becb175",
+     "size": 31,
+     "truncated": false
+    },
+    "response_headers": [
+     [
+      "Content-Type",
+      "text/html; charset=utf-8"
+     ],
+     [
+      "Location",
+      "/admin"
+     ],
+     [
+      "Set-Cookie",
+      "session=s-0002; Path=/; HttpOnly; SameSite=Lax"
+     ]
+    ],
+    "response_preview": "<html><body>Found</body></html>",
+    "set_cookies": [
+     {
+      "httponly": true,
+      "name": "session",
+      "path": "/",
+      "samesite": "lax",
+      "value": "s-0002"
+     }
+    ],
+    "source_timestamp": 1793527207250,
+    "status": 302,
+    "subtype": "http_response",
+    "timing": {
+     "receive_ms": 10,
+     "send_ms": 10,
+     "wait_ms": 40
+    },
+    "url": "http://10.0.0.5:8080/search?next=%2Fadmin",
+    "_causes": [
+     "<row 26>"
+    ]
+   }
+  }
+ ],
+ "rowsPerStep": {
+  "shell-hook": 4,
+  "ai-claude-code": 4,
+  "ai-codex": 4,
+  "mitmproxy-flow": 3,
+  "marker-ipc": 1,
+  "marker-hud": 2,
+  "marker-api": 1,
+  "export-early": 2,
+  "ai-session-end": 4,
+  "screenshot-hotkey": 2,
+  "artifact-added": 1
+ },
+ "exports": {
+  "early": {
+   "json": {
+    "bytes": 23910,
+    "sha256": "226a8256685c77dcf2b12a1d538c5ca668c8aa84d7cb6306394c4f37f3a5ee1c",
+    "rows": 19,
+    "normalizedSha256": "a7f61142242c8858431b80c3b121d8f51da7782e18c12ed6cf5bb41a048928c6"
+   },
+   "ndjson": {
+    "bytes": 18660,
+    "sha256": "01d420e931ccce8a854971c7ce097a49685737d3c86e182490676410c17a912b",
+    "normalizedSha256": "a7f61142242c8858431b80c3b121d8f51da7782e18c12ed6cf5bb41a048928c6",
+    "rows": 19
+   },
+   "bundleEvents": {
+    "bytes": 17918,
+    "sha256": "65d5b6b83e6df7b75a8a2fc50c3e481d78e41881a04cf92d2a60121f7c4fb80d",
+    "normalizedSha256": "1ffaecbae8b82aa33ac9e709b55e580b7b62ef9763f2c7577007e54b5c8c6943",
+    "rows": 19
+   },
+   "bundleLogged": {
+    "bytes": 2578,
+    "sha256": "7fb8201327649c7d8ae65da62d2fcb09e4f84c04fb11e0398edfb8afb8622215",
+    "normalizedSha256": "500a4c76abc9d3fe39009305a520c3ad739f64c0a6a78968c7ffb32fc45d5cbb",
+    "rows": 2
+   },
+   "bundleFiles": [
+    "README.md",
+    "chain_anchors.json",
+    "events.jsonl",
+    "events_logged.jsonl",
+    "manifest.hmac",
+    "manifest.json",
+    "manifest.sha256",
+    "operators.json",
+    "redlog-verify.py",
+    "verify.cmd",
+    "verify.sh"
+   ]
+  },
+  "final": {
+   "json": {
+    "rows": 28,
+    "normalizedSha256": "de35b9580afcab9ab43a0e919477f48d84c578cf451fe2ceea65cd9c232ac63e"
+   },
+   "ndjson": {
+    "rows": 28,
+    "normalizedSha256": "de35b9580afcab9ab43a0e919477f48d84c578cf451fe2ceea65cd9c232ac63e"
+   }
+  }
+ }
+}
