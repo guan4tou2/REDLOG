@@ -243,7 +243,7 @@ ai: { revokedAt: { claude-code: 1731400000000 }, legacyInstallations: { claude-c
 6. **後果**：升級後，若某既有專案的 `config.yaml` 是 `bob` 而機器層是 `alice`（或尚未設定、為 `operator-1`），之後的新列 `operator_id` 是機器層的值；同一份紀錄出現兩個 operator id。兩者都照常驗證（每列帶自己的 `operator_id`，`operators.json` 對應各自的公鑰），只是 09-F8 所說的「一份紀錄兩個簽章者」在升級的那一刻發生一次。機器層第一次的值是預設還是從某個專案取一次，是開放問題 Q7（建議：預設，不取）。
 7. **071 的蓋章**：071 FR-009「`observed.operator` 是本專案已知且未撤銷的操作者時採用」不變：那是觀察當下的機器層 operator（交接目錄延遲送達時，送達時的 operator 可能已改），「已知」的集合只由機器層 operator 曾經生效的值構成，沒有專案層的來源（071 的修訂註記）。
 
-**依據**：DECISIONS §9 的 073 Q4 一列。「不為舊格式保留相容」是擁有者同日的裁定（不保留與 RedLog 舊版本的相容），本次修訂時尚未寫入 `docs/records/2026-11-13/DECISIONS.md`；第 2、5 項依它撰寫，若它不成立，第 2 項改為「既有值讀為機器層的初值」、第 5 項恢復 D6。
+**依據**：DECISIONS §9 的 073 Q4 一列。「不為舊格式保留相容」是擁有者同日的裁定，條文在 [Spec 077](../077-personal-content-and-delivery/spec.md) 的 R8（產品未發行：不遷移、不讀舊格式、不並存版本；唯一的殘留是 app 遇到不理解的資料不得當掉）；第 2、5 項依它撰寫。
 
 **被否決**：
 
