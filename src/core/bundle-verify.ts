@@ -47,10 +47,18 @@ const V4_MANIFEST_KEYS = new Set([
   'sanitized', 'sanitizedOutOfScope', 'personalDropped', 'doNotExportDropped', 'exportPlan', 'tiers', 'attachments',
   'attachmentScopePolicy', 'eventSourceBreakdown', 'rawAgentTranscripts', 'files', 'seal', 'omittedAttachments'
 ])
-/** The seal's own fields, plus `_ingest`: the receiver stamps every new row,
- *  this one included (Spec 071 FR-005). It is not a seal field and says
- *  nothing the seal check reads; refusing it would refuse every new seal. */
-const SEAL_DATA_KEYS = new Set(['subtype', 'sealVersion', 'exportId', 'bundleVersion', 'manifestSha256', 'events', 'description', '_ingest'])
+/** The seal's own fields, plus the two receiver keys a seal row can carry.
+ *  They are not seal fields and nothing in the seal check reads them;
+ *  refusing them refused every seal written with them.
+ *   - `_ingest`: the receiver stamps every new row (Spec 071 FR-005).
+ *   - `_clock_anomaly`: insertEvent adds it to any chained row written while
+ *     the clock is off (NTP offset past 30 s, monotonic regression).
+ *  No other: insertEvent adds `_raw` only for an envelope carrying raw bytes
+ *  and `_source_time_rejected` only for a producer-supplied time, and
+ *  writeExportSeal passes neither. Anything else is a seal format this
+ *  verifier does not know. tools/redlog-verify.py holds the same set. */
+const SEAL_DATA_KEYS = new Set(['subtype', 'sealVersion', 'exportId', 'bundleVersion', 'manifestSha256', 'events', 'description',
+  '_ingest', '_clock_anomaly'])
 const SEAL_EVENTS_KEYS = new Set(['count', 'bytes', 'sha256', 'headHash'])
 
 type Row = Record<string, unknown>

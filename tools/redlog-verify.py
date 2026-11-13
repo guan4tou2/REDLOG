@@ -216,10 +216,16 @@ V4_MANIFEST_KEYS = {
     "sanitized", "sanitizedOutOfScope", "personalDropped", "doNotExportDropped", "exportPlan", "tiers", "attachments",
     "attachmentScopePolicy", "eventSourceBreakdown", "rawAgentTranscripts", "files", "seal", "omittedAttachments",
 }
-# The seal's own fields, plus `_ingest`: the receiver stamps every new row, this
-# one included (Spec 071 FR-005). It is not a seal field and says nothing the
-# seal check reads; refusing it would refuse every new seal.
-SEAL_DATA_KEYS = {"subtype", "sealVersion", "exportId", "bundleVersion", "manifestSha256", "events", "description", "_ingest"}
+# The seal's own fields, plus the two receiver keys a seal row can carry. They
+# are not seal fields and nothing in the seal check reads them; refusing them
+# refused every seal written with them.
+#   - `_ingest`: the receiver stamps every new row (Spec 071 FR-005).
+#   - `_clock_anomaly`: added to any chained row written while the clock is off.
+# No other: `_raw` comes only with an envelope's raw bytes and
+# `_source_time_rejected` only with a producer-supplied time, and the seal has
+# neither. Same set as src/core/bundle-verify.ts.
+SEAL_DATA_KEYS = {"subtype", "sealVersion", "exportId", "bundleVersion", "manifestSha256", "events", "description",
+                  "_ingest", "_clock_anomaly"}
 SEAL_EVENTS_KEYS = {"count", "bytes", "sha256", "headHash"}
 
 
