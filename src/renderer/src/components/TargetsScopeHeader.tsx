@@ -52,7 +52,7 @@ export function TargetsScopeHeader({ page, onNavigate, onOpenSettings }: {
   // as a fact, beside "not set".
   const configured = !!value && value.configured
 
-  return <div data-testid="targets-scope-header" className="shrink-0 px-pad pt-pad"><div className={`${PAGE_BODY} space-y-3`}>
+  return <div data-testid="targets-scope-header" className="shrink-0 px-pad pt-3"><div className={`${PAGE_BODY} space-y-3`}>
     <div className="flex items-start justify-between gap-4">
       <div className="min-w-0">
         <h1 className="text-lg font-semibold text-redlog-text">{t('sidebar.targetsScope')}</h1>

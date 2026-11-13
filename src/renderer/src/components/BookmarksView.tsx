@@ -151,7 +151,7 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
   return (
     <div data-testid="bookmarks-workspace" className="flex h-full min-w-0">
       {(marks.length > 0 || !creating || !detailOpen) && <div hidden={detailOpen} className="flex-1 min-w-0 flex flex-col">
-        <div className="p-2 border-b border-redlog-border">
+        <div className="px-pad py-2 border-b border-redlog-border">
           <div className="flex items-center justify-between mb-2 gap-1">
             <span className="text-xs font-semibold text-redlog-text-dim uppercase tracking-wider flex-1 truncate">
               {t('bookmarks.title', { count: marks.length })}
@@ -181,7 +181,7 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
             user types. It is always there: a list that grows past one screen
             is found by searching, and the field must not appear mid-session. */}
         {marks.length > 0 && (
-          <div className="px-2 py-1.5 border-b border-redlog-border">
+          <div className="px-pad py-1.5 border-b border-redlog-border">
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -213,7 +213,7 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
                   if (m.id === selected?.id) selectedRow.current = el
                 }}
                 onClick={() => { rowProps.onClick(); setSelected(m); setCreating(false); setDetailOpen(true) }}
-                className={`w-full text-left px-3 py-2.5 border-b border-redlog-border hover:bg-redlog-elevated/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-redlog-accent/50 ${
+                className={`w-full text-left px-pad py-2.5 border-b border-redlog-border hover:bg-redlog-elevated/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-redlog-accent/50 ${
                   selected?.id === m.id ? 'bg-redlog-elevated' : ''
                 }`}
               >

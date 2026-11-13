@@ -101,7 +101,7 @@ export default function RecordingWorkspace({ active = true, onOpenInTimeline, on
   const { filter, setAgentType, knownAgentTypes } = useSharedFilter()
   const zone = useDisplayZone()
   return <div className="h-full min-h-0 min-w-0 flex flex-col" data-testid="recording-workspace">
-    <div className="px-4 pt-3 space-y-3 shrink-0">
+    <div className="px-pad pt-3 space-y-3 shrink-0">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 data-testid="activity-title" className="text-base font-medium text-redlog-text">{t('activity.pageTitle')}</h1>
         <RecordingStatus knownAgentTypes={knownAgentTypes} onFilter={(at) => { setAgentType(at); choose('activities') }} />
@@ -151,7 +151,7 @@ export default function RecordingWorkspace({ active = true, onOpenInTimeline, on
       hidden={!searching} className={searching ? 'flex-1 min-h-0' : undefined}>
       <SearchPanel browse controlledQuery={query} viewMode={reading === 'events' ? 'events' : 'activities'} onClearQuery={() => setQuery('')} active={active && searching} onOpenInTimeline={onOpenInTimeline} />
     </div>
-    {query.trim() && <details className="shrink-0 px-4 pb-2 text-xs text-redlog-text-dim"><summary>{t('workspace.searchCoverage')}</summary><p className="pt-1">{t('workspace.coverageBoundary')}</p></details>}
+    {query.trim() && <details className="shrink-0 px-pad pb-2 text-xs text-redlog-text-dim"><summary>{t('workspace.searchCoverage')}</summary><p className="pt-1">{t('workspace.coverageBoundary')}</p></details>}
     {(['io', 'ai'] as const).filter(mode => visited.has(mode)).map(mode => <div key={mode} role="tabpanel"
       id={`reading-panel-${mode}`} aria-labelledby={`reading-tab-${mode}`} hidden={reading !== mode}
       className={reading === mode ? 'flex-1 min-h-0' : undefined}>

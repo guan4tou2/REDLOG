@@ -43,7 +43,7 @@ export function EvidenceHeader({ page, onNavigate }: {
     bookmarks: marks.state.value
   }
 
-  return <div data-testid="evidence-header" className="shrink-0 space-y-2 px-4 pt-3">
+  return <div data-testid="evidence-header" className="shrink-0 space-y-2 px-pad pt-3">
     <div className="min-w-0">
       <h1 className="text-lg font-semibold text-redlog-text">{t('sidebar.evidence')}</h1>
       {/* The one-line hint gives way when the window is short (a small window at

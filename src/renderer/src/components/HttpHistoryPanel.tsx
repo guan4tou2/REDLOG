@@ -381,7 +381,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
 
   return (
     <div ref={containerRef} data-testid="http-workspace" className="flex flex-col h-full min-w-0 overflow-auto">
-      <div className="shrink-0 flex flex-wrap min-w-0 items-center gap-2 px-3 py-2 border-b border-redlog-border-subtle/60 bg-redlog-bg/50">
+      <div className="shrink-0 flex flex-wrap min-w-0 items-center gap-2 px-pad py-2 border-b border-redlog-border-subtle/60 bg-redlog-bg/50">
         <span className="text-sm font-semibold text-redlog-text">{t('httpHistory.title')}</span>
         <span className="text-xs text-redlog-text-dim font-mono tabular-nums">
           {t('httpHistory.counts', { flows: filtered.length })}
@@ -404,7 +404,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
         />
       </div>
 
-      <div className="shrink-0 flex flex-wrap min-w-0 items-center gap-1.5 px-3 py-1 border-b border-redlog-border-subtle/40 bg-redlog-bg/30">
+      <div className="shrink-0 flex flex-wrap min-w-0 items-center gap-1.5 px-pad py-1 border-b border-redlog-border-subtle/40 bg-redlog-bg/30">
         <button
           onClick={() => { setMethodFilter(null); setStatusFilter(null); setHostFilter(null) }}
           aria-pressed={!methodFilter && !statusFilter && !hostFilter}
@@ -452,7 +452,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
         <EmptyByConstructionNotice text={t('filter.chainedOnlyHttp')} />
       )}
 
-      <div className="shrink-0 flex flex-wrap items-center gap-2 px-3 py-1 border-b border-redlog-border-subtle/40 text-xs">
+      <div className="shrink-0 flex flex-wrap items-center gap-2 px-pad py-1 border-b border-redlog-border-subtle/40 text-xs">
         {busy ? (
           // Auto-following to completion: either a page is in flight, or the
           // last one settled and the next is about to be dispatched. Held as
@@ -496,7 +496,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
           <table className="w-full table-fixed text-xs font-mono">
             <thead className="sticky top-0 whitespace-nowrap bg-redlog-surface/95 z-10">
               <tr className="text-redlog-text-dim uppercase tracking-wider text-left">
-                <th className="px-2 py-1.5 font-medium w-24" aria-sort={ariaSort('timestamp')}>
+                <th className="pl-pad pr-2 py-1.5 font-medium w-24" aria-sort={ariaSort('timestamp')}>
                   <Button level="quiet" size="compact" onClick={() => toggleSort('timestamp')}>{t('httpHistory.colWhen')}{sortArrow('timestamp')}</Button>
                 </th>
                 <th className="px-2 py-1.5 font-medium w-20">{t('httpHistory.colMethod')}</th>
@@ -506,15 +506,15 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
                 {columns.hostApart
                   ? <>
                     <th className={`px-2 py-1.5 font-medium ${columns.tier === 'wide' ? 'w-[25%]' : 'w-[30%]'}`}>{t('httpHistory.colHost')}</th>
-                    <th className="px-2 py-1.5 font-medium">{t('httpHistory.colUrl')}</th>
+                    <th className={`pl-2 ${columns.detail ? 'pr-2' : 'pr-pad'} py-1.5 font-medium`}>{t('httpHistory.colUrl')}</th>
                   </>
-                  : <th className="px-2 py-1.5 font-medium truncate" title={`${t('httpHistory.colHost')} / ${t('httpHistory.colUrl')}`}>{t('httpHistory.colHost')} / {t('httpHistory.colUrl')}</th>}
+                  : <th className={`pl-2 ${columns.detail ? 'pr-2' : 'pr-pad'} py-1.5 font-medium truncate`} title={`${t('httpHistory.colHost')} / ${t('httpHistory.colUrl')}`}>{t('httpHistory.colHost')} / {t('httpHistory.colUrl')}</th>}
                 {columns.detail && <>
                   <th className="px-2 py-1.5 font-medium w-28">{t('httpHistory.colType')}</th>
                   <th className="px-2 py-1.5 font-medium w-20 text-right" aria-sort={ariaSort('size')}>
                     <Button level="quiet" size="compact" onClick={() => toggleSort('size')}>{t('httpHistory.colSize')}{sortArrow('size')}</Button>
                   </th>
-                  <th className="px-2 py-1.5 font-medium w-20 text-right" aria-sort={ariaSort('durationMs')}>
+                  <th className="pl-2 pr-pad py-1.5 font-medium w-20 text-right" aria-sort={ariaSort('durationMs')}>
                     <Button level="quiet" size="compact" onClick={() => toggleSort('durationMs')}>{t('httpHistory.colTime')}{sortArrow('durationMs')}</Button>
                   </th>
                 </>}
@@ -555,10 +555,10 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
                     className="border-b border-redlog-border-subtle/30 hover:bg-redlog-elevated/30 cursor-pointer focus-visible:outline-none focus-visible:bg-redlog-elevated/50"
                     onClick={() => { rowProps.onClick(); openDetail(eventId) }}
                   >
-                    <td className="px-2 py-1 text-redlog-text-faint tabular-nums truncate" title={formatTime(f.timestamp, { seconds: true })}>{formatTime(f.timestamp, { seconds: true })}</td>
+                    <td className="pl-pad pr-2 py-1 text-redlog-text-faint tabular-nums truncate" title={formatTime(f.timestamp, { seconds: true })}>{formatTime(f.timestamp, { seconds: true })}</td>
                     <td className={`px-2 py-1 font-semibold truncate ${methodClass}`} title={f.method}>{f.method}</td>
                     <td className={`px-2 py-1 truncate ${statusClass}`} title={String(f.status ?? '—')}>{f.status ?? '—'}</td>
-                    <td className="px-2 py-1 text-redlog-text-dim">
+                    <td className={`pl-2 ${columns.hostApart || columns.detail ? 'pr-2' : 'pr-pad'} py-1 text-redlog-text-dim`}>
                       {/* Host apart: host over its scope word. Host and path in
                           one cell: host and scope word share the first line,
                           so the row keeps its fixed 42px for the virtualizer. */}
@@ -570,13 +570,13 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
                       </span>
                       {!columns.hostApart && <span className="block truncate text-redlog-text" title={f.url}>{urlPath}</span>}
                     </td>
-                    {columns.hostApart && <td className="px-2 py-1 text-redlog-text truncate" title={f.url}>{urlPath}</td>}
+                    {columns.hostApart && <td className={`pl-2 ${columns.detail ? 'pr-2' : 'pr-pad'} py-1 text-redlog-text truncate`} title={f.url}>{urlPath}</td>}
                     {columns.detail && <>
                       <td className="px-2 py-1 text-redlog-text-dim truncate" title={f.contentType}>
                         {f.contentType.replace(/^application\//, '').replace(/;.*/, '')}
                       </td>
                       <td className="px-2 py-1 text-redlog-text-dim text-right truncate" title={f.size !== null ? formatBytes(f.size) : '—'}>{f.size !== null ? formatBytes(f.size) : '—'}</td>
-                      <td className="px-2 py-1 text-redlog-text-dim text-right truncate" title={f.durationMs !== null ? `${f.durationMs}ms` : '—'}>{f.durationMs !== null ? `${f.durationMs}ms` : '—'}</td>
+                      <td className="pl-2 pr-pad py-1 text-redlog-text-dim text-right truncate" title={f.durationMs !== null ? `${f.durationMs}ms` : '—'}>{f.durationMs !== null ? `${f.durationMs}ms` : '—'}</td>
                     </>}
                   </tr>
                 )
