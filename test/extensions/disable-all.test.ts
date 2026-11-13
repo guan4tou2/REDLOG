@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import { requires } from '../helpers/requires'
-import { runBasicPaths, type BasicPathsRun } from './basic-paths-fixture'
+import { firstDiff, runBasicPaths, type BasicPathsRun } from './basic-paths-fixture'
 
 const GOLDEN = path.join(__dirname, 'basic-paths.golden.json')
 const ROOT = path.join(__dirname, '..', '..')
@@ -46,8 +46,8 @@ sqlite.describe('with every bundled plugin disabled (Spec 076 T003)', () => {
     expect(statuses).toEqual(Object.fromEntries(BUNDLED.map((id) => [id, 'disabled'])))
     const golden: BasicPathsRun = JSON.parse(fs.readFileSync(GOLDEN, 'utf8'))
     expect(run.rowsPerStep).toEqual(golden.rowsPerStep)
-    run.rows.forEach((row, i) => expect(row, `row ${i} (${row.step})`).toEqual(golden.rows[i]))
+    run.rows.forEach((row, i) => expect(row, `row ${i} (${row.step}) first difference at ${firstDiff(row, golden.rows[i])}`).toEqual(golden.rows[i]))
     expect(run.rows).toHaveLength(golden.rows.length)
-    expect(run.exports).toEqual(golden.exports)
+    expect(run.exports, `exports: first difference at ${firstDiff(run.exports, golden.exports)}`).toEqual(golden.exports)
   })
 })

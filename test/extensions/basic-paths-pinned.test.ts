@@ -34,7 +34,7 @@ import { describe, expect, it } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import { requires } from '../helpers/requires'
-import { runBasicPaths, type BasicPathsRun } from './basic-paths-fixture'
+import { firstDiff, runBasicPaths, type BasicPathsRun } from './basic-paths-fixture'
 
 const GOLDEN = path.join(__dirname, 'basic-paths.golden.json')
 const WRITE = process.env.REDLOG_WRITE_BASIC_PATHS === '1'
@@ -74,10 +74,10 @@ sqlite.describe('the basic paths, as they are written today (Spec 076 T002)', ()
     const golden = recorded()
     expect(run.rowsPerStep).toEqual(golden.rowsPerStep)
     // Row by row, so the failure names the row.
-    run.rows.forEach((row, i) => expect(row, `row ${i} (${row.step}: ${String(row.data.subtype ?? row.columns.agent_type)})`).toEqual(golden.rows[i]))
+    run.rows.forEach((row, i) => expect(row, `row ${i} (${row.step}: ${String(row.data.subtype ?? row.columns.agent_type)}) first difference at ${firstDiff(row, golden.rows[i])}`).toEqual(golden.rows[i]))
     expect(run.rows).toHaveLength(golden.rows.length)
     expect(run.exports.early.bundleFiles).toEqual(golden.exports.early.bundleFiles)
-    expect(run.exports).toEqual(golden.exports)
+    expect(run.exports, `exports: first difference at ${firstDiff(run.exports, golden.exports)}`).toEqual(golden.exports)
   })
 
   it('the JSON, NDJSON and bundle exports carry the same rows (their normalized digests agree)', async () => {

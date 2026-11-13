@@ -168,6 +168,18 @@ function writeTranscripts(work: string): { claude: string; claudeDir: string; co
   return { claude: claudeFile, claudeDir, codex: codexFile, codexDir }
 }
 
+/** Path of the first place two JSON values differ, e.g. `data.events.bytes`. */
+export function firstDiff(a: unknown, b: unknown, at = ''): string | null {
+  if (JSON.stringify(a) === JSON.stringify(b)) return null
+  if (a && b && typeof a === 'object' && typeof b === 'object') {
+    for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+      const d = firstDiff((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k], at ? `${at}.${k}` : k)
+      if (d) return d
+    }
+  }
+  return `${at || '(root)'}: ${JSON.stringify(a)} vs recorded ${JSON.stringify(b)}`
+}
+
 export async function runBasicPaths(opts: RunOptions = {}): Promise<BasicPathsRun> {
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-basic-paths-'))
   const home = opts.home ?? path.join(work, 'home')
@@ -183,6 +195,11 @@ export async function runBasicPaths(opts: RunOptions = {}): Promise<BasicPathsRu
   vi.resetModules()
   vi.spyOn(crypto, 'randomUUID').mockImplementation(() => `00000000-0000-4000-8000-${String(++uuid).padStart(12, '0')}` as `${string}-${string}-${string}-${string}-${string}`)
   vi.spyOn(os, 'hostname').mockReturnValue(HOST)
+  // A bare HUD mark is titled `HUD mark ${new Date(at).toLocaleTimeString()}`
+  // (src/main/ipc/markers.ts:44), which follows the machine's time zone and
+  // locale: "6:00:07 PM" in Asia/Taipei, "10:00:07 AM" in UTC, one byte longer,
+  // inside the chained row's hash input. Held to a constant, like hostname.
+  vi.spyOn(Date.prototype, 'toLocaleTimeString').mockReturnValue('10:00:00')
   vi.useFakeTimers({ now: T_START, toFake: ['Date'] })
   clockControl.ntpOffsetMs = null
   vi.doMock('../../src/core/clock', async (importOriginal) => clockMock(await importOriginal<Record<string, unknown>>()))
@@ -420,10 +437,7 @@ export async function runBasicPaths(opts: RunOptions = {}): Promise<BasicPathsRu
       delete cols.data
       const normalized = normalizeEvent({ ...cols, data }, scrub)
       const { data: nd, ...columns } = normalized
-      // A bare HUD mark is titled with the local time of day.
-      const d = nd as Record<string, unknown>
-      if (typeof d.title === 'string' && /^HUD mark /.test(d.title)) d.title = 'HUD mark <time of day>'
-      return { step: s, tier, columns, data: d }
+      return { step: s, tier, columns, data: nd as Record<string, unknown> }
     })
     const rowsPerStep: Record<string, number> = {}
     for (const r of rows) rowsPerStep[r.step] = (rowsPerStep[r.step] ?? 0) + 1
