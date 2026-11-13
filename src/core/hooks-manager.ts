@@ -394,7 +394,9 @@ function allManifests(): PluginManifest[] {
 // inside the plugin dir; built-ins resolve against the shipped hooks directory.
 function srcPathForRelative(plugin: PluginManifest, relative: string): string {
   if (plugin._dir) return join(plugin._dir, relative)
-  const hooksDir = resolveDir(HOOKS_DIR, join(__dirname, '../../hooks'))
+  // The checkout's own first; HOOKS_DIR (three up) is <resources>/hooks when
+  // packaged and outside the checkout otherwise (test/shipped-hooks-dir-order.test.ts).
+  const hooksDir = resolveDir(join(__dirname, '../../hooks'), HOOKS_DIR)
   return join(hooksDir, relative.replace('hooks/', ''))
 }
 

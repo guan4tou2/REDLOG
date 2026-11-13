@@ -84,7 +84,8 @@ describe.skipIf(!available)('amending a marker', () => {
     expect(ev.data._causes).toEqual([m.id])
     // Only the changed key — an amendment that restated every field would make
     // "what did this correction actually change" unanswerable from the row.
-    expect(Object.keys(ev.data).sort()).toEqual(['_causes', 'markerId', 'subtype', 'title'])
+    // `_ingest` is the receiver's stamp every new row carries (Spec 071 FR-005).
+    expect(Object.keys(ev.data).sort()).toEqual(['_causes', '_ingest', 'markerId', 'subtype', 'title'])
   })
 
   it('leaves the original byte-for-byte identical after three amendments', () => {

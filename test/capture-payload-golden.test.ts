@@ -16,6 +16,7 @@ import os from 'os'
 
 let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
+let bindDBEngagement: typeof import('../src/core/db/index').bindDBEngagement
 let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let ch: typeof import('../src/core/capture-health')
 let hooksMod: typeof import('../src/core/hooks-manager')
@@ -28,7 +29,7 @@ if (requires('better-sqlite3').ok) {
   ch = await import('../src/core/capture-health')
   hooksMod = await import('../src/core/hooks-manager')
   pluginsIndex = await import('../src/core/plugins/index')
-  initDB = dbMod.initDB; closeDB = dbMod.closeDB
+  initDB = dbMod.initDB; closeDB = dbMod.closeDB; bindDBEngagement = dbMod.bindDBEngagement
   insertEventRaw = evMod.insertEvent
   dbAvailable = true
 }
@@ -76,7 +77,7 @@ const BASE_STATES = {
 describeDB('capture payload golden (Spec 075 T004)', () => {
   let tmp: string
   beforeEach(() => {
-    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-golden-')); initDB(tmp)
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-golden-')); initDB(tmp); bindDBEngagement('eng-test')
     vi.spyOn(os, 'homedir').mockReturnValue(tmp)
     const active = (id: string) => ({ manifest: { id }, source: 'bundled', status: 'active' }) as never
     vi.spyOn(pluginsIndex, 'listPlugins').mockReturnValue(

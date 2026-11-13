@@ -4,6 +4,8 @@ import path from 'path'
 import os from 'os'
 
 let initDB: typeof import('../src/core/db/index').initDB
+
+let bindDBEngagement: typeof import('../src/core/db/index').bindDBEngagement
 let closeDB: typeof import('../src/core/db/index').closeDB
 let insertEventRaw: typeof import('../src/core/db/events').insertEvent
 let anchor: typeof import('../src/core/chain-anchor')
@@ -13,7 +15,7 @@ try {
   const dbMod = await import('../src/core/db/index')
   const evMod = await import('../src/core/db/events')
   anchor = await import('../src/core/chain-anchor')
-  initDB = dbMod.initDB
+  initDB = dbMod.initDB; bindDBEngagement = dbMod.bindDBEngagement
   closeDB = dbMod.closeDB
   insertEventRaw = evMod.insertEvent
   dbAvailable = true
@@ -29,7 +31,7 @@ describeDB('chain-anchor', () => {
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-anchor-'))
-    initDB(tmpDir)
+    initDB(tmpDir); bindDBEngagement('eng-test')
   })
 
   afterEach(() => {
@@ -173,7 +175,7 @@ describeDB('chain-anchor air-gap', () => {
   let tmpDir: string
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-anchor-air-'))
-    initDB(tmpDir)
+    initDB(tmpDir); bindDBEngagement('eng-test')
     insertEvent('shell', { command: 'ls' })
   })
   afterEach(() => {

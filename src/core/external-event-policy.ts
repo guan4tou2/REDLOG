@@ -1,6 +1,8 @@
 // Which events an outside tool may post to POST /api/events. Pure, so the rule
 // is testable without binding a port.
 
+import { RESERVED_DATA_KEYS } from './ingest/stamp'
+
 /** Types an outside tool may report. The ones deliberately absent are
  *  derived — `system`, `pivot`, `cleanup`, `loot`, `scope_violation` are
  *  written by RedLog's own analysis, and letting a caller forge them
@@ -24,11 +26,13 @@ const PRODUCER_ID_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/
 /** The one `system` event an outside producer may post: a liveness beat that
  *  capture-health reads (`system.producer_heartbeat`, keyed on `producer`).
  *  Exactly these two fields — anything else under `system` is RedLog's own
- *  audit row and stays refused. */
+ *  audit row and stays refused. The receiver-owned keys are not counted:
+ *  ingest() takes them out before anything reads `data` (Spec 071 FR-090), so
+ *  the policy judges the row as it will be stored. */
 function isProducerHeartbeat(data: unknown): boolean {
   if (data === null || typeof data !== 'object' || Array.isArray(data)) return false
   const d = data as Record<string, unknown>
-  const keys = Object.keys(d)
+  const keys = Object.keys(d).filter((k) => !(RESERVED_DATA_KEYS as readonly string[]).includes(k))
   return keys.length === 2
     && d.subtype === 'producer_heartbeat'
     && typeof d.producer === 'string'

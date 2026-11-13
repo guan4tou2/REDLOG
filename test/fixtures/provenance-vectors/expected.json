@@ -1,0 +1,369 @@
+{
+  "generatedFrom": "test/fixtures/provenance-vectors-generate.ts (Spec 071 T031)",
+  "rows": {
+    "events": [
+      {
+        "id": "00000000-0000-4000-8000-000000000004",
+        "hash": "eab53def84ef482bfa37b09eeee853425063bed1f86a076d13b7c32a403cdc5a",
+        "sha256": "12c91099fe7425381b2d8502e5d5f67c20e283993f1c43400da87355b98b25b8"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000006",
+        "hash": "7e81a86d0e7b004842f5147ad260c5e1b8fb8937d9388bd283eef156bb6ec53d",
+        "sha256": "bec8a66c589219cfd75fdef4ca5d22f7910d9bbe2ab3fa1610e808ed4c0cb6a4"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000010",
+        "hash": "2b22e93d81dfe5085d46b50450f8e4f7d0b9a33873c20a60ff8db7363b8714e4",
+        "sha256": "3a7f7be5ab38fb78ade773c519ce9a2ea943c31f513a318ec45af7cde31e6a2e"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000012",
+        "hash": "f88efeb09dbfc9adba94dddfeca863b32159f17afa0b0952695a1d84bf829dba",
+        "sha256": "c6018ad29bd78c2dd3a17ae2fcbc87c50955baf2708397de2dbd3ac44d4898ba"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000014",
+        "hash": "f35dd7ac58cc7d7cd6bf85d7db9056e649b42a3a14ae281e1c750e888982160d",
+        "sha256": "d11fd0fb2e4ef1a8f25389e84f385b291860d2b33f2d67ca01cca3af4d1f1a43"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000016",
+        "hash": "24386419d0053db6f7ffed8c6e7d5a7ec3f2b408f3e31e60dd36eed937e74bcd",
+        "sha256": "d579b27cd38a7fecf7abac663d992626339780ca034eb155f0c39efd920da41b"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000018",
+        "hash": "d5607348df8f8cb24e3e54068a51a4458b185255ef8e3f69fc167907c257b45d",
+        "sha256": "17b10a5d8cba8493ba0e8b4c21a34740e53a74d237df625889d04ced1f2a8483"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000020",
+        "hash": "054fbb1f884cfb70a1895bc208769eec8cfcde0a8b2e54596b18517091633cdf",
+        "sha256": "a08ab1cd9056d4f3c3a6def5a4a66ac1346b769d2050298a9fa32a7a81aca682"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000022",
+        "hash": "e71f49d96cc491254228e780b7a7e3d83115f1755491c498eeff301667209ec9",
+        "sha256": "48dbb7c75966d47fca9479df61e65a26950fc781cdc1b56287370386ca4ec720"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000024",
+        "hash": "b66d56bfe2a09459e38250636de304286ecbad1e21051fdb9cdfac895fa6f52e",
+        "sha256": "a2ca717e3c596f07e1b69c4369667fb230819991c9f92c888bdf03a6fe907286"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000026",
+        "hash": "d1840dfd8c4e20d9ade4627253dc832a34e1747c3019c563d7336a0269dc4d7b",
+        "sha256": "7b6fa051b954af8ce111432edafd748984b70b94cf77f4b70636fed9e8bc3a53"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000028",
+        "hash": "efb44d39750d64aaf7d6f5b7c1b692768bbc05235051f0085f2e0a3d560c84a4",
+        "sha256": "64af93fde65524779f32d480aed0f864b4d62c357d3acd6fcc285318805fdf29"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000030",
+        "hash": "4b82d123093cf1159123f754dabb9670e76af77699bfc86d1354c9466536cbe2",
+        "sha256": "210ed2e8f94b90df1e790f40ef7a366f4d9768e5c12f6c9e74cc3c6701bdf849"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000032",
+        "hash": "9b378ac93caac506293712439b9cba3cea3d4be475f7cf6a333f1aaafb5c8870",
+        "sha256": "e705fb3abe3ebf98c8383460937a73eac317392ae7a519448cc13311ef738afe"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000035",
+        "hash": "226e4fab6813a1d96e2a8fb8257a57791be3690287a1ed0219918d85f3decc8b",
+        "sha256": "870f291d90df71ffc2c2d1d93ae2c53eee805cb2222443acf83834ba100b96ca"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000037",
+        "hash": "78b81697e47bf22ccdca35ae4e0cb972c78f489901d122b2d5d89a9fd4d754c6",
+        "sha256": "b12ef7e6b2f91580f3d6639ad3f73d2b4c081a57256c7b002f5b450c7e289c9a"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000040",
+        "hash": "fd0329b4f99413583cdff575f9fb1fab7ea91dbbbb11f56e2d2314fe01844c20",
+        "sha256": "452cf23045fd331b2107bd00177383b45ab3f09c5d3a663a142e16bc73409062"
+      }
+    ],
+    "events_logged": [
+      {
+        "id": "00000000-0000-4000-8000-000000000007",
+        "hash": null,
+        "sha256": "72fdebf1e6a8eb0209b50474f9852e16a34eb29d2f62204572714f34bba86876"
+      }
+    ]
+  },
+  "rowsSha256": "930db987c91e6d56e2274dbd5903af4e5992245067c0614f5bd489be29ce8e8c",
+  "stamps": {
+    "events": [
+      {
+        "id": "00000000-0000-4000-8000-000000000004",
+        "subtype": "session_start",
+        "stamp": {
+          "v": 1,
+          "door": "in-process",
+          "producer": "in-process",
+          "credential": null,
+          "auth": "in-process"
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000006",
+        "subtype": "command_start",
+        "stamp": {
+          "v": 1,
+          "door": "legacy-api",
+          "producer": "legacy",
+          "credential": null,
+          "auth": "bearer"
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000010",
+        "subtype": "command_start",
+        "stamp": {
+          "v": 1,
+          "door": "legacy-api",
+          "producer": "legacy",
+          "credential": null,
+          "auth": "bearer",
+          "stripped": [
+            "_ingest",
+            "_raw",
+            "_clock_anomaly",
+            "_source_time_rejected"
+          ]
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000012",
+        "subtype": "command_start",
+        "stamp": {
+          "v": 1,
+          "door": "legacy-api",
+          "producer": "legacy",
+          "credential": null,
+          "auth": "bearer"
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000014",
+        "subtype": "command_start",
+        "stamp": {
+          "v": 1,
+          "door": "legacy-api",
+          "producer": "legacy",
+          "credential": null,
+          "auth": "bearer"
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000016",
+        "subtype": "command_start",
+        "stamp": {
+          "v": 1,
+          "door": "in-process",
+          "producer": "in-process",
+          "credential": null,
+          "auth": "in-process"
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000018",
+        "subtype": "command_start",
+        "stamp": {
+          "v": 1,
+          "door": "in-process",
+          "producer": "in-process",
+          "credential": null,
+          "auth": "in-process"
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000020",
+        "subtype": "scope_violation",
+        "stamp": {
+          "v": 1,
+          "door": "in-process",
+          "producer": "derived",
+          "credential": null,
+          "auth": "in-process"
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000022",
+        "subtype": "command_end",
+        "stamp": {
+          "v": 1,
+          "door": "in-process",
+          "producer": "in-process",
+          "credential": null,
+          "auth": "in-process"
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000024",
+        "subtype": "credential_detected",
+        "stamp": {
+          "v": 1,
+          "door": "in-process",
+          "producer": "derived",
+          "credential": null,
+          "auth": "in-process"
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000026",
+        "subtype": "command_start",
+        "stamp": {
+          "v": 1,
+          "door": "in-process",
+          "producer": "in-process",
+          "credential": null,
+          "auth": "in-process"
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000028",
+        "subtype": "route_add",
+        "stamp": {
+          "v": 1,
+          "door": "in-process",
+          "producer": "derived",
+          "credential": null,
+          "auth": "in-process"
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000030",
+        "subtype": "command_start",
+        "stamp": {
+          "v": 1,
+          "door": "legacy-handoff",
+          "producer": "legacy-handoff",
+          "credential": null,
+          "auth": "none"
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000032",
+        "subtype": "logged_tier_digest",
+        "stamp": {
+          "v": 1,
+          "door": "in-process",
+          "producer": "in-process",
+          "credential": null,
+          "auth": "in-process"
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000035",
+        "subtype": "export_sealed",
+        "stamp": {
+          "v": 1,
+          "door": "in-process",
+          "producer": "in-process",
+          "credential": null,
+          "auth": "in-process"
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000037",
+        "subtype": "logged_tier_digest",
+        "stamp": {
+          "v": 1,
+          "door": "in-process",
+          "producer": "in-process",
+          "credential": null,
+          "auth": "in-process"
+        }
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000040",
+        "subtype": "export_sealed",
+        "stamp": {
+          "v": 1,
+          "door": "in-process",
+          "producer": "in-process",
+          "credential": null,
+          "auth": "in-process"
+        }
+      }
+    ],
+    "events_logged": [
+      {
+        "id": "00000000-0000-4000-8000-000000000007",
+        "subtype": "http_request_start",
+        "stamp": {
+          "v": 1,
+          "door": "legacy-api",
+          "producer": "legacy",
+          "credential": null,
+          "auth": "bearer"
+        }
+      }
+    ]
+  },
+  "appVerify": {
+    "ok": true,
+    "walked": 17,
+    "brokenAtEventId": null,
+    "brokenReason": null,
+    "currentHead": "b7626e4e717ac401fc3e8024ebaf0856b8830f58da34f199a2636dedb8e0cedb",
+    "anchorMatchesWalkedHead": false,
+    "clockAnomalies": [],
+    "signedCount": 17,
+    "unsignedCount": 0,
+    "noPubKeyCount": 0,
+    "authentication": "verified",
+    "authenticationReasons": [],
+    "firstUncheckedEventId": null,
+    "badSignatureAtEventId": null
+  },
+  "bundleVerify": {
+    "exitCode": 0,
+    "category": "verified",
+    "problems": [],
+    "seal": "sealed",
+    "attachments": {
+      "bound": [],
+      "boundUnverifiedRow": [],
+      "unbound": [],
+      "mismatched": [],
+      "omittedDeclared": [],
+      "missingUndeclared": [],
+      "unlisted": []
+    }
+  },
+  "pythonVerify": {
+    "status": 0,
+    "stdout": "\nRedLog bundle verification report\n========================================\nBundle dir       : <bundle>\nBundle version   : 4\nEngagement ID    : eng-provenance-vectors\nEvents walked    : 15\nManifest checksum: matches (not an authenticated source identity)\nChain            : INTACT\nChain-head match : yes (recomputed matches manifest.chainHead)\nSeal             : SEALED (export 00000000-0000-4000-8000-000000000033; it follows the delivered chain directly)\n                   rows before it and the manifest are as exported\nSignatures       : 15 verified\nSigner           : op-provenance  sha256:5df840e88a41a05b32c8c076086ae442d696f8556d8e3452d2738f96722e8e0d\n  compare these fingerprints with the operator out of band;\n  a key taken from this bundle only proves the bundle agrees with itself\nLogged tier      : 1 rows present in events_logged.jsonl\n                   (not chained or signed; digest matches; bytes sealed by the export)\nAttachments      : 0 match the digest recorded at capture\nManifest files   : 5 verified (sha256 matches)\n",
+    "stderr": ""
+  },
+  "clockAnomaly": {
+    "bundleVerify": {
+      "exitCode": 0,
+      "category": "verified",
+      "problems": [],
+      "seal": "sealed",
+      "attachments": {
+        "bound": [],
+        "boundUnverifiedRow": [],
+        "unbound": [],
+        "mismatched": [],
+        "omittedDeclared": [],
+        "missingUndeclared": [],
+        "unlisted": []
+      }
+    },
+    "pythonVerify": {
+      "status": 0,
+      "stdout": "\nRedLog bundle verification report\n========================================\nBundle dir       : <bundle>\nBundle version   : 4\nEngagement ID    : eng-provenance-vectors\nEvents walked    : 17\nManifest checksum: matches (not an authenticated source identity)\nChain            : INTACT\nChain-head match : yes (recomputed matches manifest.chainHead)\nSeal             : SEALED (export 00000000-0000-4000-8000-000000000038; it follows the delivered chain directly)\n                   rows before it and the manifest are as exported\nSignatures       : 17 verified\nSigner           : op-provenance  sha256:5df840e88a41a05b32c8c076086ae442d696f8556d8e3452d2738f96722e8e0d\n  compare these fingerprints with the operator out of band;\n  a key taken from this bundle only proves the bundle agrees with itself\nLogged tier      : 1 rows present in events_logged.jsonl\n                   (not chained or signed; digest matches; bytes sealed by the export)\nAttachments      : 0 match the digest recorded at capture\nManifest files   : 5 verified (sha256 matches)\n",
+      "stderr": ""
+    }
+  },
+  "verifierSha256": "f3a760949404417c031867cb64c800fe9891ce180eac92d952a8b94bba22de77"
+}

@@ -38,6 +38,7 @@ import { exportHar, bodyDeliverableUnderScope } from './har-export'
 import { getCaptureHealth, getCaptureError, noteDbError } from './capture-health'
 import { resolveIncomingCauses, noteStartEvent } from './causes-resolver'
 import { ingest, type LootDetectorLike } from './ingest'
+import { LEGACY_API, withEntrance } from './ingest/stamp'
 import { isInsideDir } from './paths'
 import { getProjectDir } from './db/index'
 import { extractBodyToSidecar, readBody as readHttpBody, type BodyRef } from './http-body-store'
@@ -393,7 +394,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       // from an in-process producer. `identity` mapper: the posted body IS the
       // envelope's {agent_type, data}.
       const result = ingest({
-        agentType, data, operatorId: operator.id, engagementId, targetId,
+        agentType, data, operatorId: operator.id, engagementId, targetId, entrance: LEGACY_API,
         envelope: { source: 'api', mapper: { id: 'identity', version: '1' } }
       })
       if (!result.event) {
@@ -521,7 +522,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         severity: body.severity || 'info',
         category: body.category || 'external'
       }, engagementId, operatorId: operator.id,
-      targetId: (body.target_id || body.targetId) as string | undefined,
+      targetId: (body.target_id || body.targetId) as string | undefined, entrance: LEGACY_API,
       envelope: { source: 'api', mapper: { id: 'identity', version: '1' } } }).event
       json(res, 201, event && withoutRowId(event))
       return
@@ -539,7 +540,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         json(res, 413, { error: `text exceeds ${LOOT_SCAN_MAX_CHARS} characters` })
         return
       }
-      const findings = lootDetectorRef.scan(text, body.targetId as string | undefined, body.source as string | undefined)
+      const loot = lootDetectorRef
+      const findings = withEntrance(LEGACY_API, () => loot.scan(text, body.targetId as string | undefined, body.source as string | undefined))
       json(res, 200, { findings })
       return
     }
@@ -566,7 +568,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         json(res, 503, { error: 'Screenshot agent not available' })
         return
       }
-      const filePath = await screenshotAgentRef.captureNow('api')
+      const agent = screenshotAgentRef
+      const filePath = await withEntrance(LEGACY_API, () => agent.captureNow('api'))
       if (filePath) { json(res, 200, { captured: true, filePath }); return }
       // A bare `captured: false` told the caller nothing — on Windows this
       // endpoint returned it for weeks while every screen thumbnail came back
@@ -747,7 +750,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     }
 
     if (route === '/api/anchors' && req.method === 'POST') {
-      const anchor = await anchorNow()
+      const anchor = await withEntrance(LEGACY_API, () => anchorNow())
       if (anchor && 'skipped' in anchor) { json(res, 409, { skipped: anchor.skipped }); return }
       json(res, anchor ? 201 : 400, { anchor })
       return
@@ -759,7 +762,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         const scopeTargets = configLoaderRef?.getTargets?.() ?? []
         const excludeTargets = configLoaderRef?.getExcludeTargets?.() ?? []
         const scope = { targets: scopeTargets, excludeTargets }
-        const bundle = bundleExporterRef ? await bundleExporterRef(engagementId, { scope }) : exportBundle(engagementId, { scope })
+        const exporter = bundleExporterRef
+        const bundle = await withEntrance(LEGACY_API, () => exporter ? exporter(engagementId, { scope }) : exportBundle(engagementId, { scope }))
         json(res, 201, { outDir: bundle.outDir, manifest: bundle.manifest })
       } catch (e) {
         const err = e as Error
@@ -786,13 +790,13 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       // and the token that authorised this belonged to the project open then.
       if (!projectOpen || requestEngagement !== engagementId) { json(res, 409, { error: 'engagement changed; sanitize refused' }); return }
       try {
-        const result = sanitize({
+        const result = withEntrance(LEGACY_API, () => sanitize({
           eventIds: Array.isArray(body.event_ids) ? body.event_ids : [],
           fields: Array.isArray(body.fields) && body.fields.length ? body.fields : ['output', 'output_preview', 'command'],
           engagementId, operatorId: operator.id,
           reason: typeof body.reason === 'string' ? body.reason : undefined,
           dryRun: body.dry_run === true
-        })
+        }))
         json(res, result.dryRun ? 200 : 201, result)
       } catch (e) {
         internalError(res, 'sanitize', e)
@@ -813,19 +817,19 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       const full = url.searchParams.get('full') === '1'
       // v0.6.95 P0-4a: full walk goes through the async, chunked variant so
       // the main loop keeps servicing other HTTP requests while it runs.
-      json(res, 200, full ? await verifyChainFullAsync() : verifyLatestAnchor())
+      json(res, 200, full ? await withEntrance(LEGACY_API, () => verifyChainFullAsync()) : verifyLatestAnchor())
       return
     }
 
     if (route === '/api/anchors/upgrade-all' && req.method === 'POST') {
-      const result = await upgradeAllPending()
+      const result = await withEntrance(LEGACY_API, () => upgradeAllPending())
       json(res, 200, result)
       return
     }
 
     const upgradeMatch = route.match(/^\/api\/anchors\/([^/]+)\/upgrade$/)
     if (upgradeMatch && req.method === 'POST') {
-      const result = await upgradeAnchor(decodeURIComponent(upgradeMatch[1]))
+      const result = await withEntrance(LEGACY_API, () => upgradeAnchor(decodeURIComponent(upgradeMatch[1])))
       if (result && 'skipped' in result) { json(res, 200, { skipped: result.skipped }); return }
       json(res, result ? 200 : 404, { anchor: result })
       return

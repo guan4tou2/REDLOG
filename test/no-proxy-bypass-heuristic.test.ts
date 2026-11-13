@@ -5,6 +5,8 @@ import path from 'path'
 import os from 'os'
 
 let initDB: typeof import('../src/core/db/index').initDB
+
+let bindDBEngagement: typeof import('../src/core/db/index').bindDBEngagement
 let closeDB: typeof import('../src/core/db/index').closeDB
 let events: typeof import('../src/core/db/events')
 let ops: typeof import('../src/core/db/operators')
@@ -15,7 +17,7 @@ if (requires('better-sqlite3').ok) {
   events = await import('../src/core/db/events')
   ops = await import('../src/core/db/operators')
   bus = await import('../src/core/event-bus')
-  initDB = dbMod.initDB; closeDB = dbMod.closeDB
+  initDB = dbMod.initDB; bindDBEngagement = dbMod.bindDBEngagement; closeDB = dbMod.closeDB
   dbAvailable = true
 }
 const describeDB = dbAvailable ? describe : describe.skip
@@ -34,7 +36,7 @@ describeDB('a network tool spawned without proxy traffic', () => {
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-nobypass-'))
-    initDB(tmpDir)
+    initDB(tmpDir); bindDBEngagement('eng-1')
     operatorId = ops.ensurePrimaryOperator('bypass-op', 'Bypass Op', 'tok-' + Math.random()).id
     vi.useFakeTimers()
   })

@@ -27,6 +27,7 @@ import { buildFoldIndex, computeObservationStanding, buildEffectsIndex, buildBad
 import { distributeLaneEvents, distributeRowEvents, singleTrackEvents, indexDrawnForMatches, type DrawnMatchIndex } from './timelineFilters'
 import { countByLane } from '../components/timeline/TimelineLanesHeader'
 import type { MarkerFold } from './markerFold'
+import { sameSourceContent } from './eventContent'
 
 type Events = readonly RedLogEvent[]
 
@@ -115,7 +116,7 @@ export const drawnEvents: Derivation<DrawnState, [collapseAgentTurns: boolean]> 
       if (!key) continue
       const previous = closed.get(key)
       if (!previous) closed.set(key, { data: e.data, conflict: false })
-      else if (JSON.stringify(previous.data) !== JSON.stringify(e.data)) previous.conflict = true
+      else if (!sameSourceContent(previous.data, e.data)) previous.conflict = true
     }
     return { out: filterAgentTurns(collapseCommandPairs(all as RedLogEvent[]), collapse), closed, startKeys }
   },
@@ -211,7 +212,7 @@ export const toolPairs: Derivation<ToolPairIndex<RedLogEvent>> = {
       const map = subtype === 'tool_call' ? next.calls : next.results
       const previous = map.get(key)
       if (!previous) map.set(key, event)
-      else if (JSON.stringify(previous.data) !== JSON.stringify(event.data)) next.conflicts.add(key)
+      else if (!sameSourceContent(previous.data, event.data)) next.conflicts.add(key)
     }
     return next ?? prev
   }

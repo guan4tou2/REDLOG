@@ -14,6 +14,7 @@ import { useI18n } from '../i18n'
 import { CollapsibleStream, MetadataGrid, HttpDetail, formatBytes, safePretty } from './HttpDetail'
 import { toast } from './Toast'
 import { summarizeLateOutput } from '../lib/lateOutput'
+import { sourceContent } from '../lib/eventContent'
 
 // ── Shell command_end ────────────────────────────────────────────────
 
@@ -416,7 +417,8 @@ export function GenericEventDetail({ data, kind }: { data: Record<string, unknow
    *  stored name is the only exact one there is. */
   kind?: string }): JSX.Element {
   const { t } = useI18n()
-  const entries = Object.entries(data ?? {}).filter(([, v]) => v !== undefined && v !== null && v !== '')
+  // The receiver's stamp is not a field the source recorded (Spec 071).
+  const entries = Object.entries(sourceContent(data)).filter(([, v]) => v !== undefined && v !== null && v !== '')
   if (entries.length === 0) return <></>
   return (
     <div className="mt-2" data-testid="generic-event-detail">

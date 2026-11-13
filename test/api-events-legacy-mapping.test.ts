@@ -91,6 +91,14 @@ const CASES: Case[] = [
     landed: [1, 0]
   },
   {
+    // Spec 071 FR-090: the receiver-owned keys go before policy reads `data`.
+    name: 'heartbeat: a producer_heartbeat that also sends `_ingest` is still the heartbeat',
+    body: { agent_type: 'system', data: { subtype: 'producer_heartbeat', producer: 'fr090-probe', _ingest: { door: 'forged' } } },
+    status: 201,
+    row: { keys: CHAINED_ROW_KEYS, fields: { agentType: 'system', tier: 'chained' } },
+    landed: [1, 0]
+  },
+  {
     name: 'heartbeat: system.producer_heartbeat with exactly subtype + producer',
     body: { agent_type: 'system', data: { subtype: 'producer_heartbeat', producer: 'pcap-capture' } },
     status: 201,

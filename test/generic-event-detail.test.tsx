@@ -26,6 +26,18 @@ describe('GenericEventDetail', () => {
     expect(screen.getByText('[3]')).toBeTruthy()
   })
 
+  // Spec 071 review F: the receiver's stamp is not a recorded field of the
+  // source; showing provenance belongs to Spec 072's readers.
+  it('does not list `_ingest`, and a row with nothing but it shows no fields', () => {
+    draw({ host: '10.0.0.6', _ingest: { v: 1, door: 'legacy-api', producer: 'legacy', credential: null, auth: 'bearer', event_id: 'x' } })
+    expect(screen.getByText('host')).toBeTruthy()
+    expect(screen.queryByText('_ingest')).toBeNull()
+    expect(screen.queryByText('{6}')).toBeNull()
+    cleanup()
+    draw({ _ingest: { v: 1 } })
+    expect(document.querySelector('[data-testid="generic-event-detail"]')).toBeNull()
+  })
+
   it('shows markup as text, never as elements', () => {
     draw({ note: '<img src=x onerror=alert(1)>' })
     expect(screen.getByText('<img src=x onerror=alert(1)>')).toBeTruthy()

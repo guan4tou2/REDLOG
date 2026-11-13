@@ -1,4 +1,5 @@
 import { operationPairKey } from '../../../core/operation-pair-key'
+import { sameSourceContent, sourceContent } from './eventContent'
 
 // Pure event-shaping helpers pulled out of Timeline.tsx (D1 decomposition):
 // collapsing agent turns, collapsing command_start/end pairs, and the literal
@@ -42,7 +43,7 @@ export function collapseCommandPairs(events: RedLogEvent[]): RedLogEvent[] {
     if (!key) continue
     const previous = closed.get(key)
     if (!previous) closed.set(key, { data: event.data, conflict: false })
-    else if (JSON.stringify(previous.data) !== JSON.stringify(event.data)) previous.conflict = true
+    else if (!sameSourceContent(previous.data, event.data)) previous.conflict = true
   }
   return events.filter(event => {
     if (event.agentType !== 'shell' || event.data?.subtype !== 'command_start') return true
@@ -135,7 +136,7 @@ export function hasContentReader(e: Pick<RedLogEvent, 'agentType' | 'data'>): bo
   if (e.agentType === 'agent') return ['user_message', 'assistant_message', 'thinking', 'tool_call', 'tool_result'].includes(String(d.subtype))
   // A scanner row's saved content is a body; a connection, C2 or pcap row has
   // none, and its fields are already in the generic reader.
-  if (e.agentType !== 'scanner') return eventReader(e) === 'generic' && Object.keys(d).length > 0
+  if (e.agentType !== 'scanner') return eventReader(e) === 'generic' && Object.keys(sourceContent(d)).length > 0
   return hasSavedBody(d.request_body as InlineBody, d.request_body_ref)
     || hasSavedBody(d.response_body as InlineBody, d.response_body_ref)
     || hasSavedBody(d.ws_body as InlineBody, d.ws_body_ref)

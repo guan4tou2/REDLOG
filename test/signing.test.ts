@@ -4,6 +4,8 @@ import path from 'path'
 import os from 'os'
 
 let initDB: typeof import('../src/core/db/index').initDB
+
+let bindDBEngagement: typeof import('../src/core/db/index').bindDBEngagement
 let closeDB: typeof import('../src/core/db/index').closeDB
 let getDB: typeof import('../src/core/db/index').getDB
 let events: typeof import('../src/core/db/events')
@@ -18,7 +20,7 @@ try {
   ops = await import('../src/core/db/operators')
   signing = await import('../src/core/signing')
   anchor = await import('../src/core/chain-anchor')
-  initDB = dbMod.initDB
+  initDB = dbMod.initDB; bindDBEngagement = dbMod.bindDBEngagement
   closeDB = dbMod.closeDB
   getDB = dbMod.getDB
   dbAvailable = true
@@ -31,7 +33,7 @@ describeDB('signing (v0.6.89)', () => {
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-signing-'))
-    initDB(tmpDir)
+    initDB(tmpDir); bindDBEngagement('eng-test')
   })
 
   afterEach(() => {

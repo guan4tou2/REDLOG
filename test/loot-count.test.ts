@@ -5,6 +5,8 @@ import path from 'path'
 import os from 'os'
 
 let initDB: typeof import('../src/core/db/index').initDB
+
+let bindDBEngagement: typeof import('../src/core/db/index').bindDBEngagement
 let closeDB: typeof import('../src/core/db/index').closeDB
 let events: typeof import('../src/core/db/events')
 let ops: typeof import('../src/core/db/operators')
@@ -13,7 +15,7 @@ if (requires('better-sqlite3').ok) {
   const dbMod =await import('../src/core/db/index')
   events = await import('../src/core/db/events')
   ops = await import('../src/core/db/operators')
-  initDB = dbMod.initDB; closeDB = dbMod.closeDB
+  initDB = dbMod.initDB; bindDBEngagement = dbMod.bindDBEngagement; closeDB = dbMod.closeDB
   dbAvailable = true
 }
 const describeDB = dbAvailable ? describe : describe.skip
@@ -24,7 +26,7 @@ describeDB('getLootCount', () => {
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-lootcount-'))
-    initDB(tmpDir)
+    initDB(tmpDir); bindDBEngagement('eng-test')
     operatorId = ops.ensurePrimaryOperator('loot-op', 'Loot Op', 'tok-' + Math.random()).id
   })
   afterEach(() => { closeDB(); fs.rmSync(tmpDir, { recursive: true, force: true }) })
