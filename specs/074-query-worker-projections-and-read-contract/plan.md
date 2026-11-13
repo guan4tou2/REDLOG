@@ -188,6 +188,29 @@ type ListCompleteness = { kind: 'complete' } | { kind: 'more' } | { kind: 'cappe
 
 `lib/navigation.ts` 擴充 `NavEntry` 與 reducer（`push`／`back`／`replace`）；`App` 只保留 `route` 一個 state。`returnTrail.ts` 的三步上限成為堆疊深度上限；`keptOrigin.ts` 的「保留一頁」成為「堆疊中目前頁的下一層若可保留則保持掛載」；DOM 快照式的捲動還原換成錨點列。
 
+### D13 各頁篩選跨重開保存（修訂 E2，2026-11-13）
+
+擁有者對 Q2 的答覆：跨重開保存（DECISIONS §9）。裁定沒有說保存在哪裡、依專案或依機器、以及重開後怎麼讓人看出畫面被篩選；本節逐項決定，仍是選擇的兩項列為 spec 的 Q6、Q7。
+
+**今天（`main@017de22c`）**：共用篩選在 `FilterContext`（記憶體，開專案時歸零，`hidePersonal` 預設為真）。時間軸另以 renderer 的 `localStorage` 依專案保存五個鍵：查詢框 `redlog-timeline-filter-query:<專案>`、隱藏的泳道 `redlog-timeline-hidden-lanes:<專案>`、模式、收合的帶、焦點錨點（`Timeline.tsx:396-471,1095-1104`）；帶事件 id 抵達時，若該事件不符保存的查詢，查詢先被「held」不套用（`:408-427`）。
+
+**依專案，存在這台機器**：
+
+- **依專案**：條件的值本身屬於專案（目標 id、查詢中的主機名、範圍內與否依該專案的範圍）。依機器保存會讓 A 的目標晶片出現在 B，就是 O3 取代共用篩選的原因。073 的設定範圍（機器／專案）回答的是**設定**；篩選不是設定：073 plan D7-b 已把 HUD 偏好與視窗位置列為「介面狀態，不進登記表」，篩選屬於同一類。
+- **存在這台機器、不進專案檔**：專案的 `config.yaml` 經 `ConfigStore`，存檔發 `config` topic，安全相關的變更由 `config-audit` 寫鏈上紀錄；一次點晶片不該是一次設定存檔，更不該進鏈。專案目錄內另一個介面狀態檔是開放問題 Q7（建議：不要）。
+- **位置**：renderer 的本機儲存，一個專案一筆 `redlog-page-filters:<專案 id>`，內容 `{v: 1, pages: {<view>: <該頁的條件>}}`；讀寫只經 `pageFilters.ts` 的 `usePageFilter(view)`（取代 `FilterContext` 的共用部分，本計畫原已列出）。每次條件改變即寫入，不需要存檔動作；讀寫失敗時照常運作，只是不保存（同 `usePersistentState` 的作法）。
+- **一條規則**：時間軸查詢框與隱藏的泳道（Q6 的建議）成為 `pages.timeline` 的兩個條件，`redlog-timeline-filter-query:*`、`redlog-timeline-hidden-lanes:*` 的讀寫刪除。產品尚未發布，擁有者裁定不保留與舊版本的相容（2026-11-13，尚未寫入 DECISIONS），所以舊鍵不讀、不遷移：升級後時間軸的查詢框第一次是空的。模式、收合的帶、縮放是呈現設定，不在本條。「held query」被 FR-086 的 `reveal` 取代：抵達時保存的查詢照常生效，被跳轉的事件畫出並標示在篩選之外。
+- **每頁宣告**：每頁在讀取登記表中宣告它的條件集合（FR-088 已要求）與每個條件的驗證函式（目標是否仍存在、種類是否仍登記、查詢能否解析、泳道 id 是否認得）；還原時逐項驗證，不合法的只丟棄那一項。`v` 不是 1 或無法解析 → 當作沒有保存。
+
+**看得出被篩選**（spec FR-089 第 6 項）：判準是 §26 的「操作事實」與「有上限的結果不得看似完整」：重開後第一眼必須能分辨「這一頁是全部」與「這一頁被篩過」。三件事都由既有元件完成，不新增文案：篩選列的選取狀態（UIUX §25 的選取態）、`formatCount` 的「符合」來源、既有的清除篩選動作。收合控制項的條件數是唯一新的呈現，用數字，不用字。
+
+**被否決**：
+
+- **依機器保存一份給所有專案**：A 的目標條件帶到 B，O3 要消除的正是這件事。
+- **寫進 `config.yaml`**：見上；另外，`config.yaml` 會被「匯出設定檔」帶走，篩選會跟著交出去。
+- **保留時間軸的舊鍵並讀一次做遷移**：與「一條規則」和不保留相容的裁定都相反；代價只是升級後查詢框空一次。
+- **重開時跳出「已套用上次的篩選」提示**：違反 §26 第 4 條（不靠文字解釋畫面）；選取狀態與「符合」的數字已足夠。
+
 ## 模組邊界
 
 | 模組（檔） | 公開介面 | 擁有 | 不得匯入 | 誰可匯入 |
@@ -203,7 +226,7 @@ type ListCompleteness = { kind: 'complete' } | { kind: 'more' } | { kind: 'cappe
 | `src/renderer/src/lib/query/`（新：`registry.ts`、`useQuery.ts`、`usePagedQuery.ts`、`formatCount.ts`） | `useQuery(key, load, {topics, keepPrevious, minIntervalMs})`、`usePagedQuery(...)`、`formatCount(...)` | 畫面的查詢項目、topic 訂閱、可見性暫停 | 其他畫面元件 | `components/**` |
 | `src/renderer/src/components/ReadStatus.tsx`（新，模組層級元件） | `<ReadStatus entry subject conditions onRetry />` | 六種非資料狀態的呈現 | — | 任何畫面 |
 | `src/renderer/src/lib/navigation.ts`（擴充） | `NavEntry`、`navReducer`、`useNav()`、`ViewVisibility` context | 導覽堆疊、可見性 | — | `App.tsx`、畫面 |
-| `src/renderer/src/lib/pageFilters.ts`（新，取代 `FilterContext` 的共用部分） | `usePageFilter(view)` | 每頁每專案的篩選 | — | 各頁 |
+| `src/renderer/src/lib/pageFilters.ts`（新，取代 `FilterContext` 的共用部分） | `usePageFilter(view)` | 每頁每專案的篩選；（修訂 E2）跨重開的保存與還原、條件驗證、`redlog-page-filters:<專案>` 的唯一讀寫者 | — | 各頁 |
 
 `Projection` 介面（簽名草稿）：
 
@@ -259,7 +282,7 @@ interface ProjectResource {
 | 15 | 四處飢餓的 debounce（`ScopeStatus.tsx:165`、`EvidenceHeader.tsx:33`、`TargetsScopeHeader.tsx:43`、`FirstRunView.tsx:164`） | topic + 登記表節流 | 6 |
 | 16 | 22 個檔案的 `onNewBatch` 訂閱 | 只剩需要列本身的畫面 | 6 |
 | 17 | 四個 window CustomEvent（`redlog:config-saved`、`BOOKMARKS_CHANGED`、`RECOUNT_EVENT`、`EVENT_NOTE_SAVED`） | `data:changed` 的 topics | 6 |
-| 18 | `FilterContext` 的共用篩選（15 個 renderer 檔使用）、`TargetView` 寫全域目標 | 各頁篩選 + `reveal` | 7 |
+| 18 | `FilterContext` 的共用篩選（15 個 renderer 檔使用）、`TargetView` 寫全域目標；（修訂 E2）時間軸查詢框與隱藏泳道各自的保存鍵與「held query」（`Timeline.tsx:396-471,1095-1104`） | 各頁篩選 + `reveal`；（修訂 E2）一份依專案保存的紀錄（D13） | 7 |
 | 19 | `App.tsx` 的導覽 state、`returnTrail.ts`、`keptOrigin.ts` 的 DOM 快照、六個 `active` prop、`exportScope` 單一槽位 | 導覽堆疊 + `ViewVisibility` | 7 |
 
 ## 投影
@@ -321,6 +344,9 @@ type FromWorker =
 | 寫入都發 topic | `test/change-topics.test.ts`：每個寫入型 IPC 與每條 commit 路徑至少一個 topic；分類與 072 的 housekeeping 規則對同一組列一致 | 契約 |
 | 畫面讀取經 `useQuery` | `test/read-guard.test.ts`：三個數字（FR-097）只降 | ratchet |
 | 元件不宣告在元件內 | 既有 `test/inline-components.test.ts` | 不變 |
+| （修訂 E2）篩選跨重開還原、依專案分開、第一次請求就帶條件、不合法的條件只丟該項 | `test/page-filters-persist.test.tsx`（每個宣告條件集合的頁一組，由讀取登記表產生案例） | 性質 + 完整性 |
+| （修訂 E2）只有 `pageFilters.ts` 讀寫篩選的保存；舊的時間軸鍵不再出現 | 原始碼掃描（同 `test/inline-components.test.ts` 的形式）：`redlog-page-filters:` 只在 `pageFilters.ts`；`redlog-timeline-filter-query`、`redlog-timeline-hidden-lanes` 在 `src/` 出現 0 次 | 邊界 |
+| （修訂 E2）被篩選的頁看得出被篩選 | `test/count-semantics.test.ts` 擴充：有條件生效時計數的來源是「符合」；`test/page-filters-visible.test.tsx`：每個生效的條件在篩選列或收合控制項的數字中可見 | 完整性 |
 | 投影不另寫種類表（起訖、角色、家族只讀 072） | 072 的 `test/kinds/kind-literal-ratchet.test.ts`：`src/core/projections/**` 與 `change-topics.ts` 的允許數為 0（072 T052 加入此條件；本規格不另寫一個測試） | ratchet（基準 0） |
 
 沒有閘門的規則：worker 的退避參數（1–30 秒、5 次／5 分）只以單元測試驗證行為，不設常駐的計時閘門——理由：O9，牆鐘測試在本 repo 只能手動。
@@ -367,7 +393,7 @@ type FromWorker =
 - **自動化**：上表的閘門；既有核心讀取測試照跑，另加「經讀取服務 vs 直接呼叫」deep-equal 等價測試（每個移動的 `kind`）。
 - **e2e（ubuntu CI）**：事件迴圈探針在每個 spec 啟用；新增 `e2e/query-service.spec.ts`：持續寫入時的搜尋與 Activity、專案切換時有請求在途、worker 被終止後恢復。本機不跑 Electron e2e。
 - **需要其他平台**：Windows 上「專案切換中途有查詢」的 e2e 與正式版啟動自檢；Linux 正式版啟動自檢；macOS 簽章後的正式版。沒有環境時記 NOT RUN。
-- **真機（spec 落地時檢查的畫面）**：時間軸（頁、狀態帶、效應數、跳轉）、Activity（首開、文字查詢、落後標示）、HTTP History、Loot、截圖（計數）、目標頁（彙總、跳轉、返回）、範圍頁（跳轉 `reveal`）、儀表板與狀態列（`counts:snapshot`、drift）、側欄徽章、HUD（tunnel）。以一個 ≥25 萬列、≥10 萬 body 參照的專案，在持續擷取（真實 shell hook 與 proxy）下操作。
+- **真機（spec 落地時檢查的畫面）**：（修訂 E2）每個有篩選的頁設條件後結束 app 再開、切到另一個專案再切回；時間軸（頁、狀態帶、效應數、跳轉）、Activity（首開、文字查詢、落後標示）、HTTP History、Loot、截圖（計數）、目標頁（彙總、跳轉、返回）、範圍頁（跳轉 `reveal`）、儀表板與狀態列（`counts:snapshot`、drift）、側欄徽章、HUD（tunnel）。以一個 ≥25 萬列、≥10 萬 body 參照的專案，在持續擷取（真實 shell hook 與 proxy）下操作。
 - **端到端擷取信任**：真實 zsh hook 與 mitmproxy 寫入期間執行重讀取，確認 hook 沒有因逾時寫入交接目錄（工作計畫第一條規則）。
 - **決定／實作／驗證分開**：`verification.md` 每項記三欄。
 

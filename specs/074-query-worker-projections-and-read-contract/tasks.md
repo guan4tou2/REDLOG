@@ -13,7 +13,7 @@
 
 ## Phase 0 — 工作流程前置
 
-- [ ] T001 依憲章對本功能執行 Clarify、Checklist、Analyze，結果記入 `verification.md`。本規格沒有自己的開放問題（spec 文末）；不因他規格的問題阻擋任何 Phase。
+- [ ] T001 依憲章對本功能執行 Clarify、Checklist、Analyze，結果記入 `verification.md`。本規格沒有自己的開放問題（spec 文末）；不因他規格的問題阻擋任何 Phase。（2026-11-13：Q1–Q5 已裁定，DECISIONS §9；Q2 的答覆與建議不同，見修訂 E2。新增的 Q6、Q7 答覆前，T076 依建議進行。）
 - [ ] T002 確認 plan「對相鄰規格」表中的每一項仍與兄弟規格一致（2026-11-12 已對帳：071 FR-096 提交回執、071 FR-010 回填期間 `none`、073 的 `ProjectResource` 照抄、072 的 `family`／`INTERVALS`／`kindOf(row, plugins?)`）；之後的差異記入 `verification.md`。
 
 ## Phase 1 — 釘住今天的行為（只加測試與 gate，不改程式行為）
@@ -104,7 +104,12 @@
 - [ ] T072 [US6] 同一個 PR 更新 e2e：`e2e/timeline-evidence.spec.ts:115-176`（`target-focus` 一組）、`e2e/timeline-track.spec.ts:637-664`、`e2e/app-shell.spec.ts:143`；重讀 `e2e/layout-reliability.spec.ts:116-129`、`e2e/layout-read-states.spec.ts:81`，確認只斷言版面者不改。新增：範圍頁 → 時間軸（`inScopeOnly` 開著）事件可見並標示；目標頁 → 時間軸 → 返回，目標頁狀態不變。依 CLAUDE.md「Changing behaviour」，這些不是後續工作。
 - [ ] T073 同一個 PR 改寫文件：`docs/UIUX-STANDARD.md:190,196`、`docs/domain/SPEC-target-identity.md:16,113`、`docs/domain/SPEC-search-query-semantics.md:4,25,51,90,168-170`；在 Spec 038 的 FR-001、FR-004、FR-005、FR-011 旁標註「由 Spec 074 FR-085–FR-088 取代」（只加標註，不改其驗證紀錄）。
 - [ ] T074 [real app] 跳轉與返回的完整走查（範圍頁、目標頁、Activity、時間軸），含鍵盤返回。
-- **Gate**：五道 gate；ubuntu e2e 三個 shard 全綠（e2e 不等 unit，見 CLAUDE.md）。
+- [ ] T075 [P] [US6] 先 RED（修訂 E2）：`test/page-filters-persist.test.tsx`（plan 閘門表）：每個宣告條件集合的頁，任意條件組合在卸載、模擬關閉再開專案後逐項相同；第一次送出的讀取就帶著還原的條件；專案 B 讀不到 A 的條件；不合法的條件只丟該項；整份無法解析或 `v` 不符時當作沒有保存且不丟例外；改變條件不呼叫 `config.set`、不發 `config` topic。`test/page-filters-visible.test.tsx`：生效的條件在篩選列可見、收合控制項顯示其中的條件數、計數來源為「符合」。今天除時間軸查詢框外都不保存，以 `it.fails` 標示。
+- [ ] T076 [US6] （修訂 E2）實作 FR-089 與 plan D13：`pageFilters.ts` 的保存、還原與逐項驗證；每頁在讀取登記表宣告條件集合與驗證函式；時間軸的查詢框與隱藏泳道（Q6 答覆前依建議）併入 `pages.timeline`，刪除 `Timeline.tsx` 對 `redlog-timeline-filter-query:*`、`redlog-timeline-hidden-lanes:*` 的讀寫與「held query」（由 FR-086 的 `reveal` 取代）；收合控制項的條件數；有條件時計數經 `formatCount` 的「符合」來源；清除此頁全部條件沿用既有的清除動作與字串（不新增 i18n 鍵）。專案刪除時刪除它的保存紀錄。同一個 PR 更新 `test/timeline-stored-query-arrival.test.tsx`、`test/timeline-search-live-burst.test.tsx` 與 grep `e2e/` 中斷言舊鍵或「重開後篩選歸零」的 spec（CLAUDE.md「Changing behaviour」）。依賴 T071。T075 翻正。
+- [ ] T077 [P] （修訂 E2）原始碼掃描：`redlog-page-filters:` 只出現在 `pageFilters.ts`；`redlog-timeline-filter-query`、`redlog-timeline-hidden-lanes` 在 `src/` 出現 0 次；並列出 `src/renderer/src` 中其餘以專案 id 為鍵的本機儲存（今天：時間軸的模式、收合的帶、焦點錨點，`selectedEvent.ts`），逐一標為「篩選」或「呈現／導覽」並附理由，寫入 `verification.md`；新增的鍵必須在這份清單中。
+- [ ] T078 （修訂 E2）同 T073 的 PR：`docs/UIUX-STANDARD.md` 記錄「篩選依專案跨重開保存；重開後生效的條件以選取狀態可見、收合控制項顯示條件數、數字為符合數」（設計決定放在標準，實作細節留在本規格）；`docs/domain/SPEC-search-query-semantics.md` 中查詢框保存方式的敘述若有，同一個 PR 改寫。
+- [ ] T079 [real app] （修訂 E2）每個有篩選的頁：設條件 → 結束 app 再開 → 確認第一眼看得出被篩選、數字為符合數、清除動作可用；A 設條件、切 B 看不到、切回 A 還在；桌面與窄窗各一次。記入 `verification.md`。
+- **Gate**：五道 gate；ubuntu e2e 三個 shard 全綠（e2e 不等 unit，見 CLAUDE.md）。（修訂 E2）SC-010、SC-011 的測試綠燈；T077 的掃描為 0。
 
 ## Phase 8 — 收緊與文件
 
