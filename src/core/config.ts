@@ -278,7 +278,7 @@ export const DEFAULT_CONFIG: RedLogConfig = {
   terminal: {
     maxCastBytes: 50 * 1024 * 1024
   },
-  browser:{ ...DEFAULT_BROWSER, extraArgs: [] },
+  browser: { ...DEFAULT_BROWSER, extraArgs: [] },
   httpCapture: {
     routeTerminals: false,
     // Not 8080: that is Burp Suite's default listener, and Burp is running on

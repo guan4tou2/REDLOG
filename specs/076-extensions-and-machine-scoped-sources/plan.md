@@ -138,7 +138,7 @@
 | 2 | 只雜湊入口的 `computeContentHash` | `manifest.ts:308-323` | `integrity.ts`（`files` 全部） | 2 |
 | 3 | 機器層停用 `state.json` 與專案層 `packs.<id>`、`packMembers` | `core/plugins/state.ts`、`capture-packs.ts:36-39` | `machine.yaml` 的 `extensions.<id>.enabled` | 5 |
 | 4 | AI adapter 的機器層「安裝」與收據 | `official-agents.ts:140-214`、`~/.redlog/plugins/.official-ai-installations.json` | 機器層啟用＋同意（073 修訂）；選擇仍在專案 | 5 |
-| 5 | 寫死的來源 id 分支 | `capture-health.ts:338-340` `PROXY_MODE_PRODUCERS`；`hooks-manager.ts` `checkAvailable` | manifest 資料（075 FR-005） | 3 |
+| 5 | 寫死的來源 id 分支 | `hooks-manager.ts` `checkAvailable`（`capture-health.ts` 的 `PROXY_MODE_PRODUCERS` 已隨 transparent-proxy 刪除） | manifest 資料（075 FR-005） | 3 |
 | 6 | 同一動作的多份實作（標記、匯出、狀態） | `api-server.ts:476-490,511-527,579-592,756-762`；`ipc/markers.ts:95-125`；`index.ts:447-468,1838` | `core/actions/` | 7 |
 | 7 | `redlog-cli` 作為終端機入口 | `cli/redlog-cli.js:103-125` | hook 的 `redlog` 動詞 | 7 |
 | 8 | `transparent-proxy` | `plugins/transparent-proxy/` | 刪除 | 3 |

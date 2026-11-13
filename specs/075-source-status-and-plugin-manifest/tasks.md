@@ -86,7 +86,7 @@
 - [ ] T071 [US5] `src/core/plugins/manifest-v2.ts`：v1 與 v2 轉成內部形狀；v1 同時有 capture 與規則時拆成 Source 與 Processor；v2 拒絕 FR-053 的欄位並說明原因；錯誤帶 JSON pointer。`loadStarterPack`（`hooks-manager.ts:237-268`）與 `official-agents.ts` 的 manifest 讀取改經它或刪除。
 - [ ] T072 [US5] `manifest-consumers.ts` 與 G7 轉為以 v2 schema 為準；T009 的允許清單清空。
 - [ ] T073 [US5] RED → GREEN：v2 內容雜湊涵蓋 `files` 的每個檔；未列出的檔為錯誤；載入、顯示步驟、發放憑證前重算（G9）；bundled id 保留（建立在 T002 確認的行為上）。
-- [ ] T074 [P] bundled 改寫為 v2：`pcap-capture`、`transparent-proxy`、`c2-tailers`（Source，`files`、結構化 `requires`、`stop`、`elevated`）、`builtin-tools`（Processor）；`examples/plugins/*` 同步。
+- [ ] T074 [P] bundled 改寫為 v2：`pcap-capture`、`c2-tailers`（Source，`files`、結構化 `requires`、`stop`、`elevated`）、`builtin-tools`（Processor）；`examples/plugins/*` 同步。
 - [ ] T075 刪 `plugins/starter-pack`、`plugins/pack-host-monitors`、`plugins/pack-windows-output`；`hooks-manager.ts` 的內建 producer 改讀描述表，刪 `STARTER_PACK_FALLBACK` 與 parity 測試；`isPackAvailable` 不再看外掛；同 PR 修訂 Spec 035 FR-001／002 與 `capture-packs.ts:1-10`、`capture-health.ts:736-746` 的註解，改寫 `starter-pack.test.ts`、`capture-packs.test.ts`、`capture-pack-group.test.tsx`。`verify:package-resources` 的清單同步（release-only gate）。
 - [ ] T076 [P] `state.json` 中 bundled pack 與 starter-pack 的停用旗標轉成一次性通知並刪除；使用者外掛與 `builtin-tools` 的旗標保留（FR-072）。
 - [ ] T077 `optional-plugins/*/plugin.json` 不再被通用 loader 讀成 `kind: pack`；官方 AI 來源改由描述表提供（載入路徑與收據轉換屬 Spec 073，協調同一版本出貨）。

@@ -46,7 +46,7 @@
 - [ ] T031 [P] `src/core/extensions/builtin/{managed-http-proxy,capture-browser,builtin-terminal,host-monitors}.json`；`BUILTIN_CORE_RUNTIME` 允許清單與 `test/extensions/core-runtime-allowlist.test.ts`（只降）。同一 PR 依 075 的修訂（2026-11-13）讓 075 的描述表由這些 manifest 與核心描述合成（`toDescriptor`）。
 - [ ] T032 [US2] RED→GREEN：受管代理、擷取瀏覽器、內建終端機預設關閉；`activation` 只有在啟用且條件成立時才起 mitmdump、CDP 輪詢、pty。T008 翻正。導覽中的終端機只在啟用時出現（DECISIONS §4）。斷言舊的預設行為的 test 與 e2e 是本任務的一部分（`grep -rn` 列出：首次使用、終端機頁、HTTP 自動啟動相關 spec）。
 - [ ] T033 [US2] CDP 輪詢在瀏覽器 `exit` 時停止（13 號 C.4）；擷取瀏覽器的計時器登記在關專案時為 0。
-- [ ] T034 刪除 `plugins/transparent-proxy/`；`electron-builder.yml`、`verify-packaged-resources.mjs`、075 的描述與 i18n 一併；已安裝者的移除走 073 帳本（帳本未落地前，設定頁顯示其 `stop` 步驟）。
+- [x] T034 刪除 `plugins/transparent-proxy/`；075 的描述與 i18n 一併（`electron-builder.yml`、`verify-packaged-resources.mjs` 原本就沒有引用它）。已安裝者的移除不走帳本也不在設定頁顯示：外掛已不存在，升級前的 `down` 步驟寫在 CHANGELOG。
 - [ ] T035 [P] [US3] `test/extensions/truth-surfaces.test.ts`（plan Gates）。
 - [ ] T036 [P] [US9] 擴充功能種類在活動紀錄「篩選」選單中的分組（L1，FR-094）；用 072 的登記表與 `validatePluginKind`，等 072 Phase 2。
 - [ ] T037 [P] `test/extensions/removed-kinds-readable.test.ts`（契約 §5.6）。
