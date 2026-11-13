@@ -395,7 +395,7 @@ E7、E8 是「範圍無法單獨決定」的典型：它們之所以從不自動
   | 目標 | 關係 |
   |---|---|
   | 確定的目標，K 段判為範圍內 | `deliver`／`in-scope` |
-  | 確定的目標，K 段判為範圍外（含宣告的排除 `!host`），且該列是 `dns` 種類（`dns_query`、`dns_response`）或 FR-022 第 4 項的樞紐建立指令（修訂 S9，R23） | `ask`／`undetermined`，組 `host:`（FR-025） |
+  | 確定的目標，K 段判為範圍外（含宣告的排除 `!host`），且該列是 `dns` 種類（`dns_query`、`dns_response`）或 FR-022 第 4 項的樞紐建立指令（修訂 S9，R23；「含宣告的排除」經擁有者於 2026-11-14 單獨確認，DECISIONS §12） | `ask`／`undetermined`，組 `host:`（FR-025） |
   | 確定的目標，K 段判為範圍外（含宣告的排除 `!host`）；上一列以外的每一種列（掃描、HTTP 等） | `withhold`／`out-of-scope`（R9） |
   | 確定的目標，K 段判為無法確認（`no-scope`、衝突、只有一面且沒有對應） | `ask` |
   | 沒有確定的目標 | `ask` |
