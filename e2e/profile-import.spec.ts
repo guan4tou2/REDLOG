@@ -17,6 +17,7 @@ interface Cfg {
   scope: { targets: string[]; excludeTargets: string[]; warnOnViolation: boolean }
   network: { whitelist: string[]; blacklist: string[] }
 }
+// What the file may hold: `version` and the two scope lists. Nothing else.
 interface Bridge {
   config: { get: () => Promise<Cfg> }
   project: {
@@ -32,7 +33,6 @@ const IMPORT = /Import Profile|匯入設定檔/
 const CREATE = /^(Create project|建立專案)$/
 const CLEAR = /Clear imported settings|清除已匯入的設定/
 const EXCLUDED = /Excluded|排除/
-const NO_WARN = /No warning on out-of-scope|不警告範圍外目標/
 const NOTHING_DIFFERS = /nothing differs|內容與預設值相同/
 
 test.describe.serial('profile import on the create-project card (#297)', () => {
@@ -111,10 +111,10 @@ test.describe.serial('profile import on the create-project card (#297)', () => {
   })
 
   test('A then B: the project is B, not A and B', async () => {
-    await importFile(JSON.stringify({ scope: { targets: ['192.0.2.0/24'], excludeTargets: ['192.0.2.9'] } }))
+    await importFile(JSON.stringify({ version: 1, scope: { targets: ['192.0.2.0/24'], excludeTargets: ['192.0.2.9'] } }))
     await expect(applied()).toContainText(EXCLUDED)
 
-    await importFile(JSON.stringify({ scope: { targets: ['198.51.100.0/24'] } }))
+    await importFile(JSON.stringify({ version: 1, scope: { targets: ['198.51.100.0/24'] } }))
     // The card says one scope entry and NO exclusion — it no longer carries A's.
     await expect(applied()).toContainText(/Scope 1|範圍 1/)
     await expect(applied()).not.toContainText(EXCLUDED)
@@ -138,9 +138,9 @@ test.describe.serial('profile import on the create-project card (#297)', () => {
   })
 
   test('B then A, and the same file twice, give the same project each time', async () => {
-    await importFile(JSON.stringify({ scope: { targets: ['198.51.100.0/24'] } }))
-    await importFile(JSON.stringify({ scope: { targets: ['192.0.2.0/24'], excludeTargets: ['192.0.2.9'] } }))
-    await importFile(JSON.stringify({ scope: { targets: ['192.0.2.0/24'], excludeTargets: ['192.0.2.9'] } }))
+    await importFile(JSON.stringify({ version: 1, scope: { targets: ['198.51.100.0/24'] } }))
+    await importFile(JSON.stringify({ version: 1, scope: { targets: ['192.0.2.0/24'], excludeTargets: ['192.0.2.9'] } }))
+    await importFile(JSON.stringify({ version: 1, scope: { targets: ['192.0.2.0/24'], excludeTargets: ['192.0.2.9'] } }))
     await expect(applied()).toContainText(EXCLUDED)
 
     const cfg = await createProject('b-then-a')
@@ -149,55 +149,72 @@ test.describe.serial('profile import on the create-project card (#297)', () => {
     await backToPicker()
   })
 
-  test('a profile that only turns the warning off is saved', async () => {
-    await importFile(JSON.stringify({ scope: { warnOnViolation: false } }))
-    await expect(applied()).toContainText(NO_WARN)
+  test('a file that still carries the IP lists or the warning is refused, and creates nothing from it', async () => {
+    await importFile(JSON.stringify({ version: 1, scope: { targets: ['198.51.100.0/24'], warnOnViolation: false }, network: { blacklist: ['203.0.113.9'] } }))
+    await expect(failure()).toContainText(/not part of a profile|不屬於設定檔/)
+    await expect(failure()).toContainText('network, scope.warnOnViolation')
+    await expect(applied()).toHaveCount(0)
 
-    const cfg = await createProject('warn-off')
-    expect(cfg.scope.warnOnViolation).toBe(false)
+    await importFile(JSON.stringify({ scope: { targets: ['198.51.100.0/24'] } }))
+    await expect(failure()).toContainText(/no version|沒有版本/)
+    await importFile(JSON.stringify({ version: 2, scope: { targets: ['198.51.100.0/24'] } }))
+    await expect(failure()).toContainText(/version is 2|版本是 2/)
+
+    const cfg = await createProject('refused-old-shape')
     expect(cfg.scope.targets).toEqual([])
+    expect(cfg.network.blacklist).toEqual([])
+    await backToPicker()
+  })
+
+  test('an imported scope leaves the network lists and the warning at their defaults', async () => {
+    await importFile(JSON.stringify({ version: 1, scope: { targets: ['198.51.100.0/24'] } }))
+    const cfg = await createProject('scope-only')
+    expect(cfg.scope.targets).toEqual(['198.51.100.0/24'])
+    expect(cfg.scope.warnOnViolation).toBe(true)
+    expect(cfg.network.whitelist).toEqual([])
+    expect(cfg.network.blacklist).toEqual([])
     await backToPicker()
   })
 
   test('exclusions with no scope, and an explicitly empty list, are both applied as written', async () => {
-    await importFile(JSON.stringify({ scope: { excludeTargets: ['203.0.113.7'] } }))
+    await importFile(JSON.stringify({ version: 1, scope: { excludeTargets: ['203.0.113.7'] } }))
     const a = await createProject('exclude-only')
     expect(a.scope.excludeTargets).toEqual(['203.0.113.7'])
     expect(a.scope.targets).toEqual([])
     await backToPicker()
 
-    await importFile(JSON.stringify({ scope: { targets: [] } }))
+    await importFile(JSON.stringify({ version: 1, scope: { targets: [] } }))
     await expect(applied()).toContainText(NOTHING_DIFFERS)
     const b = await createProject('empty-list')
     expect(b.scope.targets).toEqual([])
-    expect(b.scope.warnOnViolation).toBe(true)
+    expect(b.scope.excludeTargets).toEqual([])
     await backToPicker()
   })
 
   test('YAML is read the same way as JSON', async () => {
-    await importFile('scope:\n  targets:\n    - 10.9.0.0/16\n  warnOnViolation: false\n', 'yaml')
+    await importFile('version: 1\nscope:\n  targets:\n    - 10.9.0.0/16\n  excludeTargets:\n    - 10.9.0.9\n', 'yaml')
     await expect(applied()).toContainText(/Scope 1|範圍 1/)
-    await expect(applied()).toContainText(NO_WARN)
+    await expect(applied()).toContainText(EXCLUDED)
     const cfg = await createProject('yaml-profile')
     expect(cfg.scope.targets).toEqual(['10.9.0.0/16'])
-    expect(cfg.scope.warnOnViolation).toBe(false)
+    expect(cfg.scope.excludeTargets).toEqual(['10.9.0.9'])
     await backToPicker()
   })
 
   test('clearing the import leaves a project with the defaults', async () => {
-    await importFile(JSON.stringify({ scope: { targets: ['198.51.100.0/24'], warnOnViolation: false } }))
+    await importFile(JSON.stringify({ version: 1, scope: { targets: ['198.51.100.0/24'], excludeTargets: ['198.51.100.9'] } }))
     await expect(applied()).toBeVisible()
     await page.getByRole('button', { name: CLEAR }).click()
     await expect(applied()).toHaveCount(0)
 
     const cfg = await createProject('cleared')
     expect(cfg.scope.targets).toEqual([])
-    expect(cfg.scope.warnOnViolation).toBe(true)
+    expect(cfg.scope.excludeTargets).toEqual([])
     await backToPicker()
   })
 
   test('a refused file says why and leaves what was imported exactly as it was', async () => {
-    await importFile(JSON.stringify({ scope: { targets: ['198.51.100.0/24'] } }))
+    await importFile(JSON.stringify({ version: 1, scope: { targets: ['198.51.100.0/24'] } }))
     const before = await applied().innerText()
 
     // not JSON
@@ -206,13 +223,13 @@ test.describe.serial('profile import on the create-project card (#297)', () => {
     await expect(applied()).toHaveText(before)
 
     // parsed, wrong type
-    await importFile(JSON.stringify({ scope: { targets: 'not-a-list' } }))
+    await importFile(JSON.stringify({ version: 1, scope: { targets: 'not-a-list' } }))
     await expect(failure()).toContainText('scope.targets')
     await expect(applied()).toHaveText(before)
 
-    // parsed, nothing a project can take
-    await importFile(JSON.stringify({ somethingElse: 1 }))
-    await expect(failure()).toContainText(/none of the settings|沒有新專案可採用/)
+    // parsed, neither list
+    await importFile(JSON.stringify({ version: 1 }))
+    await expect(failure()).toContainText(/neither a target list|沒有目標清單/)
     await expect(applied()).toHaveText(before)
 
     // a path that is not there
@@ -228,7 +245,7 @@ test.describe.serial('profile import on the create-project card (#297)', () => {
   })
 
   test('backing out of the picker is not an error and changes nothing', async () => {
-    await importFile(JSON.stringify({ scope: { targets: ['198.51.100.0/24'] } }))
+    await importFile(JSON.stringify({ version: 1, scope: { targets: ['198.51.100.0/24'] } }))
     const before = await applied().innerText()
     await pickerReturns('cancel')
     await page.getByRole('button', { name: IMPORT }).click()
@@ -238,7 +255,7 @@ test.describe.serial('profile import on the create-project card (#297)', () => {
     // a good import after a refused one clears the message
     await importFile('not json at all {')
     await expect(failure()).toBeVisible()
-    await importFile(JSON.stringify({ scope: { targets: ['198.51.100.0/24'] } }))
+    await importFile(JSON.stringify({ version: 1, scope: { targets: ['198.51.100.0/24'] } }))
     await expect(failure()).toHaveCount(0)
   })
 })

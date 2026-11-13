@@ -1,0 +1,8 @@
+engagement:
+  id: no-members
+operator:
+  id: operator-1
+  name: Operator
+packs:
+  hostMonitors: true
+  windowsOutput: true

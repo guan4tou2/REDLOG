@@ -39,6 +39,7 @@
 | B4 | 終端機狀態檔的停止原因增加 `private`（Spec 071 FR-087） | DECISIONS §5 #1 |
 | B5 | 開放問題 Q2 已由 B2 回答：同意是機器層一次；選擇是逐專案 | DECISIONS §7 第 4 項 |
 | B6 | 擴充功能的設定進兩層檔案、以擴充功能 id 為命名空間：`machine.yaml` 的 `extensions.<id>.config.<key>`、專案 `config.yaml` 的 `extensions.<id>.<key>`；設定登記表（FR-011）以擴充功能 manifest 動態登記這些鍵，每鍵恰好一個 scope；未知鍵保留（FR-023）。`httpCapture.port`／`listenHost` 移入受管代理擴充功能的設定（Spec 076 T057） | Spec 076 K 段 |
+| B7 | **operator 只在機器層**（2026-11-13 晚間，DECISIONS §9 對 Q4 的答覆，與建議不同）：`operator.id`、`operator.name` 歸屬機器、**不可**在專案覆寫；專案 `config.yaml` 中的 `operator`（既有的值、建立卡片或匯入的設定檔帶來的值）一律不讀、不顯示、不視為錯誤，下一次存檔時不再寫出。設定頁不再有「此專案覆寫」的 operator，也沒有「只套用到此專案」。舊格式規則中 operator 的例外（FR-016）與給舊版 app 的 operator 鏡像（FR-019、plan D6）一併取消（plan D12） | 擁有者裁定：專案不可以覆寫 operator | FR-016、FR-019、FR-01D；US4；plan D5、D6、D12 與歸屬表；tasks T04A、T04B；071 FR-009 的註記 |
 
 ### 本規格自行決定的（理由與被否決的替代方案見 plan.md）
 
@@ -47,6 +48,8 @@
 3. **切換先準備、後交棒**：解析並驗證 B 的設定、開啟 B 的資料庫並完成 schema 遷移，都在 A 停止之前做。這一段失敗時 A 原封不動，繼續記錄（plan D3）。
 4. **設定分層**：預設值 → 機器 → 專案 → session 覆寫，由一個 `ConfigView` 解析一次。開專案不再把合併後的設定寫回 `config.yaml`；設定檔解析失敗時拒絕開啟，不再以預設值覆蓋檔案（plan D4、D5）。
 5. **舊格式設定檔的讀法**：沒有 `configVersion` 的檔案是舊格式。舊格式裡移到機器層級的鍵，值等於舊版內建預設值時視為「未選擇」而繼承機器值；不等於時視為專案覆寫。操作者身分與個人流量清單例外，一律保留為覆寫（plan D5）。
+
+   > **Superseded（2026-11-13，修訂 B7）**：操作者身分不再是例外，也不是覆寫：專案檔中的 `operator` 一律不讀（plan D12）。個人流量清單的例外不變。
 6. **封存**是專案選擇器上的操作，只能對未開啟的專案執行；封存的專案以唯讀 session 開啟，不啟動任何擷取資源（plan D8）。
 7. **安裝帳本**位於 `~/.redlog/installs.json`，以「檔案」為單位記錄，一個 shell 可有多筆；還原以寫入的確切位元組為準（plan D9）。
 8. **AI 同意**存在專案設定裡；撤回可以是機器層級的一個時間戳，使所有專案在該時刻之前取得的同意一併失效（plan D10）。
@@ -130,6 +133,12 @@
 3. **Given** 一個既有專案的 `scope.personalDomains` 是舊預設值（含 localhost），**When** 升級後開啟並匯出，**Then** 排除的列與升級前相同。新建立的專案預設不排除 localhost。
 4. **Given** 一個既有專案的 `httpCapture.port` 等於舊預設 6661，機器層設定為 6670，**When** 開啟，**Then** 受管 proxy 綁 6670（該值未被操作者選擇過，繼承機器）。
 5. **Given** 舊版 app 打開一個新格式的專案，**Then** 它能開啟並記錄，operator 與新版相同（plan D6 的鏡像）；其他機器層的值在舊版中回到舊預設，這是已知的降版行為。
+
+> **Superseded（2026-11-13，修訂 B7）**：情境 2 與情境 5 改為下列兩條；情境 1、3、4 不變。
+>
+> - **2′** **Given** 一個既有專案，其 `config.yaml` 的 operator 是 `bob`，機器層的 operator 是 `alice`，**When** 升級後開啟，**Then** 有效的 operator 是 `alice`（來源：機器），此後新列的 `operator_id` 是 `alice`；`bob` 不顯示、不是錯誤、不阻擋開啟，下一次存檔後檔案不再含 operator。設定頁的 operator 欄位沒有「此專案覆寫」也沒有「改用此電腦的值」。
+> - **5′** 不再保證較舊版本的 app 開啟新格式專案時 operator 相同：新格式的專案檔不含 operator（不寫鏡像，plan D12）。
+> - **6** **Given** 專案開著，**When** 在設定頁改 operator，**Then** 寫入 `machine.yaml`，開著的 session 在存檔回覆前改用新值（FR-01C），之後開啟的每一個專案都用它；任何專案檔都不被寫入 operator。
 
 ### User Story 5 — 回到專案時，被暫停的終端機自己恢復（P1）
 
@@ -244,13 +253,23 @@
   - 否則 → 視為專案覆寫；
   - 例外：`operator.*` 與 `scope.personalDomains` 一律視為專案覆寫。
 
+  > **Superseded（2026-11-13，修訂 B7）**：例外只剩 `scope.personalDomains`。`operator.*` 不可覆寫（FR-01D）：專案檔中的值在任何格式下都不讀。
+
   新版寫入的檔另帶寫入者摘要；摘要與檔案內容不符的新格式檔（被較舊版本或手動改寫過）同樣依舊格式規則解讀。
 - **FR-017** 舊格式的檔案只在操作者下一次存檔時轉為新格式；轉換前後每個鍵的有效值相同。升級本身不改寫任何專案的設定檔。
 - **FR-018** 新建專案只寫專案範圍的鍵與建立卡片上操作者填的值；不複製機器層的值。
 - **FR-019** 新格式的專案檔另寫 `operator` 的鏡像（標記為鏡像，新版不視為覆寫），使較舊的版本開啟時署名不變（降版相容）。
+
+  > **Superseded（2026-11-13，修訂 B7）**：不寫鏡像。新格式的專案檔不含 `operator`；較舊版本開啟新格式專案時 operator 回到它的預設值，不在本規格的保證之內（plan D12）。
 - **FR-01A** 設定頁的每個機器範圍欄位標示它目前的來源。被專案覆寫的欄位提供「改用此電腦的值」；這個動作寫一列設定變更紀錄。繼承機器值本身不寫紀錄（承接 Spec 051 FR-007、FR-008）。不新增頁面或分頁。
 - **FR-01B** 個人流量規則的鍵改為 `personalTraffic`，歸屬機器層，預設為空（不含 localhost）。舊檔的 `scope.personalDomains` 讀為 `personalTraffic` 的專案覆寫。設定頁把它移出範圍分組。
 - **FR-01C** 必須在不重啟的情況下即時生效的機器層鍵（至少：operator、`network.*` 中屬於機器的鍵、`httpCapture.port`／`listenHost`），存檔後依 FR-013 套用到開著的 session。
+- **FR-01D**（修訂 B7，2026-11-13）`operator.id`、`operator.name` 歸屬機器層且不可覆寫（登記表 `overridable: false`）。
+  1. 有效的 operator 只來自機器層（未設定時為內建預設值）；session token 的 operator、071 的蓋章（071 FR-009）、API 的主要操作者、交接目錄的身分檔都讀它。
+  2. 專案 `config.yaml` 中的 `operator`（任何格式、任何來源：既有的值、建立卡片、匯入的設定檔）不讀、不顯示、不是解析錯誤（FR-015 不因它拒絕開啟），忽略它也不寫設定變更紀錄；`ConfigStore` 的下一次存檔不再寫出它。
+  3. `ConfigStore` 收到寫入專案層 operator 的 op 時拒絕並回報原因，不改寫任何檔案；建立專案與匯入設定檔時丟棄 `operator`。
+  4. 設定頁的 operator 欄位標示來源為「此電腦」，沒有「只套用到此專案」與「改用此電腦的值」；欄位放在哪一頁見開放問題 Q6。
+  5. operator 的變更在開著的 session 中即時生效（FR-01C）；切換專案不改變 operator。
 
 #### machine.yaml
 
@@ -393,6 +412,8 @@
 | `src/core/config-apply-plan.ts:194-201` `NO_LIVE_EFFECT` | `browser`、`retention` 等無即時效果 | `network.offline` 必須有即時效果；清單逐項重審 | T043 |
 | `src/core/capture-health.ts:207-211` | DB 錯誤計數以 app session 為範圍 | 以專案 session 為範圍 | T031f |
 | 07-architecture「刻意的設計」 | 終端機切換後永久停止是 FR-010 | 擁有者已改決定 | 記錄即可 |
+| `src/core/config.ts:36-39,250-253,363`；`src/renderer/src/components/settings/ProjectSettings.tsx:27-53`；`src/main/index.ts:779,809,1018`；`src/main/operator-change.ts`（修訂 B7） | operator 存在每個專案的 `config.yaml`，在專案設定頁編輯，建立卡片可帶入（`mergeInitialConfig`），開專案時從專案設定讀出蓋章 | operator 只在機器層，專案檔中的值不讀（FR-01D） | T04A、T04B |
+| 本規格 FR-016 例外、FR-019、plan D5 例外、D6、T047 的鏡像、T100（修訂 B7） | 既有專案的 operator 一律保留為覆寫；新格式寫 operator 鏡像供舊版讀 | 取消（FR-01D、plan D12） | 原文以 Superseded 標示保留 |
 | 08-plugin-system F2「機器層同意收據」 | 同意在機器層，第一次在這台機器上啟用時取得 | 同意在專案層（擁有者決定 P5、071 O9） | 記錄即可（開放問題 Q2 只在擁有者要改變 P5 時才需要答） |
 | 071 plan D11、T075 | relay 的 `apply_terminal_action` 改為暫停 | relay 一側屬 071，TS 一側與狀態檔 schema 屬本規格 | 兩份規格共同的 agreement 測試（T060） |
 | Constitution「domain contract 變更須有明確任務」 | glossary 的 Recording 只有 recording／paused | 新增 session 狀態、封存、唯讀 | T091 更新 glossary |
@@ -400,16 +421,24 @@
 ## 開放問題（需要擁有者）
 
 > **2026-11-12 擁有者答覆**：以下各項均照「建議」欄採納（封存的唯讀專案可匯出，只允許寫入匯出的封存與摘要列；AI 同意為每個專案一次；暫停跨專案切換延續；新專案可覆寫操作者但介面不提供；`network.whitelist` 屬於專案）。這是決定，尚未實作。
+> **Superseded（2026-11-13，修訂 B7）**：Q4 的答覆改為「不可以」：operator 只在機器層（DECISIONS §9）；條文見 FR-01D。其餘答覆不變。
 
 起草者的建議附在每一題；本規格依建議撰寫，但不視為已決定。理由與替代方案在 plan 的相關決策。
 
 | # | 問題 | 建議 |
 |---|---|---|
-| Q1 | 封存（唯讀）的專案能不能匯出？Bundle 第 4 版要求鏈上有封存事件（ROOT-CAUSE-REVIEW §4），唯讀 session 寫不進去 | 允許，且唯讀 session 只開放匯出的封存與摘要兩種列經 071 入口寫入；其餘一律拒絕。替代：要求先取消封存再匯出 |
+| Q1 | 封存（唯讀）的專案能不能匯出？Bundle 第 4 版要求鏈上有封存事件（ROOT-CAUSE-REVIEW §4），唯讀 session 寫不進去 | 允許，且唯讀 session 只開放匯出的封存與摘要兩種列經 071 入口寫入；其餘一律拒絕。替代：要求先取消封存再匯出 **已裁定（2026-11-13，DECISIONS §9）**：允許，唯讀狀態只開放封存與摘要兩種列 |
 | Q2 | AI 同意的原生對話框：每個專案第一次啟用都問，還是每台機器只問一次（08 原案）（**2026-11-13 已由修訂 B2 回答：每台機器一次；工作階段的選擇逐專案**） | 每個專案問。注意：P5 與 071 O9 已寫明「第一次在某專案啟用時」取得同意，本題只在擁有者要改變那個決定時才需要回答；075 已依 P5 改寫 |
-| Q3 | 暫停跨專案切換延續（今天），還是每個專案各自記住 | 延續；改成各自記住會讓「切到 B 就開始錄」成為可能的意外 |
-| Q4 | 新專案可不可以覆寫 operator | 可以，但設定頁不主動提供；只在既有覆寫或操作者明確選「只套用到此專案」時出現 |
-| Q5 | `network.whitelist`（攻擊用出口）歸屬專案還是機器 | 專案（plan 設定歸屬表的寫法），因為 VPS 出口通常每個任務不同 |
+| Q3 | 暫停跨專案切換延續（今天），還是每個專案各自記住 | 延續；改成各自記住會讓「切到 B 就開始錄」成為可能的意外 **已裁定（2026-11-13，DECISIONS §9）**：延續 |
+| Q4 | 新專案可不可以覆寫 operator | 可以，但設定頁不主動提供；只在既有覆寫或操作者明確選「只套用到此專案」時出現 **已裁定（2026-11-13，DECISIONS §9）**：**不可以**；operator 只在機器層。與建議不同，設定歸屬表與相關條文待修訂 |
+| Q5 | `network.whitelist`（攻擊用出口）歸屬專案還是機器 | 專案（plan 設定歸屬表的寫法），因為 VPS 出口通常每個任務不同 **已裁定（2026-11-13，DECISIONS §9）**：專案 |
+
+**2026-11-13 新增**（修訂 B7 的後果；裁定本身沒有回答。答覆前依「建議」欄撰寫，但不視為已決定）：
+
+| # | 問題 | 建議 |
+|---|---|---|
+| Q6（2026-11-13 新增） | operator 只在機器層之後，設定頁的 operator 欄位放在哪裡？今天它在專案設定頁（`ProjectSettings.tsx:47-53`，與 engagement 同一頁） | 移到〈設定 ▸ 一般〉，與全 app 的顯示時區等機器層偏好同頁；專案頁只留 engagement。理由：留在專案頁的欄位會被讀成「這個專案的 operator」，正是被裁定不存在的東西。不新增頁面或分組（P10） **已裁定（2026-11-13 晚間，擁有者）**：移到〈設定 ▸ 一般〉，與建議相同 |
+| Q7（2026-11-13 新增） | 升級後第一次啟動、`machine.yaml` 還沒有 operator 時，機器層的 operator 是內建預設值（`operator-1`／`Operator`），還是從某個既有專案的 `config.yaml` 取一次？ | 內建預設值，不取。取一次需要選「哪一個專案」（各專案可能不同），而且是只為舊格式存在的遷移；產品尚未發布，代價是操作者在設定頁填一次。後果寫明：在操作者填之前開啟既有專案，新列的 `operator_id` 是 `operator-1`，與該專案先前的列不同；兩者都照常驗證（plan D12） **已裁定（2026-11-13 晚間，擁有者）**：內建預設值，不從專案取，與建議相同 |
 
 ## Domain References
 

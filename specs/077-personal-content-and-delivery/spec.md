@@ -343,6 +343,8 @@ bundle 中 40 列被扣下（12 個人、20 範圍外、8 待確認）。客戶�
   4. seal 另外承諾 `withheld` 的計數與 stub id 清單的雜湊。
   5. logged 層沒有鏈：被扣下的 logged 列不留 stub，只計數；`tiers.loggedDigest` 只涵蓋交付的 logged 列。
 - **FR-043** verifier（`tools/redlog-verify.py` 與 `bundle-verify.ts`，規則在 `evidence-rules.ts`）對 stub：檢查 `prev_hash` 連續、不重算雜湊、不檢查簽章；stub 的雜湊由下一列的 `prev_hash`（及其簽章）證明，最後一個位置由 seal 的 `headHash` 證明。輸出一行 `N rows withheld by the operator (personal a, out-of-scope b, unanswered c, content cleared d)`；計數與 manifest、seal 不符為失敗。扣下本身不改變結束碼。
+
+  > **修訂註記（2026-11-13，DECISIONS §9；Spec 072 修訂 D1）**：擁有者裁定 bundle 附 `kinds.json` 與 `intervals.jsonl`（072 Q3）。第 5 版的 bundle 因此另含這兩個必要檔：列在 manifest 的 `files`、在 seal 的 `manifestSha256` 之內，manifest 不新增欄位；內容只取交付的完整列（不含 stub、被扣下的 logged 列與 seal 列），不得透露被扣下的列（072 FR-060–FR-065；074 FR-049）。缺任一檔的第 5 版 bundle 為 `malformed`。兩個檔是否併入本條的第 5 版、而不是另一次改版，是 072 的開放問題 Q6（建議：併入，本條仍是 bundle 格式與版本的唯一擁有者）。T002 的不洩漏 property test 涵蓋兩個檔（072 T066）；T040–T042 與 072 T063、T065 配對。
 - **FR-044** app 內驗證（`verifyChainFullAsync`、證據頁）對**清除**過的列套用同一規則；其他理由的列在專案資料庫中不是 stub，照常完整驗證。
 - **FR-045** 沒有鏈的格式各帶明確的扣下計數：JSON 的頂層 `delivery`（`DeliverySummary`）；NDJSON 的最後一行 `{"_delivery": …}`；CSV（076 對齊列）的最後一列 `kind = "redlog:delivery"`、`result = "personal=a;out-of-scope=b;unanswered=c;cleared=d;redacted=e"`；HAR 的 `log.comment` 加 `log._redlog.delivery`；API 讀取回應的 `excluded`（076 FR-091 的「排除 N 筆」即此）；Exporter 的 `system:export_shipped` 加 `withheld`。
 - **FR-046** 附件跟著列：截圖、artifact 跟著它的列；http body 跟著引用它的交付列；cast 分段與 AI 原始 transcript 只要涵蓋任何被扣下的列就整檔不附，宣告於 `omittedAttachments`，理由 `contains-withheld`，不能勾回（plan D13）。
@@ -499,11 +501,11 @@ bundle 中 40 列被扣下（12 個人、20 範圍外、8 待確認）。客戶�
 
 | # | 問題 | 建議 |
 |---|---|---|
-| Q1 | 「遵循 shell 歷史排除」預設開或關？ | **關**。Ubuntu 等預設 `HISTCONTROL=ignoreboth`，從筆記貼上的指令常帶前導空白；預設開會讓攻擊指令無聲地不被記錄，違反 R2。開啟是機器層一個開關 |
-| Q2 | 「不索引」：私人列要不要從全文索引實際移除？ | 不移除；讀取時排除（FR-007），實際移除只由清除內容。撤回時不需重建索引；「不被搜到」已達成；磁碟上不留內容是 R4 的工作 |
-| Q3 | `terminal-last` 承接的目標不算（FR-022），所以沒有目標的本機指令一律詢問。接受嗎？ | 接受。這是「只允許確定的承接」的直接結果；代價由分組（SC-003）吸收；O18 落地後自動改善 |
-| Q4 | 未回答就匯出時，待確認的列扣下還是交付？ | 扣下（stub `unanswered`），對話框寫數字，從不擋匯出。交付出去的無法收回，扣下的下一次可以補交 |
-| Q5 | 不在離線時，RedLog 查詢範圍內名稱（FR-105）預設開或關？ | **關**；範圍設定中一個「解析範圍內的名稱」動作，按一次查一次。理由見 plan D18：加入範圍項目的時刻常早於 VPN 或樞紐就緒，系統解析器會把客戶的名稱（含內部名稱）送到當時的 ISP、公司或公用解析器；被動的對應（代理、DNS 模式、hosts 檔）在大多數行動中已足夠，不足時操作者明確按一次，且每次都上鏈 |
+| Q1 | 「遵循 shell 歷史排除」預設開或關？ | **關**。Ubuntu 等預設 `HISTCONTROL=ignoreboth`，從筆記貼上的指令常帶前導空白；預設開會讓攻擊指令無聲地不被記錄，違反 R2。開啟是機器層一個開關 **已裁定（2026-11-13，DECISIONS §9）**：不適用：「不記錄」已暫緩（DECISIONS §8 第 6 項），重新排入時再答 |
+| Q2 | 「不索引」：私人列要不要從全文索引實際移除？ | 不移除；讀取時排除（FR-007），實際移除只由清除內容。撤回時不需重建索引；「不被搜到」已達成；磁碟上不留內容是 R4 的工作 **已裁定（2026-11-13，DECISIONS §9）**：不移除，讀取時排除 |
+| Q3 | `terminal-last` 承接的目標不算（FR-022），所以沒有目標的本機指令一律詢問。接受嗎？ | 接受。這是「只允許確定的承接」的直接結果；代價由分組（SC-003）吸收；O18 落地後自動改善 **已裁定（2026-11-13，DECISIONS §9）**：接受 |
+| Q4 | 未回答就匯出時，待確認的列扣下還是交付？ | 扣下（stub `unanswered`），對話框寫數字，從不擋匯出。交付出去的無法收回，扣下的下一次可以補交 **已裁定（2026-11-13，DECISIONS §9）**：扣下 |
+| Q5 | 不在離線時，RedLog 查詢範圍內名稱（FR-105）預設開或關？ | **關**；範圍設定中一個「解析範圍內的名稱」動作，按一次查一次。理由見 plan D18：加入範圍項目的時刻常早於 VPN 或樞紐就緒，系統解析器會把客戶的名稱（含內部名稱）送到當時的 ISP、公司或公用解析器；被動的對應（代理、DNS 模式、hosts 檔）在大多數行動中已足夠，不足時操作者明確按一次，且每次都上鏈 **已裁定（2026-11-13，DECISIONS §9）**：關 |
 
 ## Domain References
 

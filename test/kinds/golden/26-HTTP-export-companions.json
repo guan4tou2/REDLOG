@@ -1,0 +1,16 @@
+{
+ "location": "src/core/export-selection.ts",
+ "mode": "extracted",
+ "n": 26,
+ "table": "HTTP export companions",
+ "words": {
+  "iterateExportSelection": [
+   "command_end",
+   "http_response_chunk",
+   "scanner",
+   "shell",
+   "websocket_end",
+   "ws_message"
+  ]
+ }
+}

@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
+import path from 'node:path'
 import { classifyTier } from '../../src/core/db/events'
+import { kindIds, scanInventory } from '../kinds/inventory'
 
 // v0.13.0 two-tier chain (docs/design/DESIGN-two-tier-chain.md §11.1). Every real
 // (agent_type, subtype) pair emitted anywhere in src/ must resolve to
@@ -79,7 +81,7 @@ describe('classifyTier — v0.13 two-tier assignment', () => {
     expect(classifyTier('scanner', { subtype: 'http_request_dropped' })).toBe('logged')
   })
 
-  it('browser console → logged (browser_launched + navigation stay chained)', () => {
+  it('browser:console → logged — the entry is in LOGGED_TIER, but no writer writes the subtype `console` (see the CDP kinds below)', () => {
     expect(classifyTier('browser', { subtype: 'console' })).toBe('logged')
     expect(classifyTier('browser', { subtype: 'browser_launched' })).toBe('chained')
     expect(classifyTier('browser', { subtype: 'navigation' })).toBe('chained')
@@ -135,5 +137,119 @@ describe('classifyTier — v0.13 two-tier assignment', () => {
     expect(classifyTier('dns', { subtype: 42 })).toBe('chained')
     expect(classifyTier('dns', { subtype: null })).toBe('chained')
     expect(classifyTier('dns', { subtype: undefined })).toBe('chained')
+  })
+})
+
+// ─── Spec 072 T010: today's tier for every kind a writer writes ─────────────────
+//
+// The comment above `classifyTier` (src/core/db/event-write.ts) says a
+// `tier-classifier-total` test forces every written kind to have a tier. That
+// test did not exist: the file above holds examples, and nothing scanned the
+// writers, so a new kind got `chained` by falling off the end of the table
+// without anyone having decided it. This is that check, and it pins what the
+// code does today — including the one place the old examples are misleading.
+//
+// The kinds come from the writer inventory (test/kinds/inventory.ts, Spec 072
+// T002), which reads the source; the two lists below are written out by hand so
+// a NEW writer fails here until someone says which tier it belongs in. The
+// code's answer is then asserted against the list, so the list cannot be wrong
+// without a failure either.
+//
+// Browser console. `browser:console` is in LOGGED_TIER, but the CDP connector
+// writes `console_log`, `console_info`, `console_warn`, `console_error`,
+// `console_debug`, `console_trace`, `exception` and `log_entry`
+// (src/main/services/cdp-connector.ts) — never `console`. So every real
+// browser console row is CHAINED today, against docs/design/DESIGN-two-tier-chain.md §2.3
+// and the report that says logged. Owner ruling Q1 (docs/records/2026-11-13/DECISIONS.md §9):
+// NEW rows become logged; that is a change for Phase 4 (and a TIER_CHANGES entry),
+// not something this file fixes. When it lands, move the eight kinds below to
+// LOGGED_TODAY in that change.
+//
+// Counted 2026-11-13 on origin/main c27ed558: 137 kinds, 22 logged, 115 chained.
+
+const LOGGED_TODAY: readonly string[] = [
+  'agent:thinking', 'dns:dns_query', 'dns:dns_response', 'pcap:connection_attempt',
+  'pcap:connection_established', 'pcap:connection_refused', 'pcap:port_scan', 'pcap:udp_flow',
+  'process:process_exit', 'process:process_spawn', 'scanner:cookie_change', 'scanner:http_error',
+  'scanner:http_request_dropped', 'scanner:http_request_start', 'scanner:http_response',
+  'scanner:http_response_chunk', 'scanner:tcp_end', 'scanner:tcp_message',
+  'scanner:websocket_end', 'scanner:ws_message', 'system:process_monitor_ps_unavailable',
+  'system:process_monitor_saturated'
+]
+
+const CHAINED_TODAY: readonly string[] = [
+  'agent:api_error', 'agent:assistant_message', 'agent:away_summary', 'agent:compact_summary',
+  'agent:model_refusal', 'agent:session_end', 'agent:tool_call', 'agent:tool_interrupted',
+  'agent:tool_result', 'agent:transcript_capture_started', 'agent:transcript_compacted',
+  'agent:transcript_parent_missing', 'agent:transcript_schema_drift',
+  'agent:transcript_snapshot', 'agent:transcript_tool_gap', 'agent:user_message',
+  'browser:console_debug', 'browser:console_error', 'browser:console_info',
+  'browser:console_log', 'browser:console_trace', 'browser:console_warn', 'browser:exception',
+  'browser:log_entry', 'cleanup:attr_hide', 'cleanup:file_shred', 'cleanup:history_clear',
+  'cleanup:log_clear', 'cleanup:timestomp', 'credential_use:api_key',
+  'credential_use:auth_header', 'credential_use:basic_auth', 'credential_use:bearer_token',
+  'credential_use:digest', 'credential_use:form_login', 'credential_use:negotiate',
+  'credential_use:ntlm', 'credential_use:password_flag', 'credential_use:session_cookie',
+  'credential_use:url_userinfo', 'file_transfer:artifact_added', 'file_transfer:download',
+  'file_transfer:file_created', 'file_transfer:file_deleted', 'file_transfer:file_modified',
+  'file_transfer:upload', 'http_navigation:navigation', 'loot:credential_detected', 'marker',
+  'marker:amended', 'pivot:agent_connect', 'pivot:closed', 'pivot:interactive',
+  'pivot:port_forward', 'pivot:proxied', 'pivot:route_add', 'pivot:socks_up',
+  'pivot:tunnel_start', 'scanner:c2_checkin', 'scanner:c2_pivot', 'scanner:c2_task',
+  'scanner:capture_gap', 'scanner:connection', 'scanner:connection_end', 'scanner:packet_flow',
+  'scanner:pcap_segment', 'screenshot', 'shell:capture_resumed', 'shell:capture_stopped',
+  'shell:command_boundary', 'shell:command_end', 'shell:command_output', 'shell:command_start',
+  'shell:session_end', 'shell:session_output', 'shell:session_start', 'shell:wsl_test',
+  'system:active_target_changed', 'system:agent_transcript_pruned', 'system:anchor_failed',
+  'system:body_evicted', 'system:bookmarks_pruned', 'system:browser_launched',
+  'system:capture_gap', 'system:cast_evicted', 'system:cast_pruned',
+  'system:chain_sample_broken', 'system:config_changed', 'system:connection_capture_started',
+  'system:connection_monitor_saturated', 'system:export_sealed', 'system:http_body_pruned',
+  'system:http_proxy_failed', 'system:http_proxy_orphan_reclaimed', 'system:http_proxy_started',
+  'system:http_proxy_stopped', 'system:ip_verdict', 'system:logged_tier_digest',
+  'system:opsec_airgap', 'system:opsec_state_changed', 'system:producer_heartbeat',
+  'system:recording_paused', 'system:recording_resumed', 'system:retention_pruned_logged',
+  'system:sanitized', 'system:scope_cleared', 'system:scope_recomputed',
+  'system:scope_violation', 'system:screenshot_deleted', 'system:screenshot_evicted',
+  'system:screenshot_pruned', 'system:session_start', 'system:update_completed',
+  'system:update_not_applied', 'system:update_pending'
+]
+
+describe('classifyTier — every kind a writer writes has a decided tier (Spec 072 T010)', () => {
+  const found = kindIds(scanInventory(path.join(__dirname, '..', '..')).hits)
+  const tierOf = (id: string): 'chained' | 'logged' => {
+    const [agentType, subtype] = id.split(':')
+    return classifyTier(agentType, subtype === undefined ? {} : { subtype })
+  }
+
+  it('lists every kind the writers write, and nothing they do not', () => {
+    const listed = new Set([...LOGGED_TODAY, ...CHAINED_TODAY])
+    expect(found.filter((k) => !listed.has(k)), 'written but with no tier decision here').toEqual([])
+    expect([...listed].filter((k) => !found.includes(k)), 'listed but no longer written').toEqual([])
+    expect(LOGGED_TODAY.filter((k) => CHAINED_TODAY.includes(k))).toEqual([])
+  })
+
+  it('classifies the logged ones as logged', () => {
+    expect(LOGGED_TODAY.filter((k) => tierOf(k) !== 'logged')).toEqual([])
+  })
+
+  it('classifies the chained ones as chained', () => {
+    expect(CHAINED_TODAY.filter((k) => tierOf(k) !== 'chained')).toEqual([])
+  })
+
+  it('every real browser console row is chained today (Q1: new rows become logged in Phase 4)', () => {
+    for (const subtype of ['console_log', 'console_info', 'console_warn', 'console_error', 'console_debug', 'console_trace', 'exception', 'log_entry']) {
+      expect(classifyTier('browser', { subtype }), `browser:${subtype}`).toBe('chained')
+    }
+    // ...while the one subtype nothing writes is the one the table names.
+    expect(found.includes('browser:console')).toBe(false)
+    expect(classifyTier('browser', { subtype: 'console' })).toBe('logged')
+  })
+
+  it('plugin kinds written through the local API are chained today (the plugin-credential rule is Spec 071 T027)', () => {
+    for (const id of ['scanner:packet_flow', 'scanner:pcap_segment', 'scanner:c2_checkin', 'scanner:c2_task', 'scanner:c2_pivot',
+      'scanner:connection', 'scanner:connection_end', 'scanner:capture_gap']) {
+      expect(tierOf(id), id).toBe('chained')
+    }
   })
 })

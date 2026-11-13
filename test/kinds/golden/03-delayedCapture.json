@@ -1,0 +1,18 @@
+{
+ "location": "src/core/ingest.ts",
+ "mode": "extracted",
+ "n": 3,
+ "table": "delayedCapture",
+ "words": {
+  "delayedCapture": [
+   "command_end",
+   "command_output",
+   "http_response_chunk",
+   "scanner",
+   "session_output",
+   "shell",
+   "tcp_message",
+   "ws_message"
+  ]
+ }
+}

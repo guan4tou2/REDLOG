@@ -26,6 +26,14 @@
 
 > **指標（2026-11-13）**：O9 的「只有 Source／Processor」已改為 Source／Processor／Exporter，介面擴充見 [Spec 076](../076-extensions-and-machine-scoped-sources/spec.md) J 段；需在登記表新增的種類：`system:egress_changed`（071 FR-123）、`system:extensions_active`、`system:extension_read`、`system:export_shipped`、`system:export_failed`、`system:session_rebound`、`system:extension_config_changed`（076）；076 FR-097 提議的 `ReaderId` 附加值 `table`、`hex`、`diff`、`key-value`。
 
+### 修訂（2026-11-13，DECISIONS §9）
+
+依 [2026-11-13 的決定](../../docs/records/2026-11-13/DECISIONS.md) §9（開放問題 Q3 的答覆與建議不同）。被取代的原文保留在原處，以「> **Superseded（2026-11-13，修訂 D1）**」標示。
+
+| # | 改了什麼 | 為什麼 | 落點 |
+|---|---|---|---|
+| D1 | **匯出的 bundle 附兩個檔**：`kinds.json`（登記表版本與每個種類的角色）與 `intervals.jsonl`（Spec 074 區間投影對交付列的重建）。兩者列在 manifest 的檔案清單，受 seal 承諾；不是事件、不進鏈、不改 `events.jsonl`。bundle 的格式與版本仍只有一個擁有者（Spec 077 FR-042，第 5 版）；兩個檔的內容與驗證規則屬本規格。「不在範圍」中「在 bundle 內附 `kinds.json` 或區間檔」一項刪除 | 擁有者對 Q3 的答覆：**兩者都附** | G 段（FR-060–FR-065）、US8；plan D12；tasks T063–T067；074 FR-049、T056；077 FR-042 的修訂註記 |
+
 ### 本規格自行決定的（理由與被否決的替代方案見 plan.md）
 
 1. 登記表放在 `src/core/kinds/`，是**純資料加純函式**的模組；它不 import 任何 Node 內建模組、Electron、資料庫或目錄外的檔案。core、main、preload、renderer 與測試都讀它（plan D1）。
@@ -54,6 +62,7 @@
 | US5 外掛的種類有確定的位置與閱讀器 | P2 | 外掛只能從登記表挑閱讀器；未登記的種類進 logged |
 | US6 「app 沒開」與「沒有事件」看得出差別 | P2 | `project_closed` 寫入；舊專案那一段說「未知」 |
 | US7 區間、狀態與註記有宣告可循 | P3 | 074 的投影只讀宣告，不在投影內另寫種類表 |
+| US8 收到 bundle 的人讀得出每一列的角色與區間（修訂 D1） | P3 | bundle 附 `kinds.json` 與 `intervals.jsonl`；兩個 verifier 對它們的判斷相同 |
 
 ### User Story 1 — 「沒記到」不再被說成「沒有輸出」（P1）
 
@@ -144,6 +153,22 @@
 1. 074 的投影程式碼中沒有以 `agent_type` 字面值判斷起訖的分支；它只讀 `IntervalDef`（由 074 的 gate 檢查，本規格提供資料）。
 2. `pivot:*` 的開放區間被宣告為「偵測於 T」，不是「開著」（UX-005）。
 
+### User Story 8 — 收到 bundle 的人讀得出每一列的角色與區間（P3，修訂 D1）
+
+收到 bundle 的人（客戶、藍隊、另一位操作者）沒有 RedLog 的原始碼，也不知道匯出當時的登記表版本。他從 bundle 本身就能知道每個種類的角色，以及哪些列構成一段指令、一段暫停、一段專案開啟；而這兩個檔與事件一樣受 seal 保護，被改過時 verifier 會說。
+
+**Why this priority**：擁有者的裁定（DECISIONS §9）。NDJSON 的每列只有 `agent_type`／`subtype`，對照公開的登記表需要知道匯出當時的版本；區間雖可由列重算，重算需要 074 的配對規則。
+
+**Independent Test**：以共用向量產生三種 bundle（完整鏈、`window`、含 077 的 stub 與被扣下的 logged 列），斷言：兩個檔在 manifest 的檔案清單中且雜湊相符；`kinds.json` 只列交付的完整列出現的種類；`intervals.jsonl` 的每一列只引用交付的完整列；改動任一檔的一個位元組，兩個 verifier 都報同一個失敗；刪掉任一檔，兩個 verifier 都報 `malformed` 且不丟例外。
+
+**Acceptance Scenarios**：
+
+1. **Given** 一份含指令、暫停與專案開關的完整鏈 bundle，**When** 讀 `kinds.json`，**Then** 它寫出登記表版本，以及 bundle 中出現的每個種類的角色、形狀與家族。
+2. **Given** 同一份 bundle，**When** 讀 `intervals.jsonl`，**Then** 每一段區間寫出區間 id、鍵、起訖列的 id 與時間、結束依據；起點或終點不在交付範圍內的那一端寫為未知，不寫被扣下列的 id 或時間。
+3. **Given** bundle 中有被扣下的列（077 的 stub），**Then** 兩個檔都不透露它的種類、時間或它所屬的區間。
+4. **Given** bundle 被改動了 `intervals.jsonl` 的一行，**When** 執行任一 verifier，**Then** 結果與改動 manifest 所列的其他檔相同（雜湊不符）。
+5. **Given** `intervals.jsonl` 的雜湊相符，但它與交付的列不一致（例如引用了 bundle 中沒有的列），**Then** verifier 依開放問題 Q5 的答覆回報；兩個 verifier 回報相同。
+
 ### Edge Cases
 
 - 外部生產者送來 `external:*`、`terminal:*` 的任意 subtype：以族（family）登記，`subtype: '*'`，閱讀器 `fields`，沿用今天的 chained 預設與舊入口行為（071 FR-113）。族登記必須寫明理由，數量由 gate 鎖住。
@@ -155,6 +180,9 @@
 - 來源同時送 `completeness: complete` 與 `stdout_truncated: true`（矛盾）：取較不完整的那個（`truncated`），並以 `capture-health` 的計數記錄矛盾（不在閱讀器加字）。
 - 同一列同時屬於缺口區間與截斷：完整性取「缺口」，閱讀器另列截斷的位元組數。
 - 一列的種類不在登記表、也沒有外掛宣告（舊外掛寫的、或資料庫被手動插入）：`fields` 閱讀器、儲存名稱為標題，計入 `unregistered` 計數；不丟棄、不隱藏。
+- （修訂 D1）匯出時某個交付列的種類未登記：`kinds.json` 以 `source: "unregistered"` 列出它，`role` 為 `null`；不阻擋匯出。
+- （修訂 D1）`window` 匯出切過一段區間（起點在範圍前、終點在範圍內，或相反）：`intervals.jsonl` 那一端寫 `null`，不回頭讀範圍外的列（FR-062）。
+- （修訂 D1）verifier 讀到 `kinds.json` 或 `intervals.jsonl` 中不認得的欄位或值（較新版本的 RedLog 寫的）：不認得的欄位略過；不認得的區間 id 或列舉值計為「無法解讀」並回報行數；檔案無法解析時回 `malformed` 與原因；任何情況都不丟例外（FR-065）。
 
 ## Requirements *(mandatory)*
 
@@ -242,6 +270,21 @@
 - **FR-053** 舊專案：不寫入、不更新任何既有列；登記表只影響呈現與新列。舊列的種類若已不在登記表的 `active` 中，以 `legacy` 項目呈現。
 - **FR-054** 另一分支正在以手寫分派修正最嚴重的閱讀器錯配（起草時 `work/1112-present` 尚無提交）。不論它先或後合併，它的每一個分派決定都抄進登記表的 `reader`，並成為 FR-051 的 golden 的一部分；它的手寫分派在 Phase 3 被 `READERS[kind.reader]` 取代，不並存。
 
+#### G. 匯出附檔（US8；修訂 D1，2026-11-13）
+
+- **FR-060** 每一份 bundle 在根目錄附 `kinds.json` 與 `intervals.jsonl`。只有 bundle 附它們；JSON、NDJSON、HAR、CSV 與 API 讀取的格式不變（DECISIONS §9 的裁定只說 bundle）。
+- **FR-061** `kinds.json` 是一個 JSON 物件：`registryVersion`（`KIND_REGISTRY_VERSION`）、`projections`（`{intervals: <074 的投影版本>}`）、`kinds`（陣列）、`intervals`（`INTERVALS` 的宣告：`id`、`role`、`start`、`end`、`members`、`supersededBy`、`key`、`open`）。`kinds` 的每一項是交付的完整列（FR-062 的同一組列）中出現的一個種類：`id`、`status`、`role`、`shape`、`family`、`labelKey`、`source`（`core`、`plugin:<id>` 或 `unregistered`）。外掛宣告的種類取匯出當下 `validatePluginKind` 的結果；未登記的種類 `role` 為 `null`。「每列的角色」的解讀見開放問題 Q4；答覆前依建議：一個種類一項，種類的預設角色。
+- **FR-062** `intervals.jsonl` 每行一段區間：`{interval, key, start_id, start_ts, end_id, end_ts, end_basis, value}`，`end_basis` 為 074 FR-043 的封閉列舉。內容是 074 `intervals` 投影的**同一個重建函式**對**交付的完整列**（`events.jsonl` 的完整列與 `events_logged.jsonl` 的列；不含 077 的 stub、被扣下的 logged 列與 seal 列本身）的結果（074 FR-049）；不從 `derived.db` 複製。起點或終點不在交付的列中的那一端寫 `null`；終點為 `null` 的那一行 `end_basis` 為 `open`，它的意義依該區間宣告的 `open`（FR-042，例如「未見結束」），不表示仍在進行。
+- **FR-063** 兩個檔都不得透露被扣下的列：`kinds.json` 不列只出現在被扣下列中的種類；`intervals.jsonl` 不引用被扣下的列的 id、時間或值；`value` 取自交付後（遮蔽後，077 FR-053）的列值。由 077 的不洩漏 property test（077 T002）涵蓋兩個檔。
+- **FR-064** 兩個檔列在 manifest 的 `files`（`path`、`sha256`、`bytes`），因此落在 seal 的 `manifestSha256` 之內（`evidence-rules.ts` 的 `sealedManifestDigest` 只排除 `events.jsonl` 一項），也受 `manifest.sha256`／`manifest.hmac` 涵蓋。它們不是事件、不寫入鏈、不改 `events.jsonl` 的任何位元組（SC-010 不變）。manifest 不新增欄位。
+- **FR-065** 兩個 verifier（`bundle-verify.ts` 與 `tools/redlog-verify.py`，規則在 `evidence-rules.ts`）對兩個檔：
+  1. 第 5 版的 bundle 缺任一檔、或 manifest 的 `files` 沒有列出它 → `malformed`，訊息寫出缺的檔名；
+  2. 雜湊或大小與 manifest 不符、檔案不在 → 與其他列出的檔相同的失敗；
+  3. 一致性檢查（不需要 074 的配對規則）：每一行引用的 `start_id`／`end_id` 是交付的完整列；該列的種類屬於 `kinds.json` 中該區間宣告的 `start`／`end`／`supersededBy`；`start_ts`／`end_ts` 等於該列的時間；`end_basis = observed` 時 `end_id` 不為 `null`；`kinds.json` 的每個種類都出現在 FR-062 的那組列中，那組列的每個種類都在 `kinds.json`（seal 列不在其中）；
+  4. 一致性檢查不成立時的判定見開放問題 Q5；答覆前依建議：列才是證據，判定類別與結束碼不變，另印一行指出哪個檔、幾行不一致，verdict 另有一欄記錄；
+  5. 不認得的欄位略過；不認得的區間 id、`end_basis` 或角色值計為「無法解讀」並回報行數，不算不一致；JSON 無法解析 → `malformed` 與原因；任何輸入都不丟例外。
+  兩個 verifier 對每個共用向量回報相同的結果（#711 的 `test/evidence-vectors.test.ts`）。bundle 的版本號與「只理解第 5 版」的規則屬 077 FR-042；是否與 077 的第 5 版共用一次改版見開放問題 Q6。
+
 ### Key Entities
 
 - **事件種類（Event Kind）**：`agent_type × subtype`，或附理由的 `agent_type × *` 族；登記表的一個項目。
@@ -251,6 +294,7 @@
 - **閱讀器（Reader）**：依內容類型的十種之一；外掛只能從中挑選。
 - **完整性（Completeness）**：閱讀器第一行的七值之一，只依來源事實。
 - **有記錄的修正（Documented Fix）**：摺疊時唯一允許與 golden 不同的項目。
+- **匯出附檔（修訂 D1）**：bundle 中的 `kinds.json`（登記表版本與種類的角色）與 `intervals.jsonl`（對交付列重建的區間）；受 seal 承諾，不是證據本身。
 
 ## Success Criteria *(mandatory)*
 
@@ -266,6 +310,8 @@
 - **SC-008** renderer 可走訪到的 Node 模組檔案數（FR-022）：不高於 3。
 - **SC-009** 介面沒有新增頁面或路由；新增的字串每個語系不超過 16 個 key（完整性 7 個、閱讀器標題、泳道改名），並通過 `test/ui-copy.test.ts`。
 - **SC-010** 舊列：0 列被 UPDATE；`events.jsonl` 匯出逐位元組不變（沿用 071 T002 的 golden）。
+- **SC-011**（修訂 D1）共用向量中每一份第 5 版 bundle：兩個 verifier 對 `kinds.json` 與 `intervals.jsonl` 的判定相同（含缺檔、雜湊不符、不一致、無法解讀、無法解析五種），且沒有任何一種輸入讓任一 verifier 丟例外。
+- **SC-012**（修訂 D1）077 的不洩漏 property test 擴及兩個檔：被扣下的列的 id、時間、種類與值在兩個檔中出現 0 次。
 
 ## Assumptions
 
@@ -285,18 +331,26 @@
 - 篩選放在哪裡、是否跨頁共用（10 的 E.7，階段 6）：屬 Spec 074，它以每頁持有的篩選取代 Spec 038 的共用篩選（074 FR-085–FR-088）。本規格只提供每個類型值的標籤（`labelKey`）；類型篩選的值（`agent_type`）與比對語意不變。
 - 確定性歸屬（`REDLOG_COMMAND_ID`、proxy userinfo；071 O18）。
 - 把 `pcap:*` 與 `scanner:packet_flow` 合併成一種寫入形狀；本規格只讓兩者的呈現一致。
-- 在 bundle 內附 `kinds.json` 或區間檔（會改變 bundle 格式，#711）。
 - CSV 匯出（不存在，不新增）。
 
 ## 開放問題（需要擁有者）
 
 > **2026-11-12 擁有者答覆**：以下各項均照「建議」欄採納（Q1 新的瀏覽器 console 列改回 logged，既有列不動；Q2 契約 1 拒絕外部寫入 `credential_use`，舊入口不變；Q3 匯出不附 `kinds.json` 與 `intervals.jsonl`）。這是決定，尚未實作。
+> **Superseded（2026-11-13，修訂 D1）**：Q3 的答覆改為**兩者都附**（DECISIONS §9）；條文見 G 段。Q1、Q2 的答覆不變。
 
 | # | 問題 | 建議 |
 |---|---|---|
-| Q1 | 瀏覽器 console 列今天因 `LOGGED_TIER` 的鍵寫錯而是 chained；新列是否改為設計原意的 logged？ | 改。列入 `TIER_CHANGES`，只影響新列，舊列不動；理由與 DESIGN-two-tier-chain §2.3 相同（console 是足跡，不是證據）。若不改，就把 `LOGGED_TIER` 中的 `'browser:console'` 刪掉，使文件與事實一致 |
-| Q2 | `credential_use` 今天外部可寫；契約 1 是否拒絕？（FR-006） | 拒絕契約 1 憑證寫入；舊入口維持今天的行為直到 071 FR-037 移除它。理由：它是 RedLog 的推導，偽造它就是偽造 RedLog 的結論（`external-event-policy.ts:4-8` 自己的理由） |
-| Q3 | 匯出是否附上登記表版本與每列的角色（`kinds.json`），以及 Spec 074 的區間投影（`intervals.jsonl`）？（074 的「不在範圍」指向本題） | 兩者都不做：會改變 bundle 格式（#711 的第 4 版剛定）。NDJSON 的每列已有 `agent_type`／`subtype`，讀者可用公開的登記表對照；區間可由列重算 |
+| Q1 | 瀏覽器 console 列今天因 `LOGGED_TIER` 的鍵寫錯而是 chained；新列是否改為設計原意的 logged？ | 改。列入 `TIER_CHANGES`，只影響新列，舊列不動；理由與 DESIGN-two-tier-chain §2.3 相同（console 是足跡，不是證據）。若不改，就把 `LOGGED_TIER` 中的 `'browser:console'` 刪掉，使文件與事實一致 **已裁定（2026-11-13，DECISIONS §9）**：新列改為 logged |
+| Q2 | `credential_use` 今天外部可寫；契約 1 是否拒絕？（FR-006） | 拒絕契約 1 憑證寫入；舊入口維持今天的行為直到 071 FR-037 移除它。理由：它是 RedLog 的推導，偽造它就是偽造 RedLog 的結論（`external-event-policy.ts:4-8` 自己的理由） **已裁定（2026-11-13，DECISIONS §9）**：新契約拒絕外部寫入 |
+| Q3 | 匯出是否附上登記表版本與每列的角色（`kinds.json`），以及 Spec 074 的區間投影（`intervals.jsonl`）？（074 的「不在範圍」指向本題） | 兩者都不做：會改變 bundle 格式（#711 的第 4 版剛定）。NDJSON 的每列已有 `agent_type`／`subtype`，讀者可用公開的登記表對照；區間可由列重算 **已裁定（2026-11-13，DECISIONS §9）**：**兩者都附**（`kinds.json` 與 `intervals.jsonl`）；與建議不同，bundle 格式因此要改版，本規格與 074、驗證器的對應條文待修訂 |
+
+**2026-11-13 新增**（修訂 D1 的後果；裁定本身沒有回答。答覆前，G 段依「建議」欄撰寫，但不視為已決定）：
+
+| # | 問題 | 建議 |
+|---|---|---|
+| Q4（2026-11-13 新增） | 「每列的角色」指登記表的每一項（每個種類的預設角色），還是每一筆事件列的實際角色（074 依 `_causes`、`trigger` 決定的位置）？ | 每個種類一項（FR-061）。每一筆列的實際位置已可由種類加上列內的 `_causes`／`trigger` 得出；逐列寫一份等於把 `events.jsonl` 的列數再寫一次，且要另定被扣下列的處理 **已裁定（2026-11-13 晚間，擁有者）**：每個種類一項，與建議相同 |
+| Q5（2026-11-13 新增） | `intervals.jsonl` 的雜湊相符、但與交付的列不一致（引用不存在的列、種類或時間不符）時，verifier 判定失敗，還是證據照常判定、另行報告？ | 列才是證據：判定類別與結束碼不變，另印一行「`intervals.jsonl` 有 N 行與事件不一致」，verdict 加一欄（`derived: consistent／inconsistent／not-understood`），兩個 verifier 同一份向量。替代：判為 `failed`，理由是 RedLog 簽出了一份與自己證據矛盾的解讀。verifier 都不做完整的區間重算：那需要 074 的配對規則有 Python 版，等於第二份實作（FR-065 第 3 項只做不需要配對規則的檢查） **已裁定（2026-11-13 晚間，擁有者）**：證據照常判定，另外報告，與建議相同 |
+| Q6（2026-11-13 新增） | bundle 改版的歸屬：兩個檔併入 Spec 077 的第 5 版（077 FR-042，`BUNDLE_VERSION = 5` 是唯一版本），還是本規格先升到第 5 版、077 再升到第 6 版？ | 併入 077 的第 5 版，版本與 verifier 的「只理解一個版本」規則由 077 擁有；本規格的 T063–T066 與 077 T040–T042 同一個 PR 或配對 PR。理由：產品尚未發布，沒有需要第 4 版或過渡版本的讀者；兩次改版會讓兩個 verifier 與共用向量多改一輪 **已裁定（2026-11-13 晚間，擁有者）**：併入 077 的第 5 版，與建議相同 |
 
 ## 與既有文件、程式註解、規格的矛盾
 
@@ -314,6 +368,10 @@
 | Spec 038（Verified）的共用篩選 | 類型以 `agent_type` 篩，且篩選跨頁共用 | 類型的值與比對語意不變，本規格只換標籤來源（T024 的 PR 不改 038）。篩選的歸屬（跨頁共用 → 每頁持有）由 Spec 074 取代，038 的標註在 074 T073 |
 | Spec 004、009（Verified）中對外部 shell 輸出顯示的斷言 | 「未擷取」與「沒有輸出」的字串 | 依 CLAUDE.md「Changing behaviour」，T030 一併修改相關 spec 與測試 |
 | `docs/event-schema.md` | 一份手寫的種類表（85 行表格） | 改為由登記表產生或指向登記表（T071） |
+| 根因報告 10 §E.9（修訂 D1） | NDJSON 另附 `kinds.json` 與 `intervals.jsonl` | 只附在 bundle（FR-060）；NDJSON 格式不變 |
+| Spec 074「不在範圍」（起草時） | `intervals.jsonl` 與 `kinds.json` 是否隨匯出附帶是本規格 Q3 | 已附；074 提供重建函式（074 FR-049），已於 2026-11-13 改寫 |
+| Spec 077 FR-042（第 5 版的 bundle 內容） | 列出 `events.jsonl`、stub、manifest 欄位，沒有這兩個檔 | 第 5 版另含這兩個檔（FR-060–FR-065）；077 加註修訂（Q6） |
+| `docs/audit-trail.md`「Evidence bundle」一節 | 列出 bundle 內的檔案與 manifest 的涵蓋範圍 | 加入兩個檔與它們的涵蓋方式（T066） |
 
 ## Domain References
 

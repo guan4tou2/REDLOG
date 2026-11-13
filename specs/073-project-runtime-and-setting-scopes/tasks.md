@@ -13,7 +13,7 @@
 
 ## Phase 0 — 工作流程前置
 
-- [ ] T001 依憲章（專案歸屬、證據路徑）執行 Clarify、Checklist、Analyze，結果記入 `verification.md`；spec「開放問題」Q1–Q5 取得擁有者答覆。Q1 未答覆前 Phase 5 的 T054 不開始；其餘 Phase 不受阻。跨 071–075 的順序只寫在 [specs/README.md](../README.md)「071–075 的跨規格順序」。
+- [ ] T001 依憲章（專案歸屬、證據路徑）執行 Clarify、Checklist、Analyze，結果記入 `verification.md`；spec「開放問題」Q1–Q5 取得擁有者答覆。Q1 未答覆前 Phase 5 的 T054 不開始；其餘 Phase 不受阻。（2026-11-13：Q1–Q5 已裁定，DECISIONS §9；Q4 的答覆與建議不同，見修訂 B7。新增的 Q6、Q7 答覆前，T04B 依建議進行。）跨 071–075 的順序只寫在 [specs/README.md](../README.md)「071–075 的跨規格順序」。
 
 ## Phase 1 — 釘住今天的行為（只加測試與 gate，不改程式行為）
 
@@ -76,9 +76,13 @@
   - [ ] T045c `main/index.ts`（剩餘各處）
 - [ ] T046 [US4] `personalTraffic`：改名、歸屬機器、預設空；舊檔的 `scope.personalDomains` 讀為覆寫；匯出與查詢讀新鍵；設定頁移出範圍分組；`config.ts:69-73` 的註解改寫。US4-3 的匯出等價測試。
 - [ ] T047 [US4] 新專案只寫專案鍵與卡片值（`mergeInitialConfig` 改寫，`test/create-config-merge.test.ts` 更新）；新格式寫 `configVersion: 2`、`configWriter` 摘要與 operator 鏡像；舊檔在下一次存檔時轉換。
+  > **Superseded（2026-11-13，修訂 B7）**：不寫 operator 鏡像；卡片值不含 operator（T04B）。其餘不變。
 - [ ] T048 [US4] 設定頁：每個機器範圍欄位標示來源；被覆寫者提供「改用此電腦的值」（寫一列設定變更紀錄）；`machine.yaml` 錯誤與較新 schema 的唯讀說明。不新增頁面與分組（`test/settings-ia.test.ts` 預算不變）；新字串通過 `test/ui-copy.test.ts`。`[env:app]` 桌面與窄窗各檢查一次。
 - [ ] T049 [P] `hook-config.json` 的 `excludedPaths` 遷入 `machine.yaml`（第一次寫入時），讀取改經 `ConfigView`。
+- [ ] T04A [P] [US4] 先 RED（修訂 B7）：`test/operator-machine-only.test.ts`（plan Gate 表）：專案檔 operator `bob`、機器層 `alice` → 有效值 `alice`、`origin` 為 `machine`，session token 與新列的 `operator_id` 為 `alice`，開啟不被拒、檔案位元組不變；`ConfigStore` 對專案層 operator op 回 `scope-not-overridable` 且不寫檔；`mergeInitialConfig` 與設定檔匯入丟棄 `operator`；舊格式檔存檔後不再含 `operator`；登記表 `operator.*` 為 `overridable: false`。今天 operator 只在專案檔，前四項以 `it.fails` 標示。
+- [ ] T04B [US4] （修訂 B7）實作 FR-01D：登記表、`resolveConfig` 不讀專案層 operator、`ConfigStore` 的拒絕與丟棄、`mergeInitialConfig` 不合併 `initial.operator`；`applyOperatorChange`（`main/operator-change.ts`）改由機器層存檔觸發（原因 `machine`），session 開啟時從機器層取得 operator；設定頁的 operator 欄位依 Q6 的答覆放置（答覆前依建議移到〈設定 ▸ 一般〉），沒有覆寫與「改用此電腦的值」；機器層第一次的值依 Q7（答覆前：內建預設值，不從專案取）。同一個變更更新斷言舊位置或專案層 operator 的測試：`test/create-config-merge.test.ts`、`test/settings-search.test.ts`、`test/project-runtime.test.ts`、`e2e/capture-settings-interaction.spec.ts:29,217-227`，並 grep `e2e/` 的 `operatorGroup` 與欄位標籤（CLAUDE.md「Changing behaviour」）；被刪的 i18n 鍵由 `verify:i18n` 檢查。依賴 T041、T042、T043。T04A 翻正。`[env:app]` 桌面與窄窗各檢查一次。
 - **Gate**：五道 gate；T003 為 0；`test/settings-registry-complete.test.ts` 要求每個鍵有讀者或 `NO_LIVE_EFFECT` 理由；`[env:app]` 新建專案繼承 operator、既有專案顯示覆寫。
+  > **Superseded（2026-11-13，修訂 B7）**：`[env:app]` 的檢查改為：新建專案與既有專案都用機器層的 operator，沒有專案層的 operator 欄位；其他機器層鍵的覆寫照舊顯示。另加 T04A 綠燈。
 
 ## Phase 5 — 生命週期
 
@@ -129,12 +133,14 @@
 - [ ] T093 `[env:app]` 契約落地時的實機 UI 檢查（工作計畫驗收規則二）：專案選擇器（封存、準備失敗訊息）、設定頁（來源標示、改用機器值、`machine.yaml` 錯誤）、擷取控制（綁定他處的終端機、AI 同意）、指令與終端設定（多 shell、移除報告）、外掛頁（撤回、舊複製本）、唯讀標示、離開確認；桌面與窄窗、繁中與英文、空／載入／錯誤狀態。
 - [ ] T094 `[env:mac,linux,real-shell]` 擷取信任端到端（驗收規則一）：真實的 zsh、bash、受管 proxy、Claude Code 在 A→B→A、air-gap 切換、封存、升級四種情境下，讀回的列與預期一致。
 - [ ] T100 `[env:mac]` 降版檢查：以前一版的 app 開啟新格式專案，署名（operator）不變，能記錄；結果寫入 verification。
+  > **Superseded（2026-11-13，修訂 B7）**：不做。operator 鏡像已取消（plan D12），降版時的署名不在保證之內。
 
 ## 相依與平行
 
 - Phase 1 的 T002–T009 全部可平行。
 - Phase 2 依賴 Phase 1；Phase 3 依賴 Phase 2；Phase 3 內部依序（皆改 `index.ts`）。
 - Phase 4 的 T040、T042 可與 Phase 3 平行；T041 起依賴 T031a（`db`）與 T023（`prepareOpen`）；T044 依賴 T031u。
+- （修訂 B7）T04A 可與 T040 平行；T04B 依賴 T041–T043，與 T048 改同一個設定頁，兩者排開或同一個 PR。
 - Phase 5 依賴 Phase 3 的 T031g 與 072 的種類宣告。
 - Phase 6 只依賴 Phase 2（不需要資源清單完成），可與 Phase 3–5 平行，但必須與 071 T075 配對。
 - Phase 7 不依賴 session，可在 Phase 1 之後任何時候開始。

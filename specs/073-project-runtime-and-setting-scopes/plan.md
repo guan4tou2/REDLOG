@@ -115,6 +115,8 @@
 - 升級不改寫任何專案檔。
 - 沒有 `configVersion` 的檔案以 `LEGACY_V1_DEFAULTS`（本版凍結的舊 `DEFAULT_CONFIG` 副本）判斷：機器範圍的鍵值等於舊預設 → 不是覆寫；否則是覆寫。
 - 例外（一律是覆寫）：`operator.id`、`operator.name`（簽章者；中途換人會把一份紀錄分成兩個簽章者，09-F8）；`scope.personalDomains`（預設值本身改變，且影響匯出內容）。
+
+  > **Superseded（2026-11-13，修訂 B7）**：`operator.*` 不再是例外：它不可覆寫，專案檔中的值一律不讀（D12）。例外只剩 `scope.personalDomains`。
 - 專案範圍的鍵：照讀。
 - 下一次存檔時轉為新格式：只寫專案範圍的鍵與覆寫，加 `configVersion: 2`。轉換前後的有效值相同（property test）。
 
@@ -128,6 +130,8 @@
 ### D6 降版相容：operator 的鏡像
 
 新格式檔案另寫一份 `operator: {id, name, mirror: true}`。新版的解析器認得 `mirror: true`，不把它當覆寫；舊版的 `deepMerge` 照讀 `operator.id`，所以署名不變。其他機器層的值在舊版中回到舊預設（例如 proxy 埠），這是寫進文件的已知降版行為。舊版開啟時會把它看到的完整設定寫回檔案（它仍有 `index.ts:782`），檔案保留 `configVersion: 2` 但內容被具體化。偵測方式：新版寫檔時另寫 `configWriter: {app, bodySha256}`，`bodySha256` 是除去這一行之外的檔案內容摘要；讀到摘要不符（被舊版或手動改寫過）的 v2 檔，一律改用 D5 的舊格式規則解讀。這樣被具體化的檔案與舊格式檔得到相同的解讀，而新版自己寫的覆寫不會被誤判。
+
+> **Superseded（2026-11-13，修訂 B7）**：D6 取消。operator 只在機器層，新格式的專案檔不含 operator，也不寫鏡像；`configWriter` 摘要照舊用於偵測被改寫過的 v2 檔（D5），與 operator 無關。降版時 operator 回到舊版的預設值，不在保證之內（D12）。
 
 ### D7 `machine.yaml`
 
@@ -222,6 +226,30 @@ ai: { revokedAt: { claude-code: 1731400000000 }, legacyInstallations: { claude-c
 ### D11 擷取健康的錯誤計數
 
 `_lastDbError`、`_dbErrorTotal`、`_dbErrorFirstAt`、`_captureErrors`、`_lastSampleBroken`、`healthCache`、`cfgSnapshot`（`capture-health.ts:196-463`）移入 `project-state`。app 生命週期的累計只寫 debug log。理由：卡片顯示的是每個專案的健康，A 的錯誤讓 B 在 60 秒內維持 dark 是誤導（07-F1）。
+
+### D12 operator 只在機器層（修訂 B7，2026-11-13）
+
+擁有者對 Q4 的答覆：專案不可以覆寫 operator（DECISIONS §9）。
+
+**今天的 main（`main@017de22c` 確認）**：沒有機器層設定檔（`src/` 中沒有 `machine.yaml`）。operator 是每個專案 `config.yaml` 的 `operator: {id, name}`（`config.ts:36-39`，預設 `operator-1`／`Operator`，`:250-253`）；在專案設定頁的 operator 分組編輯（`ProjectSettings.tsx:27-53`，id 在離開欄位時提交、不可空白）；建立專案時 `mergeInitialConfig` 合併建立卡片帶來的 `initial.operator`（`config.ts:363`）；開專案時以 `config.operator.id` 建立 runtime 的 context 與 API 的主要操作者（`main/index.ts:779,809,1018`）；開著時改 operator 由 `applyOperatorChange`（`main/operator-change.ts`）依序改 API 主要操作者、`runtime.setOperator`、交接目錄的身分檔。所以今天每個專案各有一個 operator，新專案回到 `operator-1`（09-F8）。
+
+**決定**：
+
+1. 登記表：`operator.id`、`operator.name` 為 `home: 'machine'`、`overridable: false`。`resolveConfig` 對這兩個鍵不讀專案層；`origin()` 只會回 `machine` 或 `default`。
+2. **既有專案檔中的 `operator`**：產品尚未發布，擁有者裁定不為舊格式保留相容（2026-11-13，見下「依據」）。所以它不是覆寫、不轉成任何東西、不遷到 `machine.yaml`；它是被忽略的鍵：不讀、不顯示、不是解析錯誤（若被當成錯誤，每一個既有專案都會打不開，FR-015 只拒絕型別錯誤與不合法的值，不拒絕這個鍵）。`ConfigStore` 下一次存檔只寫專案範圍的鍵，它自然消失；開專案仍不寫檔（FR-008）。
+3. **建立卡片與匯入的設定檔**：`mergeInitialConfig` 不再合併 `initial.operator`；專案選擇器的匯入與設定頁的「匯出設定檔」只含專案層（本計畫「它取代什麼」表中 `main/index.ts:1803` 一列已是如此），匯入時丟棄 `operator`。
+4. **寫入**：設定頁的 operator 欄位存檔時寫 `machine.yaml`；`ConfigStore` 收到專案層的 operator op 時拒絕（`scope-not-overridable`）。即時套用沿用 `applyOperatorChange` 的順序（API 先、再 session token、再交接身分檔），觸發原因是 `machine`（FR-013）；它成為 `ProjectSession` 的一部分（`setOperator` 隨 D1 搬入 session），切換專案時新 session 從機器層取得 operator，不再從專案檔。
+5. **鏡像（D6）取消**：專案檔不含 operator；較舊版本開新格式專案時署名回到它的預設值。T100 隨之取消。
+6. **後果**：升級後，若某既有專案的 `config.yaml` 是 `bob` 而機器層是 `alice`（或尚未設定、為 `operator-1`），之後的新列 `operator_id` 是機器層的值；同一份紀錄出現兩個 operator id。兩者都照常驗證（每列帶自己的 `operator_id`，`operators.json` 對應各自的公鑰），只是 09-F8 所說的「一份紀錄兩個簽章者」在升級的那一刻發生一次。機器層第一次的值是預設還是從某個專案取一次，是開放問題 Q7（建議：預設，不取）。
+7. **071 的蓋章**：071 FR-009「`observed.operator` 是本專案已知且未撤銷的操作者時採用」不變：那是觀察當下的機器層 operator（交接目錄延遲送達時，送達時的 operator 可能已改），「已知」的集合只由機器層 operator 曾經生效的值構成，沒有專案層的來源（071 的修訂註記）。
+
+**依據**：DECISIONS §9 的 073 Q4 一列。「不為舊格式保留相容」是擁有者同日的裁定，條文在 [Spec 077](../077-personal-content-and-delivery/spec.md) 的 R8（產品未發行：不遷移、不讀舊格式、不並存版本；唯一的殘留是 app 遇到不理解的資料不得當掉）；第 2、5 項依它撰寫。
+
+**被否決**：
+
+- **既有專案的 operator 保留為唯讀覆寫，直到操作者按「改用此電腦的值」**（Q4 原建議的一半）：就是被裁定不存在的專案層 operator。
+- **把既有專案的值當成錯誤、拒絕開啟直到操作者處理**：讓每一個既有專案打不開，換來的是一次性的提醒。
+- **升級時把每個專案的 operator 改寫成機器層的值**：改寫操作者的檔案（D5 否決過同一件事），而且 FR-008 禁止開專案寫檔。
 
 ## 模組邊界（給 owner 指令的回答）
 
@@ -460,7 +488,7 @@ export function bindingState(e: TerminalEnrollment, openEngagementId: string | n
 |---|---|---|---|
 | `engagement.id` | 專案 | | 不可變，等於專案 id |
 | `engagement.activeTarget` | 專案 | | 071 O11 後只用於 app 內操作 |
-| `operator.id`、`operator.name` | 機器 | ✔ | 舊檔一律視為覆寫（D5）；新檔另寫鏡像（D6） |
+| `operator.id`、`operator.name` | 機器 | ✔ | 舊檔一律視為覆寫（D5）；新檔另寫鏡像（D6）。**Superseded（2026-11-13，修訂 B7）**：不可覆寫；專案檔中的值一律不讀，新檔不寫鏡像（D12） |
 | `network.whitelist` | 專案 | | 攻擊用出口（VPS／VPN）屬於該次任務；見開放問題 Q5 |
 | `network.blacklist` | 機器 | ✔ | 操作者自有 IP |
 | `network.checkInterval`、`providers`、`confirmations`、`ipMode` | 機器 | ✔ | 這台機器如何查自己的 IP |
@@ -506,6 +534,7 @@ export function bindingState(e: TerminalEnrollment, openEngagementId: string | n
 | 切換不洩漏（US1、FR-092） | `test/session-switch-leak.test.ts` | 由 `ResourceId` 列舉產生案例；缺案例即失敗 |
 | 開啟不留半開（US2） | `test/session-open-failure.test.ts`（單元，注入第 k 個資源失敗，k 走遍全部）+ `e2e/project-open-rollback.spec.ts`（六種故障） | |
 | 設定歸屬完整（FR-011、FR-093） | `test/settings-registry-complete.test.ts` | TS compiler 走訪 `RedLogConfig` 的葉節點；每個都在 `SETTINGS`；每個鍵被某資源 `reads` 或列在 `NO_LIVE_EFFECT`（附理由） |
+| operator 只在機器層（FR-01D，修訂 B7） | `test/operator-machine-only.test.ts` | 專案檔帶 operator 時有效值仍是機器層、`origin` 為 `machine`／`default`、開啟不被拒、檔案不被寫；`ConfigStore` 拒絕專案層 operator op；建立與匯入丟棄 `operator`；登記表 `overridable: false` |
 | 遷移無損（FR-016、FR-017、SC-006） | `test/config-legacy-equivalence.test.ts` | property test：隨機舊檔 × 隨機機器層 → 有效值 = 舊 `loadConfig`；存檔轉換前後相同 |
 | 開專案不寫設定（FR-008、FR-015） | `test/open-never-writes-config.test.ts` | 開啟前後 `config.yaml` 位元組與 mtime 不變；壞檔被拒且不變 |
 | `machine.yaml` 契約（FR-020–024） | `test/machine-settings-file.test.ts` | 權限、rename 前當掉留下舊檔、修訂衝突、新 schema 唯讀、未知鍵保留 |
@@ -518,7 +547,7 @@ export function bindingState(e: TerminalEnrollment, openEngagementId: string | n
 | 沒有新頁面（P10） | 既有 `test/settings-ia.test.ts` 的 `PAGES` 與 `FieldGroup` 預算 | |
 
 沒有 gate 的規則與理由：
-- 「新格式檔案的 operator 鏡像讓舊版署名不變」只能以舊版 app 實跑驗證：列為真機項目（T100）。
+- 「新格式檔案的 operator 鏡像讓舊版署名不變」只能以舊版 app 實跑驗證：列為真機項目（T100）。（2026-11-13，修訂 B7：鏡像取消，本項與 T100 不再適用。）
 - 「存活戳記每 60 秒」以假時鐘單元測試涵蓋，但「當機後補寫的時間接近實際」只能真機 `kill -9` 驗證。
 
 ## 遷移與相容
@@ -544,7 +573,8 @@ export function bindingState(e: TerminalEnrollment, openEngagementId: string | n
   - macOS：A→B→A 加 air-gap 切換，以 `lsof -i`／`nettop` 看對外連線；tmux 切換恢復；`kill -9` 後重開看 `project_closed{unclean}`；`ZDOTDIR` 與 Terminal.app 的 login bash 安裝 → 移除位元組相同；Claude Code 升級不停錄。
   - Linux：同上的 hook 安裝移除；stow 管理的 `.zshrc`（symlink 詢問）。
   - Windows：PowerShell 5.1 與 7、`CurrentUserAllHosts` 與 VS Code host 的 profile 安裝移除（LF 不變 CRLF）；`machine.yaml` 的原子取代在檔案被另一個程序開著時；WSL distro 的 rc。
-  - 舊版 app 開新格式專案（降版），確認署名不變。
+  - 舊版 app 開新格式專案（降版），確認署名不變。（修訂 B7：不再適用，見 D12。）
+  - （修訂 B7）帶 operator `bob` 的既有專案、機器層 `alice`：升級後開啟，新列為 `alice`，設定頁沒有專案層的 operator；改 operator 後切到另一個專案仍是新值。
 - **實機 UI 檢查**（契約落地時，依工作計畫的驗收規則二）：
   - 專案選擇器：封存標籤、封存與取消封存、開啟失敗的訊息、準備失敗時 A 仍在；
   - 設定頁：每個機器欄位的來源標示、「改用此電腦的值」、`machine.yaml` 錯誤與新 schema 唯讀；
@@ -616,4 +646,4 @@ Q1–Q5 移到 [spec.md](spec.md)「開放問題（需要擁有者）」，與�
 | better-sqlite3 在 `-shm` 不可寫時能否以唯讀開 WAL 資料庫 | 在 tmp 目錄 chmod 後開啟一次 |
 | 進行中的 hook 寫入位置變更（`ZDOTDIR`、bash login 檔）實際寫哪些檔 | `work/1112-hooks` 分支目前沒有 commit；向擁有者或該 session 取得檔案清單 |
 | Windows 上 `fs.renameSync` 取代被另一程序以讀開啟的檔案是否成功 | Windows CI 的 unit leg 加一個測試 |
-| 舊版 app 讀到 `operator.mirror: true` 時 `deepMerge` 是否保留且不影響 | 以 v0.18 的 `config.ts` 單元執行一次 |
+| 舊版 app 讀到 `operator.mirror: true` 時 `deepMerge` 是否保留且不影響 | 以 v0.18 的 `config.ts` 單元執行一次（2026-11-13，修訂 B7：鏡像取消，不需檢查） |

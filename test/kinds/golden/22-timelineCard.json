@@ -1,0 +1,1138 @@
+{
+ "answers": {
+  "agent:api_error": {
+   "detail": null,
+   "lane": "agent",
+   "meta": [],
+   "typeTag": "timeline.agent"
+  },
+  "agent:assistant_message": {
+   "detail": null,
+   "lane": "agent",
+   "meta": [],
+   "typeTag": "timeline.agent"
+  },
+  "agent:away_summary": {
+   "detail": null,
+   "lane": "agent",
+   "meta": [],
+   "typeTag": "timeline.agent"
+  },
+  "agent:compact_summary": {
+   "detail": null,
+   "lane": "agent",
+   "meta": [],
+   "typeTag": "timeline.agent"
+  },
+  "agent:future_subtype#unknown-subtype": {
+   "detail": null,
+   "lane": "agent",
+   "meta": [],
+   "typeTag": "timeline.agent"
+  },
+  "agent:model_refusal": {
+   "detail": null,
+   "lane": "agent",
+   "meta": [],
+   "typeTag": "timeline.agent"
+  },
+  "agent:session_end": {
+   "detail": null,
+   "lane": "agent",
+   "meta": [],
+   "typeTag": "timeline.agent"
+  },
+  "agent:system#open-branch": {
+   "detail": null,
+   "lane": "agent",
+   "meta": [],
+   "typeTag": "timeline.agent"
+  },
+  "agent:thinking": {
+   "detail": null,
+   "lane": "agent",
+   "meta": [],
+   "typeTag": "timeline.agent"
+  },
+  "agent:tool_call": {
+   "detail": null,
+   "lane": "agent",
+   "meta": [],
+   "typeTag": "timeline.agent"
+  },
+  "agent:tool_interrupted": {
+   "detail": null,
+   "lane": "agent",
+   "meta": [],
+   "typeTag": "timeline.agent"
+  },
+  "agent:tool_result": {
+   "detail": null,
+   "lane": "agent",
+   "meta": [],
+   "typeTag": "timeline.agent"
+  },
+  "agent:transcript_capture_started": {
+   "detail": null,
+   "lane": "agent",
+   "meta": [],
+   "typeTag": "timeline.agent"
+  },
+  "agent:transcript_compacted": {
+   "detail": null,
+   "lane": "agent",
+   "meta": [],
+   "typeTag": "timeline.agent"
+  },
+  "agent:transcript_parent_missing": {
+   "detail": null,
+   "lane": "agent",
+   "meta": [],
+   "typeTag": "timeline.agent"
+  },
+  "agent:transcript_schema_drift": {
+   "detail": null,
+   "lane": "agent",
+   "meta": [],
+   "typeTag": "timeline.agent"
+  },
+  "agent:transcript_snapshot": {
+   "detail": null,
+   "lane": "agent",
+   "meta": [],
+   "typeTag": "timeline.agent"
+  },
+  "agent:transcript_tool_gap": {
+   "detail": null,
+   "lane": "agent",
+   "meta": [],
+   "typeTag": "timeline.agent"
+  },
+  "agent:user_message": {
+   "detail": null,
+   "lane": "agent",
+   "meta": [],
+   "typeTag": "timeline.agent"
+  },
+  "browser:console_debug": {
+   "detail": null,
+   "lane": "browser",
+   "meta": [],
+   "typeTag": "timeline.browser"
+  },
+  "browser:console_error": {
+   "detail": null,
+   "lane": "browser",
+   "meta": [],
+   "typeTag": "timeline.browser"
+  },
+  "browser:console_info": {
+   "detail": null,
+   "lane": "browser",
+   "meta": [],
+   "typeTag": "timeline.browser"
+  },
+  "browser:console_log": {
+   "detail": null,
+   "lane": "browser",
+   "meta": [],
+   "typeTag": "timeline.browser"
+  },
+  "browser:console_trace": {
+   "detail": null,
+   "lane": "browser",
+   "meta": [],
+   "typeTag": "timeline.browser"
+  },
+  "browser:console_warn": {
+   "detail": null,
+   "lane": "browser",
+   "meta": [],
+   "typeTag": "timeline.browser"
+  },
+  "browser:exception": {
+   "detail": null,
+   "lane": "browser",
+   "meta": [],
+   "typeTag": "timeline.browser"
+  },
+  "browser:log_entry": {
+   "detail": null,
+   "lane": "browser",
+   "meta": [],
+   "typeTag": "timeline.browser"
+  },
+  "c2_checkin:beacon#agent-type-with-no-writer": {
+   "detail": null,
+   "lane": "c2_checkin",
+   "meta": [],
+   "typeTag": "timeline.c2Checkin"
+  },
+  "cleanup:attr_hide": {
+   "detail": null,
+   "lane": "cleanup",
+   "meta": [],
+   "typeTag": "timeline.cleanup"
+  },
+  "cleanup:file_shred": {
+   "detail": null,
+   "lane": "cleanup",
+   "meta": [],
+   "typeTag": "timeline.cleanup"
+  },
+  "cleanup:history_clear": {
+   "detail": null,
+   "lane": "cleanup",
+   "meta": [],
+   "typeTag": "timeline.cleanup"
+  },
+  "cleanup:log_clear": {
+   "detail": null,
+   "lane": "cleanup",
+   "meta": [],
+   "typeTag": "timeline.cleanup"
+  },
+  "cleanup:timestomp": {
+   "detail": null,
+   "lane": "cleanup",
+   "meta": [],
+   "typeTag": "timeline.cleanup"
+  },
+  "credential_use:api_key": {
+   "detail": null,
+   "lane": "credential_use",
+   "meta": [],
+   "typeTag": "timeline.credentialUse"
+  },
+  "credential_use:auth_header": {
+   "detail": null,
+   "lane": "credential_use",
+   "meta": [],
+   "typeTag": "timeline.credentialUse"
+  },
+  "credential_use:basic_auth": {
+   "detail": null,
+   "lane": "credential_use",
+   "meta": [],
+   "typeTag": "timeline.credentialUse"
+  },
+  "credential_use:bearer_token": {
+   "detail": null,
+   "lane": "credential_use",
+   "meta": [],
+   "typeTag": "timeline.credentialUse"
+  },
+  "credential_use:digest": {
+   "detail": null,
+   "lane": "credential_use",
+   "meta": [],
+   "typeTag": "timeline.credentialUse"
+  },
+  "credential_use:form_login": {
+   "detail": null,
+   "lane": "credential_use",
+   "meta": [],
+   "typeTag": "timeline.credentialUse"
+  },
+  "credential_use:negotiate": {
+   "detail": null,
+   "lane": "credential_use",
+   "meta": [],
+   "typeTag": "timeline.credentialUse"
+  },
+  "credential_use:ntlm": {
+   "detail": null,
+   "lane": "credential_use",
+   "meta": [],
+   "typeTag": "timeline.credentialUse"
+  },
+  "credential_use:password_flag": {
+   "detail": null,
+   "lane": "credential_use",
+   "meta": [],
+   "typeTag": "timeline.credentialUse"
+  },
+  "credential_use:session_cookie": {
+   "detail": null,
+   "lane": "credential_use",
+   "meta": [],
+   "typeTag": "timeline.credentialUse"
+  },
+  "credential_use:url_userinfo": {
+   "detail": null,
+   "lane": "credential_use",
+   "meta": [],
+   "typeTag": "timeline.credentialUse"
+  },
+  "dns:dns_query": {
+   "detail": null,
+   "lane": "dns",
+   "meta": [],
+   "typeTag": "timeline.dns"
+  },
+  "dns:dns_response": {
+   "detail": null,
+   "lane": "dns",
+   "meta": [],
+   "typeTag": "timeline.dns"
+  },
+  "external:note#external-family": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "file_transfer:artifact_added": {
+   "detail": null,
+   "lane": "file_transfer",
+   "meta": [
+    "12 B"
+   ],
+   "typeTag": "timeline.files"
+  },
+  "file_transfer:download": {
+   "detail": null,
+   "lane": "file_transfer",
+   "meta": [],
+   "typeTag": "timeline.files"
+  },
+  "file_transfer:file_created": {
+   "detail": null,
+   "lane": "file_transfer",
+   "meta": [],
+   "typeTag": "timeline.files"
+  },
+  "file_transfer:file_deleted": {
+   "detail": null,
+   "lane": "file_transfer",
+   "meta": [],
+   "typeTag": "timeline.files"
+  },
+  "file_transfer:file_modified": {
+   "detail": null,
+   "lane": "file_transfer",
+   "meta": [],
+   "typeTag": "timeline.files"
+  },
+  "file_transfer:upload": {
+   "detail": null,
+   "lane": "file_transfer",
+   "meta": [],
+   "typeTag": "timeline.files"
+  },
+  "http_navigation:navigation": {
+   "detail": null,
+   "lane": "http_navigation",
+   "meta": [],
+   "typeTag": "timeline.http"
+  },
+  "loot:credential_detected": {
+   "detail": null,
+   "lane": "loot",
+   "meta": [],
+   "typeTag": "timeline.card.lootHit"
+  },
+  "marker": {
+   "detail": null,
+   "lane": "marker",
+   "meta": [],
+   "typeTag": "timeline.markers"
+  },
+  "marker:amended": {
+   "detail": null,
+   "lane": "marker",
+   "meta": [],
+   "typeTag": "timeline.markers"
+  },
+  "pcap:connection_attempt": {
+   "detail": null,
+   "lane": "scanner",
+   "meta": [],
+   "typeTag": "timeline.scanner"
+  },
+  "pcap:connection_established": {
+   "detail": null,
+   "lane": "scanner",
+   "meta": [],
+   "typeTag": "timeline.scanner"
+  },
+  "pcap:connection_refused": {
+   "detail": null,
+   "lane": "scanner",
+   "meta": [],
+   "typeTag": "timeline.scanner"
+  },
+  "pcap:port_scan": {
+   "detail": null,
+   "lane": "scanner",
+   "meta": [],
+   "typeTag": "timeline.scanner"
+  },
+  "pcap:udp_flow": {
+   "detail": null,
+   "lane": "scanner",
+   "meta": [],
+   "typeTag": "timeline.scanner"
+  },
+  "pivot:agent_connect": {
+   "detail": null,
+   "lane": "pivot",
+   "meta": [],
+   "typeTag": "timeline.pivot"
+  },
+  "pivot:closed": {
+   "detail": null,
+   "lane": "pivot",
+   "meta": [
+    "60s"
+   ],
+   "typeTag": "timeline.pivot"
+  },
+  "pivot:interactive": {
+   "detail": null,
+   "lane": "pivot",
+   "meta": [],
+   "typeTag": "timeline.pivot"
+  },
+  "pivot:port_forward": {
+   "detail": null,
+   "lane": "pivot",
+   "meta": [],
+   "typeTag": "timeline.pivot"
+  },
+  "pivot:proxied": {
+   "detail": null,
+   "lane": "pivot",
+   "meta": [],
+   "typeTag": "timeline.pivot"
+  },
+  "pivot:route_add": {
+   "detail": null,
+   "lane": "pivot",
+   "meta": [],
+   "typeTag": "timeline.pivot"
+  },
+  "pivot:socks_up": {
+   "detail": null,
+   "lane": "pivot",
+   "meta": [],
+   "typeTag": "timeline.pivot"
+  },
+  "pivot:tunnel_start": {
+   "detail": null,
+   "lane": "pivot",
+   "meta": [],
+   "typeTag": "timeline.pivot"
+  },
+  "plugin-kind:probe#plugin-declared": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "process:process_exit": {
+   "detail": null,
+   "lane": "process",
+   "meta": [
+    "1s"
+   ],
+   "typeTag": "timeline.process"
+  },
+  "process:process_spawn": {
+   "detail": null,
+   "lane": "process",
+   "meta": [],
+   "typeTag": "timeline.process"
+  },
+  "scanner:c2_checkin": {
+   "detail": null,
+   "lane": "c2_checkin",
+   "meta": [],
+   "typeTag": "timeline.c2Checkin"
+  },
+  "scanner:c2_checkin#generic": {
+   "detail": null,
+   "lane": "c2_checkin",
+   "meta": [],
+   "typeTag": "timeline.c2Checkin"
+  },
+  "scanner:c2_pivot": {
+   "detail": null,
+   "lane": "c2_checkin",
+   "meta": [],
+   "typeTag": "timeline.c2Checkin"
+  },
+  "scanner:c2_pivot#closed": {
+   "detail": null,
+   "lane": "c2_checkin",
+   "meta": [],
+   "typeTag": "timeline.c2Checkin"
+  },
+  "scanner:c2_task": {
+   "detail": null,
+   "lane": "c2_checkin",
+   "meta": [],
+   "typeTag": "timeline.c2Checkin"
+  },
+  "scanner:capture_gap": {
+   "detail": null,
+   "lane": "scanner",
+   "meta": [],
+   "typeTag": "timeline.scanner"
+  },
+  "scanner:capture_gap#inflight": {
+   "detail": null,
+   "lane": "scanner",
+   "meta": [],
+   "typeTag": "timeline.scanner"
+  },
+  "scanner:connection": {
+   "detail": null,
+   "lane": "scanner",
+   "meta": [],
+   "typeTag": "timeline.scanner"
+  },
+  "scanner:connection_end": {
+   "detail": null,
+   "lane": "scanner",
+   "meta": [],
+   "typeTag": "timeline.scanner"
+  },
+  "scanner:cookie_change": {
+   "detail": null,
+   "lane": "scanner",
+   "meta": [],
+   "typeTag": "timeline.scanner"
+  },
+  "scanner:http_error": {
+   "detail": null,
+   "lane": "scanner",
+   "meta": [],
+   "typeTag": "timeline.scanner"
+  },
+  "scanner:http_request_dropped": {
+   "detail": null,
+   "lane": "scanner",
+   "meta": [],
+   "typeTag": "timeline.scanner"
+  },
+  "scanner:http_request_start": {
+   "detail": null,
+   "lane": "scanner",
+   "meta": [],
+   "typeTag": "timeline.scanner"
+  },
+  "scanner:http_response": {
+   "detail": null,
+   "lane": "scanner",
+   "meta": [
+    "200",
+    "4 KB"
+   ],
+   "typeTag": "timeline.scanner"
+  },
+  "scanner:http_response_chunk": {
+   "detail": null,
+   "lane": "scanner",
+   "meta": [],
+   "typeTag": "timeline.scanner"
+  },
+  "scanner:packet_flow": {
+   "detail": null,
+   "lane": "scanner",
+   "meta": [],
+   "typeTag": "timeline.scanner"
+  },
+  "scanner:packet_flow#syn-only": {
+   "detail": null,
+   "lane": "scanner",
+   "meta": [],
+   "typeTag": "timeline.scanner"
+  },
+  "scanner:pcap_segment": {
+   "detail": null,
+   "lane": "scanner",
+   "meta": [],
+   "typeTag": "timeline.scanner"
+  },
+  "scanner:tcp_end": {
+   "detail": null,
+   "lane": "scanner",
+   "meta": [],
+   "typeTag": "timeline.scanner"
+  },
+  "scanner:tcp_message": {
+   "detail": null,
+   "lane": "scanner",
+   "meta": [],
+   "typeTag": "timeline.scanner"
+  },
+  "scanner:websocket_end": {
+   "detail": null,
+   "lane": "scanner",
+   "meta": [],
+   "typeTag": "timeline.scanner"
+  },
+  "scanner:ws_message": {
+   "detail": null,
+   "lane": "scanner",
+   "meta": [],
+   "typeTag": "timeline.scanner"
+  },
+  "screenshot": {
+   "detail": null,
+   "lane": "screenshot",
+   "meta": [],
+   "typeTag": "timeline.screenshot"
+  },
+  "shell:capture_resumed": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [],
+   "typeTag": "timeline.shell"
+  },
+  "shell:capture_stopped": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command#legacy": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command_boundary": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command_end": {
+   "detail": "/work",
+   "lane": "shell",
+   "meta": [
+    "transcript.metaExit",
+    "1s"
+   ],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command_end#builtin-io-bytes": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [
+    "transcript.metaExit"
+   ],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command_end#builtin-io-empty": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [
+    "transcript.metaExit"
+   ],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command_end#builtin-io-unbracketed": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [
+    "transcript.metaExit"
+   ],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command_end#hook-source": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [
+    "transcript.metaExit"
+   ],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command_end#legacy-no-fields": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [
+    "transcript.metaExit",
+    "1s"
+   ],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command_end#powershell-profile": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [
+    "transcript.metaExit"
+   ],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command_end#powershell-transcript": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [
+    "transcript.metaExit"
+   ],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command_end#redlog-run-builtin": {
+   "detail": "/work",
+   "lane": "shell",
+   "meta": [
+    "transcript.metaExit",
+    "0s"
+   ],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command_end#relay-complete": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [
+    "transcript.metaExit",
+    "3s"
+   ],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command_end#relay-complete-empty": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [
+    "transcript.metaExit",
+    "3s"
+   ],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command_end#relay-drain-timeout": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [
+    "transcript.metaExit",
+    "3s"
+   ],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command_end#relay-not-captured": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [
+    "transcript.metaExit",
+    "3s"
+   ],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command_end#relay-partial-background": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [
+    "transcript.metaExit",
+    "3s"
+   ],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command_end#relay-partial-streamed": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [
+    "transcript.metaExit",
+    "3s"
+   ],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command_end#relay-redirected": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [
+    "transcript.metaExit",
+    "3s"
+   ],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command_end#relay-truncated": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [
+    "transcript.metaExit",
+    "3s"
+   ],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command_end#tlogger-prompt": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [
+    "transcript.metaExit"
+   ],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command_output": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command_output#foreground": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command_output#streamed": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command_start": {
+   "detail": "/work",
+   "lane": "shell",
+   "meta": [],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command_start#powershell-profile": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [],
+   "typeTag": "timeline.shell"
+  },
+  "shell:command_start#tlogger-prompt": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [],
+   "typeTag": "timeline.shell"
+  },
+  "shell:session_end": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [],
+   "typeTag": "timeline.shell"
+  },
+  "shell:session_end#incomplete": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [],
+   "typeTag": "timeline.shell"
+  },
+  "shell:session_end#recovered": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [],
+   "typeTag": "timeline.shell"
+  },
+  "shell:session_output": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [],
+   "typeTag": "timeline.shell"
+  },
+  "shell:session_start": {
+   "detail": "/work",
+   "lane": "shell",
+   "meta": [],
+   "typeTag": "timeline.shell"
+  },
+  "shell:session_start#external": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [],
+   "typeTag": "timeline.shell"
+  },
+  "shell:wsl_test": {
+   "detail": null,
+   "lane": "shell",
+   "meta": [],
+   "typeTag": "timeline.shell"
+  },
+  "system:active_target_changed": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:agent_transcript_pruned": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:anchor_failed": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:api_started#legacy": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:body_evicted": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:bookmarks_pruned": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:browser_launched": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:capture_gap": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:cast_evicted": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:cast_pruned": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:chain_sample_broken": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:config_changed": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:connection_capture_started": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:connection_monitor_saturated": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:export_sealed": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:http_body_pruned": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:http_proxy_failed": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:http_proxy_orphan_reclaimed": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:http_proxy_started": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:http_proxy_stopped": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:ip_verdict": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:logged_tier_digest": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:opsec_airgap": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:opsec_state_changed": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:process_monitor_ps_unavailable": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:process_monitor_saturated": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:producer_heartbeat": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:recording_paused": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:recording_resumed": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:retention_pruned_logged": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:sanitized": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:scope_cleared": {
+   "detail": null,
+   "lane": "scope",
+   "meta": [],
+   "typeTag": "timeline.scope"
+  },
+  "system:scope_recomputed": {
+   "detail": null,
+   "lane": "scope",
+   "meta": [],
+   "typeTag": "timeline.scope"
+  },
+  "system:scope_violation": {
+   "detail": null,
+   "lane": "scope",
+   "meta": [],
+   "typeTag": "timeline.card.scopeObservation"
+  },
+  "system:scope_violation#in-scope-tally": {
+   "detail": null,
+   "lane": "scope",
+   "meta": [],
+   "typeTag": "timeline.scope"
+  },
+  "system:screenshot_deleted": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:screenshot_evicted": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:screenshot_pruned": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:session_start": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:session_start#api": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:update_completed": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:update_not_applied": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "system:update_pending": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "terminal:command#cli-help-text": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  },
+  "terminal:session_start#legacy": {
+   "detail": null,
+   "lane": "system",
+   "meta": [],
+   "typeTag": "timeline.system"
+  }
+ },
+ "location": "src/renderer/src/lib/timelineCard.ts",
+ "mode": "evaluated+extracted",
+ "n": 22,
+ "table": "timelineCard",
+ "words": {
+  "detailOf": [
+   "http_response",
+   "loot",
+   "process",
+   "scanner",
+   "shell"
+  ],
+  "metaOf": [
+   "command_end",
+   "file_transfer",
+   "scanner",
+   "shell"
+  ],
+  "typeTagOf": [
+   "system"
+  ]
+ }
+}

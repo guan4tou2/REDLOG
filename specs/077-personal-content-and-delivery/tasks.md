@@ -54,6 +54,7 @@
 - [ ] T040 [P] RED：`test/evidence-vectors.test.ts` 新案例（US5 的每一個竄改）；兩個 verifier 同結果。
 - [ ] T041 `evidence-rules.ts`：`BUNDLE_VERSION = 5`、seal 新版、stub 的形狀與規則、`window` 與 `complete-chain`（FR-042）；刪除 `projection`、`transformedEventIds`、`sanitized*`、`personalDropped`、`doNotExportDropped` 欄位與 v4 白名單（`bundle-verify.ts:45-49`）。
 - [ ] T042 `bundle-verify.ts` 與 `tools/redlog-verify.py`：stub 的連結檢查、扣下摘要的輸出行（FR-043）；不再接受第 5 版以外的 bundle。
+  > **修訂註記（2026-11-13，072 修訂 D1）**：第 5 版另含 `kinds.json` 與 `intervals.jsonl`（072 FR-060–FR-065）。T040 的向量、T041 的必要檔清單與 T042 的 verifier 與 072 T063、T065 同一個 PR 或配對 PR；T043 的 writer 呼叫 072 T064 的產生步驟。依 072 Q6 的答覆，不另做一次改版。
 - [ ] T043 bundle writer：交付範圍內每個位置寫完整列或 stub；附件跟著列（FR-046，`contains-withheld`）。
 - [ ] T044 app 內驗證（`chain-anchor.ts` 的 `verifyChainFullAsync`、證據頁）認得清除過的列（FR-044；與 Phase 7 一起生效）。
 - **Gate**：T040 綠；SC-004。

@@ -1,0 +1,1286 @@
+{
+  "$comment": "Module-level state in src/core and src/main (Spec 073 T002), checked by scripts/module-state.mjs from npm run verify:architecture. class: app | machine | constant | test-seam | project-legacy. project-legacy is state that belongs to a project but lives in a module; the count may only go down and projectLegacyBaseline must equal it.",
+  "projectLegacyBaseline": 141,
+  "entries": {
+    "src/core/activity-projection.ts#SHELL": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/activity-projection.ts#TOOLS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/activity-projection.ts#HTTP": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/activity-projection.ts#MESSAGES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/alert/policies.ts#DEFAULT_ALERT_FLOOR": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/alert/scope-signal.ts#SCOPE_ELIGIBLE": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/api-server.ts#appVersion": {
+      "class": "app",
+      "reason": "Version string set once at startup."
+    },
+    "src/core/api-server.ts#server": {
+      "class": "app",
+      "reason": "The loopback HTTP listener; one per process, retargeted per project by configureApi."
+    },
+    "src/core/api-server.ts#primaryToken": {
+      "class": "app",
+      "reason": "API bearer token minted for the process."
+    },
+    "src/core/api-server.ts#listeningPort": {
+      "class": "app",
+      "reason": "Port the listener was started on."
+    },
+    "src/core/api-server.ts#engagementId": {
+      "class": "project-legacy",
+      "reason": "Open project id, set by onApiProjectOpen."
+    },
+    "src/core/api-server.ts#projectOpen": {
+      "class": "project-legacy",
+      "reason": "Whether a project is open; flipped by onApiProjectOpen/Close."
+    },
+    "src/core/api-server.ts#primaryOperatorId": {
+      "class": "project-legacy",
+      "reason": "Operator id bound at project open (operator is per project today; Spec 073 FR-01D makes it machine-level)."
+    },
+    "src/core/api-server.ts#primaryOperatorName": {
+      "class": "project-legacy",
+      "reason": "Operator name bound at project open (see primaryOperatorId)."
+    },
+    "src/core/api-server.ts#configLoaderRef": {
+      "class": "project-legacy",
+      "reason": "Config reader wired by configureApi for the open project."
+    },
+    "src/core/api-server.ts#lootDetectorRef": {
+      "class": "project-legacy",
+      "reason": "Detector of the open project, wired at open."
+    },
+    "src/core/api-server.ts#screenshotAgentRef": {
+      "class": "project-legacy",
+      "reason": "Screenshot agent of the open project, wired at open."
+    },
+    "src/core/api-server.ts#sessionRegistryRef": {
+      "class": "project-legacy",
+      "reason": "Per-project session registry, wired at open."
+    },
+    "src/core/api-server.ts#alertRuntimeRef": {
+      "class": "project-legacy",
+      "reason": "Alert runtime of the open project, wired at open."
+    },
+    "src/core/api-server.ts#httpVerifySinkRef": {
+      "class": "project-legacy",
+      "reason": "Sink wired for the open project."
+    },
+    "src/core/api-server.ts#bundleExporterRef": {
+      "class": "project-legacy",
+      "reason": "Exporter bound to the open project."
+    },
+    "src/core/api-server.ts#castProbe": {
+      "class": "project-legacy",
+      "reason": "Cast probe of the open project."
+    },
+    "src/core/api-server.ts#castOffsetAtStart": {
+      "class": "project-legacy",
+      "reason": "Cast offsets by session id; ids belong to one project."
+    },
+    "src/core/api-server.ts#testHooksEnabled": {
+      "class": "test-seam",
+      "reason": "Turned on by the e2e test hooks only."
+    },
+    "src/core/body-source.ts#verified": {
+      "class": "project-legacy",
+      "reason": "Verified body-file signatures keyed by path under the open project."
+    },
+    "src/core/bounded-regex.ts#live": {
+      "class": "app",
+      "reason": "The shared regex worker; one per process."
+    },
+    "src/core/bundle-verify.ts#V4_MANIFEST_KEYS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/bundle-verify.ts#SEAL_DATA_KEYS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/bundle-verify.ts#SEAL_EVENTS_KEYS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/capture-health.ts#managedProxyStatusProvider": {
+      "class": "app",
+      "reason": "Provider wired once at startup."
+    },
+    "src/core/capture-health.ts#builtinTerminalFailure": {
+      "class": "app",
+      "reason": "Provider wired once at startup."
+    },
+    "src/core/capture-health.ts#prerequisiteProvider": {
+      "class": "app",
+      "reason": "Provider wired once at startup."
+    },
+    "src/core/capture-health.ts#_lastDbError": {
+      "class": "project-legacy",
+      "reason": "Last DB error of the open project (capture-health counters are project scoped)."
+    },
+    "src/core/capture-health.ts#_dbErrorTotal": {
+      "class": "project-legacy",
+      "reason": "DB error count of the open project."
+    },
+    "src/core/capture-health.ts#_dbErrorFirstAt": {
+      "class": "project-legacy",
+      "reason": "First DB error time of the open project."
+    },
+    "src/core/capture-health.ts#_captureErrors": {
+      "class": "project-legacy",
+      "reason": "Per-source capture errors of the open project."
+    },
+    "src/core/capture-health.ts#_lastSampleBroken": {
+      "class": "project-legacy",
+      "reason": "Chain sample state of the open project."
+    },
+    "src/core/capture-health.ts#activityProbe": {
+      "class": "project-legacy",
+      "reason": "Probe wired to the open project."
+    },
+    "src/core/capture-health.ts#healthCache": {
+      "class": "project-legacy",
+      "reason": "Computed health of the open project, cached for a short while."
+    },
+    "src/core/capture-health.ts#cfgSnapshot": {
+      "class": "project-legacy",
+      "reason": "Config snapshot of the open project."
+    },
+    "src/core/capture-health.ts#hooksCache": {
+      "class": "machine",
+      "reason": "Hook detection reads the machine shell rc files."
+    },
+    "src/core/capture-plumbing.ts#ADAPTER_FILES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/capture-plumbing.ts#ADAPTER_INTERNALS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/cast-content-source.ts#projections": {
+      "class": "project-legacy",
+      "reason": "Cast projections keyed by file under the open project."
+    },
+    "src/core/cast-content-source.ts#pending": {
+      "class": "project-legacy",
+      "reason": "In-flight projections for the open project."
+    },
+    "src/core/cast-content-source.ts#cacheDir": {
+      "class": "project-legacy",
+      "reason": "Directory of the open project; compared to detect a switch."
+    },
+    "src/core/cast-index.ts#generations": {
+      "class": "project-legacy",
+      "reason": "Per-cast generations of the open project."
+    },
+    "src/core/cast-index.ts#idx": {
+      "class": "project-legacy",
+      "reason": "Cast index database of the open project."
+    },
+    "src/core/cast-index.ts#idxDir": {
+      "class": "project-legacy",
+      "reason": "Directory of the open cast index."
+    },
+    "src/core/causes-resolver.ts#httpFlowMap": {
+      "class": "project-legacy",
+      "reason": "Cause-resolution map for the open project; cleared by resetCausesResolver."
+    },
+    "src/core/causes-resolver.ts#shellStartMap": {
+      "class": "project-legacy",
+      "reason": "Cause-resolution map for the open project; cleared by resetCausesResolver."
+    },
+    "src/core/causes-resolver.ts#commandIdMap": {
+      "class": "project-legacy",
+      "reason": "Cause-resolution map for the open project; cleared by resetCausesResolver."
+    },
+    "src/core/causes-resolver.ts#lateCommandIdMap": {
+      "class": "project-legacy",
+      "reason": "Cause-resolution map for the open project; cleared by resetCausesResolver."
+    },
+    "src/core/causes-resolver.ts#activeShellCommands": {
+      "class": "project-legacy",
+      "reason": "Cause-resolution map for the open project; cleared by resetCausesResolver."
+    },
+    "src/core/causes-resolver.ts#recentShellCommands": {
+      "class": "project-legacy",
+      "reason": "Cause-resolution map for the open project; cleared by resetCausesResolver."
+    },
+    "src/core/chain-anchor.ts#DEFAULT_CALENDARS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/chain-anchor.ts#loopTimer": {
+      "class": "project-legacy",
+      "reason": "Anchor loop timer; started and stopped with the project."
+    },
+    "src/core/chain-anchor.ts#upgradeTimer": {
+      "class": "project-legacy",
+      "reason": "Anchor upgrade timer; started and stopped with the project."
+    },
+    "src/core/chain-anchor.ts#firstTicks": {
+      "class": "project-legacy",
+      "reason": "First-tick timers of the anchor loop."
+    },
+    "src/core/clock.ts#cachedOffsetMs": {
+      "class": "machine",
+      "reason": "Offset between this computer clock and NTP."
+    },
+    "src/core/clock.ts#lastQueryAt": {
+      "class": "machine",
+      "reason": "Last NTP query time on this computer."
+    },
+    "src/core/clock.ts#queryTimer": {
+      "class": "project-legacy",
+      "reason": "NTP loop timer; started and stopped with the project."
+    },
+    "src/core/clock.ts#firstQuery": {
+      "class": "project-legacy",
+      "reason": "First NTP query timer; started with the project."
+    },
+    "src/core/command-tagger.ts#registry": {
+      "class": "project-legacy",
+      "reason": "Plugin-contributed tag sets, rebuilt when plugins load for a project."
+    },
+    "src/core/command-tagger.ts#userTags": {
+      "class": "machine",
+      "reason": "The operator tag list from the user machine."
+    },
+    "src/core/config-apply-plan.ts#OPEN_SEQUENCE": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/config-apply-plan.ts#APPLY_ORDER": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/config-apply-plan.ts#PACK_STEPS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/config-patch.ts#HOSTILE": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/config.ts#DEFAULT_VPN_ADAPTERS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/content-contract.ts#BODY_REF_FIELDS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/credential-detector.ts#LONG_FLAGS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/db/activity-queries.ts#registered": {
+      "class": "app",
+      "reason": "WeakMap/WeakSet keyed by the database handle: entries die with the handle and hold no project id."
+    },
+    "src/core/db/activity-queries.ts#indexed": {
+      "class": "app",
+      "reason": "WeakMap/WeakSet keyed by the database handle: entries die with the handle and hold no project id."
+    },
+    "src/core/db/event-write.ts#LOGGED_TIER": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/db/event-write.ts#sessionId": {
+      "class": "project-legacy",
+      "reason": "Recording session id, regenerated per project open."
+    },
+    "src/core/db/event-write.ts#cachedLastHash": {
+      "class": "project-legacy",
+      "reason": "Last event hash of the open project chain."
+    },
+    "src/core/db/event-write.ts#cachedEventCount": {
+      "class": "project-legacy",
+      "reason": "Event count of the open project."
+    },
+    "src/core/db/event-write.ts#APPEND_ONLY_TRIGGERS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/db/event-write.ts#lastEventForClockCheck": {
+      "class": "project-legacy",
+      "reason": "Last event of the open project, for clock checks."
+    },
+    "src/core/db/event-write.ts#PAUSE_EXEMPT_AGENT_TYPES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/db/event-write.ts#statements": {
+      "class": "app",
+      "reason": "WeakMap/WeakSet keyed by the database handle: entries die with the handle and hold no project id."
+    },
+    "src/core/db/index.ts#db": {
+      "class": "project-legacy",
+      "reason": "The open project database."
+    },
+    "src/core/db/index.ts#currentDbPath": {
+      "class": "project-legacy",
+      "reason": "Path of the open project database."
+    },
+    "src/core/db/index.ts#currentProjectDir": {
+      "class": "project-legacy",
+      "reason": "Directory of the open project."
+    },
+    "src/core/db/index.ts#roDb": {
+      "class": "project-legacy",
+      "reason": "Read-only handle on the open project."
+    },
+    "src/core/db/index.ts#boundEngagement": {
+      "class": "project-legacy",
+      "reason": "Engagement the database is bound to."
+    },
+    "src/core/db/index.ts#generation": {
+      "class": "project-legacy",
+      "reason": "Open counter; the lazy-reset mechanism other modules compare against."
+    },
+    "src/core/db/index.ts#openedAt": {
+      "class": "project-legacy",
+      "reason": "When the open project was opened."
+    },
+    "src/core/event-bus.ts#eventBus": {
+      "class": "app",
+      "reason": "In-process event bus; subscribers are removed when their owner stops."
+    },
+    "src/core/event-registry.ts#registry": {
+      "class": "app",
+      "reason": "Registered event types; static after startup."
+    },
+    "src/core/evidence-content.ts#FIELDS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/evidence-rules.ts#ATTACHMENT_DIRS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/evidence-rules.ts#BODY_REF_KEYS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/external-event-policy.ts#EXTERNAL_ALLOWED_AGENT_TYPES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/hooks-manager.ts#STARTER_PACK_FALLBACK": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/hooks-manager.ts#externalCaptures": {
+      "class": "project-legacy",
+      "reason": "Plugin capture manifests loaded for the open project."
+    },
+    "src/core/hooks-manager.ts#retiredCaptures": {
+      "class": "project-legacy",
+      "reason": "Plugin capture manifests retired for the open project."
+    },
+    "src/core/hooks-manager.ts#_zdotdirProbe": {
+      "class": "machine",
+      "reason": "Probe results about this computer shell setup."
+    },
+    "src/core/hooks-manager.ts#BASH_LOGIN_FILES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/hooks-manager.ts#_cmdCache": {
+      "class": "machine",
+      "reason": "Which commands exist on this computer."
+    },
+    "src/core/hooks-manager.ts#_profileProbe": {
+      "class": "machine",
+      "reason": "Probe results about this computer shell profiles."
+    },
+    "src/core/hooks-manager.ts#_detectCache": {
+      "class": "machine",
+      "reason": "Hook detection of this computer shell files."
+    },
+    "src/core/hooks-manager.ts#RC_FILES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/http-body-index.ts#index": {
+      "class": "project-legacy",
+      "reason": "Body index database of the open project."
+    },
+    "src/core/http-body-index.ts#indexDir": {
+      "class": "project-legacy",
+      "reason": "Directory of the open body index."
+    },
+    "src/core/http-body-index.ts#TIERS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/http-body-index.ts#linkedOutsideWalk": {
+      "class": "project-legacy",
+      "reason": "Body ids of the open project."
+    },
+    "src/core/http-body-index.ts#walked": {
+      "class": "project-legacy",
+      "reason": "Walk watermark of the open project."
+    },
+    "src/core/http-body-index.ts#dirty": {
+      "class": "project-legacy",
+      "reason": "Dirty flag of the open index."
+    },
+    "src/core/http-body-index.ts#statements": {
+      "class": "project-legacy",
+      "reason": "Prepared statements on the open index."
+    },
+    "src/core/http-body-index.ts#FINAL_STATUSES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/http-body-store.ts#_cachedDir": {
+      "class": "project-legacy",
+      "reason": "Bodies directory of the open project; reset by resetBodiesDirCache."
+    },
+    "src/core/hud-prefs.ts#BOOLEAN_KEYS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/ingest.ts#lootDetectorRef": {
+      "class": "project-legacy",
+      "reason": "Detector wired by configureIngest for the open project."
+    },
+    "src/core/ingest.ts#alertRuntimeRef": {
+      "class": "project-legacy",
+      "reason": "Alert runtime wired by configureIngest."
+    },
+    "src/core/ingest.ts#castProbe": {
+      "class": "project-legacy",
+      "reason": "Cast probe wired by configureIngest."
+    },
+    "src/core/ingest.ts#activeTarget": {
+      "class": "project-legacy",
+      "reason": "Active target of the open project."
+    },
+    "src/core/ingest.ts#terminalLifecycle": {
+      "class": "project-legacy",
+      "reason": "Terminal lifecycle wired for the open project."
+    },
+    "src/core/ingest.ts#ACTIVE_TARGET_FALLBACK_TYPES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/ingest.ts#castOffsetAtStart": {
+      "class": "project-legacy",
+      "reason": "Cast offsets by session id."
+    },
+    "src/core/ingest.ts#sessionTail": {
+      "class": "project-legacy",
+      "reason": "Tail of command output by session id."
+    },
+    "src/core/ingest.ts#lateTargetByCommand": {
+      "class": "project-legacy",
+      "reason": "Late-target lookups by command id."
+    },
+    "src/core/ingest.ts#lateChunkSeen": {
+      "class": "project-legacy",
+      "reason": "Late chunks seen by command id."
+    },
+    "src/core/ingest.ts#seenGeneration": {
+      "class": "project-legacy",
+      "reason": "Last database generation this module saw; the lazy reset."
+    },
+    "src/core/ingest.ts#REDACTED_FIELDS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/loot-detector.ts#externalPatterns": {
+      "class": "project-legacy",
+      "reason": "Plugin loot patterns loaded for the open project."
+    },
+    "src/core/managed-proxy-url.ts#LOOPBACK": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/marker-amend.ts#MARKER_SEVERITIES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/marker-amend.ts#AMENDABLE_FIELDS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/plugins/contributions.ts#AWAITING_APPROVAL": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/plugins/contributions.ts#reports": {
+      "class": "project-legacy",
+      "reason": "Contribution reports of the plugins loaded for the open project."
+    },
+    "src/core/plugins/index.ts#current": {
+      "class": "project-legacy",
+      "reason": "Plugins loaded for the open project."
+    },
+    "src/core/plugins/index.ts#profilesError": {
+      "class": "project-legacy",
+      "reason": "Profile load error of the open project."
+    },
+    "src/core/plugins/manifest.ts#PRIVILEGED_KEYS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/plugins/manifest.ts#PLUGIN_INSTALL_METHODS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/plugins/manifest.ts#PLUGIN_SHELL_RC_FILES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/plugins/manifest.ts#PLUGIN_KINDS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/plugins/tailer-registry.ts#register": {
+      "class": "app",
+      "reason": "Registration hook wired once by the tailer host."
+    },
+    "src/core/plugins/tailer-registry.ts#unregister": {
+      "class": "app",
+      "reason": "Registration hook wired once by the tailer host."
+    },
+    "src/core/plugins/types.ts#ALL_CAPABILITIES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/private-fs.ts#reported": {
+      "class": "app",
+      "reason": "Log-once flag."
+    },
+    "src/core/query/contract.ts#QUERY_FIELDS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/query/contract.ts#FIELD_BY_NAME": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/queue-gap.ts#PAUSE_JUDGED": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/raw-store.ts#_ensuredDir": {
+      "class": "project-legacy",
+      "reason": "Raw directory of the open project already created."
+    },
+    "src/core/recording-state-marker.ts#MARKER_RETRY_DELAYS_MS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/recording-state.ts#pending": {
+      "class": "project-legacy",
+      "reason": "Pending recording-state writes of the open project."
+    },
+    "src/core/recording-state.ts#brokenIn": {
+      "class": "project-legacy",
+      "reason": "Recording-state failure of the open project."
+    },
+    "src/core/redaction.ts#activeRules": {
+      "class": "project-legacy",
+      "reason": "Redaction rules from the open project config."
+    },
+    "src/core/redaction.ts#pluginRules": {
+      "class": "project-legacy",
+      "reason": "Plugin redaction rules for the open project."
+    },
+    "src/core/redaction.ts#cachedRules": {
+      "class": "project-legacy",
+      "reason": "Compiled rules of the open project."
+    },
+    "src/core/redaction.ts#stoppedPluginRegexes": {
+      "class": "project-legacy",
+      "reason": "Plugin regexes retired for the open project."
+    },
+    "src/core/sanitize.ts#sanitizedFieldsStmt": {
+      "class": "app",
+      "reason": "WeakMap/WeakSet keyed by the database handle: entries die with the handle and hold no project id."
+    },
+    "src/core/scope-evaluator.ts#TWO_LABEL_ETLDS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/scope-observation-count.ts#cachedObservationCount": {
+      "class": "project-legacy",
+      "reason": "Observation count of the open project; reset by invalidateObservationCount."
+    },
+    "src/core/scope-recompute-run.ts#TABLES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/scope-sanitize.ts#SCOPE_SANITIZED_FIELDS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/secret-patterns.ts#REDACT_IN_TRANSCRIPTS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/secret-patterns.ts#DETECT_AS_LOOT": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/secret-redaction.ts#SENSITIVE_PATH_HINTS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/shell-catalog.ts#WINDOWS_BASH_PATHS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/shell-catalog.ts#INTERNAL_WSL_DISTROS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/shell-catalog.ts#POSIX_SHELL_PATHS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/shell-flavour.ts#POSIX_SHELLS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/signing.ts#restrictedKeysDirs": {
+      "class": "machine",
+      "reason": "Key directories already restricted on this computer."
+    },
+    "src/core/signing.ts#keyCache": {
+      "class": "machine",
+      "reason": "Signing keys by operator id from the machine keys directory."
+    },
+    "src/core/signing.ts#warnedUnsafeIds": {
+      "class": "app",
+      "reason": "Log-once set."
+    },
+    "src/core/socket-attribution.ts#portPid": {
+      "class": "project-legacy",
+      "reason": "Port to pid map of the open project capture."
+    },
+    "src/core/socket-attribution.ts#pidCmd": {
+      "class": "project-legacy",
+      "reason": "Pid to command map of the open project capture."
+    },
+    "src/core/socket-attribution.ts#parentOf": {
+      "class": "project-legacy",
+      "reason": "Parent pid map of the open project capture."
+    },
+    "src/core/socket-attribution.ts#attempted": {
+      "class": "project-legacy",
+      "reason": "Attribution counters of the open project."
+    },
+    "src/core/socket-attribution.ts#resolved": {
+      "class": "project-legacy",
+      "reason": "Attribution counters of the open project."
+    },
+    "src/core/socket-attribution.ts#seenGeneration": {
+      "class": "project-legacy",
+      "reason": "Last database generation this module saw; the lazy reset."
+    },
+    "src/core/source-sessions.ts#registered": {
+      "class": "app",
+      "reason": "WeakMap/WeakSet keyed by the database handle: entries die with the handle and hold no project id."
+    },
+    "src/core/spool-replay.ts#INTENTIONAL_REASONS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/spool-replay.ts#QUARANTINE_REASONS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/spool-replay.ts#backoff": {
+      "class": "machine",
+      "reason": "Replay back-off per spool file; the spool is on this computer."
+    },
+    "src/core/target-extractor.ts#externalPatterns": {
+      "class": "project-legacy",
+      "reason": "Plugin extractors loaded for the open project."
+    },
+    "src/core/target-extractor.ts#userExtractors": {
+      "class": "machine",
+      "reason": "User extractors from the user machine."
+    },
+    "src/core/terminal-class.ts#REPL": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/terminal-class.ts#REPL_SCRIPT_FLAGS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/terminal-class.ts#MODES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/terminal-class.ts#STRICT_UTF8": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/terminal-class.ts#NATIVE": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/terminal-class.ts#PTY": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/terminal-enrollment.ts#TERMINAL_APPS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/terminal-profiles.ts#ADAPTER_RESERVED": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/terminal-profiles.ts#MODES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/terminal-profiles.ts#registry": {
+      "class": "project-legacy",
+      "reason": "Plugin terminal profiles, rebuilt when plugins load for a project."
+    },
+    "src/core/unsaved-gap.ts#GAP_LINE": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/unsaved-gap.ts#UNKNOWN_DELIVERY": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/visibility-signals.ts#cache": {
+      "class": "project-legacy",
+      "reason": "Visibility signals of the open project; reset by resetVisibilitySignalsCache."
+    },
+    "src/core/wsl-manager.ts#distroCache": {
+      "class": "machine",
+      "reason": "WSL distros of this computer."
+    },
+    "src/main/index.ts#mainWindow": {
+      "class": "app",
+      "reason": "The main window."
+    },
+    "src/main/index.ts#overlayWindow": {
+      "class": "app",
+      "reason": "The HUD window."
+    },
+    "src/main/index.ts#tray": {
+      "class": "app",
+      "reason": "The tray icon."
+    },
+    "src/main/index.ts#forceQuit": {
+      "class": "app",
+      "reason": "Quit flag."
+    },
+    "src/main/index.ts#dependencyInstalls": {
+      "class": "app",
+      "reason": "In-flight dependency installs."
+    },
+    "src/main/index.ts#projectRuntime": {
+      "class": "project-legacy",
+      "reason": "The ProjectRuntime instance; Spec 073 replaces it with ProjectSession."
+    },
+    "src/main/index.ts#apiBundleExporter": {
+      "class": "app",
+      "reason": "Resolves the open project at call time; holds no project data."
+    },
+    "src/main/index.ts#managedStartQueue": {
+      "class": "project-legacy",
+      "reason": "Serialises managed-proxy starts of the open project."
+    },
+    "src/main/index.ts#httpVerificationHistory": {
+      "class": "project-legacy",
+      "reason": "Verification history of the open project."
+    },
+    "src/main/index.ts#saveTimer": {
+      "class": "app",
+      "reason": "Debounce for the window state file."
+    },
+    "src/main/index.ts#alertRuntime": {
+      "class": "project-legacy",
+      "reason": "Alert runtime bound to the open project at open."
+    },
+    "src/main/index.ts#screenshotAgent": {
+      "class": "project-legacy",
+      "reason": "Screenshot agent bound to the open project at open."
+    },
+    "src/main/index.ts#lootDetector": {
+      "class": "project-legacy",
+      "reason": "Loot detector bound to the open project at open."
+    },
+    "src/main/index.ts#configApplier": {
+      "class": "app",
+      "reason": "Checks the identity it is given; holds no project data."
+    },
+    "src/main/index.ts#configStore": {
+      "class": "app",
+      "reason": "Resolves the project directory at call time; holds no project data."
+    },
+    "src/main/index.ts#lastPivots": {
+      "class": "project-legacy",
+      "reason": "Last pivot answer for the open project."
+    },
+    "src/main/index.ts#currentLink": {
+      "class": "machine",
+      "reason": "Network link of this computer."
+    },
+    "src/main/index.ts#detectedLink": {
+      "class": "machine",
+      "reason": "Network link of this computer."
+    },
+    "src/main/index.ts#showWifiName": {
+      "class": "machine",
+      "reason": "HUD preference on this computer."
+    },
+    "src/main/index.ts#linkTimer": {
+      "class": "project-legacy",
+      "reason": "Link monitor timer; started at open and never stopped today."
+    },
+    "src/main/index.ts#keepDockIcon": {
+      "class": "app",
+      "reason": "Window preference."
+    },
+    "src/main/index.ts#recomputeTimer": {
+      "class": "project-legacy",
+      "reason": "Scope recompute debounce for the open project."
+    },
+    "src/main/index.ts#recomputePending": {
+      "class": "project-legacy",
+      "reason": "Pending scope recompute for the open project."
+    },
+    "src/main/index.ts#recomputeRunning": {
+      "class": "project-legacy",
+      "reason": "Scope recompute in progress for the open project."
+    },
+    "src/main/index.ts#toolDetector": {
+      "class": "machine",
+      "reason": "Detects tools on this computer."
+    },
+    "src/main/index.ts#quitText": {
+      "class": "app",
+      "reason": "Quit dialog text."
+    },
+    "src/main/index.ts#quitPrompt": {
+      "class": "app",
+      "reason": "Quit dialog in flight."
+    },
+    "src/main/ipc/markers.ts#MARKER_TEXT_FIELDS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/main/ipc/overlay.ts#overlayMouseInside": {
+      "class": "app",
+      "reason": "HUD window state."
+    },
+    "src/main/ipc/overlay.ts#overlayTrackingInterval": {
+      "class": "app",
+      "reason": "HUD window tracking timer."
+    },
+    "src/main/ipc/overlay.ts#overlayIpExposed": {
+      "class": "app",
+      "reason": "IP exposure shown by the HUD."
+    },
+    "src/main/ipc/overlay.ts#_ctx": {
+      "class": "app",
+      "reason": "IPC context."
+    },
+    "src/main/ipc/overlay.ts#prefsDir": {
+      "class": "machine",
+      "reason": "HUD preferences directory on this computer."
+    },
+    "src/main/ipc/overlay.ts#prefs": {
+      "class": "machine",
+      "reason": "HUD preferences of this computer."
+    },
+    "src/main/ipc/overlay.ts#onPrefsApplied": {
+      "class": "app",
+      "reason": "Callback wired once."
+    },
+    "src/main/ipc/overlay.ts#releaseShortcutHeld": {
+      "class": "app",
+      "reason": "HUD shortcut state."
+    },
+    "src/main/launch-policy.ts#PACKAGED_REMOVED_SWITCHES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/main/launch-policy.ts#RELEASE_REMOVED_SWITCHES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/main/launch-policy.ts#PACKAGED_CLEARED_ENV": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/main/project-dir-modes.ts#PROJECT_PRIVATE_DIRS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/main/quit-guard.ts#quitAllowed": {
+      "class": "app",
+      "reason": "Quit flag."
+    },
+    "src/main/services/agent-tailer.ts#loaded": {
+      "class": "project-legacy",
+      "reason": "Adapters loaded for the open project agent sources."
+    },
+    "src/main/services/browser-launcher.ts#MAC_CANDIDATES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/main/services/browser-launcher.ts#WIN_CANDIDATES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/main/services/browser-launcher.ts#LINUX_CANDIDATES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/main/services/browser-launcher.ts#QUIET_ARGS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/main/services/browser-launcher.ts#child": {
+      "class": "app",
+      "reason": "The browser process this app launched."
+    },
+    "src/main/services/browser-launcher.ts#exitListeners": {
+      "class": "app",
+      "reason": "Listeners on that process."
+    },
+    "src/main/services/capture-prerequisites.ts#OPENABLE": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/main/services/capture-prerequisites.ts#commandCache": {
+      "class": "machine",
+      "reason": "Which commands exist on this computer."
+    },
+    "src/main/services/cdp-connector.ts#cdpPort": {
+      "class": "machine",
+      "reason": "Debug port of the browser on this computer."
+    },
+    "src/main/services/cdp-connector.ts#lastContext": {
+      "class": "project-legacy",
+      "reason": "Browser context of the open project capture."
+    },
+    "src/main/services/cdp-connector.ts#lastTabUrls": {
+      "class": "project-legacy",
+      "reason": "Tab urls of the open project capture."
+    },
+    "src/main/services/cdp-connector.ts#pollTimer": {
+      "class": "project-legacy",
+      "reason": "Poll timer; stopped with the project."
+    },
+    "src/main/services/cdp-connector.ts#identity": {
+      "class": "project-legacy",
+      "reason": "Project identity the monitor writes under."
+    },
+    "src/main/services/cdp-connector.ts#wsByTabId": {
+      "class": "project-legacy",
+      "reason": "Tab sockets of the open project capture."
+    },
+    "src/main/services/cdp-connector.ts#cdpMsgId": {
+      "class": "app",
+      "reason": "Message counter."
+    },
+    "src/main/services/connection-monitor.ts#cfg": {
+      "class": "project-legacy",
+      "reason": "Connection monitor state of the open project; stopped with it."
+    },
+    "src/main/services/connection-monitor.ts#pollTimer": {
+      "class": "project-legacy",
+      "reason": "Connection monitor state of the open project; stopped with it."
+    },
+    "src/main/services/connection-monitor.ts#known": {
+      "class": "project-legacy",
+      "reason": "Connection monitor state of the open project; stopped with it."
+    },
+    "src/main/services/connection-monitor.ts#polling": {
+      "class": "project-legacy",
+      "reason": "Connection monitor state of the open project; stopped with it."
+    },
+    "src/main/services/connection-monitor.ts#announcedLimit": {
+      "class": "project-legacy",
+      "reason": "Connection monitor state of the open project; stopped with it."
+    },
+    "src/main/services/connection-monitor.ts#generation": {
+      "class": "project-legacy",
+      "reason": "Connection monitor state of the open project; stopped with it."
+    },
+    "src/main/services/file-watcher.ts#chokidarNS": {
+      "class": "app",
+      "reason": "Lazily imported module."
+    },
+    "src/main/services/file-watcher.ts#DEFAULT_IGNORES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/main/services/file-watcher.ts#cfg": {
+      "class": "project-legacy",
+      "reason": "File watcher config of the open project."
+    },
+    "src/main/services/file-watcher.ts#watcher": {
+      "class": "project-legacy",
+      "reason": "Watcher of the open project."
+    },
+    "src/main/services/file-watcher.ts#generation": {
+      "class": "project-legacy",
+      "reason": "Start generation of the watcher."
+    },
+    "src/main/services/managed-http-proxy.ts#managedHttpProxy": {
+      "class": "app",
+      "reason": "The managed proxy; its own start and stop are tied to the project by index.ts."
+    },
+    "src/main/services/opsec-state.ts#vpnPatterns": {
+      "class": "machine",
+      "reason": "VPN adapter patterns of this computer."
+    },
+    "src/main/services/opsec-state.ts#last": {
+      "class": "project-legacy",
+      "reason": "Last opsec state of the open project."
+    },
+    "src/main/services/opsec-state.ts#timer": {
+      "class": "project-legacy",
+      "reason": "Opsec poll timer; stopped with the project."
+    },
+    "src/main/services/opsec-state.ts#onChanged": {
+      "class": "app",
+      "reason": "Callback wired once."
+    },
+    "src/main/services/opsec-state.ts#dnsPending": {
+      "class": "project-legacy",
+      "reason": "Pending DNS change of the open project."
+    },
+    "src/main/services/powershell-transcript.ts#chokidarNS": {
+      "class": "app",
+      "reason": "Lazily imported module."
+    },
+    "src/main/services/powershell-transcript.ts#cfg": {
+      "class": "project-legacy",
+      "reason": "Transcript watcher config of the open project."
+    },
+    "src/main/services/powershell-transcript.ts#watcher": {
+      "class": "project-legacy",
+      "reason": "Watcher of the open project."
+    },
+    "src/main/services/powershell-transcript.ts#generation": {
+      "class": "project-legacy",
+      "reason": "Start generation of the watcher."
+    },
+    "src/main/services/powershell-transcript.ts#emitted": {
+      "class": "project-legacy",
+      "reason": "Transcript offsets of the open project."
+    },
+    "src/main/services/powershell-transcript.ts#retries": {
+      "class": "project-legacy",
+      "reason": "Retry timers of the open project."
+    },
+    "src/main/services/process-monitor.ts#DEFAULT_IGNORES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/main/services/process-monitor.ts#cfg": {
+      "class": "project-legacy",
+      "reason": "Process monitor config of the open project."
+    },
+    "src/main/services/process-monitor.ts#pollTimer": {
+      "class": "project-legacy",
+      "reason": "Poll timer; stopped with the project."
+    },
+    "src/main/services/process-monitor.ts#knownProcs": {
+      "class": "project-legacy",
+      "reason": "Tracked processes of the open project."
+    },
+    "src/main/services/process-monitor.ts#ownPid": {
+      "class": "app",
+      "reason": "This process pid."
+    },
+    "src/main/services/process-monitor.ts#emitBucket": {
+      "class": "project-legacy",
+      "reason": "Emit throttle of the open project."
+    },
+    "src/main/services/process-monitor.ts#generation": {
+      "class": "project-legacy",
+      "reason": "Start generation."
+    },
+    "src/main/services/process-monitor.ts#psAdvised": {
+      "class": "machine",
+      "reason": "Whether the ps advice was shown on this computer."
+    },
+    "src/main/services/process-monitor.ts#polling": {
+      "class": "project-legacy",
+      "reason": "Poll in progress."
+    },
+    "src/main/services/producers/ip-signal-producer.ts#DNS_LOOKUPS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/main/services/producers/ip-signal-producer.ts#DEFAULT_IP_PROVIDERS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/main/services/screenshot-agent.ts#DELIBERATE_TRIGGERS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/main/services/tailer-host.ts#registeredAdapters": {
+      "class": "app",
+      "reason": "Adapters registered at startup."
+    },
+    "src/main/services/tailer-host.ts#hostGeneration": {
+      "class": "project-legacy",
+      "reason": "Start generation of the host."
+    },
+    "src/main/services/tailer-host.ts#cfg": {
+      "class": "project-legacy",
+      "reason": "Tailer config of the open project."
+    },
+    "src/main/services/tailer-host.ts#watchersByAgent": {
+      "class": "project-legacy",
+      "reason": "Watchers of the open project."
+    },
+    "src/main/services/tailer-host.ts#coalesceTimers": {
+      "class": "project-legacy",
+      "reason": "Timers of the open project."
+    },
+    "src/main/services/tailer-host.ts#sessions": {
+      "class": "project-legacy",
+      "reason": "Tailed sessions of the open project."
+    },
+    "src/main/services/tailer-host.ts#resumeBoundary": {
+      "class": "project-legacy",
+      "reason": "Resume boundary of the open project."
+    },
+    "src/main/services/tailer-host.ts#sessionRegistryByEngagement": {
+      "class": "project-legacy",
+      "reason": "Session registry keyed by engagement id."
+    },
+    "src/main/services/tailer-host.ts#initializedAdapters": {
+      "class": "app",
+      "reason": "Adapters initialised once."
+    },
+    "src/main/services/tailer-host.ts#seedIndex": {
+      "class": "project-legacy",
+      "reason": "Seed index of the open project."
+    },
+    "src/main/services/updater.ts#statusStore": {
+      "class": "app",
+      "reason": "Update status store."
+    },
+    "src/main/services/updater.ts#winUpdaterReady": {
+      "class": "app",
+      "reason": "Updater state."
+    },
+    "src/main/services/updater.ts#impactProvider": {
+      "class": "app",
+      "reason": "Provider wired once."
+    },
+    "src/main/services/updater.ts#flow": {
+      "class": "app",
+      "reason": "Update flow."
+    },
+    "src/main/services/updater.ts#downloadToken": {
+      "class": "app",
+      "reason": "Update download token."
+    },
+    "src/main/services/updater.ts#airgap": {
+      "class": "project-legacy",
+      "reason": "Air-gap flag applied at project open by setUpdaterAirgap; Spec 073 makes it live."
+    },
+    "src/main/services/updater.ts#pendingOutcome": {
+      "class": "app",
+      "reason": "Update outcome."
+    },
+    "src/main/services/updater.ts#inFlight": {
+      "class": "app",
+      "reason": "Update check in flight."
+    },
+    "src/main/terminal-manager.ts#ptyHelperChecked": {
+      "class": "app",
+      "reason": "Check done once."
+    },
+    "src/main/terminal-manager.ts#catalog": {
+      "class": "machine",
+      "reason": "Shell catalog of this computer."
+    },
+    "src/main/terminal-manager.ts#managedProxyUrlProvider": {
+      "class": "app",
+      "reason": "Provider wired once."
+    },
+    "src/main/terminal-manager.ts#WSL_FORWARDED_ENV": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/main/terminal-manager.ts#sessions": {
+      "class": "app",
+      "reason": "Live terminal sessions of the app; they outlive a project switch."
+    },
+    "src/main/terminal-manager.ts#mainWindow": {
+      "class": "app",
+      "reason": "The main window."
+    },
+    "src/main/terminal-manager.ts#identity": {
+      "class": "project-legacy",
+      "reason": "Project identity new terminals are bound to."
+    },
+    "src/main/terminal-manager.ts#maxCastBytes": {
+      "class": "machine",
+      "reason": "Cast size limit of this computer."
+    },
+    "src/main/tray.ts#templateIcon": {
+      "class": "app",
+      "reason": "Tray icon cache."
+    },
+    "src/main/tray.ts#recIcon": {
+      "class": "app",
+      "reason": "Tray icon cache."
+    },
+    "src/main/tray.ts#pausedIcon": {
+      "class": "app",
+      "reason": "Tray icon cache."
+    },
+    "src/main/tray.ts#blinkTimer": {
+      "class": "app",
+      "reason": "Tray blink timer."
+    },
+    "src/main/tray.ts#menuBuilders": {
+      "class": "app",
+      "reason": "Per-tray menu builders."
+    },
+    "src/main/tray.ts#TRAY_TEXT_KEYS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/main/tray.ts#trayText": {
+      "class": "app",
+      "reason": "Tray label text."
+    },
+    "src/main/tray.ts#lastRecording": {
+      "class": "app",
+      "reason": "Per-tray last state."
+    }
+  }
+}
