@@ -102,33 +102,54 @@ export interface ExportAttachmentCounts {
   excludedByOperator: number
 }
 
+/** One measurement over a sequence of Events, fed an Event at a time. The
+ *  export plan reads a project's snapshot from the database, which is the
+ *  expensive part, so every figure it reports is a fold that rides along one
+ *  walk instead of a function that walks the whole project for itself. */
+export interface EventFold<T> {
+  add(event: RedLogEvent): void
+  done(): T
+}
+
+/** Run one fold over Events already in hand. */
+export function foldEvents<T>(fold: EventFold<T>, events: Iterable<RedLogEvent>): T {
+  for (const event of events) fold.add(event)
+  return fold.done()
+}
+
 /** Events whose captured output or body was cut short. The Event is still
  *  exported; the reader needs to know the text they see is not all of it. */
-export function countTruncatedOutputs(events: Iterable<RedLogEvent>): number {
+export function truncatedOutputsFold(): EventFold<number> {
   let count = 0
-  for (const event of events) if (capturedContentIsPartial(event.data)) count++
-  return count
+  return {
+    add: event => { if (capturedContentIsPartial(event.data)) count++ },
+    done: () => count
+  }
 }
 
 /** Terminal recordings among these Events that the app never closed, and the
  *  commands they left running: recovered after a crash, so cut off rather than
  *  finished (#290). */
-export function countInterrupted(events: Iterable<RedLogEvent>): { recordings: number; commands: number } {
+export function interruptedFold(): EventFold<{ recordings: number; commands: number }> {
   let recordings = 0, commands = 0
-  for (const e of events) {
-    if (e.agentType !== 'shell') continue
-    if (e.data.subtype === 'session_end' && e.data.recovered === true) recordings++
-    else if (e.data.subtype === 'command_boundary' && e.data.reason === 'recovered-orphan') commands++
+  return {
+    add: e => {
+      if (e.agentType !== 'shell') return
+      if (e.data.subtype === 'session_end' && e.data.recovered === true) recordings++
+      else if (e.data.subtype === 'command_boundary' && e.data.reason === 'recovered-orphan') commands++
+    },
+    done: () => ({ recordings, commands })
   }
-  return { recordings, commands }
 }
 
 /** Recording pauses among these Events. Counts what the export carries: a
  *  selection that filters system Events out will not show its pauses. */
-export function countPauseWindows(events: Iterable<RedLogEvent>): number {
+export function pauseWindowsFold(): EventFold<number> {
   let count = 0
-  for (const event of events) if (event.agentType === 'system' && event.data.subtype === 'recording_paused') count++
-  return count
+  return {
+    add: event => { if (event.agentType === 'system' && event.data.subtype === 'recording_paused') count++ },
+    done: () => count
+  }
 }
 
 /** `reason` of a `capture_gap` that names none: the AI-source pause gap. */
@@ -147,46 +168,55 @@ const UNSPECIFIED_GAP_REASON = 'unspecified'
  *  terminal that was not recording — is not a loss and is not counted here.
  *  Only the receiver's own rows (`system`, `source: hook-spool`) are believed
  *  on that: a producer's gap saying `intentional` still counts. */
-export function countCaptureGaps(events: Iterable<RedLogEvent>): CaptureGapCount[] {
+export function captureGapsFold(): EventFold<CaptureGapCount[]> {
   const byReason = new Map<string, CaptureGapCount>()
-  for (const e of events) {
-    if ((e.agentType !== 'scanner' && e.agentType !== 'system') || e.data.subtype !== 'capture_gap') continue
-    if (e.agentType === 'system' && e.data.source === 'hook-spool' && e.data.intentional === true) continue
-    const reason = typeof e.data.reason === 'string' && e.data.reason ? e.data.reason : UNSPECIFIED_GAP_REASON
-    const row = byReason.get(reason) ?? { reason, gaps: 0, skippedUnits: 0, unknownAmount: 0 }
-    const units = e.data.skipped_units
-    const delivered = reason !== 'delivery-unconfirmed' && e.data.capture_delivery !== 'unknown'
-    row.gaps++
-    if (delivered && typeof units === 'number' && Number.isFinite(units) && units >= 0) row.skippedUnits += units
-    else row.unknownAmount++
-    byReason.set(reason, row)
+  return {
+    add: e => {
+      if ((e.agentType !== 'scanner' && e.agentType !== 'system') || e.data.subtype !== 'capture_gap') return
+      if (e.agentType === 'system' && e.data.source === 'hook-spool' && e.data.intentional === true) return
+      const reason = typeof e.data.reason === 'string' && e.data.reason ? e.data.reason : UNSPECIFIED_GAP_REASON
+      const row = byReason.get(reason) ?? { reason, gaps: 0, skippedUnits: 0, unknownAmount: 0 }
+      const units = e.data.skipped_units
+      const delivered = reason !== 'delivery-unconfirmed' && e.data.capture_delivery !== 'unknown'
+      row.gaps++
+      if (delivered && typeof units === 'number' && Number.isFinite(units) && units >= 0) row.skippedUnits += units
+      else row.unknownAmount++
+      byReason.set(reason, row)
+    },
+    done: () => [...byReason.values()].sort((a, b) => (a.reason < b.reason ? -1 : a.reason > b.reason ? 1 : 0))
   }
-  return [...byReason.values()].sort((a, b) => (a.reason < b.reason ? -1 : a.reason > b.reason ? 1 : 0))
 }
 
 /** Flows among these Events that have SSE chunks or WebSocket messages and
  *  neither a request nor a response — what a HAR holds in `partialFlows`. */
-export function countPartialHttpFlows(events: Iterable<RedLogEvent>): number {
-  return partialHttpFlowSegments(events).size
+export function partialHttpFlowsFold(): EventFold<number> {
+  const segments = partialHttpFlowSegmentsFold()
+  return { add: segments.add, done: () => segments.done().size }
 }
 
-function partialHttpFlowSegments(events: Iterable<RedLogEvent>, selectedIds: ReadonlySet<string> = new Set(), excluded: (event: RedLogEvent) => boolean = () => false) {
-  const segmented = new Map<string, { first: { timestamp: number; targetId: string | null }; url?: string; selected: boolean; allExcluded: boolean }>()
+type PartialFlowSegments = Map<string, { first: { timestamp: number; targetId: string | null }; url?: string; selected: boolean; allExcluded: boolean }>
+
+function partialHttpFlowSegmentsFold(selectedIds: ReadonlySet<string> = new Set(), excluded: (event: RedLogEvent) => boolean = () => false): EventFold<PartialFlowSegments> {
+  const segmented: PartialFlowSegments = new Map()
   const exchanged = new Set<string>()
-  for (const event of events) {
-    const flowId = event.data.flow_id
-    if (typeof flowId !== 'string' || !flowId) continue
-    if (event.data.subtype === 'http_response_chunk' || event.data.subtype === 'ws_message') {
-      const row = segmented.get(flowId) ?? { first: { timestamp: event.timestamp, targetId: event.targetId }, selected: false, allExcluded: true }
-      if (event.timestamp < row.first.timestamp) row.first = { timestamp: event.timestamp, targetId: event.targetId }
-      if (row.url === undefined && typeof event.data.url === 'string') row.url = event.data.url
-      row.selected ||= selectedIds.has(event.id)
-      row.allExcluded &&= excluded(event)
-      segmented.set(flowId, row)
-    } else if (event.data.subtype === 'http_request_start' || event.data.subtype === 'http_response') exchanged.add(flowId)
+  return {
+    add: event => {
+      const flowId = event.data.flow_id
+      if (typeof flowId !== 'string' || !flowId) return
+      if (event.data.subtype === 'http_response_chunk' || event.data.subtype === 'ws_message') {
+        const row = segmented.get(flowId) ?? { first: { timestamp: event.timestamp, targetId: event.targetId }, selected: false, allExcluded: true }
+        if (event.timestamp < row.first.timestamp) row.first = { timestamp: event.timestamp, targetId: event.targetId }
+        if (row.url === undefined && typeof event.data.url === 'string') row.url = event.data.url
+        row.selected ||= selectedIds.has(event.id)
+        row.allExcluded &&= excluded(event)
+        segmented.set(flowId, row)
+      } else if (event.data.subtype === 'http_request_start' || event.data.subtype === 'http_response') exchanged.add(flowId)
+    },
+    done: () => {
+      for (const flowId of exchanged) segmented.delete(flowId)
+      return segmented
+    }
   }
-  for (const flowId of exchanged) segmented.delete(flowId)
-  return segmented
 }
 
 /** Stream-only flows a HAR of the HTTP view leaves out. That view is built
@@ -203,7 +233,7 @@ export function countPartialHttpFlowsOutside(
 ): number {
   if (bounds.http?.method || bounds.http?.statusPrefix) return 0
   let outside = 0
-  for (const segments of partialHttpFlowSegments(snapshotEvents, selectedIds, excluded).values()) {
+  for (const segments of foldEvents(partialHttpFlowSegmentsFold(selectedIds, excluded), snapshotEvents).values()) {
     if (segments.selected || segments.allExcluded) continue
     const first = segments.first
     if (bounds.since != null && first.timestamp < bounds.since) continue
@@ -220,18 +250,20 @@ export function countPartialHttpFlowsOutside(
   return outside
 }
 
-export function countReferencedAttachments(events: Iterable<RedLogEvent>): number {
+export function referencedAttachmentsFold(): EventFold<number> {
   const references = new Set<string>()
-  for (const event of events) {
-    if (event.agentType === 'screenshot' && typeof event.data.filename === 'string') references.add(`screenshot:${event.data.filename}`)
-    for (const key of BODY_REF_FIELDS) {
-      const ref = event.data[key]
-      if (ref && typeof ref === 'object' && typeof (ref as { sha256?: unknown }).sha256 === 'string') {
-        references.add(`body:${(ref as { sha256: string }).sha256}`)
+  return {
+    add: event => {
+      if (event.agentType === 'screenshot' && typeof event.data.filename === 'string') references.add(`screenshot:${event.data.filename}`)
+      for (const key of BODY_REF_FIELDS) {
+        const ref = event.data[key]
+        if (ref && typeof ref === 'object' && typeof (ref as { sha256?: unknown }).sha256 === 'string') {
+          references.add(`body:${(ref as { sha256: string }).sha256}`)
+        }
       }
-    }
+    },
+    done: () => references.size
   }
-  return references.size
 }
 
 /** Resolve the bundle's filesystem attachments from the already-approved,
@@ -489,15 +521,24 @@ export function planSelectsAny(plan: Pick<ExportPlan, 'selectedEventIds'>, ids: 
   return false
 }
 
-/** The JSON-array digest without materializing the array or its serialized text. */
-export function fingerprintSequence(values: Iterable<unknown>): { digest: string; count: number } {
+/** The JSON-array digest without materializing the array or its serialized
+ *  text, fed a value at a time. */
+export function sequenceFingerprint(): { add(value: unknown): void; done(): { digest: string; count: number } } {
   const hash = createHash('sha256').update('[')
   let count = 0
-  for (const value of values) {
-    if (count++) hash.update(',')
-    hash.update(JSON.stringify(value) ?? 'null')
+  return {
+    add: value => {
+      if (count++) hash.update(',')
+      hash.update(JSON.stringify(value) ?? 'null')
+    },
+    done: () => ({ digest: hash.update(']').digest('hex'), count })
   }
-  return { digest: hash.update(']').digest('hex'), count }
+}
+
+export function fingerprintSequence(values: Iterable<unknown>): { digest: string; count: number } {
+  const fingerprint = sequenceFingerprint()
+  for (const value of values) fingerprint.add(value)
+  return fingerprint.done()
 }
 
 export function fingerprintValue(value: unknown): string {
@@ -555,17 +596,19 @@ export function takeExportSnapshot(): ExportSnapshot {
 }
 
 /** Count exchanges, not request+response rows, against the frozen policy. */
-export function countOutOfScopeHttpFlows(events: Iterable<RedLogEvent>, scope: { targets: string[]; excludeTargets: string[] }): number {
+export function outOfScopeHttpFlowsFold(scope: { targets: string[]; excludeTargets: string[] }): EventFold<number> {
   const flows = new Set<string>()
-  for (const event of events) {
-    const d = event.data
-    if (!['http_request_start', 'http_response', 'http_response_chunk'].includes(String(d.subtype)) || typeof d.flow_id !== 'string' || typeof d.url !== 'string') continue
-    try {
-      const url = new URL(d.url)
-      if (!['http:', 'https:'].includes(url.protocol)) continue
-      const state = classifyScope(url.hostname, scope).status
-      if (state === 'out-of-scope' || state === 'excluded') flows.add(d.flow_id)
-    } catch { /* malformed target is unknown, not outside scope */ }
+  return {
+    add: event => {
+      const d = event.data
+      if (!['http_request_start', 'http_response', 'http_response_chunk'].includes(String(d.subtype)) || typeof d.flow_id !== 'string' || typeof d.url !== 'string') return
+      try {
+        const url = new URL(d.url)
+        if (!['http:', 'https:'].includes(url.protocol)) return
+        const state = classifyScope(url.hostname, scope).status
+        if (state === 'out-of-scope' || state === 'excluded') flows.add(d.flow_id)
+      } catch { /* malformed target is unknown, not outside scope */ }
+    },
+    done: () => flows.size
   }
-  return flows.size
 }
