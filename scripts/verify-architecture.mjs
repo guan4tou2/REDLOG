@@ -21,11 +21,16 @@
 // never invent one, so the gate does not flake. Canonical-module rules (one
 // scope classifier, one secret table, one ingest door) are guarded by their own
 // tests, not here.
+//
+// Third finding (Spec 073): module-level state in src/core and src/main must be
+// registered with a class in scripts/module-state-allowlist.json. The rule and
+// its blind spots are described in scripts/module-state.mjs.
 
 import ts from 'typescript'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { scanModuleState, checkModuleState } from './module-state.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const rel = (f) => path.relative(root, f).split(path.sep).join('/')
@@ -101,9 +106,20 @@ for (const key of Object.keys(allow)) {
   if (!found.has(key)) problems.push(`scripts/architecture-allowlist.json: "${key}" no longer matches a finding — remove the entry`)
 }
 
+const stateFound = []
+for (const f of srcFiles) {
+  const r = rel(f)
+  if (!r.startsWith('src/core/') && !r.startsWith('src/main/')) continue
+  for (const d of scanModuleState(parsed.get(f).sf)) stateFound.push({ key: `${r}#${d.name}`, line: d.line, kind: d.kind })
+}
+const statePath = path.join(root, 'scripts', 'module-state-allowlist.json')
+const stateAllow = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : { entries: {} }
+const state = checkModuleState(stateFound, stateAllow)
+problems.push(...state.problems)
+
 if (problems.length) {
   console.error(`Architecture gate failed (${problems.length}):`)
   for (const p of problems) console.error(`  - ${p}`)
   process.exit(1)
 }
-console.log(`Architecture gate passed: ${srcFiles.length} source files, every export reachable from production${Object.keys(allow).length ? ` (${Object.keys(allow).length} allowlisted)` : ''}.`)
+console.log(`Architecture gate passed: ${srcFiles.length} source files, every export reachable from production${Object.keys(allow).length ? ` (${Object.keys(allow).length} allowlisted)` : ''}; module state: ${stateFound.length} declarations registered, ${state.projectLegacy} project-legacy.`)
