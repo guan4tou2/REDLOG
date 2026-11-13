@@ -63,15 +63,15 @@ function show(value: unknown): string {
   return String(value)
 }
 
-function functionSources(): string {
+function functionSources(names: readonly string[]): string {
   const text = fs.readFileSync(INDEX, 'utf8')
   const sf = ts.createSourceFile('index.ts', text, ts.ScriptTarget.Latest, true)
   const found = new Map<string, string>()
   for (const s of sf.statements) {
-    if (ts.isFunctionDeclaration(s) && s.name && FUNCTIONS.includes(s.name.text)) found.set(s.name.text, text.slice(s.getFullStart(), s.getEnd()))
+    if (ts.isFunctionDeclaration(s) && s.name && names.includes(s.name.text)) found.set(s.name.text, text.slice(s.getFullStart(), s.getEnd()))
   }
-  for (const name of FUNCTIONS) if (!found.has(name)) throw new Error(`src/main/index.ts no longer has a top-level function ${name}; update test/helpers/project-lifecycle-trace.ts`)
-  return FUNCTIONS.map((n) => found.get(n)).join('\n')
+  for (const name of names) if (!found.has(name)) throw new Error(`src/main/index.ts no longer has a top-level function ${name}; update the test that asks for it`)
+  return names.map((n) => found.get(n)).join('\n')
 }
 
 function transpile(source: string): string {
@@ -84,13 +84,15 @@ export interface Harness {
   trace: Trace
   startProject(project: { id: string }): void
   stopProject(): void
+  /** Any other function the harness was asked to load with `functions`. */
+  call(name: string, ...args: unknown[]): unknown
   /** The value main's module-level `let` currently holds, as the doubles see it. */
   set(name: string, value: unknown): void
 }
 
 /** `initial` seeds main's module-level `let`s; the string '@double' means "a recording double named after it".
  *  `platform` is what `process.platform` reads inside the functions. */
-export function makeHarness(opts: { platform: string; overrides?: Overrides; initial?: Record<string, unknown> }): Harness {
+export function makeHarness(opts: { platform: string; overrides?: Overrides; initial?: Record<string, unknown>; functions?: readonly string[] }): Harness {
   const calls: string[] = []
   const values = new Map<string, unknown>(Object.entries(opts.initial ?? {}))
   const overrides: Overrides = {
@@ -170,12 +172,14 @@ export function makeHarness(opts: { platform: string; overrides?: Overrides; ini
     set: (_t, name, value) => { if (typeof name === 'string') values.set(name, value); return true }
   })
 
-  const body = `with (__scope) {\n${transpile(functionSources())}\nreturn { startProject, stopProject }\n}`
-  const fns = new Function('__scope', body)(scope) as { startProject: (p: unknown) => void; stopProject: () => void }
+  const names = opts.functions ?? FUNCTIONS
+  const body = `with (__scope) {\n${transpile(functionSources(names))}\nreturn { ${names.join(', ')} }\n}`
+  const fns = new Function('__scope', body)(scope) as Record<string, (...a: unknown[]) => unknown>
   return {
     trace: { calls },
     startProject: (p) => fns.startProject(p),
     stopProject: () => fns.stopProject(),
+    call: (name, ...args) => fns[name](...args),
     set: (name, value) => { values.set(name, value) }
   }
 }
