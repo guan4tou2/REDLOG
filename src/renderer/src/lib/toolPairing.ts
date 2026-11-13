@@ -2,6 +2,7 @@
 // stored; conflicting keys remain unpaired instead of selecting a winner.
 import type { RedLogEvent } from '../../../core/db/events'
 import { operationPairKey } from '../../../core/operation-pair-key'
+import { sameSourceContent } from './eventContent'
 
 type PairEvent = Parameters<typeof operationPairKey>[0]
 
@@ -22,7 +23,7 @@ export function buildToolPairIndex<T extends PairEvent>(events: readonly T[]): T
     if (!key || !map) continue
     const previous = map.get(key)
     if (!previous) map.set(key, event)
-    else if (JSON.stringify(previous.data) !== JSON.stringify(event.data)) conflicts.add(key)
+    else if (!sameSourceContent(previous.data, event.data)) conflicts.add(key)
   }
   return { calls, results, conflicts }
 }

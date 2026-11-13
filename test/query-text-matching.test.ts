@@ -21,6 +21,8 @@ import { parseQuery } from '../src/core/query/contract'
 import type { ParsedQuery } from '../src/core/query/contract'
 
 let initDB: typeof import('../src/core/db').initDB
+
+let bindDBEngagement: typeof import('../src/core/db').bindDBEngagement
 let closeDB: typeof import('../src/core/db').closeDB
 let insertEvent: typeof import('../src/core/db/event-write').insertEvent
 let closeHttpBodyIndex: typeof import('../src/core/http-body-index').closeHttpBodyIndex
@@ -32,7 +34,7 @@ if (requires('better-sqlite3').ok) {
   const write = await import('../src/core/db/event-write')
   const queries = await import('../src/core/db/event-queries')
   const bodyIndex = await import('../src/core/http-body-index')
-  initDB = db.initDB
+  initDB = db.initDB; bindDBEngagement = db.bindDBEngagement
   closeDB = db.closeDB
   insertEvent = write.insertEvent
   closeHttpBodyIndex = bodyIndex.closeHttpBodyIndex
@@ -62,7 +64,7 @@ function found(input: string): string[] {
 describeDB('free text keeps the matching the store already provides (T001b)', () => {
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-query-text-'))
-    initDB(dir)
+    initDB(dir); bindDBEngagement('eng-test')
   })
   afterEach(() => {
     // A text query opens the http-body index; Windows refuses to unlink

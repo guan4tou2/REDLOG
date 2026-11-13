@@ -9,6 +9,8 @@ import os from 'os'
 // count > 0, pause is respected, chained table is untouched.
 
 let initDB: typeof import('../src/core/db/index').initDB
+
+let bindDBEngagement: typeof import('../src/core/db/index').bindDBEngagement
 let closeDB: typeof import('../src/core/db/index').closeDB
 let getDB: typeof import('../src/core/db/index').getDB
 let events: typeof import('../src/core/db/events')
@@ -23,7 +25,7 @@ if (requires('better-sqlite3').ok) {
   ops = await import('../src/core/db/operators')
   retention = await import('../src/core/retention')
   eventBusMod = await import('../src/core/event-bus')
-  initDB = dbMod.initDB
+  initDB = dbMod.initDB; bindDBEngagement = dbMod.bindDBEngagement
   closeDB = dbMod.closeDB
   getDB = dbMod.getDB
   dbAvailable = true
@@ -46,7 +48,7 @@ describeDB('sweepLoggedTier — v0.13.0', () => {
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-retention-tier-'))
-    initDB(tmpDir)
+    initDB(tmpDir); bindDBEngagement('e')
     const op = ops.ensurePrimaryOperator('ret-op', 'Retention Op', 'test-token-' + Math.random())
     operatorId = op.id
     if (eventBusMod.eventBus.paused) eventBusMod.eventBus.resume()

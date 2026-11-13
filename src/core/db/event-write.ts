@@ -8,6 +8,22 @@ import { signEvent } from '../signing'
 import { storeRaw, type RawRef } from '../raw-store'
 import type { RedLogEvent, EnvelopeInput, StoredEnvelope } from './event-types'
 import { ENVELOPE_SCHEMA_VERSION } from './event-types'
+import { currentEntrance, engagementForWrite, ingestStamp, stripReserved, type IngestEntrance } from '../ingest/stamp'
+
+interface InsertOpts {
+  engagementId?: string
+  operatorId?: string
+  targetId?: string
+  bypassPause?: boolean
+  envelope?: EnvelopeInput
+  occurredAt?: number
+  /** Who wrote the row, as the door that received it decided (Spec 071
+   *  FR-005). Absent: the entrance of the writer's caller (withEntrance), else
+   *  RedLog's own code, in-process. */
+  entrance?: IngestEntrance
+  /** Receiver-owned keys the door already removed from the producer's data. */
+  stripped?: readonly string[]
+}
 
 /** Store the raw bytes (if any) and fold their digest into `data` so the hash
  *  covers them. Returns the column values for the envelope. Pure except for
@@ -449,7 +465,7 @@ function prepared(db: ReturnType<typeof getDB>, sql: string): Database.Statement
 export function insertEvent(
   agentType: string,
   data: Record<string, unknown>,
-  opts?: { engagementId?: string; operatorId?: string; targetId?: string; bypassPause?: boolean; envelope?: EnvelopeInput; occurredAt?: number }
+  opts?: InsertOpts
 ): RedLogEvent | null {
   // Pause enforcement stays at the front door for BOTH tiers. See the
   // block comment below (previously the head of this function) for why
@@ -461,21 +477,31 @@ export function insertEvent(
   // one database and is now writing to the next. Refused for both tiers, and
   // loudly — not through noteDbError, which would turn the open project's
   // verdict dark when its own log is fine. Only an explicit id is judged: an
-  // omitted one is stored as `default`, as before, which names no owner rather
-  // than a foreign one.
+  // omitted one becomes the open database's (engagementForWrite, in each arm
+  // below), so it cannot name a foreign owner.
   const bound = dbEngagement()
   if (bound !== null && opts?.engagementId !== undefined && opts.engagementId !== bound) {
     console.error(`[db] refused a ${agentType} row for engagement ${opts.engagementId}: the open database belongs to ${bound}`)
     return null
   }
 
+  // Spec 071 FR-005, FR-007. The row is built from a copy of the caller's data
+  // with the receiver-owned keys taken out, so a caller's `_ingest`, `_raw`,
+  // `_clock_anomaly` or `_source_time_rejected` can never stand in for the
+  // receiver's; the arms below put back the ones the receiver writes. The
+  // engagement is the open database's, never `default` (each arm resolves it,
+  // after its operator check, with engagementForWrite).
+  const clean = { ...data }
+  const removed = stripReserved(clean)
+  const resolved: InsertOpts = { ...opts, stripped: [...(opts?.stripped ?? []), ...removed] }
+
   // v0.13.0: two-tier dispatch. The chained arm is the ENTIRE historical
   // body of insertEvent (hash + Ed25519 sign + INSERT into `events`). The
   // logged arm skips the chain machinery entirely and lands in
   // `events_logged`. See docs/design/DESIGN-two-tier-chain.md §4.
-  const tier = classifyTier(agentType, data)
-  if (tier === 'logged') return insertLoggedEvent(agentType, data, opts)
-  return insertChainedEvent(agentType, data, opts)
+  const tier = classifyTier(agentType, clean)
+  if (tier === 'logged') return insertLoggedEvent(agentType, clean, resolved)
+  return insertChainedEvent(agentType, clean, resolved)
 }
 
 /** The terminal id the dedup window keys on. Every shell hook sends
@@ -493,7 +519,7 @@ function dedupTerminalId(d: Record<string, unknown>): string {
 function insertChainedEvent(
   agentType: string,
   data: Record<string, unknown>,
-  opts?: { engagementId?: string; operatorId?: string; targetId?: string; bypassPause?: boolean; envelope?: EnvelopeInput; occurredAt?: number }
+  opts?: InsertOpts
 ): RedLogEvent | null {
   // v0.9.5: pause means "do not record", not "do not display". Before this the
   // gate lived only on eventBus.publish(), so a paused RedLog still wrote every
@@ -580,6 +606,7 @@ function insertChainedEvent(
     throw new Error(`insertEvent: operatorId is required (agent_type=${agentType}). ` +
       `Every event must resolve to a known operator — see docs/operators.md.`)
   }
+  const engagementId = engagementForWrite(opts.engagementId)
   const hostname = os.hostname()
   const paddedMono = padMonoNs(monotonicNs())
 
@@ -603,11 +630,14 @@ function insertChainedEvent(
   let dataForChain: Record<string, unknown> = data
   if (anomaly) dataForChain = { ...dataForChain, _clock_anomaly: anomaly }
   if (sourceTimeRejected) dataForChain = { ...dataForChain, _source_time_rejected: sourceTimeRejected }
+  // Last of the receiver's keys, and like them before the hash (FR-020).
+  dataForChain = { ...dataForChain, _ingest: ingestStamp(opts?.entrance ?? currentEntrance(), { tier: 'chained', now, stripped: opts?.stripped }) }
 
   const event: RedLogEvent = {
     id: crypto.randomUUID(),
     timestamp: occurredAt,
-    engagementId: opts?.engagementId ?? 'default',
+    // The open database's (engagementForWrite); never `default`.
+    engagementId,
     sessionId,
     operatorId: opts.operatorId,
     agentType,
@@ -703,12 +733,13 @@ function insertChainedEvent(
 function insertLoggedEvent(
   agentType: string,
   data: Record<string, unknown>,
-  opts?: { engagementId?: string; operatorId?: string; targetId?: string; bypassPause?: boolean; envelope?: EnvelopeInput; occurredAt?: number }
+  opts?: InsertOpts
 ): RedLogEvent | null {
   if (!opts?.operatorId) {
     throw new Error(`insertEvent (logged): operatorId is required (agent_type=${agentType}). ` +
       `Every event must resolve to a known operator — see docs/operators.md.`)
   }
+  const engagementId = engagementForWrite(opts.engagementId)
   const db = getDB()
   const now = Date.now()
   const env = prepareEnvelope(data, opts.envelope)
@@ -721,14 +752,17 @@ function insertLoggedEvent(
   const event: RedLogEvent = {
     id: crypto.randomUUID(),
     timestamp: occurredAt,
-    engagementId: opts.engagementId ?? 'default',
+    // The open database's (engagementForWrite); never `default`.
+    engagementId,
     sessionId,
     operatorId: opts.operatorId,
     agentType,
     hostname: os.hostname(),
     sourceIP: null,
     targetId: opts.targetId ?? null,
-    data,
+    // Stamped like a chained row (FR-005). Not hashed here: this tier has no
+    // per-row hash, and the export's logged digest covers it (FR-024).
+    data: { ...data, _ingest: ingestStamp(opts.entrance ?? currentEntrance(), { tier: 'logged', now, stripped: opts.stripped }) },
     createdAt: now,
     // Deliberately absent — see the block above.
     hash: undefined,

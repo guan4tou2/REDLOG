@@ -20,7 +20,7 @@ describeDB('queryEventCausalChain', () => {
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-causal-'))
-    dbmod.initDB(dir)
+    dbmod.initDB(dir); dbmod.bindDBEngagement('eng-test')
     operatorId = ops.ensurePrimaryOperator('causal-op', 'Causal Op', 'tok-causal').id
   })
   afterEach(() => { dbmod.closeDB(); fs.rmSync(dir, { recursive: true, force: true }) })

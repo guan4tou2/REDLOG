@@ -16,7 +16,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { initDB, closeDB, getDB } from '../src/core/db/index'
+import { initDB, closeDB, getDB, bindDBEngagement } from '../src/core/db/index'
 import * as events from '../src/core/db/events'
 import * as ops from '../src/core/db/operators'
 import { exportBundle } from '../src/core/bundle-export'
@@ -96,7 +96,7 @@ interface Project { dir: string; bundle: string }
 function project(name: string, opts: { signed: boolean; unsignedRow?: boolean; exclude?: string[] }): Project {
   const dir = path.join(root, name)
   fs.mkdirSync(dir, { recursive: true })
-  initDB(dir)
+  initDB(dir); bindDBEngagement('default')
   const op = opts.signed ? 'vec-op' : 'plain-op'
   if (opts.signed) ops.createOperator({ id: op, name: op, token: ops.generateToken(), isPrimary: true })
   const ins = (type: string, data: Record<string, unknown>, operatorId = op) => events.insertEvent(type, data, { operatorId })!

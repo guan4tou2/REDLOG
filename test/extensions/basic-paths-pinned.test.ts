@@ -100,9 +100,9 @@ sqlite.describe('the basic paths, as they are written today (Spec 076 T002)', ()
 describe('the two copies in the fixture still match main (source pins)', () => {
   const read = (rel: string): string => fs.readFileSync(path.join(ROOT, rel), 'utf8')
 
-  it('POST /api/events calls ingest() with the identity-mapper api envelope the fixture uses', () => {
+  it('POST /api/events calls ingest() with the legacy-api entrance and the identity-mapper api envelope the fixture uses', () => {
     expect(read('src/core/api-server.ts')).toMatch(
-      /const result = ingest\(\{\s*agentType, data, operatorId: operator\.id, engagementId, targetId,\s*envelope: \{ source: 'api', mapper: \{ id: 'identity', version: '1' \} \}\s*\}\)/)
+      /const result = ingest\(\{\s*agentType, data, operatorId: operator\.id, engagementId, targetId, entrance: LEGACY_API,\s*envelope: \{ source: 'api', mapper: \{ id: 'identity', version: '1' \} \}\s*\}\)/)
   })
 
   it('addHudMarker writes insertEvent(\'marker\', redactFields({ title, notes, severity, category, source_timestamp, source }, MARKER_TEXT_FIELDS), open)', () => {

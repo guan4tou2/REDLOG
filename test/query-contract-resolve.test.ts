@@ -30,6 +30,8 @@ import path from 'path'
 import type { ParsedQuery, QueryCondition } from '../src/core/query/contract'
 
 let initDB: typeof import('../src/core/db').initDB
+
+let bindDBEngagement: typeof import('../src/core/db').bindDBEngagement
 let closeDB: typeof import('../src/core/db').closeDB
 let insertEvent: typeof import('../src/core/db/event-write').insertEvent
 let closeHttpBodyIndex: typeof import('../src/core/http-body-index').closeHttpBodyIndex
@@ -41,7 +43,7 @@ if (requires('better-sqlite3').ok) {
   const write = await import('../src/core/db/event-write')
   const queries = await import('../src/core/db/event-queries')
   const bodyIndex = await import('../src/core/http-body-index')
-  initDB = db.initDB
+  initDB = db.initDB; bindDBEngagement = db.bindDBEngagement
   closeDB = db.closeDB
   insertEvent = write.insertEvent
   closeHttpBodyIndex = bodyIndex.closeHttpBodyIndex
@@ -86,7 +88,7 @@ function agentSessionOf(event: { data: Record<string, unknown> }): unknown {
 function withTempDb(name: string): void {
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), `redlog-${name}-`))
-    initDB(dir)
+    initDB(dir); bindDBEngagement('eng-test')
   })
   afterEach(() => {
     // A text query opens the http-body index; Windows refuses to unlink

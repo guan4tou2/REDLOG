@@ -13,6 +13,8 @@ import os from 'os'
 //   4. a project switch invalidates it (old handle closed, new file served).
 
 let initDB: typeof import('../src/core/db/index').initDB
+
+let bindDBEngagement: typeof import('../src/core/db/index').bindDBEngagement
 let getDB: typeof import('../src/core/db/index').getDB
 let openReadOnlyDB: typeof import('../src/core/db/index').openReadOnlyDB
 let closeDB: typeof import('../src/core/db/index').closeDB
@@ -24,7 +26,7 @@ let dbAvailable = false
 if (requires('better-sqlite3').ok) {
   const dbMod = await import('../src/core/db/index')
   const eventsMod = await import('../src/core/db/events')
-  initDB = dbMod.initDB
+  initDB = dbMod.initDB; bindDBEngagement = dbMod.bindDBEngagement
   getDB = dbMod.getDB
   openReadOnlyDB = dbMod.openReadOnlyDB
   closeDB = dbMod.closeDB
@@ -44,7 +46,7 @@ let tmpDir: string
 describeDB('getReadonlyDB', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-ro-'))
-    initDB(tmpDir)
+    initDB(tmpDir); bindDBEngagement('eng-test')
   })
   afterEach(() => {
     closeDB()
@@ -101,7 +103,7 @@ describeDB('getReadonlyDB', () => {
     // reopens against the new (empty) file.
     const tmpDir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-ro2-'))
     try {
-      initDB(tmpDir2)
+      initDB(tmpDir2); bindDBEngagement('eng-test')
       const ro2 = getReadonlyDB()
       expect(ro2).not.toBe(ro1)
       // Old handle is closed.

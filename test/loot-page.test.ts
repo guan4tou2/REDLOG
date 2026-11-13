@@ -5,6 +5,8 @@ import os from 'os'
 import path from 'path'
 
 let initDB: typeof import('../src/core/db').initDB
+
+let bindDBEngagement: typeof import('../src/core/db').bindDBEngagement
 let closeDB: typeof import('../src/core/db').closeDB
 let insertEvent: typeof import('../src/core/db/events').insertEvent
 let queryEventsPage: typeof import('../src/core/db/events').queryEventsPage
@@ -13,7 +15,7 @@ let available = false
 if (requires('better-sqlite3').ok) {
   const db =await import('../src/core/db')
   const events = await import('../src/core/db/events')
-  initDB = db.initDB
+  initDB = db.initDB; bindDBEngagement = db.bindDBEngagement
   closeDB = db.closeDB
   insertEvent = events.insertEvent
   queryEventsPage = events.queryEventsPage
@@ -26,7 +28,7 @@ let dir: string
 describeDB('loot event pages', () => {
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-loot-page-'))
-    initDB(dir)
+    initDB(dir); bindDBEngagement('eng-test')
   })
   afterEach(() => {
     closeDB()

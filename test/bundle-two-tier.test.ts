@@ -10,6 +10,8 @@ import os from 'os'
 // gains a `tiers` field. This test locks the shape.
 
 let initDB: typeof import('../src/core/db/index').initDB
+
+let bindDBEngagement: typeof import('../src/core/db/index').bindDBEngagement
 let closeDB: typeof import('../src/core/db/index').closeDB
 let events: typeof import('../src/core/db/events')
 let ops: typeof import('../src/core/db/operators')
@@ -21,7 +23,7 @@ if (requires('better-sqlite3').ok) {
   events = await import('../src/core/db/events')
   ops = await import('../src/core/db/operators')
   const bundle = await import('../src/core/bundle-export')
-  initDB = dbMod.initDB
+  initDB = dbMod.initDB; bindDBEngagement = dbMod.bindDBEngagement
   closeDB = dbMod.closeDB
   exportBundle = bundle.exportBundle
   dbAvailable = true
@@ -37,7 +39,7 @@ describeDB('bundle export — two tiers (v0.13.0)', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-bundle-tier-'))
     outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-bundle-tier-out-'))
-    initDB(tmpDir)
+    initDB(tmpDir); bindDBEngagement('test-engagement')
     const op = ops.ensurePrimaryOperator('bundle-op', 'Bundle Op', 'test-token-' + Math.random())
     operatorId = op.id
   })

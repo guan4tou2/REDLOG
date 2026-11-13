@@ -1,0 +1,5 @@
+# Byte-for-byte evidence fixture (test/provenance-vectors.test.ts). The bundles'
+# manifests and the tests hash these files exactly as the exporter wrote them,
+# so no checkout may convert line endings (the Windows runner sets
+# core.autocrlf=true).
+* -text

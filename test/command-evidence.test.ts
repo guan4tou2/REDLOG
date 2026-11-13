@@ -2,11 +2,11 @@ import { afterEach, beforeEach, expect, it } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { initDB, closeDB } from '../src/core/db'
+import { initDB, closeDB, bindDBEngagement } from '../src/core/db'
 import * as events from '../src/core/db/events'
 
 let dir: string
-beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-command-proof-')); initDB(dir) })
+beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-command-proof-')); initDB(dir); bindDBEngagement('eng-test') })
 afterEach(() => { closeDB(); fs.rmSync(dir, { recursive: true, force: true }) })
 
 it('finds real command evidence beyond recent markers and shell bookkeeping', () => {
@@ -29,6 +29,6 @@ it('does not turn shell activation or session rows into command proof', () => {
 it('does not carry evidence into a different project database', () => {
   events.insertEvent('shell', { subtype: 'command', command: 'whoami' }, { operatorId: 'op' })
   closeDB()
-  const next = path.join(dir, 'other'); fs.mkdirSync(next); initDB(next)
+  const next = path.join(dir, 'other'); fs.mkdirSync(next); initDB(next); bindDBEngagement('eng-test')
   expect(events.commandEvidence()).toEqual({ builtin: false, external: false })
 })

@@ -226,6 +226,7 @@ export async function runBasicPaths(opts: RunOptions = {}): Promise<BasicPathsRu
     const events = await import('../../src/core/db/events')
     const ops = await import('../../src/core/db/operators')
     const ingestMod = await import('../../src/core/ingest')
+    const { LEGACY_API } = await import('../../src/core/ingest/stamp')
     const redaction = await import('../../src/core/redaction')
     const config = await import('../../src/core/config')
     void config
@@ -250,7 +251,7 @@ export async function runBasicPaths(opts: RunOptions = {}): Promise<BasicPathsRu
     const API = { source: 'api', mapper: { id: 'identity', version: '1' } }
     const post = (agentType: string, data: Record<string, unknown>, targetId?: string): string | null => {
       step()
-      const r = ingestMod.ingest({ agentType, data, ...who, ...(targetId ? { targetId } : {}), envelope: API })
+      const r = ingestMod.ingest({ agentType, data, ...who, ...(targetId ? { targetId } : {}), entrance: LEGACY_API, envelope: API })
       return r.event?.id ?? null
     }
     let apiBase = ''

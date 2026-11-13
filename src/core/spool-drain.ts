@@ -41,6 +41,7 @@ import { getDB } from './db/index'
 import { recordedPauses, stateAt, spanBeganIn, pausedIntervals, reachesUnknown, type RecordedPauses } from './recording-state'
 import { eventBus } from './event-bus'
 import { noteDbError } from './capture-health'
+import { LEGACY_HANDOFF } from './ingest/stamp'
 
 export interface SpoolDrainIdentity { engagementId: string; operatorId: string }
 
@@ -247,6 +248,7 @@ export function drainSpoolOnce(
     try {
       result = ingest({
         agentType, data, engagementId: spoolEngagement, operatorId: spoolOperator, spoolJudged: true,
+        entrance: LEGACY_HANDOFF,
         envelope: { source: 'spool', mapper: { id: 'identity', version: '1' } }
       })
     } catch (e) {

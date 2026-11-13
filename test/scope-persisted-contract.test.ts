@@ -12,6 +12,8 @@ import { SCOPE_VIOLATION_SUBTYPE } from '../src/core/scope-vocabulary'
 import { loadConfig, DEFAULT_CONFIG } from '../src/core/config'
 
 let initDB: typeof import('../src/core/db/index').initDB
+
+let bindDBEngagement: typeof import('../src/core/db/index').bindDBEngagement
 let closeDB: typeof import('../src/core/db/index').closeDB
 let insertEvent: typeof import('../src/core/db/events').insertEvent
 let anchor: typeof import('../src/core/chain-anchor')
@@ -20,7 +22,7 @@ if (requires('better-sqlite3').ok) {
   const dbMod = await import('../src/core/db/index')
   const evMod = await import('../src/core/db/events')
   anchor = await import('../src/core/chain-anchor')
-  initDB = dbMod.initDB; closeDB = dbMod.closeDB; insertEvent = evMod.insertEvent
+  initDB = dbMod.initDB; bindDBEngagement = dbMod.bindDBEngagement; closeDB = dbMod.closeDB; insertEvent = evMod.insertEvent
   dbAvailable = true
 }
 
@@ -41,7 +43,7 @@ describe('persisted scope vocabulary', () => {
 
 describe.skipIf(!dbAvailable)('a chain holding scope_violation events', () => {
   let dir: string
-  beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-scope-chain-')); initDB(dir) })
+  beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-scope-chain-')); initDB(dir); bindDBEngagement('eng-test') })
   afterEach(() => { closeDB(); fs.rmSync(dir, { recursive: true, force: true }) })
 
   it('still verifies, so the old subtype was never rewritten', async () => {

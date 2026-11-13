@@ -23,6 +23,8 @@
 | O8 | 外掛宣告、但不在核心表內的 subtype 一律進 logged 層；只有核心的表能把一種事件升為 chained | K |
 | O9 | 第三方來源只能手動設定；官方 AI adapter 從 app bundle 在行程內執行，不用 token；同意以專案為單位 | G、I |
 
+> **修訂（2026-11-13，Phase 3 審查 G；依 Spec 077 R8）**：O3 管的是**既有**列與既有 bundle，維持不變。但它不保證 071 之前的 verifier 能驗 071 之後的 bundle：封印列也帶 `_ingest`，而舊 verifier 的封印鍵白名單沒有它，會回報 `UNSUPPORTED … the seal was not checked`（`redlog-verify.py` 結束碼 2，app 判定 `malformed`）。依 Spec 077 R8（未發行、不需要相容），接受這個不相容：不引入雜湊或封印版本、封印列不免蓋章、verifier 不留特例。見 plan D1 的同日修訂。
+
 > **Superseded（2026-11-13，修訂 A4）**：O9 的「同意以專案為單位」改為：AI adapter 的啟用與同意是機器層；**哪個工作階段記到哪個專案**仍是逐專案的選擇，且可重新綁定（Spec 073 F 段修訂、Spec 076 FR-045–046）。O9 的其餘部分不變。
 | O10 | 每個有 adapter 的本機 shell 都裝 hook；hook 啟動時經本契約送出 hello，作為「此 shell 有被記錄」的證據；shell 初始化時 hook 不輸出任何文字；專案被切換的終端機進入暫停，綁定的專案重新開啟時恢復，並寫入 `capture_resumed`；A 的指令絕不記到 B | A、H、J、K |
 | O11 | 沒有可擷取目標的列帶 `target_via`（目標如何決定），並承接同一終端機最後擷取到的目標，不承接全域的目前目標 | A |
@@ -555,6 +557,8 @@ O13–O17（原 Q1–Q5）已決定。以下是 2026-11-12 Phase 1 實作後新�
 | # | 問題 | 建議 |
 |---|---|---|
 | Q6 | `PRAGMA synchronous` 實為 NORMAL（見 Assumptions），`accepted` 之後來源會刪掉交接檔，所以斷電或作業系統當掉時，最近幾筆已回 `accepted` 的事件可能既不在資料庫、也不在交接目錄。要在寫入連線設 `synchronous = FULL`，還是在契約中寫明「`accepted` 對行程當掉耐久、對斷電不耐久」？ | 設 FULL（只在寫入連線）。先以 T061 的 perf lane 量測每次 commit 的額外成本，再決定；量測前不改。若不改，FR-032、FR-062 與 `docs/domain/SPEC-ingestion-contract.md` 要明寫斷電的界線 |
+| Q7（新，2026-11-13） | FR-006 的「一般項目序列化後不超過 512 bytes」在每個欄位都取上限時無法成立。實測（JSON.stringify 的 UTF-8 位元組數）：`v`、`door:"legacy-handoff"`、`auth:"in-process"`、`event_id` 取 FR-002 的上限 128 字元、`seq` 取 2^53−1、`stripped` 列滿四個保留鍵、`rules` 三項各 45 bytes、`rules_partial:true`，再加 `producer`、`credential`、`instance` 三個**空字串**，已是 506 bytes；再加 `claimed`（實作把兩個值各截到 32 字元）約 +100，FR-121 的出口三鍵約 +60。T020 因此只測「典型項目 ≤ 320 bytes（SC-009）」與「典型項目＋最壞的 `rules` ≤ 512 bytes」。512 是硬上限、還是典型項目的預算？ | 改寫為**預算**：典型項目 ≤ 320、典型項目加最壞 `rules` ≤ 512；對來源提供的欄位另定個別上限（`event_id` 128、`instance` 128、`claimed` 每值 32、`producer`／`credential` 由接收端產生），不設整體硬上限——硬上限只能靠截斷身分欄位達成，而身分欄位不該被截斷 |
+| Q8（新，2026-11-13） | FR-006 規定 `_ingest` 只含字串、整數、布林、null 與字串陣列，但 FR-005 的 `claimed` 是巢狀物件 `{producer, operator}`（plan 的資料形狀亦同）。目前實作允許 `claimed` 這一個物件、其值只能是字串，T020 以此斷言。哪一條要改？ | 改 FR-006：允許「值皆為字串的單層物件」，並只限 `claimed`。理由：兩個 verifier 對這種形狀的序列化逐位元組一致（`canonicalStringify` 排序鍵；共用向量已涵蓋）。另一個選項是把 `claimed` 攤平成 `claimed_producer`／`claimed_operator`；那要同時改 FR-005、plan 的資料形狀、T020 與共用向量 |
 
 ## Domain References
 

@@ -85,6 +85,7 @@ import { readHookConfig, saveHookConfig } from './services/hook-config'
 import { configureOpsecMonitor, startOpsecMonitor, stopOpsecMonitor, setVpnAdapters, OpsecStateDelta } from './services/opsec-state'
 import { initPlugins, listPlugins } from '../core/plugins'
 import { configureIngest, ingestEvent } from '../core/ingest'
+import { LEGACY_API, type IngestEntrance } from '../core/ingest/stamp'
 import { resetCausesResolver } from '../core/causes-resolver'
 import { setTailerContributionSink, type TailerLike } from '../core/plugins/tailer-registry'
 import { registerAdapter as registerTailerAdapter, unregisterAdapter as unregisterTailerAdapter, registerSessionId, getRegisteredSessions, listAgentSessions, type TailerAdapter } from './services/tailer-host'
@@ -180,8 +181,8 @@ const projectRuntime = new ProjectRuntime()
 /** A `recording_paused` / `recording_resumed` row: the whole record of a pause.
  *  Bypasses the paused gate (system rows always land). `occurredAt` for a
  *  retry, or a marker carried from an earlier open, so it lands at the toggle. */
-function writeRecordingMarker(context: NonNullable<ReturnType<typeof projectRuntime.current>>, data: Record<string, unknown>, occurredAt?: number): void {
-  const ev = insertEvent('system', data, occurredAt === undefined ? context : { ...context, occurredAt })
+function writeRecordingMarker(context: NonNullable<ReturnType<typeof projectRuntime.current>>, data: Record<string, unknown>, occurredAt?: number, entrance?: IngestEntrance): void {
+  const ev = insertEvent('system', data, { ...context, ...(occurredAt === undefined ? {} : { occurredAt }), ...(entrance ? { entrance } : {}) })
   if (ev) eventBus.publish(ev, { bypassPause: true })
 }
 // One for the process, so concurrent API bundle requests queue across opens.
@@ -1997,7 +1998,11 @@ app.whenReady().then(() => {
       writeMarkerWithRetry({
         at,
         record,
-        write: (retry) => writeRecordingMarker(open, record.data, retry ? at : undefined),
+        // A toggle that came through the API is written with the API's door
+        // (Spec 071 FR-005), on the first try and every retry. Not through
+        // withEntrance: this listener's siblings start long-lived work on
+        // resume, which must not inherit the API's door.
+        write: (retry) => writeRecordingMarker(open, record.data, retry ? at : undefined, source === 'api' ? LEGACY_API : undefined),
         onError: (error) => noteDbError('recording-marker', error),
         schedule: (retry, ms) => projectRuntime.setTimeout(open, retry, ms),
         isCurrent: () => projectRuntime.isCurrent(open)

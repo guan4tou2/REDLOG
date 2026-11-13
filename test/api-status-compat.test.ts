@@ -27,7 +27,7 @@ vi.spyOn(http, 'createServer').mockImplementation(((h: Handler) => {
   return { listen: (_p: number, _h: string, cb: () => void) => { cb() }, address: () => ({ port: 6660 }), on: () => {}, close: () => {} }
 }) as never)
 
-const { initDB, closeDB } = await import('../src/core/db/index')
+const { initDB, closeDB, bindDBEngagement } = await import('../src/core/db/index')
 const api = await import('../src/core/api-server')
 const ch = await import('../src/core/capture-health')
 const hooksMod = await import('../src/core/hooks-manager')
@@ -57,7 +57,7 @@ function get(url: string): Promise<{ status: number; json: Record<string, any> }
 
 beforeAll(async () => {
   projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-apistatus-db-'))
-  initDB(projectDir)
+  initDB(projectDir); bindDBEngagement('eng-1')
   api.configureApi({ engagementId: 'eng-1', operatorId: 'op-primary', operatorName: 'Primary' })
   await api.startApiServer(0)
   api.onApiProjectOpen()

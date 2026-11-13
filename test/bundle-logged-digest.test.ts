@@ -14,6 +14,8 @@ import crypto from 'crypto'
 // nothing.
 
 let initDB: typeof import('../src/core/db/index').initDB
+
+let bindDBEngagement: typeof import('../src/core/db/index').bindDBEngagement
 let closeDB: typeof import('../src/core/db/index').closeDB
 let takeExportSnapshot: typeof import('../src/core/export-plan').takeExportSnapshot
 let events: typeof import('../src/core/db/events')
@@ -27,7 +29,7 @@ if (requires('better-sqlite3').ok) {
   ops = await import('../src/core/db/operators')
   const bundle = await import('../src/core/bundle-export')
   const plan = await import('../src/core/export-plan')
-  initDB = dbMod.initDB
+  initDB = dbMod.initDB; bindDBEngagement = dbMod.bindDBEngagement
   closeDB = dbMod.closeDB
   exportBundle = bundle.exportBundle
   takeExportSnapshot = plan.takeExportSnapshot
@@ -56,7 +58,7 @@ describeDB('bundle export — logged-tier digest (§7.5)', () => {
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-logged-digest-'))
     outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-logged-digest-out-'))
-    initDB(tmpDir)
+    initDB(tmpDir); bindDBEngagement('eng-1')
     const op = ops.ensurePrimaryOperator('digest-op', 'Digest Op', 'tok-' + Math.random())
     operatorId = op.id
   })
