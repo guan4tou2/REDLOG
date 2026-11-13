@@ -160,10 +160,47 @@ export async function openView(page: Page, view: string): Promise<void> {
  *  on the swim-lane track ask for it by name rather than relying on a default. */
 export async function openSwimLanes(page: Page): Promise<void> {
   await openView(page, 'timeline')
-  const lanes = page.getByTestId('timeline-mode-lanes')
-  await lanes.waitFor({ state: 'visible', timeout: 10_000 })
-  if ((await lanes.getAttribute('aria-pressed')) !== 'true') await lanes.click()
+  if (await timelineMode(page) !== 'lanes') await setTimelineMode(page, 'lanes')
   await page.getByTestId('timeline-lane-scroll').waitFor({ state: 'visible', timeout: 10_000 })
+}
+
+/** Opens the Timeline's 更多 menu, unless it is open already. The mode, 搜尋區間,
+ *  重設全貌 and the shortcut list live there (2026-11-14). */
+export async function openTimelineMore(page: Page): Promise<void> {
+  const panel = page.getByTestId('timeline-more-panel')
+  if (await panel.isVisible()) return
+  await page.getByTestId('timeline-more-menu').click()
+  await panel.waitFor({ state: 'visible', timeout: 10_000 })
+}
+
+/** Closes 更多 if it is open (Escape hands focus back to its button). */
+export async function closeTimelineMore(page: Page): Promise<void> {
+  if (await page.getByTestId('timeline-more-panel').isVisible()) await page.keyboard.press('Escape')
+  await page.getByTestId('timeline-more-panel').waitFor({ state: 'detached', timeout: 10_000 })
+}
+
+/** The Timeline's reading, read from 更多 (which is left closed). */
+export async function timelineMode(page: Page): Promise<'standard' | 'lanes'> {
+  await page.getByTestId('timeline-more-menu').waitFor({ state: 'visible', timeout: 10_000 })
+  await openTimelineMore(page)
+  const lanes = await page.getByTestId('timeline-mode-lanes').getAttribute('aria-checked')
+  await closeTimelineMore(page)
+  return lanes === 'true' ? 'lanes' : 'standard'
+}
+
+/** Chooses a reading in 更多; choosing closes the menu. */
+export async function setTimelineMode(page: Page, mode: 'standard' | 'lanes'): Promise<void> {
+  await openTimelineMore(page)
+  await page.getByTestId(`timeline-mode-${mode}`).click()
+  await page.getByTestId('timeline-more-panel').waitFor({ state: 'detached', timeout: 10_000 })
+}
+
+/** Resets the zoom through 更多 when it is not already at 100%. */
+export async function resetTimelineZoom(page: Page): Promise<void> {
+  await openTimelineMore(page)
+  const reset = page.getByTestId('timeline-zoom-reset')
+  if (await reset.isEnabled()) await reset.click()
+  else await closeTimelineMore(page)
 }
 
 export async function openCaptureProof(page: Page): Promise<void> {

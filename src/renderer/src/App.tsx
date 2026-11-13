@@ -185,13 +185,6 @@ export default function App(): JSX.Element {
     stepToActivity()
   }, [stepToActivity])
 
-  // The toolbar's 活動紀錄 link: the whole Activity workspace, not one event.
-  // The way back re-focuses whatever was selected, when something was.
-  const openActivity = useCallback((selected: { id: string; ts: number } | null): void => {
-    setTimelineReturn(selected)
-    stepToActivity()
-  }, [stepToActivity])
-
   // The Activity workspace and the Timeline are two readings of the same
   // material, but only the Timeline had no way in except the palette. This is
   // the "open it" half of `openInTimeline`: no event to focus, back arrow on.
@@ -482,7 +475,7 @@ export default function App(): JSX.Element {
                 Latent today (no in-app switcher yet); guards the flow when one lands. */}
             {view === 'search' && backFrom === 'timeline' && <ReturnTrail testId="activity-return" steps={steps} onGoTo={goTo} />}
             {view === 'timeline' && backFrom && <ReturnTrail testId="timeline-return" steps={steps} onGoTo={goTo} />}
-            {view === 'timeline' && <TimelinePanel key={project?.id ?? 'no-project'} onOpenInActivity={openInActivity} onOpenActivity={openActivity} focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} tierChip={visibility.tierChip} onDropMarker={(ts) => { setMarkerAtTs(ts); setShowMarker(true) }} />}
+            {view === 'timeline' && <TimelinePanel key={project?.id ?? 'no-project'} onOpenInActivity={openInActivity} focusEventId={focusEvent?.id} focusTs={focusEvent?.ts} tierChip={visibility.tierChip} onDropMarker={(ts) => { setMarkerAtTs(ts); setShowMarker(true) }} />}
             {(view === 'search' || workspaceProject === project.id) && <div hidden={view !== 'search'} className={view === 'search' ? 'h-full min-h-0' : undefined}><RecordingWorkspace key={project.id} externalQuery={activityQuery} requestedReading={readingRequest} active={view === 'search'} onOpenInTimeline={openInTimeline} onOpenTimeline={openTimeline} /></div>}
             {view === 'settings' && <Suspense fallback={<PaneLoading />}><Settings key={project.id} request={settingsRequest} /></Suspense>}
           </ErrorBoundary>

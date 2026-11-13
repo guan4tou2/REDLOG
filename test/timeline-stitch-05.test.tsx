@@ -71,12 +71,14 @@ describe('card rail', () => {
     expect(document.querySelector('[data-timeline-event]')).toBeNull()
   })
 
-  it('header says "latest N of total" only when the window holds more than is shown', () => {
+  // 2026-11-14: the toolbar's count is the page's one count. The rail adds a
+  // line only when it is capped, so a capped rail never reads as the window.
+  it('says "latest N of total" only when the window holds more than is shown, and no bare count otherwise', () => {
     drawLog([shell('a', 1_000)], { total: 120 })
     expect(screen.getByTestId('rail-count').textContent).toBe('timeline.rail.capped {"shown":1,"total":120}')
     cleanup()
     drawLog([shell('a', 1_000)], { total: 1 })
-    expect(screen.getByTestId('rail-count').textContent).toBe('1')
+    expect(screen.queryByTestId('rail-count')).toBeNull()
   })
 
   it('the selected card expands with inline stdout once the selection is still; others and stdout-less cards do not', async () => {

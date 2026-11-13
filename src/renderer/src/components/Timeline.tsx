@@ -26,7 +26,6 @@ import { BrokenChainBanner, FocusChainBadge } from './timeline/TimelineStatusStr
 import { TimelineToolbar } from './timeline/TimelineToolbar'
 import { TimelineEventLog } from './timeline/TimelineEventLog'
 import { TimelineLanesHeader, laneCountText } from './timeline/TimelineLanesHeader'
-import { TypeLegend } from './timeline/TypeLegend'
 import { FollowBadge, NowLine } from './timeline/TimelineClock'
 import { TimelineEventInspector } from './timeline/TimelineEventInspector'
 import { TimelineDetailBar } from './timeline/TimelineDetailBar'
@@ -127,7 +126,6 @@ interface TimelinePanelProps {
   focusTs?: number
   onDropMarker?: (ts: number) => void
   onOpenInActivity?: (eventId: string, ts: number) => void
-  onOpenActivity?: (selected: { id: string; ts: number } | null) => void
   tierChip?: boolean
 }
 
@@ -142,21 +140,20 @@ export default function TimelinePanel(props: TimelinePanelProps = {}): JSX.Eleme
   const { filter, personalDomains, setTimeRange } = useSharedFilter()
   const latest = useRef(props)
   latest.current = props
-  const has = { drop: !!props.onDropMarker, inActivity: !!props.onOpenInActivity, activity: !!props.onOpenActivity }
+  const has = { drop: !!props.onDropMarker, inActivity: !!props.onOpenInActivity }
   const onDropMarker = useMemo(() => (has.drop ? (ts: number) => latest.current.onDropMarker?.(ts) : undefined), [has.drop])
   const onOpenInActivity = useMemo(() => (has.inActivity ? (id: string, ts: number) => latest.current.onOpenInActivity?.(id, ts) : undefined), [has.inActivity])
-  const onOpenActivity = useMemo(() => (has.activity ? (sel: { id: string; ts: number } | null) => latest.current.onOpenActivity?.(sel) : undefined), [has.activity])
   const shared = useMemo<SharedFilterSlice>(() => ({ filter, personalDomains, setTimeRange }), [filter, personalDomains, setTimeRange])
   return (
     <TimelinePanelView
       focusEventId={props.focusEventId} focusTs={props.focusTs} tierChip={props.tierChip}
-      onDropMarker={onDropMarker} onOpenInActivity={onOpenInActivity} onOpenActivity={onOpenActivity}
+      onDropMarker={onDropMarker} onOpenInActivity={onOpenInActivity}
       shared={shared}
     />
   )
 }
 
-const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusTs, onDropMarker, onOpenInActivity, onOpenActivity, tierChip = true, shared }: TimelinePanelProps & { shared: SharedFilterSlice }): JSX.Element {
+const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusTs, onDropMarker, onOpenInActivity, tierChip = true, shared }: TimelinePanelProps & { shared: SharedFilterSlice }): JSX.Element {
   // Spec 038: the shared filter is applied where the events are stored, for
   // every page, count and live row. Nothing below filters on it again.
   const { filter: sharedFilter, personalDomains, setTimeRange: setSharedTimeRange } = shared
@@ -529,10 +526,6 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
       window.removeEventListener('redlog:filter-host', onFilterHost)
     }
   }, [])
-  // Overflow for the low-frequency view controls (session dividers,
-  // timezone) so the toolbar row groups by effect instead of
-  // listing eight flat toggles (DESIGN-core-and-capture.md §6).
-  const [moreOpen, setMoreOpen] = useState(false)
 
   // v0.6.91 W1 mutual exclusion: enabling either dim mode clears the other.
   useEffect(() => {
@@ -1187,6 +1180,15 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
     () => (dense ? binRange(dense.start, dense.end, timeStart, timeEnd, bins.N) : null),
     [dense, timeStart, timeEnd, bins.N]
   )
+  const densestLabel = dense
+    ? t(hasMore ? 'timeline.densestLoaded' : 'timeline.densest', {
+      // HH:MM, as the prototype; a stretch inside one minute would read
+      // "15:46 ~ 15:46", so it gets seconds instead.
+      ...(formatTime(dense.start) === formatTime(dense.end)
+        ? { from: formatTime(dense.start, { seconds: true }), to: formatTime(dense.end, { seconds: true }) }
+        : { from: formatTime(dense.start), to: formatTime(dense.end) })
+    })
+    : ''
 
   // Keep the minimap's "current viewport" window in sync with the scroll/zoom.
   // v0.11.1: render only the clusters near the viewport.
@@ -1876,8 +1878,8 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
           while focus mode is active. Anchored on the wrapper so it floats
           above the minimap without shifting layout. */}
       <FocusChainBadge size={focusChain?.size ?? 0} active={!!focusChain} meta={focusMeta} onExit={() => setFocusAnchorId(null)} t={t} />
-      {/* The toolbar renders what it is given; the follow badge and the ⋯ menu
-          close over panel state, so they come in as slots. */}
+      {/* The toolbar renders what it is given; the follow badge and the panel's
+          own view toggles close over panel state, so they come in as slots. */}
       <TimelineToolbar
         t={t}
         timeRange={sharedFilter.timeRange}
@@ -1896,11 +1898,12 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
         anchorTs={selectedEvent?.timestamp ?? null}
         mode={timelineMode}
         onModeChange={setTimelineMode}
-        onOpenActivity={onOpenActivity ? () => onOpenActivity(selectedEvent ? { id: selectedEvent.id, ts: selectedEvent.timestamp } : null) : undefined}
         filterQuery={filterQuery}
         onFilterQueryChange={typeFilterQuery}
         searchInputRef={searchInputRef}
         onHelp={() => setShowHelp(true)}
+        attributionBlind={attributionBlind}
+        lanes={populatedLanes}
         followBadge={
           <FollowBadge
             latestTs={events.length > 0 ? events[events.length - 1].timestamp : 0}
@@ -1910,62 +1913,47 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
             t={t}
           />
         }
-        moreMenu={
-          <div className="relative shrink-0">
+        moreItems={
+          <>
             <button
-              data-testid="timeline-more-menu"
-              onClick={() => setMoreOpen((v) => !v)}
-              aria-expanded={moreOpen}
-              aria-haspopup="menu"
-              title={t('timeline.more.hint')}
-              className="whitespace-nowrap text-xs px-1.5 py-0.5 min-h-7 rounded font-mono text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.05] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
-            >⋯ {t('timeline.more.button')}</button>
-            {moreOpen && (
-              <>
-                <div className="fixed inset-0 z-30" onClick={() => setMoreOpen(false)} />
-                <div role="menu" className="absolute top-full right-0 mt-1 z-40 w-56 rounded border border-redlog-border bg-redlog-surface/95 shadow-xl py-1">
-                  <button
-                    role="menuitemcheckbox"
-                    aria-checked={collapseAgentTurns}
-                    onClick={() => setCollapseAgentTurns((v) => !v)}
-                    title={collapseAgentTurns
-                      ? t('timeline.collapseAgent.hidden', { count: hiddenAgentTurnCount })
-                      : t('timeline.collapseAgent.hint')}
-                    className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-mono text-redlog-text hover:bg-white/5"
-                  >
-                    <span>{t('timeline.collapseAgent.label')}</span>
-                    <span className={collapseAgentTurns ? 'text-lime-300' : 'text-redlog-text-faint'}>{collapseAgentTurns ? '✓' : ''}</span>
-                  </button>
-                  {(timeMap.gaps.length > 0 || compressGaps) && (
-                    <button
-                      role="menuitemcheckbox"
-                      aria-checked={compressGaps}
-                      onClick={() => {
-                        const el = scrollRef.current
-                        if (el) pendingCenterTs.current = fromX(el.scrollLeft + el.clientWidth / 2)
-                        setCompressGaps((v) => !v)
-                      }}
-                      title={t('timeline.compressGaps.hint')}
-                      className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-mono text-redlog-text hover:bg-white/5"
-                    >
-                      <span>{t('timeline.compressGaps.label')}{compressGaps && timeMap.gaps.length > 0 ? ` (${timeMap.gaps.length})` : ''}</span>
-                      <span className={compressGaps ? 'text-cyan-300' : 'text-redlog-text-faint'}>{compressGaps ? '✓' : ''}</span>
-                    </button>
-                  )}
-                  <div className="border-t border-redlog-border/50 my-0.5" />
-                  <button
-                    role="menuitemcheckbox"
-                    aria-checked={sessionDividers}
-                    onClick={() => setSessionDividers((v) => !v)}
-                    className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-mono text-redlog-text hover:bg-white/5"
-                  >
-                    <span>⋮ {t('timeline.boundaries.toggle')}</span>
-                    <span className={sessionDividers ? 'text-redlog-cyan' : 'text-redlog-text-faint'}>{sessionDividers ? '✓' : ''}</span>
-                  </button>
-                </div>
-              </>
+              role="menuitemcheckbox"
+              aria-checked={collapseAgentTurns}
+              onClick={() => setCollapseAgentTurns((v) => !v)}
+              title={collapseAgentTurns
+                ? t('timeline.collapseAgent.hidden', { count: hiddenAgentTurnCount })
+                : t('timeline.collapseAgent.hint')}
+              className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-mono text-redlog-text hover:bg-white/5"
+            >
+              <span>{t('timeline.collapseAgent.label')}</span>
+              <span className={collapseAgentTurns ? 'text-lime-300' : 'text-redlog-text-faint'}>{collapseAgentTurns ? '✓' : ''}</span>
+            </button>
+            {(timeMap.gaps.length > 0 || compressGaps) && (
+              <button
+                role="menuitemcheckbox"
+                aria-checked={compressGaps}
+                onClick={() => {
+                  const el = scrollRef.current
+                  if (el) pendingCenterTs.current = fromX(el.scrollLeft + el.clientWidth / 2)
+                  setCompressGaps((v) => !v)
+                }}
+                title={t('timeline.compressGaps.hint')}
+                className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-mono text-redlog-text hover:bg-white/5"
+              >
+                <span>{t('timeline.compressGaps.label')}{compressGaps && timeMap.gaps.length > 0 ? ` (${timeMap.gaps.length})` : ''}</span>
+                <span className={compressGaps ? 'text-cyan-300' : 'text-redlog-text-faint'}>{compressGaps ? '✓' : ''}</span>
+              </button>
             )}
-          </div>
+            <div className="border-t border-redlog-border/50 my-0.5" />
+            <button
+              role="menuitemcheckbox"
+              aria-checked={sessionDividers}
+              onClick={() => setSessionDividers((v) => !v)}
+              className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-mono text-redlog-text hover:bg-white/5"
+            >
+              <span>⋮ {t('timeline.boundaries.toggle')}</span>
+              <span className={sessionDividers ? 'text-redlog-cyan' : 'text-redlog-text-faint'}>{sessionDividers ? '✓' : ''}</span>
+            </button>
+          </>
         }
       />
 
@@ -2073,46 +2061,24 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
           one irreplaceable job is showing gaps, and it was drawing a gap that
           was really an unread page: the operator could not tell "nothing
           happened here" from "not fetched yet", on the one surface that
-          exists to answer exactly that. It now says which it is. */}
+          exists to answer exactly that. It now says which it is: the ⋮ at the
+          strip's left edge and the strip's own tooltip, beside the toolbar's
+          "N of M" line. The caption row that used to sit above the strip
+          repeated the ruler's span and was removed (2026-11-14). */}
       <div className="shrink-0 border-b border-redlog-border/80 bg-redlog-bg/40 px-1 pt-0.5">
-        <div className="flex items-center justify-between gap-2 text-xs leading-4 text-redlog-text-faint">
-          <div className="flex items-center gap-2 min-w-0">
-            {hasMore && (
-              <span
-                data-testid="minimap-partial"
-                className="text-redlog-warn"
-                title={t('timeline.minimapPartialHint')}
-              >&#8942;</span>
-            )}
-            <span className="truncate" title={t(hasMore ? 'timeline.minimap.titleLoaded' : 'timeline.minimap.title')}>{t(hasMore ? 'timeline.minimap.titleLoaded' : 'timeline.minimap.title')}</span>
-            {events.length > 0 && (
-              <span data-testid="minimap-span" className="font-mono tabular-nums text-redlog-text-dim whitespace-nowrap">
-                {formatTime(timeStart, { seconds: true })} - {formatTime(timeEnd, { seconds: true })}
-              </span>
-            )}
-          </div>
-          {dense && (
-            <span
-              data-testid="minimap-densest"
-              className="flex items-center gap-1 font-mono tabular-nums whitespace-nowrap text-redlog-safe"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-redlog-safe" aria-hidden />
-              {t(hasMore ? 'timeline.densestLoaded' : 'timeline.densest', {
-                // HH:MM, as the prototype; a stretch inside one minute would
-                // read "15:46 ~ 15:46", so it gets seconds instead.
-                ...(formatTime(dense.start) === formatTime(dense.end)
-                  ? { from: formatTime(dense.start, { seconds: true }), to: formatTime(dense.end, { seconds: true }) }
-                  : { from: formatTime(dense.start), to: formatTime(dense.end) })
-              })}
-            </span>
-          )}
-        </div>
         <div
           data-testid="timeline-minimap"
           className="relative h-8 cursor-crosshair select-none overflow-hidden"
           onMouseDown={onMinimapDown}
           title={hasMore ? t('timeline.minimapPartialHint') : t('timeline.minimapHint')}
         >
+          {hasMore && (
+            <span
+              data-testid="minimap-partial"
+              aria-hidden="true"
+              className="absolute left-0.5 top-0 z-10 text-xs leading-4 text-redlog-warn pointer-events-none"
+            >&#8942;</span>
+          )}
           <svg
             className="absolute inset-x-0 bottom-0 h-7 w-full pointer-events-none"
             viewBox="0 0 800 28"
@@ -2137,6 +2103,20 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
               </>
             )}
           </svg>
+          {/* The densest stretch is named on the highlight itself, not in a
+              caption row: hover reads it, and assistive technology gets it as
+              the highlight's name. Drawn under the window, and a press on it
+              still reaches the strip's drag-to-zoom. */}
+          {dense && denseBins && (
+            <div
+              data-testid="minimap-densest"
+              role="img"
+              aria-label={densestLabel}
+              title={densestLabel}
+              className="absolute inset-y-0"
+              style={{ left: `${(denseBins[0] / bins.N) * 100}%`, width: `${((denseBins[1] - denseBins[0] + 1) / bins.N) * 100}%` }}
+            />
+          )}
           {/* 重點視窗 — the viewport. Body pans, grips resize (onWindowDown). */}
           <div
             data-testid="minimap-window"
@@ -2181,8 +2161,6 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
           )}
         </div>
       </div>
-
-      <TypeLegend lanes={populatedLanes} t={t} />
 
       {/* Timeline + event list split */}
       {/* The layout switch is this one flex direction. Column puts the pane
@@ -2566,6 +2544,11 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
                   // node, and ↑/↓ walks from there — the same model the
                   // existing keyboard handler already implements.
                   const isTabStop = single && (sel || (!selectedEvent && c === visibleClusters[0]))
+                  // Every dot is the same grey and its shape is severity, so
+                  // its type is said in words: on hover (title) and to the
+                  // keyboard (accessible name). A cluster names each type it
+                  // holds.
+                  const typeName = [...new Set(c.events.map((e) => laneLabels[toLane(e.agentType, e.data?.subtype as string | undefined, pluginTypes)]))].join('、')
                   return (
                     <button
                       key={c.key}
@@ -2573,8 +2556,8 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
                       data-timeline-event
                       tabIndex={isTabStop ? 0 : -1}
                       aria-label={`${single
-                        ? `${formatTime(evt.timestamp, { seconds: true })} ${titleOf(evt)}${shapeTitle(evt, t, foldById.get(evt.id)?.effective.severity)}${amendSuffix(evt)}`
-                        : t('timeline.events', { count: c.events.length })}${notMatching ? ` · ${t('timeline.notMatching')}` : ''}`}
+                        ? `${formatTime(evt.timestamp, { seconds: true })} ${typeName} · ${titleOf(evt)}${shapeTitle(evt, t, foldById.get(evt.id)?.effective.severity)}${amendSuffix(evt)}`
+                        : `${t('timeline.events', { count: c.events.length })} · ${typeName}`}${notMatching ? ` · ${t('timeline.notMatching')}` : ''}`}
                       aria-disabled={dimmed || undefined}
                       aria-pressed={sel || undefined}
                       className="absolute cursor-pointer flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 rounded"
@@ -2594,8 +2577,8 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
                         transition: 'opacity 120ms ease'
                       }}
                       title={single
-                        ? `${formatTime(evt.timestamp, { seconds: true })} — ${titleOf(evt)}${badgeTitle}${shapeTitle(evt, t, foldById.get(evt.id)?.effective.severity)}${amendSuffix(evt)}${ioTitle(ioMark(evt), t)}`
-                        : `${c.events.length} ${t('timeline.title')} · ${formatTime(c.events[0].timestamp, { seconds: true })}`}
+                        ? `${formatTime(evt.timestamp, { seconds: true })} — ${typeName} · ${titleOf(evt)}${badgeTitle}${shapeTitle(evt, t, foldById.get(evt.id)?.effective.severity)}${amendSuffix(evt)}${ioTitle(ioMark(evt), t)}`
+                        : `${c.events.length} ${t('timeline.title')} · ${formatTime(c.events[0].timestamp, { seconds: true })} · ${typeName}`}
                       onMouseEnter={() => { if (single) hoveredEventRef.current = evt }}
                       onMouseLeave={() => { if (single && hoveredEventRef.current === evt) hoveredEventRef.current = null }}
                       onClick={(e) => {
@@ -2791,7 +2774,6 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
         <TimelineEventLog
           hiddenByQuery={hiddenByQuery}
           annotatedIds={annotatedIds}
-          attributionBlind={attributionBlind}
           showingAll={showAllDespiteQuery && filterMatches !== null}
           onToggleHidden={toggleShowAll}
           stripsOnly={timelineMode === 'lanes'}

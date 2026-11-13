@@ -129,9 +129,11 @@ describe('the list in swim-lane mode', () => {
     it('"back to standard" switches the mode and brings the list back', async () => {
       mount()
       fireEvent.click(await screen.findByTestId('timeline-lanes-collapse'))
-      await waitFor(() => expect(screen.getByTestId('timeline-mode-standard').getAttribute('aria-pressed')).toBe('true'))
-      expect(screen.queryByTestId('timeline-lanes-header')).toBeNull()
-      expect(screen.queryByTestId('rail-count')).not.toBeNull()
+      await waitFor(() => expect(screen.queryByTestId('timeline-lanes-header')).toBeNull())
+      // The mode lives in 更多 (2026-11-14); the list is the rail's cards.
+      fireEvent.click(screen.getByTestId('timeline-more-menu'))
+      expect(screen.getByTestId('timeline-mode-standard').getAttribute('aria-checked')).toBe('true')
+      expect(screen.queryAllByTestId('rail-card').length).toBeGreaterThan(0)
     })
   })
 
@@ -141,7 +143,7 @@ describe('the list in swim-lane mode', () => {
       b.queryPage.mockResolvedValue(page([makeEvent('e1', T0)]))
       mount()
       await waitFor(() => expect(document.querySelector('[data-timeline-event]')).not.toBeNull())
-      expect(screen.queryByTestId('rail-count')).not.toBeNull()
+      expect(screen.queryAllByTestId('rail-card').length).toBeGreaterThan(0)
       expect(screen.queryByTestId('timeline-lanes-header')).toBeNull()
       // 2026-11-08: the track is one row sized to its content and the rail
       // takes the rest, so there is no split between them to drag.
@@ -150,7 +152,7 @@ describe('the list in swim-lane mode', () => {
   })
 })
 
-describe('the two strips only the list could say stay in lanes mode', () => {
+describe('the strip only the list could say stays in lanes mode', () => {
   const ev = [makeEvent('x', T0)] as unknown as RedLogEvent[]
   const draw = (extra: Partial<Parameters<typeof TimelineEventLog>[0]>): void => {
     render(
@@ -167,12 +169,14 @@ describe('the two strips only the list could say stay in lanes mode', () => {
     expect(document.body.textContent).toBe('')
   })
 
-  it('keeps the hidden-by-query toggle and the attribution-blind line, without any row', () => {
+  // The attribution warning moved to the toolbar, which both modes share
+  // (test/timeline-density.test.tsx), so it is no longer the list's to say.
+  it('keeps the hidden-by-query toggle, without any row', () => {
     const onToggleHidden = vi.fn()
-    draw({ hiddenByQuery: 3, onToggleHidden, attributionBlind: true })
+    draw({ hiddenByQuery: 3, onToggleHidden })
     fireEvent.click(screen.getByTestId('log-hidden-toggle'))
     expect(onToggleHidden).toHaveBeenCalled()
-    expect(screen.getByTestId('log-attribution-blind')).toBeTruthy()
+    expect(screen.queryByTestId('log-attribution-blind')).toBeNull()
     expect(screen.queryByText('row-title')).toBeNull()
   })
 })

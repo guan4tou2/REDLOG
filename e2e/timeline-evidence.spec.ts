@@ -1,7 +1,7 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { launchWithTempHome, mainWindowSize, resetSharedApp, openTestProject, openView, openSettingsPage, resizeMainWindow, openSwimLanes, REPO_ROOT } from './helpers'
+import { launchWithTempHome, mainWindowSize, resetSharedApp, openTestProject, openView, openSettingsPage, resizeMainWindow, openSwimLanes, setTimelineMode, timelineMode, REPO_ROOT } from './helpers'
 
 // What the timeline shows about events and their relationships, from a seeded
 // project. One Electron launch for the file; each describe keeps its old spec's
@@ -286,6 +286,12 @@ test.describe.serial('attribution-blind-copy: attribution-blind copy names this 
       const t = strings(locale)
       await showTimelineIn(locale)
 
+      // 2026-11-14: a compact status in the toolbar; 詳情 opens the full line.
+      const status = page.getByTestId('timeline-attribution-status')
+      await expect(status).toBeVisible()
+      await expect(status).toHaveAttribute('role', 'status')
+      await expect(status).toContainText(t['timeline.attribution.status'])
+      await page.getByTestId('timeline-attribution-details').click()
       const line = page.getByTestId('log-attribution-blind')
       await expect(line).toBeVisible()
       // The shared half: traffic arrived and the join answered nothing. It
@@ -305,6 +311,10 @@ test.describe.serial('attribution-blind-copy: attribution-blind copy names this 
       if (locale === 'zh-TW') {
         await expect(line).not.toContainText(strings('en')[PLATFORM_KEYS[hostPlatform]])
       }
+      // Escape closes the details and hands focus back to 詳情.
+      await page.keyboard.press('Escape')
+      await expect(line).toHaveCount(0)
+      await expect(page.getByTestId('timeline-attribution-details')).toBeFocused()
     })
   }
 })
@@ -367,9 +377,7 @@ const selectMarker = async (titleText: string): Promise<void> => {
 // they read the Timeline in standard mode.
 const openStandard = async (): Promise<void> => {
   await openView(page, 'timeline')
-  const standard = page.getByTestId('timeline-mode-standard')
-  await standard.waitFor({ state: 'visible', timeout: 10_000 })
-  if ((await standard.getAttribute('aria-pressed')) !== 'true') await standard.click()
+  if (await timelineMode(page) !== 'standard') await setTimelineMode(page, 'standard')
   await page.getByTestId('timeline-standard-track').waitFor({ state: 'visible', timeout: 10_000 })
 }
 
