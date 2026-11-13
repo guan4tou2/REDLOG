@@ -33,5 +33,7 @@ it('prints every file of a regenerated bundle', async () => {
     console.log(`[DIAGROW] ${i} subtype=${String(row.subtype)} sigLen=${sig.length} sigHead=${sig.slice(0, 12)} data=${String(row.data).slice(0, 160)}`)
   })
   console.log(`[DIAG] openssl=${process.versions.openssl}`)
+  const full = JSON.stringify(manifest)
+  for (let i = 0; i < full.length; i += 200) console.log(`[DIAGMAN] ${String(i / 200).padStart(3, '0')} ${full.slice(i, i + 200)}`)
   expect(true).toBe(true)
 }, 120_000)
