@@ -84,6 +84,8 @@
 
 ## Phase 6 — 不記錄（R3，選用）
 
+> **暫緩（2026-11-13，DECISIONS §8 第 6 項）**：不排入第一版。任務保留，重新排入前不要動手。
+
 - [ ] T070 [P] RED：hook 共用向量（071 格式）：`skip` 命令規則、`followShellHistory` 的 bash／zsh 各規則、`ignoredups` 永遠不遵循。
 - [ ] T071 app 寫 `~/.redlog/personal-skip.json`；`hooks/redlog-relay.py`、`shell-bash-hook.sh`、`shell-zsh-hook.zsh` 在觀察點讀它與歷史設定；略過用掉序號並計 `ignored-rule`／`shell-history-rule`（需要 071 FR-050 加這兩個原因）。PowerShell：只有 `skip` 命令規則。
 - [ ] T072 addon 與接收端的 `host` skip 規則在 commit 前評估（FR-081）；AI 的 `ai-path` 經 `excludedPaths`。
@@ -99,6 +101,8 @@
 - **Gate**：T080 綠；SC-006。
 
 ## Phase 8 — 擴充功能的讀取與 Exporter 目的地（依 076）
+
+> **暫緩（2026-11-13，DECISIONS §8 第 2、4 項）**：Exporter 目的地不排入第一版；擴充功能的讀取等 076 Phase 6，而它等本規格 Phase 4。任務保留。
 
 - [ ] T090 [US9] 076 的 L0 讀取 API、L2 面板資料、Exporter 批次只經 `deliver`；`reads.withheld`；Exporter 不得含 `personal`（FR-070–073）。等待 076 Phase 6 與 Exporter 的 Phase。
 - [ ] T091 [US9] 匯出面目的地選單加入本專案已啟用的 Exporter（FR-033）；選它時格式固定為對齊列；`system:export_shipped` 帶 `withheld`。
