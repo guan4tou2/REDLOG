@@ -321,7 +321,7 @@ function BookmarkForm({ browserTab, onSave, onCancel, initial }: {
   }
 
   return (
-    <div className="space-y-3 max-w-xl">
+    <div className="space-y-3">
       <h3 className="text-sm font-semibold text-redlog-text">{initial ? t('bookmarks.editMark') : t('bookmarks.quickCapture')}</h3>
 
       {!initial && browserTab?.connected && (
@@ -401,7 +401,7 @@ function BookmarkDetail({ mark, onUpdate, onDelete, onOpenInTimeline, isPinned, 
   }
 
   return (
-    <div className="min-w-0 space-y-4 max-w-2xl">
+    <div className="min-w-0 space-y-4">
       <div className="flex flex-wrap items-start gap-3">
         <div className="flex flex-1 basis-64 items-start gap-2 min-w-0">
           {onStep && (

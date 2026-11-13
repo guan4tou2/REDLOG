@@ -1,4 +1,4 @@
-import { DASHBOARD_COLUMN } from '../lib/pageColumn'
+import { PAGE_BODY, PROSE_WIDTH } from '../lib/pageLayout'
 // The first screen of a new engagement (docs/UIUX-STANDARD.md §22, design turn
 // 9a).
 //
@@ -207,10 +207,10 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
     : null
 
   const preparation = preparing ? (
-    <div className="h-full overflow-auto p-pad"><div className={`${DASHBOARD_COLUMN} space-y-4`}>
+    <div className="h-full overflow-auto p-pad"><div className={`${PAGE_BODY} space-y-4`}>
       <div>
         <h2 className="text-lg font-semibold text-redlog-text">{t('firstRun.title')}</h2>
-        <p className="text-xs text-redlog-text-dim mt-1">{t('firstRun.hint')}</p>
+        <p className={`text-xs text-redlog-text-dim mt-1 ${PROSE_WIDTH}`}>{t('firstRun.hint')}</p>
       </div>
       <CapturePreparation onInstalling={(id, pending) => {
         if (pending) activeDependencyInstalls.current.add(id); else activeDependencyInstalls.current.delete(id)
@@ -223,12 +223,12 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
   return (
     <>
     {preparation}
-    <div hidden={preparing} className="h-full p-pad overflow-auto"><div className={`${DASHBOARD_COLUMN} flex flex-col gap-gap`}>
+    <div hidden={preparing} className="h-full p-pad overflow-auto"><div className={`${PAGE_BODY} flex flex-col gap-gap`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold tracking-[0.15em] text-redlog-accent">{t('firstRun.eyebrow')}</p>
           <h2 className="text-lg font-semibold text-redlog-text">{t('firstRun.title')}</h2>
-          <p className="text-xs text-redlog-text-dim mt-1">{t('firstRun.hint')}</p>
+          <p className={`text-xs text-redlog-text-dim mt-1 ${PROSE_WIDTH}`}>{t('firstRun.hint')}</p>
         </div>
         <div data-testid="first-run-core-footer" className="flex flex-col items-start gap-1.5 text-xs sm:items-end sm:max-w-sm">
           {commands !== 'none' && (

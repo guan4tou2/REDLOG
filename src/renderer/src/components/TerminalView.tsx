@@ -15,6 +15,7 @@ import { Modal } from './Modal'
 import { Button } from './Button'
 import { isMac } from '../lib/platform'
 import { isComposing } from '../lib/ime'
+import { PROSE_WIDTH } from '../lib/pageLayout'
 
 interface Tab {
   id: string
@@ -588,11 +589,11 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
         {tabs.length === 0 && (
           <div data-testid="terminal-empty" className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center">
             <p className="text-sm font-medium text-redlog-text">{t('terminal.emptyTitle')}</p>
-            <p className="max-w-md text-xs text-redlog-text-dim">{t('terminal.emptyBody')}</p>
+            <p className={`text-xs text-redlog-text-dim ${PROSE_WIDTH}`}>{t('terminal.emptyBody')}</p>
             <Button level="primary" disabled={!allowNew} onClick={() => addTab()}>
               {(() => { const sh = shells.find((s) => s.id === preferredShell) ?? shells[0]; return sh ? t('terminal.newSessionWith', { shell: sh.label }) : t('terminal.newTab') })()}
             </Button>
-            <p className="max-w-md text-xs text-redlog-text-faint">{t('terminal.aboutBoundary')}</p>
+            <p className={`text-xs text-redlog-text-faint ${PROSE_WIDTH}`}>{t('terminal.aboutBoundary')}</p>
           </div>
         )}
       </div>

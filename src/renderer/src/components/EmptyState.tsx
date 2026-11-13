@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 import { Button } from './Button'
+import { PROSE_WIDTH } from '../lib/pageLayout'
 
 // The empty state, in three parts (docs/UIUX-STANDARD.md §5.4).
 //
@@ -39,7 +40,7 @@ export function EmptyState({
           rather than the size a list row would use — 19px/15px, not 15px/13px.
           Sized down, it reads as a caption for content that is not there. */}
       <h2 className="text-lg font-semibold text-redlog-text text-balance">{title}</h2>
-      <p className="text-sm text-redlog-text-dim max-w-[46ch] leading-relaxed text-pretty">
+      <p className={`text-sm text-redlog-text-dim leading-relaxed text-pretty ${PROSE_WIDTH}`}>
         {reason}
       </p>
       {(action || secondary) && (
