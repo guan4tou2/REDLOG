@@ -160,7 +160,7 @@ const TABLES: Array<{ id: number; file: string; anchor: RegExp; what: string }> 
   { id: 21, file: 'src/renderer/src/lib/timelineIncremental.ts', anchor: /function isBoundary\(/, what: 'isBoundary' },
   { id: 22, file: 'src/renderer/src/lib/timelineCard.ts', anchor: /function metaOf\(/, what: 'timelineCard' },
   { id: 23, file: 'src/renderer/src/components/TranscriptView.tsx', anchor: /const TRANSCRIPT_BUCKETS\b/, what: 'Transcript inclusion' },
-  { id: 24, file: 'src/core/export-plan.ts', anchor: /export function countPauseWindows\(/, what: 'export summary counts' },
+  { id: 24, file: 'src/core/export-plan.ts', anchor: /export function pauseWindowsFold\(/, what: 'export summary counts' },
   { id: 25, file: 'src/core/export-attachments.ts', anchor: /export function storedArtifactOf\(/, what: 'export attachments' },
   { id: 26, file: 'src/core/export-selection.ts', anchor: /\['http_response_chunk', 'ws_message', 'websocket_end'\]\.includes\(/, what: 'HTTP export companions' },
   { id: 27, file: 'src/core/db/do-not-export.ts', anchor: /export function getDoNotExportIds\(/, what: 'do-not-export chain' },
