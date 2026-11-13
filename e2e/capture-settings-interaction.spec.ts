@@ -106,8 +106,13 @@ test.describe('settings interaction journey', () => {
         if (step.command) await expect(page.getByText(step.command, { exact: true })).toBeVisible()
       }
       await page.getByTestId('teardown-toggle').click()
+      // The "untrust" panel repeats the certificate-removal command whenever the
+      // CA is in the system store, which depends on what an earlier spec in the
+      // shard left behind. Look at the removal steps only, so the same command
+      // shown there is not a second match.
+      const outsideUntrust = page.locator(':not([data-testid="http-capture-untrust"] *)')
       for (const step of proxy!.removalSteps ?? []) {
-        if (step.command) await expect(page.getByText(step.command, { exact: true })).toBeVisible()
+        if (step.command) await expect(page.getByText(step.command, { exact: true }).and(outsideUntrust)).toBeVisible()
       }
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true)
     }
