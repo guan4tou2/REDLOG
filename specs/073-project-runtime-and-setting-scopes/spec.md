@@ -263,6 +263,7 @@
   > **Superseded（2026-11-13，修訂 B7）**：不寫鏡像。新格式的專案檔不含 `operator`；較舊版本開啟新格式專案時 operator 回到它的預設值，不在本規格的保證之內（plan D12）。
 - **FR-01A** 設定頁的每個機器範圍欄位標示它目前的來源。被專案覆寫的欄位提供「改用此電腦的值」；這個動作寫一列設定變更紀錄。繼承機器值本身不寫紀錄（承接 Spec 051 FR-007、FR-008）。不新增頁面或分頁。
 - **FR-01B** 個人流量規則的鍵改為 `personalTraffic`，歸屬機器層，預設為空（不含 localhost）。舊檔的 `scope.personalDomains` 讀為 `personalTraffic` 的專案覆寫。設定頁把它移出範圍分組。
+  > **指標（2026-11-13 深夜，[Spec 077](../077-personal-content-and-delivery/spec.md) 修訂 S4、S6）**：077 以 `delivery.excludeRules[]`（排除規則，只有 `withhold`；層級是 077 Q7）取代 `personalTraffic`，沒有 `personal.followShellHistory`。077 FR-115 另要求 `config-store` 在開專案、套用存檔與建立匯出計畫前比對磁碟上的有效範圍（含 `scopeFile` 內容）與鏈上最後的範圍版本，不同就先寫一列 `config_changed{basis:'observed'}`；今天 `commit(…, {reason:'create'})` 不寫任何鏈上紀錄（`src/main/config-store.ts:84-88`）。
 - **FR-01C** 必須在不重啟的情況下即時生效的機器層鍵（至少：operator、`network.*` 中屬於機器的鍵、`httpCapture.port`／`listenHost`），存檔後依 FR-013 套用到開著的 session。
 - **FR-01D**（修訂 B7，2026-11-13）`operator.id`、`operator.name` 歸屬機器層且不可覆寫（登記表 `overridable: false`）。
   1. 有效的 operator 只來自機器層（未設定時為內建預設值）；session token 的 operator、071 的蓋章（071 FR-009）、API 的主要操作者、交接目錄的身分檔都讀它。
@@ -296,6 +297,7 @@
 > **修訂（2026-11-13，B3）**：本段（FR-040–045）適用於每一種終端機來源：外部 shell、內建終端機的 pane hook、遠端 hook（Spec 071 FR-130）。綁定是擷取的邊界，不是來源的開關（Spec 076 FR-042）。
 
 - **FR-041** 終端機的狀態檔（`~/.redlog/terminals/<session>.json`）的停止原因只剩 `operator` 與 `hook-removed`，兩者都是永久的，直到 `redlog start`。（2026-11-13，修訂 B4：加 `private`，同樣永久直到 `redlog start`，Spec 071 FR-087。）`project-switched` 不再寫入；讀到舊檔的 `project-switched` 時，視為沒有停止原因（暫停由計算得出）。
+  > **指標（2026-11-13 深夜，DECISIONS §12）**：私人終端機取消，修訂 B4 的停止原因 `private` 不加入；封閉清單仍只有 `operator` 與 `hook-removed`（[Spec 077](../077-personal-content-and-delivery/spec.md) 修訂 S3）。
 - **FR-042** 綁定狀態的轉移表只有一份，TS（`terminal-enrollment.ts`）與 relay 兩份實作由 agreement 測試保證一致。TS 一側屬本規格，relay 一側由 071 FR-085 實作。
 - **FR-043** App 讀綁定狀態以呈現：開著的專案的擷取控制中，終端機列除了本專案的終端機外，另說明「N 個終端機綁定其他專案，已暫停」（只在 N > 0 時）。
 - **FR-044** 內建終端機依 Spec 055 隨開著的專案輪替，不受本段影響。

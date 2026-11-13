@@ -41,6 +41,8 @@
 | C6 | 理由碼增加：`api-too-new`、`api-retired`、`experimental-changed`、`uses-deprecated`、`builtin-mismatch`、`host-unavailable`、`no-session-selected`、`view-imitates-status`（Spec 076 契約 §4.2、§5.5）；`bound-elsewhere` 也用於「工作階段已被另一個專案認領」。FR-090 的上限由 41 改為 49 | Spec 076 | FR-090 |
 | C7 | 開放問題 Q6（新）：選用來源是否另用「已啟用」一詞 | DECISIONS §7 | 開放問題 |
 
+> **指標（2026-11-13 深夜，DECISIONS §12）**：[Spec 077](../077-personal-content-and-delivery/spec.md) 原本要求每個 shell 一列的來源列，其綁定控制項多一個值「私人」，且狀態讀數多「略過 N」（077 FR-014、FR-018）。兩者都已取消（077 修訂 S3、S6）：綁定控制項只有綁定本專案與否，077 對本規格沒有需求。
+
 ### 本規格自行決定的（理由與被否決的替代方案見 plan.md）
 
 1. 來源狀態只在核心以一個純函式算出，main 把結果（不是事實袋）送給每個畫面、CLI 與 API。renderer 不再判斷任何來源的狀態（plan D1）。
