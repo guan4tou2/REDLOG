@@ -21,6 +21,7 @@
 // and read `git diff test/kinds/golden`.
 import { describe, expect, it } from 'vitest'
 import fs from 'node:fs'
+import path from 'node:path'
 import { TABLES, TABLE_NUMBERS, computeGolden, goldenFile, stable, GOLDEN_DIR, type Golden } from './golden-tables'
 import { EXAMPLES } from './examples'
 
@@ -62,7 +63,7 @@ describe('golden: what each table answers today', () => {
   it('has no golden file that no table writes', () => {
     if (UPDATE) return
     const known = new Set(TABLES.map((t) => goldenFile(t)))
-    const stray = fs.readdirSync(GOLDEN_DIR).map((f) => `${GOLDEN_DIR}/${f}`).filter((f) => !known.has(f) && !f.endsWith('sql-answers.json'))
+    const stray = fs.readdirSync(GOLDEN_DIR).map((f) => path.join(GOLDEN_DIR, f)).filter((f) => !known.has(f) && !f.endsWith('sql-answers.json'))
     expect(stray).toEqual([])
   })
 
