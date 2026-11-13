@@ -15,9 +15,13 @@
 > **Superseded pause rule (Spec 071 T015/T016, as revised 2026-11-13):** the
 > drain still waits while recording is paused. After a resume or a reopen, a
 > spool file whose usable source time lies inside a pause this project
-> recorded (a recorded pause with no resume ends at the reopen) is never
+> recorded — pause and resume both written in one session — is never
 > written: it is counted in a chained `system.capture_gap` (`reason: paused`)
-> and then removed. Every other file is written — including a `command_end`
+> and then removed. A pause whose end the record does not show is not treated
+> as intentional (Spec 071 FR-082): in a session that is over, a file inside
+> it is counted as `pause-end-unknown`, not written, and its content kept in
+> the quarantine; in the current session, such a file waits until the resume
+> is written. Every other file is written — including a `command_end`
 > observed before a pause, which the earlier "older than the last resume" rule
 > kept pending forever, and a file whose source time is missing or not usable.
 > A write that fails is left pending and retried after a back-off, and

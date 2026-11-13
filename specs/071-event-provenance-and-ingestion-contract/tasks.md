@@ -15,28 +15,28 @@
 
 ## Phase 1 — 釘住今天的行為（只加測試與 gate，不改程式行為）
 
-- [ ] T002 [P] [US5] `test/golden-old-rows.test.ts` 與 `test/fixtures/golden-pre071/`：用目前 main 產生專案 DB 與 bundle，涵蓋 api、spool、行程內、logged、`_raw`、`_clock_anomaly`、`_source_time_rejected`、sanitized、projection 各種列。斷言：
+- [x] T002 [P] [US5] `test/golden-old-rows.test.ts` 與 `test/fixtures/golden-pre071/`：用目前 main 產生專案 DB 與 bundle，涵蓋 api、spool、行程內、logged、`_raw`、`_clock_anomaly`、`_source_time_rejected`、sanitized、projection 各種列。斷言：
   - 列的位元組與雜湊不變；
   - 開啟與寫入新列後，舊列的 UPDATE 數為 0；
   - app 內驗證與 `redlog-verify.py` 的輸出不變；
   - 舊列匯出的 `events.jsonl` 逐位元組相同。
-- [ ] T003 [P] [US5] `test/api-events-legacy-mapping.test.ts`：表格驅動，列出 `/api/events` 每種情況今天的狀態碼與主體：accepted、2 秒去重、late chunk 去重、ingest 內跨專案、標頭 pin、paused、unrecorded、plumbing、政策 403、`marker`／`amended` 403、400、401、503、heartbeat。
+- [x] T003 [P] [US5] `test/api-events-legacy-mapping.test.ts`：表格驅動，列出 `/api/events` 每種情況今天的狀態碼與主體：accepted、2 秒去重、late chunk 去重、ingest 內跨專案、標頭 pin、paused、unrecorded、plumbing、政策 403、`marker`／`amended` 403、400、401、503、heartbeat。
 - [ ] T004 [P] [US6] `test/legacy-producer-decisions.test.ts`：對 mock 伺服器記錄 shell、relay、mitm、pcap-agent、pcap-capture、c2、PowerShell sender 對每種回應的反應（01-F1 的表，依實測更正：relay 只重試網路錯誤、不重試 5xx；pcap-capture 不檢查 POST 結果）。已知缺陷以 `it.fails` 標示。（在 PR #716 中，未合併前不勾）
-- [ ] T005 [P] `test/hash-input-pin.test.ts`：釘住 `insertChainedEvent`、`chain-anchor.canonicalHashPayload`、`redlog-verify._rebuild_shapes` 的鍵集合，以及 `PRAGMA synchronous`：寫入連線在寫入後為 FULL（2），含新專案、重開、切換專案；唯讀連線與匯出 worker 的唯讀連線維持 NORMAL（1）。（Q6 已答覆並實作：Phase 1 時這裡釘的是 NORMAL。）（在 PR #716 中，未合併前不勾）
+- [x] T005 [P] `test/hash-input-pin.test.ts`：釘住 `insertChainedEvent`、`chain-anchor.canonicalHashPayload`、`redlog-verify._rebuild_shapes` 的鍵集合，以及 `PRAGMA synchronous`：寫入連線在寫入後為 FULL（2），含新專案、重開、切換專案；唯讀連線與匯出 worker 的唯讀連線維持 NORMAL（1）。（Q6 已答覆並實作：Phase 1 時這裡釘的是 NORMAL。）（在 PR #716 中，未合併前不勾）
 - [ ] T006 [P] `test/single-ingest-door.test.ts`：掃描 `src/**` 中的 `insertEvent(`，基準值 31（#716 量得），只能下降（ratchet；形式同 `test/mutation-guard.test.ts`），取代 `test/canonical-ingest-sources.test.ts` 的檔案清單。
-- [ ] T007 [P] [US4] RED：`test/spool-bypass.test.ts`。spool 檔放 `agent_type: system`／`recording_resumed`，今天會寫出 chained 列。以 `it.fails` 標示，Phase 2 翻正。
-- [ ] T008 [P] [US2] RED：`test/pause-boundary-spool.test.ts`。(a) 暫停中當掉後重放會寫入；(b) 暫停前的 `command_end` 被永久卡住。以 `it.fails` 標示。
+- [x] T007 [P] [US4] RED：`test/spool-bypass.test.ts`。spool 檔放 `agent_type: system`／`recording_resumed`，今天會寫出 chained 列。以 `it.fails` 標示，Phase 2 翻正。
+- [x] T008 [P] [US2] RED：`test/pause-boundary-spool.test.ts`。(a) 暫停中當掉後重放會寫入；(b) 暫停前的 `command_end` 被永久卡住。以 `it.fails` 標示。
 - **Gate**：五道 gate 全綠；新測試在三個平台的 unit leg 都有執行，或計為 `not-run` 並附原因。
 
 ## Phase 2 — 封住交接旁路、修正暫停判斷（不改協定）
 
-- [ ] T010 [US4] 種類政策表以來源類別為鍵（`external-event-policy.ts`），舊 spool 重放也經過它；違反的檔移入 `quarantine`（`kind-not-allowed`）。T007 翻正。
-- [ ] T011 [US3] `spool-replay.ts`：拆開 `invalid`（隔離，檔名帶原因並附 `.why`）與 `failed`（留在原處退避重試）；隔離與拒收寫 chained `system.capture_gap`。先 RED。
-- [ ] T012 [P] [US3] 既有的 `.bad` 與 `.unattributed` 一次移入隔離區（`legacy-bad`、`no-project`）；#255 的卡片改讀隔離區，語意不變。
-- [ ] T013 [P] 開專案時的排空改為有界切片、在背景進行（`main/index.ts:968`），測試沿用 `spool-drain-slices` 的形式。
-- [ ] T014 [P] `active-identity.json` 改原子寫入（`main/index.ts:378-383`），加入讀到半寫內容的測試。
-- [ ] T015 [US2] （修訂 2026-11-13，見 spec US2 與 FR-082/083）`recordedPauses()`／`stateAt(t)` 只讀已記錄的暫停區間 `[暫停, 恢復)`（沒有恢復紀錄的暫停：本次開啟前開始的在重開時結束，之後開始的結束時間未知、排空延後），只給交接目錄用；`command_end` 另依起點與跨越規則判斷；暫停／恢復列寫入失敗時重試：暫停中不排空；暫停結束後，可用來源時間落在已記錄區間內的檔拒絕為 `paused`，其餘寫入，交接檔不再經過 `ingest.ts:160-168` 的延遲閘門。即時入口維持今天依收到時間的判斷（含該閘門）。T008 翻正，並加入 property test（T022 的雛形）。
-- [ ] T016 [US2] 修訂 Spec 002 FR-007（暫停時不再保留檔案），與 T015 同一個 PR。
+- [x] T010 [US4] 種類政策表以來源類別為鍵（`external-event-policy.ts`），舊 spool 重放也經過它；違反的檔移入 `quarantine`（`kind-not-allowed`）。T007 翻正。
+- [x] T011 [US3] `spool-replay.ts`：拆開 `invalid`（隔離，檔名帶原因並附 `.why`）與 `failed`（留在原處退避重試）；隔離與拒收寫 chained `system.capture_gap`。先 RED。
+- [x] T012 [P] [US3] 既有的 `.bad` 與 `.unattributed` 一次移入隔離區（`legacy-bad`、`no-project`）；#255 的卡片改讀隔離區，語意不變。
+- [x] T013 [P] 開專案時的排空改為有界切片、在背景進行（`main/index.ts:968`），測試沿用 `spool-drain-slices` 的形式。
+- [x] T014 [P] `active-identity.json` 改原子寫入（`main/index.ts:378-383`），加入讀到半寫內容的測試。
+- [x] T015 [US2] （修訂 2026-11-13，見 spec US2 與 FR-082/083）`recordedPauses()`／`stateAt(t)` 只讀已記錄的暫停區間 `[暫停, 恢復)`（沒有恢復紀錄的暫停：本次開啟前開始的在重開時結束，之後開始的結束時間未知、排空延後），只給交接目錄用；`command_end` 另依起點與跨越規則判斷；暫停／恢復列寫入失敗時重試：暫停中不排空；暫停結束後，可用來源時間落在已記錄區間內的檔拒絕為 `paused`，其餘寫入，交接檔不再經過 `ingest.ts:160-168` 的延遲閘門。即時入口維持今天依收到時間的判斷（含該閘門）。T008 翻正，並加入 property test（T022 的雛形）。
+- [x] T016 [US2] 修訂 Spec 002 FR-007（暫停時不再保留檔案），與 T015 同一個 PR。
 - **Gate**：五道 gate；T002、T003 不變。
 
 ## Phase 3 — 核心蓋章（階段 1）與單一入口

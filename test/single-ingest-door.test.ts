@@ -29,7 +29,10 @@ const ROOT = path.join(__dirname, '..')
 
 // Counted 2026-11-12 on origin/main 7b2ce3d2: 31 call sites in 14 files.
 // The spec's table says 30; bundle-export.ts has two calls, not one.
-const DIRECT_BASELINE = 31
+// Lowered to 30 on 2026-11-13 at main 5b4d67b0: #734 folded two calls in
+// src/main/index.ts into one and left this at 31, which let one new direct
+// call through unnoticed. Lower it in the change that removes a call.
+const DIRECT_BASELINE = 30
 
 const DEFINITION = 'src/core/db/event-write.ts'
 const DOOR = 'src/core/ingest.ts'
