@@ -1,4 +1,4 @@
-import { PAGE_COLUMN } from '../lib/pageColumn'
+import { PAGE_BODY } from '../lib/pageLayout'
 import { Button } from './Button'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useI18n } from '../i18n'
@@ -269,7 +269,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
       : <span className="text-xs text-redlog-text-dim bg-redlog-elevated px-1.5 py-0.5 rounded">{scopeFailed ? t('targets.scopeUnknown') : t('targets.scopeUnset')}</span>
 
   return (
-    <div className="p-pad h-full overflow-auto"><div className={`${PAGE_COLUMN} space-y-4`}>
+    <div className="p-pad h-full overflow-auto"><div className={`${PAGE_BODY} space-y-4`}>
       <div className="bg-redlog-surface border border-redlog-border rounded-lg overflow-hidden">
         <div className="flex flex-wrap items-start justify-between gap-2 px-4 py-3 border-b border-redlog-border">
           <div>

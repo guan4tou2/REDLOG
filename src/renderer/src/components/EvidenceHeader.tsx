@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useI18n } from '../i18n'
 import { useReadState } from '../lib/readState'
+import { PROSE_WIDTH } from '../lib/pageLayout'
 
 export type EvidencePage = 'screenshots' | 'loot' | 'bookmarks'
 const PAGES: EvidencePage[] = ['screenshots', 'loot', 'bookmarks']
@@ -42,12 +43,12 @@ export function EvidenceHeader({ page, onNavigate }: {
     bookmarks: marks.state.value
   }
 
-  return <div data-testid="evidence-header" className="shrink-0 space-y-2 px-4 pt-3">
+  return <div data-testid="evidence-header" className="shrink-0 space-y-2 px-pad pt-3">
     <div className="min-w-0">
       <h1 className="text-lg font-semibold text-redlog-text">{t('sidebar.evidence')}</h1>
       {/* The one-line hint gives way when the window is short (a small window at
           high zoom): the tabs must not push the page's own content out of reach. */}
-      <p className="mt-1 hidden text-xs text-redlog-text-dim [@media(min-height:640px)]:block">{t('evidence.hint')}</p>
+      <p className={`mt-1 hidden text-xs text-redlog-text-dim ${PROSE_WIDTH} [@media(min-height:640px)]:block`}>{t('evidence.hint')}</p>
     </div>
     <div role="tablist" aria-label={t('sidebar.evidence')} className="flex gap-4 border-b border-redlog-border">
       {PAGES.map((id, index) => {

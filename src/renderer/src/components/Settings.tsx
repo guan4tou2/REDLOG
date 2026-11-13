@@ -21,6 +21,7 @@ import IntegrityPanel from './settings/IntegrityPanel'
 import LootRulesGroup from './settings/LootRulesGroup'
 import RetentionPage from './settings/RetentionPage'
 import { searchSettings } from '../lib/settingsSearch'
+import { PROSE_WIDTH } from '../lib/pageLayout'
 import { applyConfigPatch, diffConfig, rebaseDraft, valueAtPath, type ConfigPatchOp, type ConfigSaveResult } from '../../../core/config-patch'
 
 // Existing settings routes. A typo must fail typechecking, not open an empty pane.
@@ -343,7 +344,6 @@ export default function Settings({ request = null }: { request?: { page: Setting
     ) : <div className="p-4 text-redlog-text-dim">{t('settings.loading')}</div>
   }
 
-  const wideContent = tab !== null && ['hooks', 'plugins', 'scope', 'browser', 'captureControl', 'loot', 'integrity'].includes(tab)
   const q = pageQuery.trim().toLowerCase()
   const pageLabel = new Map(HOME_SECTIONS.flatMap(section => section.rows.map(row => [row.id, t(row.label)] as const)))
   const hits = searchSettings(pageQuery, t, 30, window.redlog.platform)
@@ -358,12 +358,12 @@ export default function Settings({ request = null }: { request?: { page: Setting
   return (
     <div className="flex flex-col h-full">
       {/* The right pane is a column: content scrolls, the save bar stays put. */}
-      <div ref={pane} data-testid="settings-content" data-page={tab ?? 'home'} className={`flex-1 min-w-0 min-h-0 overflow-y-auto p-pad space-y-4 [overflow-wrap:anywhere] ${wideContent || tab === null ? '' : 'max-w-[900px]'}`}>
+      <div ref={pane} data-testid="settings-content" data-page={tab ?? 'home'} className="flex-1 min-w-0 min-h-0 overflow-y-auto p-pad space-y-4 [overflow-wrap:anywhere]">
         {tab === null ? (
-          <div className="max-w-[720px] mx-auto space-y-4" data-testid="settings-home">
+          <div className="space-y-4" data-testid="settings-home">
             <header>
               <h1 className="text-lg font-semibold text-redlog-text">{t('sidebar.settings')}</h1>
-              <p className="text-xs text-redlog-text-dim">{t('settings.home.subtitle')}</p>
+              <p className={`text-xs text-redlog-text-dim ${PROSE_WIDTH}`}>{t('settings.home.subtitle')}</p>
             </header>
             <input
               value={pageQuery}

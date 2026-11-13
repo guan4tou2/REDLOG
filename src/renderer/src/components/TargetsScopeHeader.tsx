@@ -1,4 +1,4 @@
-import { PAGE_COLUMN } from '../lib/pageColumn'
+import { PAGE_BODY, PROSE_WIDTH } from '../lib/pageLayout'
 import { useEffect, useRef } from 'react'
 import { useI18n } from '../i18n'
 import { useReadState } from '../lib/readState'
@@ -52,11 +52,11 @@ export function TargetsScopeHeader({ page, onNavigate, onOpenSettings }: {
   // as a fact, beside "not set".
   const configured = !!value && value.configured
 
-  return <div data-testid="targets-scope-header" className="shrink-0 px-4 pt-4"><div className={`${PAGE_COLUMN} space-y-3`}>
+  return <div data-testid="targets-scope-header" className="shrink-0 px-pad pt-3"><div className={`${PAGE_BODY} space-y-3`}>
     <div className="flex items-start justify-between gap-4">
       <div className="min-w-0">
         <h1 className="text-lg font-semibold text-redlog-text">{t('sidebar.targetsScope')}</h1>
-        <p className="mt-1 text-xs text-redlog-text-dim">{t('targetsScope.hint')}</p>
+        <p className={`mt-1 text-xs text-redlog-text-dim ${PROSE_WIDTH}`}>{t('targetsScope.hint')}</p>
       </div>
       <Button data-testid="targets-scope-settings" size="compact" onClick={onOpenSettings}>{t('targetsScope.openSettings')} ↗</Button>
     </div>

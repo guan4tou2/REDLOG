@@ -269,6 +269,8 @@ html {
 @utility p-pad { padding: var(--pad); }
 @utility px-pad { padding-inline: var(--pad); }
 @utility py-pad { padding-block: var(--pad); }
+@utility pl-pad { padding-left: var(--pad); }
+@utility pr-pad { padding-right: var(--pad); }
 @utility gap-gap { gap: var(--gap); }
 /* A plain rule, not @utility: Tailwind rejects `>` in a utility name. */
 .space-y-section > :not([hidden]) ~ :not([hidden]) { margin-top: var(--section-gap); }

@@ -15,6 +15,7 @@ import { Modal } from './Modal'
 import { Button } from './Button'
 import { isMac } from '../lib/platform'
 import { isComposing } from '../lib/ime'
+import { PROSE_WIDTH } from '../lib/pageLayout'
 
 interface Tab {
   id: string
@@ -335,7 +336,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
     <div className="flex flex-col h-full bg-redlog-bg">
       <TerminalHeader onAbout={() => setAboutOpen(true)} onSearch={() => setSearchOpen(true)} />
       {/* Tab bar */}
-      <div className="flex items-center h-9 bg-redlog-bg border-b border-redlog-border px-1 shrink-0 gap-0.5">
+      <div className="flex items-center h-9 bg-redlog-bg border-b border-redlog-border px-pad shrink-0 gap-0.5">
         {tabs.map((tab) => (
           <div
             key={tab.id}
@@ -473,7 +474,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
 
         {/* Font-size + search on the right — audit findings #14 (SearchAddon)
             and #15 (font size adjustable). */}
-        <div className="ml-auto flex items-center gap-1 pr-1">
+        <div className="ml-auto flex items-center gap-1">
           <button
             onClick={() => setFontSize((s) => Math.max(8, s - 1))}
             className="w-6 h-6 rounded flex items-center justify-center text-redlog-text-faint hover:text-redlog-text hover:bg-white/[0.03] text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
@@ -498,7 +499,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
 
       {/* Search bar (visible when toggled) */}
       {searchOpen && (
-        <div className="flex items-center gap-2 px-2 py-1 border-b border-redlog-border bg-redlog-surface">
+        <div className="flex items-center gap-2 px-pad py-1 border-b border-redlog-border bg-redlog-surface">
           <input
             autoFocus
             value={searchQuery}
@@ -588,11 +589,11 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
         {tabs.length === 0 && (
           <div data-testid="terminal-empty" className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center">
             <p className="text-sm font-medium text-redlog-text">{t('terminal.emptyTitle')}</p>
-            <p className="max-w-md text-xs text-redlog-text-dim">{t('terminal.emptyBody')}</p>
+            <p className={`text-xs text-redlog-text-dim ${PROSE_WIDTH}`}>{t('terminal.emptyBody')}</p>
             <Button level="primary" disabled={!allowNew} onClick={() => addTab()}>
               {(() => { const sh = shells.find((s) => s.id === preferredShell) ?? shells[0]; return sh ? t('terminal.newSessionWith', { shell: sh.label }) : t('terminal.newTab') })()}
             </Button>
-            <p className="max-w-md text-xs text-redlog-text-faint">{t('terminal.aboutBoundary')}</p>
+            <p className={`text-xs text-redlog-text-faint ${PROSE_WIDTH}`}>{t('terminal.aboutBoundary')}</p>
           </div>
         )}
       </div>
@@ -605,7 +606,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
 function TerminalHeader({ onAbout, onSearch }: { onAbout: () => void; onSearch: () => void }): JSX.Element {
   const { t } = useI18n()
   return (
-    <div data-testid="terminal-header" className="flex shrink-0 items-center justify-between gap-3 border-b border-redlog-border px-3 py-1.5">
+    <div data-testid="terminal-header" className="flex shrink-0 items-center justify-between gap-3 border-b border-redlog-border px-pad py-1.5">
       <div className="flex min-w-0 items-baseline gap-3">
         <h1 className="text-sm font-semibold text-redlog-text">{t('terminal.title')}</h1>
         <p className="hidden text-xs text-redlog-text-dim [@media(min-height:640px)]:block">{t('terminal.hint')}</p>
@@ -650,7 +651,7 @@ function SessionMeta({ tab, shellName }: { tab: Tab; shellName?: string }): JSX.
       : { tone: 'good' as const, text: shellName ? `${t('terminal.meta.hookOn')} (${shellName})` : t('terminal.meta.hookOn') }
     : null
   return (
-    <div data-testid="terminal-session-meta" className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-redlog-border bg-redlog-bg px-3 py-1">
+    <div data-testid="terminal-session-meta" className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-redlog-border bg-redlog-bg px-pad py-1">
       <div className="flex flex-wrap items-center gap-2">
         {screen && <span data-testid="terminal-meta-screen" className={`${BADGE} ${TONE[screen.tone]}`} title={screen.title}><span className="text-redlog-text-faint">{t('terminal.meta.screenLabel')}</span>{screen.text}</span>}
         {hook && <span data-testid="terminal-meta-hook" className={`${BADGE} ${TONE[hook.tone]}`} title={hook.title}><span className="text-redlog-text-faint">{t('terminal.meta.hookLabel')}</span>{hook.text}</span>}

@@ -128,7 +128,7 @@ export function CapturePreparation({ preflight, failed, onRecheck, onSkip, onLea
   // Only the web-traffic tool is missing: commands need nothing from this page.
   const onlyWeb = missing.length > 0 && missing.every(c => c.id === 'mitmdump') && preparationChecks(preflight, 'commands').length === 0
   return (
-    <section data-testid="capture-prepare" className="w-full max-w-xl space-y-3">
+    <section data-testid="capture-prepare" className="w-full space-y-3">
       <h3 className="font-semibold text-redlog-text">{t('captureSetup.prepare')}</h3>
       {failed ? (
         <div data-testid="first-run-preflight-failed" role="alert" className="space-y-2 text-sm">
