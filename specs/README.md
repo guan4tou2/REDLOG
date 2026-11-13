@@ -42,9 +42,9 @@
 | [069 活動紀錄與時間軸 — 對齊 Stitch 設計決策](069-activity-timeline-alignment/spec.md) | Draft | 2026-11-11 補列；剩餘工作未在索引核對，見該 spec 與 tasks。 |
 | [070 截取來源、設定導航與外部工具整合](070-capture-sources-and-integrations/spec.md) | Draft | 2026-11-11 補列；剩餘工作未在索引核對，見該 spec 與 tasks。 |
 | [071 核心蓋章的事件身分與來源、單一寫入契約](071-event-provenance-and-ingestion-contract/spec.md) | Draft | 2026-11-12 起草；Phase 1（#716）與 Phase 2（#734）已合併，Phase 3–8 未開始；根因審查階段 1 與 4。原五個開放問題已決定（O13–O17）；耐久度（Q6）已定並實作：寫入連線為 `synchronous=FULL`（#725）。2026-11-13 修訂：出口進每一筆事件、遠端 hook、終端機事實、來源改為機器層、第一次綁定與 `redlog private`；暫停規則（FR-080–084）已隨 #734 合併。任務於 2026-11-13 依 `main@5b4d67b0` 對帳：T002–T005、T007、T008、T010–T016、T022 完成（T004、T022 於 #747，三個平台的 CI 都執行過）；T006、T107 部分完成；尚無 `verification.md`（T001）。Phase 3 第一段（蓋章）進行中。 |
-| [072 事件種類登記表與閱讀器契約](072-event-kind-registry-and-readers/spec.md) | Draft | 2026-11-12 起草，未開始實作；根因審查 §4「擷取種類盤點的決定」（支援階段 4、6）。開放問題待擁有者（Q1–Q3）。 |
-| [073 專案執行期、設定層級與安裝帳本](073-project-runtime-and-setting-scopes/spec.md) | Draft | 2026-11-12 起草，未開始實作；根因審查階段 2。開放問題待擁有者（Q1–Q5）。2026-11-13 修訂：來源啟用與 AI 同意移到機器層，AI 工作階段的選擇仍逐專案；終端機綁定適用於每一種終端機來源；擴充功能設定的兩層儲存。 |
-| [074 查詢工作執行緒、增量投影與讀取契約](074-query-worker-projections-and-read-contract/spec.md) | Draft | 2026-11-12 起草，未開始實作；根因審查階段 3 與 6。沒有自己的開放問題（相關問題在 072 Q3、071 O18）。 |
+| [072 事件種類登記表與閱讀器契約](072-event-kind-registry-and-readers/spec.md) | Draft | 2026-11-12 起草，未開始實作；根因審查 §4「擷取種類盤點的決定」（支援階段 4、6）。Q1–Q3 已裁定（2026-11-13，DECISIONS §9）；修訂 D1：bundle 附 `kinds.json` 與 `intervals.jsonl`（Q3 的答覆與建議不同），新開放問題 Q4–Q6。 |
+| [073 專案執行期、設定層級與安裝帳本](073-project-runtime-and-setting-scopes/spec.md) | Draft | 2026-11-12 起草，未開始實作；根因審查階段 2。Q1–Q5 已裁定（2026-11-13，DECISIONS §9）；修訂 B7：operator 只在機器層、不可覆寫（Q4 的答覆與建議不同），新開放問題 Q6、Q7。2026-11-13 修訂：來源啟用與 AI 同意移到機器層，AI 工作階段的選擇仍逐專案；終端機綁定適用於每一種終端機來源；擴充功能設定的兩層儲存。 |
+| [074 查詢工作執行緒、增量投影與讀取契約](074-query-worker-projections-and-read-contract/spec.md) | Draft | 2026-11-12 起草，未開始實作；根因審查階段 3 與 6。Q1–Q5 已裁定（2026-11-13，DECISIONS §9）；修訂 E1：提供 bundle 的 `intervals.jsonl` 所用的重建函式（072 Q3）；修訂 E2：各頁篩選依專案跨重開保存（Q2 的答覆與建議不同），新開放問題 Q6、Q7。 |
 | [075 來源描述、單一狀態模型與外掛 manifest v2](075-source-status-and-plugin-manifest/spec.md) | Draft | 2026-11-12 起草；Phase 1（T004–T012，只加測試，#749）已合併，其餘未開始；根因審查階段 5。開放問題待擁有者（Q1）。2026-11-13 修訂：類型加回 Exporter（Q5 反轉）、內建終端機預設關閉、專案層啟用改為機器層啟用加專案層綁定、manifest 移交 076、未知從不顯示為安全（FR-025）；新開放問題 Q6（「已啟用」一詞）。 |
 | [076 擴充功能模型與機器層級的擷取來源](076-extensions-and-machine-scoped-sources/spec.md) | Draft | 2026-11-13 起草，未開始實作；擴充功能 API v1 的規範性契約在 `contracts/extension-api-v1.md`。開放問題待擁有者（Q1–Q5，含 L2 等級的一行決定 FR-096）。 |
 | [077 交付邊界、私人內容與內容生命週期](077-personal-content-and-delivery/spec.md) | Draft | 2026-11-13 起草，未開始實作；匯出面成為交付唯一被決定與看見的地方（範圍決定交付、待確認就地分組回答、個人、遮蔽、目的地），背後是單一交付點、stub、遮蔽引擎、名稱與位址的分類、清除內容。076 Q4 的前提。開放問題待擁有者（Q1–Q5）。 |
@@ -66,6 +66,8 @@
 11. 各規格的文件與驗收 Phase。
 
 未併入任何一步、需要先補的：071 O18（`REDLOG_COMMAND_ID`、proxy userinfo）的 FR 與任務；hook 自我檢查 `detached` 在 071 信封中的欄位（075 決策表 F6 的輸入）。
+
+2026-11-13 的裁定（DECISIONS §9）新增的跨規格配對，不改上面的步驟：072 T064–T066（bundle 附 `kinds.json` 與 `intervals.jsonl`）依賴 074 T056（第 5 步之後）與 077 的第 5 版 bundle（077 T040–T043），verifier 與共用向量在同一個 PR 或配對 PR（072 Q6）。
 
 
 ## 交付版本、驗收與主要追蹤
