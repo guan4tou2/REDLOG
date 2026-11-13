@@ -70,7 +70,10 @@ export interface BasicPathsRun {
   exports: {
     /** Taken after the markers and before the screenshot and artifact steps, so no row carries
      *  an absolute path and the files are the same bytes wherever the run happens. */
-    early: { json: ExportRecord; ndjson: ExportRecord; bundleEvents: ExportRecord; bundleLogged: ExportRecord; bundleFiles: string[] }
+    early: { json: ExportRecord; ndjson: ExportRecord; bundleEvents: ExportRecord; bundleLogged: ExportRecord; bundleFiles: string[]
+      /** sha256 of the tools/redlog-verify.py the bundle embeds. The seal row's
+       *  manifestSha256 covers its checksum, so the record holds only for this verifier. */
+      bundleVerifierSha256: string }
     /** Taken at the end: those two rows carry the temp directory, so only the normalized digest holds. */
     final: { json: Pick<ExportRecord, 'rows' | 'normalizedSha256'>; ndjson: Pick<ExportRecord, 'rows' | 'normalizedSha256'> }
   }
@@ -178,6 +181,19 @@ export function firstDiff(a: unknown, b: unknown, at = ''): string | null {
     }
   }
   return `${at || '(root)'}: ${JSON.stringify(a)} vs recorded ${JSON.stringify(b)}`
+}
+
+/** firstDiff for row `i`, and on the export's seal row the verifier the bundle
+ *  embedded, recorded against now: its checksum is inside the seal's
+ *  manifestSha256, so a one-byte change to tools/redlog-verify.py surfaces as
+ *  that field moving and nothing else saying why. */
+export function rowDiff(run: BasicPathsRun, golden: BasicPathsRun, i: number): string | null {
+  const d = firstDiff(run.rows[i], golden.rows[i])
+  if (!d || run.rows[i]?.data.subtype !== 'export_sealed') return d
+  const now = run.exports.early.bundleVerifierSha256
+  const was = golden.exports.early.bundleVerifierSha256 ?? '(not recorded)'
+  return `${d}\n  the bundle's embedded tools/redlog-verify.py: sha256 ${was} recorded, ${now} now` +
+    (now === was ? '' : ' — the verifier changed; re-record with REDLOG_WRITE_BASIC_PATHS=1 npx vitest run test/extensions/basic-paths-pinned.test.ts')
 }
 
 export async function runBasicPaths(opts: RunOptions = {}): Promise<BasicPathsRun> {
@@ -382,7 +398,8 @@ export async function runBasicPaths(opts: RunOptions = {}): Promise<BasicPathsRu
       // events.jsonl is read after the bundle's own rows were appended; its first lines are the rows above.
       bundleEvents: digestJsonLines(readBundle('events.jsonl'), earlyAlias),
       bundleLogged: digestJsonLines(readBundle('events_logged.jsonl'), earlyAlias),
-      bundleFiles: listFiles(bundle.outDir)
+      bundleFiles: listFiles(bundle.outDir),
+      bundleVerifierSha256: sha256(fs.readFileSync(path.join(bundle.outDir, 'redlog-verify.py')))
     }
     mark('export-early')
 

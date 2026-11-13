@@ -74,18 +74,18 @@
       },
       {
         "id": "00000000-0000-4000-8000-000000000035",
-        "hash": "fe990c40ac2f93558a33b31d9e3fab27dc0e7dc585caaae6c49ca6a53cea2279",
-        "sha256": "3c7e310c1383b79cb1a918012e14469401abacff2bba345d766eaacf05d241a4"
+        "hash": "226e4fab6813a1d96e2a8fb8257a57791be3690287a1ed0219918d85f3decc8b",
+        "sha256": "870f291d90df71ffc2c2d1d93ae2c53eee805cb2222443acf83834ba100b96ca"
       },
       {
         "id": "00000000-0000-4000-8000-000000000037",
-        "hash": "e7b2bb5d8ef1f1df269d9aa9cd7f793ccc7b35eeffd28bf3e7b6f3b2ad972a12",
-        "sha256": "8ad5f0a78f73bab55ff835b41516d310e302c42005f88295623454a2bd3bc1f7"
+        "hash": "78b81697e47bf22ccdca35ae4e0cb972c78f489901d122b2d5d89a9fd4d754c6",
+        "sha256": "b12ef7e6b2f91580f3d6639ad3f73d2b4c081a57256c7b002f5b450c7e289c9a"
       },
       {
         "id": "00000000-0000-4000-8000-000000000040",
-        "hash": "066f7fcbf419b0311caf3d441fe4f8e3b6f0dde3f9e186d4f1d1599017f63472",
-        "sha256": "457b256f5a07956d854a3dd362bf57e4bbdfd9fd3ed0275b6579a892d612e451"
+        "hash": "fd0329b4f99413583cdff575f9fb1fab7ea91dbbbb11f56e2d2314fe01844c20",
+        "sha256": "452cf23045fd331b2107bd00177383b45ab3f09c5d3a663a142e16bc73409062"
       }
     ],
     "events_logged": [
@@ -96,7 +96,7 @@
       }
     ]
   },
-  "rowsSha256": "1ddb24f95d2b8d123a962c14d20d94b275a5ca45538bc17131d3dfebee1fe4b1",
+  "rowsSha256": "930db987c91e6d56e2274dbd5903af4e5992245067c0614f5bd489be29ce8e8c",
   "stamps": {
     "events": [
       {
@@ -312,7 +312,7 @@
     "walked": 17,
     "brokenAtEventId": null,
     "brokenReason": null,
-    "currentHead": "41365d4b34d9f5afffa4b3cb12199bbf31b8c4bf6262922fce106ae7a1c920fd",
+    "currentHead": "b7626e4e717ac401fc3e8024ebaf0856b8830f58da34f199a2636dedb8e0cedb",
     "anchorMatchesWalkedHead": false,
     "clockAnomalies": [],
     "signedCount": 17,
@@ -364,5 +364,6 @@
       "stdout": "\nRedLog bundle verification report\n========================================\nBundle dir       : <bundle>\nBundle version   : 4\nEngagement ID    : eng-provenance-vectors\nEvents walked    : 17\nManifest checksum: matches (not an authenticated source identity)\nChain            : INTACT\nChain-head match : yes (recomputed matches manifest.chainHead)\nSeal             : SEALED (export 00000000-0000-4000-8000-000000000038; it follows the delivered chain directly)\n                   rows before it and the manifest are as exported\nSignatures       : 17 verified\nSigner           : op-provenance  sha256:5df840e88a41a05b32c8c076086ae442d696f8556d8e3452d2738f96722e8e0d\n  compare these fingerprints with the operator out of band;\n  a key taken from this bundle only proves the bundle agrees with itself\nLogged tier      : 1 rows present in events_logged.jsonl\n                   (not chained or signed; digest matches; bytes sealed by the export)\nAttachments      : 0 match the digest recorded at capture\nManifest files   : 5 verified (sha256 matches)\n",
       "stderr": ""
     }
-  }
+  },
+  "verifierSha256": "f3a760949404417c031867cb64c800fe9891ce180eac92d952a8b94bba22de77"
 }

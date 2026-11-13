@@ -47,7 +47,7 @@ import { vi } from 'vitest'
 // this is reported by the repository's secret scanner as a real credential.
 const fakeCredential = (...parts: string[]): string => ['pass', 'word', '='].join('') + parts.join('')
 import {
-  appVerifyView, clockControl, digestRows, dumpRows, packDir, runPythonVerifier, unpackTo, writeOperatorKeys, type GoldenExpected
+  appVerifyView, clockControl, digestRows, dumpRows, packDir, runPythonVerifier, sha256, unpackTo, writeOperatorKeys, type GoldenExpected
 } from './golden-pre071-generate'
 
 export const ENG = 'eng-provenance-vectors'
@@ -72,6 +72,10 @@ export interface ProvenanceExpected {
   pythonVerify: { status: number | null; stdout: string; stderr: string }
   /** What both verifiers say about CLOCK_BUNDLE. */
   clockAnomaly: { bundleVerify: Record<string, unknown>; pythonVerify: { status: number | null; stdout: string; stderr: string } }
+  /** sha256 of the tools/redlog-verify.py both bundles embed. The seal's
+   *  manifestSha256 covers its checksum, so the record holds only while the
+   *  verifier is byte for byte this one. */
+  verifierSha256: string
 }
 
 /** Faking the clock module for the generator; the monotonic counter follows
@@ -214,6 +218,8 @@ export async function generateProvenanceVectors(out: string): Promise<Provenance
     const seen = unpackTo(path.join(out, BUNDLE), path.join(work, 'unpacked', 'bundle'))
     const seenClock = unpackTo(path.join(out, CLOCK_BUNDLE), path.join(work, 'unpacked', 'bundle-clock'))
     const { events: chained, events_logged: logged } = rows
+    const verifierSha256 = sha256(fs.readFileSync(path.join(seen, 'redlog-verify.py')))
+    if (sha256(fs.readFileSync(path.join(seenClock, 'redlog-verify.py'))) !== verifierSha256) throw new Error('vectors: the two bundles embed different verifiers')
     const expected: ProvenanceExpected = {
       generatedFrom: 'test/fixtures/provenance-vectors-generate.ts (Spec 071 T031)',
       ...digestRows({ events: chained, events_logged: logged }),
@@ -221,7 +227,8 @@ export async function generateProvenanceVectors(out: string): Promise<Provenance
       appVerify,
       bundleVerify: verifyBundleDir(seen) as unknown as Record<string, unknown>,
       pythonVerify: runPythonVerifier(seen),
-      clockAnomaly: { bundleVerify: verifyBundleDir(seenClock) as unknown as Record<string, unknown>, pythonVerify: runPythonVerifier(seenClock) }
+      clockAnomaly: { bundleVerify: verifyBundleDir(seenClock) as unknown as Record<string, unknown>, pythonVerify: runPythonVerifier(seenClock) },
+      verifierSha256
     }
     fs.writeFileSync(path.join(out, 'expected.json'), JSON.stringify(expected, null, 2) + '\n')
     return expected

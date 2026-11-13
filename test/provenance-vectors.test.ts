@@ -19,16 +19,20 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { requires } from './helpers/requires'
-import { runPythonVerifier, unpackTo } from './fixtures/golden-pre071-generate'
+import { VERIFIER, runPythonVerifier, sha256, unpackTo } from './fixtures/golden-pre071-generate'
 import { BUNDLE, CLOCK_BUNDLE, clockMockVectors, generateProvenanceVectors, type ProvenanceExpected } from './fixtures/provenance-vectors-generate'
 
 const sqlite = requires('better-sqlite3')
 const python = requires('python-cryptography')
 const FIXTURE = path.join(__dirname, 'fixtures', 'provenance-vectors')
 const WRITE = process.env.REDLOG_WRITE_PROVENANCE_VECTORS === '1'
-const STALE = 'test/fixtures/provenance-vectors does not match what provenance-vectors-generate.ts writes with this checkout. ' +
-  'If this commit changes what new rows carry on purpose, regenerate with ' +
-  '`REDLOG_WRITE_PROVENANCE_VECTORS=1 npx vitest run test/provenance-vectors.test.ts`, review the diff, and say so in the commit.'
+const REGENERATE = 'regenerate with `REDLOG_WRITE_PROVENANCE_VECTORS=1 npx vitest run test/provenance-vectors.test.ts`, review the diff, and say so in the commit.'
+/** Every bundle embeds tools/redlog-verify.py and the seal's manifestSha256
+ *  covers its checksum, so the record depends on the verifier's exact bytes. */
+const verifierLine = (): string =>
+  `The bundles' embedded tools/redlog-verify.py: sha256 ${expected?.verifierSha256 ?? '(not recorded)'} recorded, ${sha256(fs.readFileSync(VERIFIER))} now.`
+const stale = (): string => 'test/fixtures/provenance-vectors does not match what provenance-vectors-generate.ts writes with this checkout. ' +
+  `${verifierLine()} If this commit changes what new rows carry on purpose, ${REGENERATE}`
 
 async function regenerate(out: string): Promise<ProvenanceExpected> {
   vi.resetModules()
@@ -189,18 +193,23 @@ function manifestOf(root: string): Record<string, unknown> {
 }
 
 sqlite.it('the generator writes the same rows, files and manifests today: the stamp\'s bytes are pinned', async () => {
+  // Checked first, so a changed verifier is named as that and not as a seal
+  // whose manifestSha256 moved for no visible reason.
+  expect(sha256(fs.readFileSync(VERIFIER)), 'tools/redlog-verify.py is not the verifier test/fixtures/provenance-vectors was recorded with. ' +
+    `Every bundle embeds it and the seal's manifestSha256 covers its checksum, so every bundle row after it differs too. ${verifierLine()} ` +
+    `If the verifier changed on purpose, ${REGENERATE}`).toBe(expected.verifierSha256)
   const out = path.join(tmp('regen'), 'provenance-vectors')
   const got = await regenerate(out)
-  expect({ rows: got.rows, rowsSha256: got.rowsSha256, stamps: got.stamps }, STALE)
+  expect({ rows: got.rows, rowsSha256: got.rowsSha256, stamps: got.stamps }, stale())
     .toEqual({ rows: expected.rows, rowsSha256: expected.rowsSha256, stamps: expected.stamps })
   for (const name of [BUNDLE, CLOCK_BUNDLE]) {
     const mine = unpackTo(path.join(out, name), path.join(tmp('mine'), 'bundle'))
     const theirs = committed(name)
-    expect(rowFiles(mine), `${name}: ${STALE}`).toEqual(rowFiles(theirs))
+    expect(rowFiles(mine), `${name}: ${stale()}`).toEqual(rowFiles(theirs))
     expect(rowFiles(mine).length, name).toBeGreaterThanOrEqual(4)
     for (const f of rowFiles(mine)) {
-      expect(fs.readFileSync(path.join(mine, f)).equals(fs.readFileSync(path.join(theirs, f))), `${name} ${f}: ${STALE}`).toBe(true)
+      expect(fs.readFileSync(path.join(mine, f)).equals(fs.readFileSync(path.join(theirs, f))), `${name} ${f}: ${stale()}`).toBe(true)
     }
-    expect(manifestOf(mine), `${name} manifest.json: ${STALE}`).toEqual(manifestOf(theirs))
+    expect(manifestOf(mine), `${name} manifest.json: ${stale()}`).toEqual(manifestOf(theirs))
   }
 }, 60_000)

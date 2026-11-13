@@ -585,7 +585,7 @@
     "sealVersion": 1,
     "exportId": "00000000-0000-4000-8000-000000000043",
     "bundleVersion": 4,
-    "manifestSha256": "e37509daacfc81df0c5d69cd0aab3be0989289c45edf65269b006af0e1018fb9",
+    "manifestSha256": "ee014e40ad985cd595790bfb246698b2313a6aa92d874ed6389bf3d50aef680b",
     "events": {
      "count": 18,
      "bytes": 19828,
@@ -979,8 +979,8 @@
    },
    "bundleEvents": {
     "bytes": 21141,
-    "sha256": "b981d4a849b674f7cffe7753a11d40a40c6788adcc2139a00a050f0192ebf9d1",
-    "normalizedSha256": "c0893b7a0facc5ee15d91a854861ed06ae921c3c5401890739659369df2c2492",
+    "sha256": "f80cf76b0b2b08893e598916f66f9308009a8018c16a9f79635b5a24a14f60b5",
+    "normalizedSha256": "cf6824280d557ab030e2a4cbdb5ae858a96b482b52925086896ab8c6c63a85fc",
     "rows": 19
    },
    "bundleLogged": {
@@ -1001,16 +1001,17 @@
     "redlog-verify.py",
     "verify.cmd",
     "verify.sh"
-   ]
+   ],
+   "bundleVerifierSha256": "f3a760949404417c031867cb64c800fe9891ce180eac92d952a8b94bba22de77"
   },
   "final": {
    "json": {
     "rows": 28,
-    "normalizedSha256": "6ffcbb48a5f6c69d7f26460d96ac0573a797e13acc0611d31b2b2968a9df7d8d"
+    "normalizedSha256": "993c5cdf70f33c7c66bacfa6b03b08722b568a8ea28369ab803974dc947a1d15"
    },
    "ndjson": {
     "rows": 28,
-    "normalizedSha256": "6ffcbb48a5f6c69d7f26460d96ac0573a797e13acc0611d31b2b2968a9df7d8d"
+    "normalizedSha256": "993c5cdf70f33c7c66bacfa6b03b08722b568a8ea28369ab803974dc947a1d15"
    }
   }
  }
