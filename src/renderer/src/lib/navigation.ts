@@ -6,7 +6,7 @@ import type { SettingsPage } from '../components/Settings'
 //
 // Two pages take a query: `scope` a `candidate` (a target to add), and
 // `captureControl` a `source` — the capture health id of the row to land on
-// (`agent-claude-code`, `screenshot`, `clipboard`, …). A warning about one
+// (`agent-claude-code`, `screenshot`, `file-watcher`, …). A warning about one
 // source used to open the whole page and leave the operator to find it.
 
 /** What a link may carry to the page it opens. */

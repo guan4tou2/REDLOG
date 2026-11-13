@@ -57,7 +57,7 @@ describeDB('pause gate (v0.9.5)', () => {
   it('drops passive capture while paused — nothing reaches the DB or the chain', () => {
     const before = getEventCount()
     bus.pause()
-    for (const t of ['shell', 'agent', 'scanner', 'browser', 'dns', 'pivot', 'clipboard', 'process', 'loot', 'screenshot', 'http_navigation', 'file_transfer', 'cleanup']) {
+    for (const t of ['shell', 'agent', 'scanner', 'browser', 'dns', 'pivot', 'process', 'loot', 'screenshot', 'http_navigation', 'file_transfer', 'cleanup']) {
       expect(insert(t, { subtype: 'x', command: `cmd-${t}` }), `${t} should be dropped`).toBeNull()
     }
     expect(getEventCount()).toBe(before)

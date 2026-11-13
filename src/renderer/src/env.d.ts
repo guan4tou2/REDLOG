@@ -594,7 +594,7 @@ interface CaptureSourceInfo {
   ownShellOutputAt?: number | null
   /** `terminal` only: the shell that sent that last command. */
   ownShellName?: string | null
-  /** E3: a plugin-contributed capture producer (pcap, transparent-proxy, a c2
+  /** E3: a plugin-contributed capture producer (pcap, a c2
    *  tailer). Display only — it never drives the recording verdict and, being
    *  optional/manual, is never surfaced as a "problem" to fix. */
   informational?: boolean

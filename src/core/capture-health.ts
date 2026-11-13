@@ -30,7 +30,7 @@ import { eventBus } from './event-bus'
 //
 // There is deliberately no `idle`. It used to sit between `active` and
 // `absent`, and what it measured was the OPERATOR, not the capture: a terminal
-// with nobody typing in it, a clipboard nobody copied to, a file watcher over
+// with nobody typing in it, a file watcher over
 // a directory nobody touched. Worse, it was windowed — ten minutes — so the
 // same machine with the same configuration flipped from healthy to amber and
 // back with nothing changed, which teaches an operator to ignore the one
@@ -52,7 +52,7 @@ export interface CaptureSource {
   hookId?: string
   /** Config switch state. `undefined` = always on, no switch to offer. */
   enabled?: boolean
-  /** Dotted config path the switch writes, e.g. `packMembers.clipboard`. */
+  /** Dotted config path the switch writes, e.g. `packMembers.fileWatcher`. */
   configPath?: string
   /** For a pack member: the pack's own path. Turning the member ON has to turn
    *  its pack on too, or the operator flips a switch and the row stays `off` —
@@ -69,7 +69,7 @@ export interface CaptureSource {
    *  rather than the hardcoded core list. Informational sources are DISPLAY
    *  ONLY — they are appended after the verdict is computed and never feed
    *  `verdict`/`recording`, so a manual producer that the operator has not run
-   *  (pcap-capture, transparent-proxy, a c2 tailer…) can never tip the
+   *  (pcap-capture, a c2 tailer…) can never tip the
    *  recording indicator amber. See computeCaptureHealth. */
   informational?: boolean
   /** Human label for an informational source (the plugin's own name), since it
@@ -230,7 +230,7 @@ export function noteDbError(source: string, err: unknown): void {
   healthCache = null
 }
 // A capture-side failure that belongs to ONE source: the screen grab came
-// back empty, the tailer's file vanished, the clipboard read threw. These used
+// back empty, the tailer's file vanished. These used
 // to go through `noteDbError`, which exists for "writing evidence is broken"
 // and pins the whole verdict to `dark`. A camera that cannot see the screen is
 // not a dark log — every other source is still recording — and reporting it
@@ -332,12 +332,6 @@ export function _configureAgentActivityProbe(opts: { fs?: ProbeFs } | null | und
 // this window. Producers heartbeat roughly every 15s, so 60s tolerates a
 // missed beat or two without flapping.
 const PRODUCER_HEARTBEAT_WINDOW_MS = 60 * 1000
-
-/** Producers that share the mitmproxy addon's subtypes with the regular proxy,
- *  and the `proxy_mode` stamp that is theirs alone (Spec 060 FR-011). */
-const PROXY_MODE_PRODUCERS: Record<string, string> = {
-  'transparent-proxy.mitmproxy-transparent': 'transparent'
-}
 
 // System events (api_started/session_start) are RedLog's own housekeeping — they
 // don't prove anything is being captured, so they never count as "recording".
@@ -542,11 +536,7 @@ function computeCaptureHealth(now: number): CaptureHealth {
   // mitmproxy addon writes scanner http_request/http_error events.
   // mitmproxy and the connection monitor both land on agent_type='scanner';
   // split them by subtype so one does not light the other's indicator.
-  // A transparent-proxy event is not the regular proxy's: both run the same
-  // addon and emit the same subtypes, and `proxy_mode` is the only thing that
-  // tells them apart. Rows from before the stamp count as regular.
-  const mitmLast = lastEventFor(`agent_type = 'scanner' AND subtype NOT IN ('connection','connection_end')
-    AND COALESCE(json_extract(data,'$.proxy_mode'), 'regular') != 'transparent'`)
+  const mitmLast = lastEventFor(`agent_type = 'scanner' AND subtype NOT IN ('connection','connection_end')`)
   const connLast = newestEvent(
     ['connection', 'connection_end'].map((s): Probe => [`agent_type = 'scanner' AND subtype = ?`, [s]])
   ).t
@@ -566,11 +556,9 @@ function computeCaptureHealth(now: number): CaptureHealth {
   const processLast = lastEventFor(`agent_type = 'process'`)
   const fileWatcherLast = lastEventFor(`agent_type = 'file_transfer' AND json_extract(data,'$.source') = 'file-watcher'`)
 
-  // v0.9.7: clipboard, the agent transcript tailer and the screenshot agent
-  // are three of the loudest sources in the product and none of them appeared
-  // on this card — an operator could have the tailer off and the health
-  // readout would still say healthy.
-  const clipboardLast = lastEventFor(`agent_type = 'clipboard'`)
+  // v0.9.7: the agent transcript tailer and the screenshot agent are among
+  // the loudest sources in the product and neither appeared on this card — an
+  // operator could have the tailer off and the readout would still say healthy.
   // One per agent: a Claude Code tailer that has gone quiet must not be hidden
   // by a busy Codex one. `data.agent` is the adapter's agentKind.
   const screenshotLast = lastEventFor(`agent_type = 'screenshot'`)
@@ -634,9 +622,7 @@ function computeCaptureHealth(now: number): CaptureHealth {
     //
     // A pack MEMBER is on when its pack is on and its own switch selects it,
     // so both halves are read — by the same rule the capture runtime uses
-    // (isMemberSelected). An unset member follows its default: on for most,
-    // which keeps the pack a preset; off for the clipboard, which needs an
-    // explicit yes (#224).
+    // (isMemberSelected). An unset member is on, which keeps the pack a preset.
     const packOn = opts.packPath ? cfgFlag(opts.packPath) === true : undefined
     const member = opts.configPath?.startsWith('packMembers.')
       ? opts.configPath.slice('packMembers.'.length) as PackMemberId
@@ -730,7 +716,6 @@ function computeCaptureHealth(now: number): CaptureHealth {
     mk('browser-console', browserLast),
     mk('connection-monitor', connLast, { configPath: 'packMembers.connectionMonitor', packPath: 'packs.hostMonitors' }),
     mk('screenshot', screenshotLast),
-    mk('clipboard', clipboardLast, { configPath: 'packMembers.clipboard', packPath: 'packs.hostMonitors' }),
     mk('process-monitor', processLast, { configPath: 'packMembers.processMonitor', packPath: 'packs.hostMonitors' }),
     mk('file-watcher', fileWatcherLast, { configPath: 'packMembers.fileWatcher', packPath: 'packs.hostMonitors' })
   ].filter((src) => {
@@ -767,7 +752,7 @@ function computeCaptureHealth(now: number): CaptureHealth {
   // the built-ins (their namespaced `<pluginId>.<captureId>` ids are the only
   // ones carrying a dot). When a producer's manifest declares `emits`, we give
   // it a REAL feed readout — the last event of its agentType with one of those
-  // subtypes — so a live pcap/transparent-proxy/c2 tailer shows `active`, a
+  // subtypes — so a live pcap/c2 tailer shows `active`, a
   // stale one `idle`, an unrun one `off` (not a fault: a manual producer that
   // simply isn't running).
   const pluginSources: CaptureSource[] = hooks
@@ -776,16 +761,7 @@ function computeCaptureHealth(now: number): CaptureHealth {
       const emits = h.emits ?? []
       let last: number | null = null
       if (emits.length > 0) {
-        const mode = PROXY_MODE_PRODUCERS[h.id]
-        // The transparent-proxy producer is the one whose rows have an index
-        // of their own, and a partial index applies only to literal terms, so
-        // its agent type and mode are written into the SQL rather than bound.
-        const transparent = mode === 'transparent' && h.agentType === 'scanner'
-        last = newestEvent(emits.map((s): Probe => transparent
-          ? [`agent_type = 'scanner' AND json_extract(data,'$.proxy_mode') = 'transparent' AND subtype = ?`, [s]]
-          : [`agent_type = ? AND ${mode ? `json_extract(data,'$.proxy_mode') = ? AND ` : ''}subtype = ?`,
-            [h.agentType, ...(mode ? [mode] : []), s]]
-        )).t
+        last = newestEvent(emits.map((s): Probe => [`agent_type = ? AND subtype = ?`, [h.agentType, s]])).t
       }
       // E3: is the operator running this producer right now? A running producer
       // posts `system.producer_heartbeat` with its pluginId periodically; a

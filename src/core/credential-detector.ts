@@ -5,7 +5,7 @@
 // it only ever filled if an external agent posted to it, so by default it was
 // always empty. This derives credential use from capture that already runs:
 // a `-p` / `--password` on a command line, `user:pass@host` in a URL, an
-// `Authorization` header, or a secret copied to the clipboard.
+// `Authorization` header.
 //
 // ── What it records, and what it must never record ──────────────────────────
 //

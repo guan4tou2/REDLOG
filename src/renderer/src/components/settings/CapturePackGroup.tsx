@@ -6,7 +6,7 @@ import { FieldGroup, type ConfigState } from './SettingsShared'
 import { SourceLastSeen } from './SourceLastSeen'
 import { CheckRow } from './CheckRow'
 import { SOURCE_ROW } from '../../lib/sourceRow'
-import { isMemberSelected, OPT_IN_MEMBERS } from '../../../../core/capture-packs'
+import { isMemberSelected } from '../../../../core/capture-packs'
 
 // One optional capture pack (Spec 035): a single switch for the project, and
 // its members' tuning beneath while it is on. A pack whose bundled plugin was
@@ -19,14 +19,8 @@ export type PackMemberId = NonNullable<keyof NonNullable<ConfigState['packMember
 
 /** One member of a pack that is on: its own switch, then its tuning.
  *
- *  A pack is a preset, not an atom. "Host monitors" bundles four sources and
- *  the clipboard is not like the other three — it samples whatever the
- *  operator copies anywhere on the machine, for the length of the engagement.
- *  All-or-nothing turned "I want process and connection monitoring but not my
- *  clipboard" into "then have neither". An unset switch follows the member's
- *  default — the same rule the capture runtime reads (isMemberSelected) — and
- *  the clipboard's default is off: it is never collected because a pack was
- *  turned on, only because it was ticked (#224). */
+ *  A pack is a preset, not an atom. An unset switch is on — the same rule the
+ *  capture runtime reads (isMemberSelected). */
 export function PackMember({
   member, sourceId, title, hint, warn, config, setConfig, t, health, packOn, children
 }: {
@@ -48,7 +42,6 @@ export function PackMember({
   children?: ReactNode
 }): JSX.Element {
   const on = isMemberSelected(config.packMembers, member)
-  const optIn = OPT_IN_MEMBERS.has(member)
   return (
     <div className={`mt-2 ${SOURCE_ROW}`} tabIndex={-1} data-source-id={sourceId}>
       <p className="text-xs font-semibold text-redlog-text-dim">{title}</p>
@@ -61,9 +54,6 @@ export function PackMember({
         inputTestId={`pack-member-${member}`}
         label={t('settings.packMemberRecord')}
       />
-      {optIn && !on && (
-        <p className="text-xs text-redlog-text-faint" data-testid={`pack-member-optin-${member}`}>{t('settings.packMemberOptIn')}</p>
-      )}
       <p className="text-xs text-redlog-text-faint">{hint}</p>
       {/* When it last delivered. The switch says what was asked for; this says
           what arrived — the two are different questions and only one of them

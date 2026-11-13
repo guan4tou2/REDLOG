@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory() as directory:
     root = pathlib.Path(directory)
     pending = []
     ns = dict(json=json, time=time, hashlib=hashlib, urllib=urllib, urlparse=urlparse, VERBOSE=False, SKIP_STATIC=False, threading=__import__('threading'),
-              PENDING_TTL_SEC=300, VERIFY_HOST='redlog.verify.invalid', PROXY_MODE='regular',
+              PENDING_TTL_SEC=300, VERIFY_HOST='redlog.verify.invalid',
               http=stub, tcp=stub, tls=stub, ctx=types.SimpleNamespace(log=log),
               _SPOOL_LOCK=__import__('threading').Lock(), _SEND_SLOTS=__import__('threading').BoundedSemaphore(64),
               _SEND_QUEUE=types.SimpleNamespace(put=pending.append),

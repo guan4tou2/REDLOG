@@ -22,16 +22,16 @@ const GOLDEN_OPEN = [
   'showWifiName', 'screenshotAgent.configure', 'hook:resetProjectCaches', 'alertRuntime.resetOnProjectSwitch',
   'alertRuntime.configure', 'lootDetector.configure', 'configureCaptureHealth', 'configureRedaction', 'hook:loadPlugins',
   'setVpnAdapters', 'configureTerminal', 'hook:wireTerminalIngest', 'configureIngest', 'hook:startProjectServices',
-  'configureClipboardMonitor', 'startClipboardMonitor', 'configureFileWatcher', 'configureConnectionMonitor',
-  'configurePowershellTranscript', 'configureProcessMonitor', 'configureAgentTailer', 'configureClipboardMonitor',
+  'configureFileWatcher', 'configureConnectionMonitor',
+  'configurePowershellTranscript', 'configureProcessMonitor', 'configureAgentTailer',
   'configureFileWatcher', 'configureConnectionMonitor', 'configureProcessMonitor', 'configurePowershellTranscript',
   'configureAgentTailer'
 ]
 const GOLDEN_SAVE = [
   'configureIngest', 'logConfigDiff', 'showWifiName', 'publishLink', 'broadcastIPStatus', 'alertRuntime.configure',
   'screenshotAgent.configure', 'configureCaptureHealth', 'stopManagedHttpCapture', 'startManagedHttpCapture',
-  'scheduleScopeRecompute', 'configureTerminal', 'lootDetector.configure', 'configureClipboardMonitor',
-  'configureFileWatcher', 'configureConnectionMonitor', 'configureProcessMonitor', 'configureClipboardMonitor',
+  'scheduleScopeRecompute', 'configureTerminal', 'lootDetector.configure',
+  'configureFileWatcher', 'configureConnectionMonitor', 'configureProcessMonitor',
   'configureFileWatcher', 'configureConnectionMonitor', 'configureProcessMonitor', 'configurePowershellTranscript',
   'configureAgentTailer', 'configureRedaction', 'setVpnAdapters'
 ]
@@ -39,7 +39,7 @@ const GOLDEN_SAVE = [
 /** Calls that start, stop or restart a capture source (or re-arm the IP
  *  lookup timer / the screenshot interval). */
 const CAPTURE_CALLS = new Set([
-  'configureClipboardMonitor', 'startClipboardMonitor', 'configureFileWatcher', 'configureConnectionMonitor',
+  'configureFileWatcher', 'configureConnectionMonitor',
   'configureProcessMonitor', 'configurePowershellTranscript', 'configureAgentTailer',
   'stopManagedHttpCapture', 'startManagedHttpCapture', 'screenshotAgent.configure', 'alertRuntime.configure'
 ])
@@ -81,8 +81,6 @@ function harness(): { deps: ConfigApplyDeps; log: string[]; args: Array<[string,
     configureTerminal: rec('configureTerminal'),
     ingestCollaborators: () => ({ collaborators: true }),
     configureIngest: rec('configureIngest'),
-    configureClipboardMonitor: rec('configureClipboardMonitor'),
-    startClipboardMonitor: rec('startClipboardMonitor'),
     configureFileWatcher: rec('configureFileWatcher'),
     configureConnectionMonitor: rec('configureConnectionMonitor'),
     configurePowershellTranscript: rec('configurePowershellTranscript'),
@@ -123,11 +121,10 @@ describe('config apply plan: the dependency map', () => {
     ['personal domains', (c) => { c.scope.personalDomains = ['me.test'] }, []],
     ['route terminals through the proxy', (c) => { c.httpCapture.routeTerminals = true }, []],
     ['the legacy HUD block', (c) => { (c as unknown as { overlay: unknown }).overlay = { autoShow: false } }, []],
-    ['clipboard poll interval', (c) => { c.clipboard.pollMs = 900 }, ['clipboardOptions']],
     ['connection monitor poll', (c) => { c.connectionMonitor = { pollMs: 5000 } }, ['connectionMonitorOptions']],
     ['process monitor ignore list', (c) => { c.processMonitor = { pollMs: 500, ignoreCommands: ['ls'] } }, ['processMonitorOptions']],
     ['file watcher paths', (c) => { c.fileWatcher = { watchPaths: ['/w'], ignorePatterns: [] } }, ['fileWatcherOptions']],
-    ['the host monitors pack', (c) => { c.packs!.hostMonitors = true }, ['packClipboard', 'packFileWatcher', 'packConnectionMonitor', 'packProcessMonitor']],
+    ['the host monitors pack', (c) => { c.packs!.hostMonitors = true }, ['packFileWatcher', 'packConnectionMonitor', 'packProcessMonitor']],
     ['one pack member', (c) => { c.packMembers = { processMonitor: false } }, ['packProcessMonitor']],
     ['the Windows output pack', (c) => { c.packs!.windowsOutput = true }, ['packPowershellTranscript']],
     ['an AI source', (c) => { c.agentTailer = { sources: { 'claude-code': { enabled: true } } } }, ['agentTailer']],
@@ -195,7 +192,7 @@ describe('config apply plan: the dependency map', () => {
 
   it('plugins and hook exclusions plan what the diff cannot see, and only that', () => {
     expect(steps(planConfigApply(input(cfg()), input(cfg()), 'plugins-changed'))).toEqual(
-      ['packClipboard', 'packFileWatcher', 'packConnectionMonitor', 'packProcessMonitor', 'packPowershellTranscript', 'agentTailer'])
+      ['packFileWatcher', 'packConnectionMonitor', 'packProcessMonitor', 'packPowershellTranscript', 'agentTailer'])
     expect(steps(planConfigApply(input(cfg()), input(cfg()), 'hook-config'))).toEqual(['agentTailer'])
   })
 
@@ -269,16 +266,14 @@ describe('config apply: one path for every entry point', () => {
     expect(h.log.filter((c) => CAPTURE_CALLS.has(c))).toEqual(['stopManagedHttpCapture', 'startManagedHttpCapture'])
   })
 
-  it('turning the host monitors pack on reconfigures its four members and nothing else', () => {
+  it('turning the host monitors pack on reconfigures its three members and nothing else', () => {
     const before = cfg()
     openWith(before)
     h.log.length = 0
     h.args.length = 0
     save(before, cfg((c) => { c.packs!.hostMonitors = true }))
     expect(h.log.filter((c) => CAPTURE_CALLS.has(c)).sort()).toEqual(
-      ['configureClipboardMonitor', 'configureConnectionMonitor', 'configureFileWatcher', 'configureProcessMonitor'])
-    // The clipboard is opt-in inside the pack: reconfigured, but still off.
-    expect(h.args.find(([n]) => n === 'configureClipboardMonitor')?.[1]).toEqual({ enabled: false })
+      ['configureConnectionMonitor', 'configureFileWatcher', 'configureProcessMonitor'])
     expect(h.args.find(([n]) => n === 'configureProcessMonitor')?.[1]).toEqual({ enabled: true })
   })
 
@@ -296,10 +291,10 @@ describe('config apply: one path for every entry point', () => {
   it('plans against what was last applied, not against the file', () => {
     const before = cfg()
     openWith(before)
-    save(before, cfg((c) => { c.clipboard.pollMs = 700 }))
+    save(before, cfg((c) => { c.connectionMonitor = { pollMs: 700 } }))
     h.log.length = 0
     // The same edit arriving again (a re-sent autosave) changes nothing applied.
-    save(cfg(), cfg((c) => { c.clipboard.pollMs = 700 }))
+    save(cfg(), cfg((c) => { c.connectionMonitor = { pollMs: 700 } }))
     expect(h.log.filter((c) => CAPTURE_CALLS.has(c))).toEqual([])
   })
 
@@ -358,7 +353,7 @@ describe('config apply: one path for every entry point', () => {
       const inner = h.deps.lootConfigure
       h.deps.lootConfigure = (opts) => {
         inner(opts)
-        applier.apply({ reason: 'save', identity: open, next: cfg((c) => { c.clipboard.pollMs = 1 }), diskPrev: before })
+        applier.apply({ reason: 'save', identity: open, next: cfg((c) => { c.connectionMonitor = { pollMs: 1 } }), diskPrev: before })
         // The operator switches project while this apply is running.
         h.current.delete(1)
         h.current.add(2)
@@ -367,7 +362,7 @@ describe('config apply: one path for every entry point', () => {
       // vpnAdapters comes after the loot detector: it must not have run.
       expect(h.log).not.toContain('setVpnAdapters')
       // The queued save belonged to the old project.
-      expect(h.log).not.toContain('configureClipboardMonitor')
+      expect(h.log).not.toContain('configureConnectionMonitor')
       // And what was "applied" is not recorded as this save.
       expect(applier.applied()?.input.config.loot?.disabledRules).toEqual(DEFAULT_CONFIG.loot!.disabledRules)
     })
@@ -376,12 +371,12 @@ describe('config apply: one path for every entry point', () => {
       openWith(cfg())
       h.current.delete(1)
       h.log.length = 0
-      expect(applier.apply({ reason: 'save', identity: open, next: cfg((c) => { c.clipboard.pollMs = 2 }), diskPrev: cfg() })).toBeNull()
+      expect(applier.apply({ reason: 'save', identity: open, next: cfg((c) => { c.connectionMonitor = { pollMs: 2 } }), diskPrev: cfg() })).toBeNull()
       expect(h.log).toEqual([])
     })
 
     it('after a close the next project starts from nothing applied', () => {
-      openWith(cfg((c) => { c.clipboard.pollMs = 3 }))
+      openWith(cfg((c) => { c.connectionMonitor = { pollMs: 3 } }))
       applier.reset()
       expect(applier.applied()).toBeNull()
       h.current.clear()

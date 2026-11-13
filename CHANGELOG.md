@@ -7,6 +7,16 @@ for full commit body + generated notes.
 
 - Removed `redlog-share-worker/`. Nothing in the app called it, and the
   Settings ▸ Cloud share page the README pointed to no longer exists.
+- Removed the bundled `transparent-proxy` plugin, which rewrote this host's
+  nat rules as root. HTTP capture runs alongside the operator's own proxy. The
+  mitmproxy addon no longer stamps `proxy_mode` on HTTP events. If a redirect
+  is still up, run the plugin's `transparent-proxy.sh down <port>` as root
+  before upgrading; the script that removes the nat rules goes with the plugin.
+- Removed clipboard monitoring: the Host monitors pack is process, connection
+  and file monitoring, and the timeline has no clipboard lane. Rows a project
+  already holds open in the system lane with the generic reader. A
+  `clipboard` section or `packMembers.clipboard` left in a project's config is
+  ignored, and the external API no longer accepts `agent_type: clipboard`.
 - With only an Exposed IP list set, an address that is not on it is now shown
   as unknown instead of safe in the status bar, the IP card, the HUD and the
   timeline. Nothing matched a Safe IP list, so nothing says it is safe. Exposed

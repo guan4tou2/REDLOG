@@ -40,7 +40,6 @@ All 15 are first-class Timeline lanes (empty lanes auto-collapse):
 - `dns` — DNS resolutions and probes (`subtype: dns_query` / `dns_response`)
 - `pivot` — tunnel/pivot lifecycle — RedLog auto-detects from shell (see below)
 - `screenshot` — desktop captures (periodic + on-demand, SHA-256 hashed)
-- `clipboard` — clipboard changes (opt-in; SHA-256 + length always, redacted preview optional)
 - `file_transfer` — ingress/exfil — RedLog auto-detects from shell (see below)
 - `credential_use` — every attempted / successful credential use
 - `c2_checkin` — C2 beacon / callback
@@ -283,21 +282,6 @@ browser. `chrome://`, `about:`, `devtools:`, `view-source:` filtered out.
 | `subtype` | `navigation` |
 | `url`, `prev_url`, `host`, `title`, `tab_id` | the new location and its predecessor |
 | `mitre_ttp` | `T1071.001` (application-layer, web) |
-
-### `clipboard` events (opt-in)
-
-Off by default. When enabled in Settings ▸ Clipboard, RedLog polls (default
-1500 ms), hashes with SHA-256, dedupes by hash, and runs the loot detector.
-Credentials found in the content emit their own `loot` event; the clipboard
-event itself records only:
-
-| Key | Meaning |
-|-----|---------|
-| `subtype` | `clipboard_changed` |
-| `sha256` | SHA-256 of raw text (proves "this content was seen") |
-| `length`, `lines` | shape metrics |
-| `lootTypes` | credential types found (`aws_key`, `jwt`, …) — never the values |
-| `preview` | first 120 chars, run through redaction — **null** unless `storePreview` is on |
 
 ### `system.opsec_state_changed` events
 

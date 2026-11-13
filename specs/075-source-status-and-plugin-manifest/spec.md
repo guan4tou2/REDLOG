@@ -231,7 +231,7 @@
 
 > **Superseded（2026-11-13，修訂 C1、C4）**：FR-001 的「內建來源…**不**因此成為外掛」與 FR-002、FR-003 改為：基本層來源（Spec 076 FR-020）的描述在核心的表；內建與安裝的擴充功能 Source 的描述由 076 的 `toDescriptor` 從擴充功能 manifest 產生；兩者合成同一份清單，欄位不變。`scope` 欄位只剩 `machine`（`binding` 另由 manifest 宣告）。下方原文保留。
 
-- **FR-002** 內建來源的描述集中在核心的一張表，涵蓋今天 capture-health 列出的每一個來源（terminal、各 shell adapter、受管 HTTP proxy、browser-console、screenshot、connection-monitor、clipboard、process-monitor、file-watcher、每個官方 AI 整合）。這張表取代 starter-pack 的 `builtinProducers`、`STARTER_PACK_FALLBACK`、pack 外掛 manifest 與「哪些 shell 能接」的各份清單（plan「要取代的判斷」）。
+- **FR-002** 內建來源的描述集中在核心的一張表，涵蓋今天 capture-health 列出的每一個來源（terminal、各 shell adapter、受管 HTTP proxy、browser-console、screenshot、connection-monitor、process-monitor、file-watcher、每個官方 AI 整合）。這張表取代 starter-pack 的 `builtinProducers`、`STARTER_PACK_FALLBACK`、pack 外掛 manifest 與「哪些 shell 能接」的各份清單（plan「要取代的判斷」）。
 - **FR-003** 外掛 Source 的描述由其 manifest v2 機械地產生（FR-051）；外掛不能宣告 `owner`：一律是擷取控制頁上該來源的列。
 - **FR-004** 前置條件只由核心檢查並以事實回報（FR-010）。任何畫面都不得從描述文字推出依賴（取代 `ExternalCaptureGroup.tsx:108` 的 regex）。
 - **FR-005** 描述中不得出現工具名稱作為邏輯分支；工具名稱只出現在 `label` 與前置條件的資料中。今天寫死 producer id 的地方（`capture-health.ts:338-340` 的 `PROXY_MODE_PRODUCERS`、`hooks-manager.ts:599-614` 的 `checkAvailable` 分支）改為描述的資料。
@@ -332,7 +332,7 @@
   - `starter-pack`：內容是操作者自己的 shell 與 RedLog 自己的 proxy；停用它會讓擷取變暗，UI 從未提供這個選擇；改為核心描述表；
   - `pack-host-monitors`、`pack-windows-output`：manifest 是空的，唯一作用是當機器層開關，與專案層 `packs.<id>` 互相矛盾；程式碼本來就在核心（`capture-packs.ts:7-9`）；
   - `optional-plugins/*/plugin.json` 的 `kind: pack` 外殼：官方 AI adapter 是 app 程式碼（P4），不再被通用 loader 讀成第二份。
-- **FR-061** 保留為外掛的 bundled 項目：`builtin-tools`（bundled Processor，工具知識是資料，id 保留）；`pcap-capture`、`transparent-proxy`、`c2-tailers`（bundled Source，改寫為 v2 的 `files`、`requires`、`stop`、`elevated`）。
+- **FR-061** 保留為外掛的 bundled 項目：`builtin-tools`（bundled Processor，工具知識是資料，id 保留）；`pcap-capture`、`c2-tailers`（bundled Source，改寫為 v2 的 `files`、`requires`、`stop`、`elevated`）。
 - **FR-062** 使用者 Source 的步驟在核准之前不顯示；核准後顯示時標出來源外掛。
 - **FR-063** 提權步驟只執行經驗證的 root 擁有複本：在同一次提權中，先複製到 root 擁有的位置、驗證 `files` 中的 sha256、再從那裡執行；驗證失敗就中止並說明原因。
 

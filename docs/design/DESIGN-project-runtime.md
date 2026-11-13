@@ -122,8 +122,7 @@ on `main`:
 
 Held by the audit: the spool, retention and sample timers (runtime-owned),
 process/connection/file/PowerShell monitors (generation guards, identity read
-at write time), tailer timers (cleared on stop), clipboard (synchronous read),
-IP checks (machine data), `/api/events` and artifact add (already recheck).
+at write time), tailer timers (cleared on stop), IP checks (machine data), `/api/events` and artifact add (already recheck).
 `upgradeAnchor` failed closed by accident — its captured handle was closed,
 so the write threw. R1b made it deliberate: see §4.
 

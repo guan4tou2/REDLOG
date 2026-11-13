@@ -94,7 +94,7 @@
       "type": "function",
       "function": {
         "name": "redlog_search",
-        "description": "Search across all RedLog events (shell commands, targets, clipboard, loot) by keyword.",
+        "description": "Search across all RedLog events (shell commands, targets, loot) by keyword.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -293,7 +293,7 @@
           "properties": {
             "agent_type": {
               "type": "string",
-              "description": "Filter by type: shell, agent, dns, pivot, screenshot, marker, loot, cleanup, file_transfer, http_navigation, clipboard, credential_use, c2_checkin, system"
+              "description": "Filter by type: shell, agent, dns, pivot, screenshot, marker, loot, cleanup, file_transfer, http_navigation, credential_use, c2_checkin, system"
             },
             "target": {
               "type": "string",

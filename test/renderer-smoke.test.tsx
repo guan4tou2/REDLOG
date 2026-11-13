@@ -27,9 +27,12 @@ import { BookmarksView } from '../src/renderer/src/components/BookmarksView'
 import { ScreenshotsView } from '../src/renderer/src/components/ScreenshotsView'
 
 const AGENT_TYPES = [
-  'shell', 'dns', 'screenshot', 'clipboard', 'file_transfer',
+  'shell', 'dns', 'screenshot', 'file_transfer',
   'credential_use', 'c2_checkin', 'marker', 'loot', 'system',
-  'agent', 'scanner'
+  'agent', 'scanner',
+  // A kind this version does not know (a removed producer's rows, or a
+  // plugin's): it must fall back, not crash a view.
+  'retired_kind'
 ]
 
 let seq = 0
@@ -59,7 +62,7 @@ function makeEvent(agentType: string): Record<string, unknown> {
       user_context: 'root',
       bytes: 42,
       filename: 'loot.txt',
-      content: 'clipboard text'
+      content: 'some text'
     },
     hash: 'a'.repeat(64),
     prevHash: null,

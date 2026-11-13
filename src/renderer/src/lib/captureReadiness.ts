@@ -16,7 +16,7 @@ import { captureFacts } from '../../../core/capture-contract'
 // Capture sources, grouped by what they capture — not ranked.
 //
 // This was an ordered triple: shell hook, then agent tailer, then built-in
-// terminal, with everything else (mitmproxy, clipboard, screenshots, the file
+// terminal, with everything else (mitmproxy, screenshots, the file
 // and process watchers) declared "enrichment" and excluded from the
 // dark→recording path outright. Two things were wrong with that.
 //
@@ -62,7 +62,7 @@ export const CAPTURE_GROUPS: ReadonlyArray<{
   // Network detail that annotates the above rather than standing alone.
   { id: 'traffic', core: false, sources: ['browser-console', 'connection-monitor'] },
   // What was on screen or on disk.
-  { id: 'artifacts', core: false, sources: ['screenshot', 'clipboard', 'file-watcher', 'process-monitor'] }
+  { id: 'artifacts', core: false, sources: ['screenshot', 'file-watcher', 'process-monitor'] }
 ]
 
 // Minimal structural shape of a capture source. Both the main-process

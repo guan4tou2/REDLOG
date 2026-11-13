@@ -41,8 +41,8 @@ describe('lane palette', () => {
     // The table became a generated map, so coverage is structural rather than
     // a count — but assert LANES is still what feeds it.
     expect(SRC).toMatch(/LANES\.map\(\(id\) => \[id, LANE_COLOR\]\)/)
-    expect(lanes().length).toBe(18)
-    expect(new Set(lanes()).size).toBe(18)
+    expect(lanes().length).toBe(17)
+    expect(new Set(lanes()).size).toBe(17)
   })
 
   it('gives every lane the same neutral', () => {

@@ -14,7 +14,7 @@ import { commandOutputState } from '../../../core/content-contract'
 // v0.6.92 W-project: added `browser` (CDP console) between scanner and dns,
 // and `process` (spawn/exit) between scope and system so it doesn't dilute
 // the top attack-narrative lanes.
-export const LANES = ['shell', 'agent', 'http_navigation', 'scanner', 'browser', 'dns', 'pivot', 'screenshot', 'clipboard', 'file_transfer', 'credential_use', 'c2_checkin', 'marker', 'loot', 'cleanup', 'scope', 'process', 'system'] as const
+export const LANES = ['shell', 'agent', 'http_navigation', 'scanner', 'browser', 'dns', 'pivot', 'screenshot', 'file_transfer', 'credential_use', 'c2_checkin', 'marker', 'loot', 'cleanup', 'scope', 'process', 'system'] as const
 export type LaneId = (typeof LANES)[number]
 
 // Capture-group bands (docs/design/DESIGN-core-and-capture.md §6). Eighteen lanes is
@@ -29,7 +29,7 @@ export type BandId = 'commands' | 'traffic' | 'artifacts' | 'signals'
 export const BANDS: ReadonlyArray<{ id: BandId; lanes: readonly LaneId[] }> = [
   { id: 'commands', lanes: ['shell', 'agent', 'process'] },
   { id: 'traffic', lanes: ['http_navigation', 'scanner', 'browser', 'dns', 'pivot', 'c2_checkin'] },
-  { id: 'artifacts', lanes: ['screenshot', 'clipboard', 'file_transfer', 'loot'] },
+  { id: 'artifacts', lanes: ['screenshot', 'file_transfer', 'loot'] },
   { id: 'signals', lanes: ['marker', 'scope', 'credential_use', 'cleanup', 'system'] }
 ]
 export const BAND_OF: Record<LaneId, BandId> = Object.fromEntries(
@@ -127,7 +127,6 @@ export const LANE_LABEL_KEYS: Record<LaneId, string> = {
   dns: 'timeline.dns',
   pivot: 'timeline.pivot',
   screenshot: 'timeline.screenshot',
-  clipboard: 'timeline.clipboard',
   file_transfer: 'timeline.files',
   credential_use: 'timeline.credentialUse',
   c2_checkin: 'timeline.c2Checkin',

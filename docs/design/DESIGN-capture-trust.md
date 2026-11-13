@@ -174,7 +174,7 @@ inspector and exports, not in a new correlation engine.
   in a view does not count.
 - `hidePersonal` and personal domains act on events with a target. An event
   with no target is not thereby safe, nor thereby part of the engagement.
-- Host monitors (clipboard, process, connection) have no engagement context of
+- Host monitors (process, connection, file) have no engagement context of
   their own. They stay off by default and individually switchable, each stating
   what it reads.
 - Export checks run at export time, against everything the bundle carries:

@@ -175,8 +175,6 @@ function rawEventTitle(event: RedLogEvent, t: Translate): string {
     }
     case 'screenshot':
       return t('eventTitle.screenshot', { trigger: String(d.trigger ?? '') })
-    case 'clipboard':
-      return t('eventTitle.clipboard', { preview: (d.content as string)?.slice(0, 60) || '' })
     case 'file_transfer': {
       // A file the operator added is evidence they will want to find by name,
       // not one more transfer line: name, size and the start of its hash.

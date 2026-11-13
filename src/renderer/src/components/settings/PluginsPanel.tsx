@@ -51,12 +51,12 @@ const OWNED_ELSEWHERE = new Set<string>([
   'starter-pack',
   'builtin-tools',
   ...Object.values(CAPTURE_PACKS).map((p) => p.pluginId),
-  // The three that moved to Settings ▸ 擷取 pack ▸ 外部擷取來源. They ship with
+  // The two that moved to Settings ▸ 擷取 pack ▸ 外部擷取來源. They ship with
   // RedLog, so they are not plugins -- Burp does not put Proxy and Repeater in
   // Extensions either -- and the switch they had here started nothing: they
-  // need root or they rewrite this host's nat rules, so the operator runs the
+  // need root or a log path only the operator knows, so the operator runs the
   // command. A boolean over privileges the app does not hold cannot be honest.
-  'c2-tailers', 'pcap-capture', 'transparent-proxy'
+  'c2-tailers', 'pcap-capture'
 ])
 
 // Hiding a row hides a CHOICE, never a STATE. `isPackAvailable` requires the

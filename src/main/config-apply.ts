@@ -49,8 +49,6 @@ export interface ConfigApplyDeps {
   /** Open only: the loot detector, alert runtime and cast probe ingest needs. */
   ingestCollaborators(): Opts
   configureIngest(opts: Opts): void
-  configureClipboardMonitor(opts: Opts): void
-  startClipboardMonitor(): void
   configureFileWatcher(opts: Opts): unknown
   configureConnectionMonitor(opts: Opts): void
   configurePowershellTranscript(opts: Opts): unknown
@@ -94,7 +92,6 @@ export interface ConfigApplier {
 }
 
 const PACK_MEMBER: Partial<Record<ConfigApplyStep, PackMemberId>> = {
-  packClipboard: 'clipboard',
   packFileWatcher: 'fileWatcher',
   packConnectionMonitor: 'connectionMonitor',
   packProcessMonitor: 'processMonitor',
@@ -182,15 +179,6 @@ function runStep(step: ConfigApplyStep, ctx: StepContext, deps: ConfigApplyDeps)
       }, ctx.configChangedId)
       return
     }
-    case 'clipboardOptions':
-      deps.configureClipboardMonitor({
-        pollMs: cfg.clipboard?.pollMs ?? 1500,
-        storePreview: cfg.clipboard?.storePreview ?? false,
-        ...(open ? { identity: ctx.identity } : {}),
-        lootDetector: deps.lootDetector
-      })
-      if (open) deps.startClipboardMonitor()
-      return
     case 'fileWatcherOptions':
       void deps.configureFileWatcher({
         watchPaths: cfg.fileWatcher?.watchPaths ?? [],
@@ -225,7 +213,6 @@ function runStep(step: ConfigApplyStep, ctx: StepContext, deps: ConfigApplyDeps)
         scopeDispatch: deps.scopeDispatch
       })
       return
-    case 'packClipboard':
     case 'packFileWatcher':
     case 'packConnectionMonitor':
     case 'packProcessMonitor':
@@ -235,8 +222,7 @@ function runStep(step: ConfigApplyStep, ctx: StepContext, deps: ConfigApplyDeps)
       // here defaults a pack on.
       const member = PACK_MEMBER[step]!
       const enabled = isPackMemberOn(cfg, member, plugins())
-      if (member === 'clipboard') deps.configureClipboardMonitor({ enabled })
-      else if (member === 'fileWatcher') void deps.configureFileWatcher({ enabled })
+      if (member === 'fileWatcher') void deps.configureFileWatcher({ enabled })
       else if (member === 'connectionMonitor') deps.configureConnectionMonitor({ enabled })
       else if (member === 'processMonitor') deps.configureProcessMonitor({ enabled })
       else void deps.configurePowershellTranscript({ enabled })

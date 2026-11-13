@@ -63,10 +63,6 @@ const DEFAULTS: Record<string, Check> = {
   'retention.loggedTier.sweepIntervalHours': 24,
   'retention.bookmarks.keepDays': 0,
 
-  // 2.7 clipboard
-  'clipboard.pollMs': 1500,
-  'clipboard.storePreview': false,
-
   // 2.8 browser
   'browser.binary': '',
   'browser.proxy': 'http://127.0.0.1:6661',

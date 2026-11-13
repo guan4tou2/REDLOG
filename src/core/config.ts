@@ -103,15 +103,6 @@ export interface RedLogConfig {
      *  Store-wide cleanup lives under `retention.casts`. */
     maxCastBytes: number
   }
-  /** Clipboard monitor tuning. Whether it runs is the Host monitors pack
-   *  (`packs.hostMonitors`, Spec 035) — clipboard is sensitive, off by default. */
-  clipboard: {
-    /** poll interval in ms — Electron has no clipboard-change event, so we sample */
-    pollMs: number
-    /** store the redacted preview (first N chars) alongside hash+length; still
-        runs redaction; when false, only hash+length+loot-match-types are stored */
-    storePreview: boolean
-  }
   browser: {
     binary: string
     proxy: string
@@ -164,7 +155,7 @@ export interface RedLogConfig {
     pollMs?: number
   }
   /** Optional capture, one switch per pack (Spec 035): Host monitors (process,
-   *  connection, file, clipboard), AI agents (transcript tailers), Windows
+   *  connection, file), AI agents (transcript tailers), Windows
    *  output (PowerShell Start-Transcript follower). A pack runs only when this
    *  is on AND its bundled plugin is active (core/capture-packs.ts). All off by
    *  default. The members' own `enabled` keys were removed and are not read. */
@@ -173,14 +164,7 @@ export interface RedLogConfig {
     windowsOutput?: boolean
   }
   /** Per-member opt-outs inside a pack that is on. A pack is a PRESET, not an
-   *  atom: "Host monitors" bundles four sources, and the clipboard is not like
-   *  the other three. It samples whatever the operator copies anywhere on the
-   *  machine for the length of the engagement — a password out of their own
-   *  vault, a colleague's message, a client's data that was never in scope —
-   *  and the other three are why an operator turns the pack on. Making that
-   *  all-or-nothing means the answer to "I want process and connection
-   *  monitoring but not my clipboard" is "then have neither", and an operator
-   *  who wants the three takes the fourth without meaning to.
+   *  atom: an operator can want process monitoring without the file watcher.
    *
    *  ABSENT MEANS ON. The pack's switch is the preset; this only records where
    *  the operator has departed from it, so turning a pack on still means what
@@ -189,7 +173,6 @@ export interface RedLogConfig {
     processMonitor?: boolean
     connectionMonitor?: boolean
     fileWatcher?: boolean
-    clipboard?: boolean
     powershellTranscript?: boolean
   }
   /** Optional AI capture. Every tool needs its own installed integration,
@@ -294,10 +277,6 @@ export const DEFAULT_CONFIG: RedLogConfig = {
   },
   terminal: {
     maxCastBytes: 50 * 1024 * 1024
-  },
-  clipboard: {
-    pollMs: 1500,
-    storePreview: false
   },
   browser: { ...DEFAULT_BROWSER, extraArgs: [] },
   httpCapture: {

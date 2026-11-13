@@ -12,7 +12,6 @@ import { landOnSourceRow, SOURCE_ROW } from '../../lib/sourceRow'
 /** Which health row speaks for a pack member. The health ids are the source
  *  names the capture runtime uses; the pack member ids are the config keys. */
 const MEMBER_HEALTH_ID: Record<string, string> = {
-  clipboard: 'clipboard',
   fileWatcher: 'file-watcher',
   processMonitor: 'process-monitor',
   connectionMonitor: 'connection-monitor'
@@ -172,25 +171,6 @@ export default function CaptureControlPage({
         pack="hostMonitors" title={t('settings.packHostMonitors')} hint={t('settings.packHostMonitorsHint')}
         config={config} setConfig={setConfig} t={t} onOpenPlugins={onOpenPlugins}
       >
-        {/* Each member carries its own switch now. The clipboard is the
-            reason: it samples whatever the operator copies anywhere on the
-            machine for the length of the engagement, and bundling it with
-            three host monitors meant an operator who wanted those three took
-            it without deciding to. */}
-        <PackMember
-          member="clipboard" sourceId={MEMBER_HEALTH_ID.clipboard} title={t('settings.clipboardGroup')}
-          hint={t('settings.clipboardEnableHint')} warn={t('settings.clipboardScopeWarn')}
-          health={healthOf(MEMBER_HEALTH_ID.clipboard)} packOn={config.packs?.hostMonitors === true}
-          config={config} setConfig={setConfig} t={t}
-        >
-          <CheckRow
-            checked={config.clipboard?.storePreview === true}
-            onChange={(on) => setConfig({ ...config, clipboard: { ...config.clipboard, storePreview: on } })}
-            label={t('settings.clipboardStorePreview')}
-          />
-          <p className="text-xs text-redlog-text-faint">{t('settings.clipboardStorePreviewHint')}</p>
-        </PackMember>
-
         <PackMember
           member="fileWatcher" sourceId={MEMBER_HEALTH_ID.fileWatcher} title={t('settings.fileWatcherGroup')}
           hint={t('settings.fileWatcherEnableHint')}

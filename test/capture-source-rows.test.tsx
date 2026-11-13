@@ -17,7 +17,7 @@ let health: ReturnType<typeof vi.fn>
 const initial = {
   engagement: { id: 'capture-source-rows' },
   packs: { hostMonitors: true },
-  packMembers: { clipboard: true },
+  packMembers: { fileWatcher: true },
   screenshot: { intervalSec: 30 }
 } as unknown as ConfigState
 
@@ -33,7 +33,7 @@ beforeEach(() => {
   health = vi.fn().mockResolvedValue({
     verdict: 'healthy', hasRecorded: true, lastEventAt: null, checkedAt: Date.now(), dbErrorTotal: 0, dbErrorFirstAt: null,
     sources: [
-      { id: 'clipboard', installed: true, enabled: true, lastEventAt: 1_700_000_000_000, state: 'ready' },
+      { id: 'file-watcher', installed: true, enabled: true, lastEventAt: 1_700_000_000_000, state: 'ready' },
       { id: 'screenshot', installed: true, enabled: true, lastEventAt: null, state: 'unset' }
     ]
   })
@@ -52,7 +52,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks() })
 describe('capture source rows', () => {
   it('says when a source last delivered, in the source’s own row', async () => {
     draw()
-    const row = await screen.findByTestId('source-last-clipboard')
+    const row = await screen.findByTestId('source-last-file-watcher')
     expect(row.textContent).toContain('settings.source.lastReceived')
   })
 
@@ -64,13 +64,13 @@ describe('capture source rows', () => {
 
   it('leaves out the line for a source the snapshot does not carry', async () => {
     draw()
-    await screen.findByTestId('source-last-clipboard')
+    await screen.findByTestId('source-last-file-watcher')
     expect(screen.queryByTestId('source-last-process-monitor')).toBeNull()
   })
 
   it('says nothing about a source that is switched off and has never delivered', async () => {
     draw({ screenshot: { intervalSec: 0 } })
-    await screen.findByTestId('source-last-clipboard')
+    await screen.findByTestId('source-last-file-watcher')
     expect(screen.queryByTestId('source-last-screenshot')).toBeNull()
   })
 
@@ -79,7 +79,7 @@ describe('capture source rows', () => {
     draw()
     // The member row is still there — a failing health read must not blank the
     // controls that configure the capture.
-    expect(await screen.findByTestId('pack-member-clipboard')).toBeTruthy()
-    expect(screen.queryByTestId('source-last-clipboard')).toBeNull()
+    expect(await screen.findByTestId('pack-member-fileWatcher')).toBeTruthy()
+    expect(screen.queryByTestId('source-last-file-watcher')).toBeNull()
   })
 })

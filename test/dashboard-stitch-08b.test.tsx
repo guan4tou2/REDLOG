@@ -18,7 +18,7 @@ afterEach(() => { cleanup(); window.localStorage.clear(); _resetIssues() })
 
 const terminal = { id: 'terminal', state: 'ready', lastEventAt: Date.now() }
 const mitm = { id: 'mitmproxy', hookId: 'mitmproxy', installed: true, state: 'ready', lastEventAt: null }
-const clip = { id: 'clipboard', state: 'off', lastEventAt: null, configPath: 'clipboard.enabled', enabled: false }
+const clip = { id: 'file-watcher', state: 'off', lastEventAt: null, configPath: 'packMembers.fileWatcher', enabled: false }
 
 function draw(verification: Record<string, unknown> | undefined): void {
   const capture = {
@@ -53,7 +53,7 @@ describe('capture card summary', () => {
     expect(toggle.textContent).toContain('Other capture sources and status (3)')
     fireEvent.click(toggle)
     expect(toggle.getAttribute('aria-expanded')).toBe('true')
-    expect(screen.getByTestId('capture-row-clipboard')).toBeTruthy()
+    expect(screen.getByTestId('capture-row-file-watcher')).toBeTruthy()
     expect(screen.getByTestId('capture-manage-sources').textContent).toContain('Manage sources')
   })
 })

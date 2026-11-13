@@ -5,8 +5,8 @@ import type { ReactNode } from 'react'
 // The audit that produced this measured 38 checkboxes at 13x13 with a label
 // row 20px tall — under WCAG 2.5.8's 24x24 floor, and under this app's own
 // §3 rule that a hit area never drops below 32px even in tight density. They
-// are the highest-frequency controls in Settings (clipboard sampling, file
-// watching, loot rules) and the ones that most need a precise click, so the
+// are the highest-frequency controls in Settings (file watching, loot
+// rules) and the ones that most need a precise click, so the
 // smallest target in the app was also the most consequential.
 //
 // The box stays 16px — that is the icon size §4 allows and a 24px box would

@@ -39,7 +39,7 @@ describe('foldSystemRuns', () => {
   })
 
   it('only folds the system agent type, not other capture of the system', () => {
-    const items = [item('p', 'process'), item('f', 'file'), item('c', 'clipboard')]
+    const items = [item('p', 'process'), item('f', 'file'), item('c', 'cleanup')]
     expect(shape(foldSystemRuns(items, true))).toEqual(['p', 'f', 'c'])
   })
 

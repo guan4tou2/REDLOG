@@ -239,8 +239,7 @@ export function redact(text: string, rules: RedactionRules = effectiveRules()): 
 }
 
 /** Compose the masked view — replace each span with `char` repeated span-length
- *  times. Used by the UI (mask-by-default), by clipboard-monitor's preview when
- *  the operator has opted into a stored preview, and by `redlog-cli sanitize`
+ *  times. Used by the UI (mask-by-default) and by `redlog-cli sanitize`
  *  when writing an export bundle. The source text is never mutated in place —
  *  callers get a new string. */
 export function maskText(text: string, spans: RedactionResult['redacted'], char = '•'): string {

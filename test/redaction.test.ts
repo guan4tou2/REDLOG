@@ -11,8 +11,7 @@ import {
 // when adding a *different* module of the same name (secret-pattern regex
 // for the agent-transcript-tailer). The rename accidentally left the
 // still-live `src/core/redaction.ts` module (four-layer entropy/denylist
-// redaction, imported by `main/clipboard-monitor.ts` and
-// `main/index.ts`'s `configureRedaction`) with zero test coverage. This
+// redaction, imported by `main/index.ts`'s `configureRedaction`) with zero test coverage. This
 // file re-adds tests for its five public surfaces.
 
 beforeEach(() => {

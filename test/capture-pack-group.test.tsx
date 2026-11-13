@@ -33,36 +33,30 @@ describe('CapturePackGroup', () => {
     expect(screen.getByText('member tuning')).toBeTruthy()
   })
 
-  it('leaves the clipboard unticked until the operator ticks it (#224)', () => {
-    // A pack is a preset, not an atom. The clipboard samples whatever the
-    // operator copies anywhere on the machine for the length of the
-    // engagement, so turning "host monitors" on must not also start it.
+  it('hides a switched-off member\'s tuning and keeps its warning', () => {
     const seen: ConfigState[] = []
     const { rerender } = render(
-      <PackMember member="clipboard" title="Clipboard" hint="hint" warn="in or out of scope"
-        config={{ packMembers: {} } as unknown as ConfigState} setConfig={(c) => seen.push(c)} t={t}>
-        <p>clipboard tuning</p>
+      <PackMember member="connectionMonitor" title="Connections" hint="hint" warn="misses SYN scans"
+        config={{ packMembers: { connectionMonitor: false } } as unknown as ConfigState} setConfig={(c) => seen.push(c)} t={t}>
+        <p>connection tuning</p>
       </PackMember>
     )
-    expect((screen.getByTestId('pack-member-clipboard') as HTMLInputElement).checked).toBe(false)
-    expect(screen.getByTestId('pack-member-optin-clipboard')).toBeTruthy()
+    expect((screen.getByTestId('pack-member-connectionMonitor') as HTMLInputElement).checked).toBe(false)
     // Tuning for something that is not running is the same lie the pack
     // switch already avoids.
-    expect(screen.queryByText('clipboard tuning')).toBeNull()
-    // What it costs is said where it is turned on.
-    expect(screen.getByText('in or out of scope')).toBeTruthy()
+    expect(screen.queryByText('connection tuning')).toBeNull()
+    expect(screen.getByText('misses SYN scans')).toBeTruthy()
 
-    fireEvent.click(screen.getByTestId('pack-member-clipboard'))
-    expect(seen.at(-1)!.packMembers).toEqual({ clipboard: true })
+    fireEvent.click(screen.getByTestId('pack-member-connectionMonitor'))
+    expect(seen.at(-1)!.packMembers).toEqual({ connectionMonitor: true })
 
     rerender(
-      <PackMember member="clipboard" title="Clipboard" hint="hint"
-        config={{ packMembers: { clipboard: true } } as unknown as ConfigState} setConfig={() => {}} t={t}>
-        <p>clipboard tuning</p>
+      <PackMember member="connectionMonitor" title="Connections" hint="hint"
+        config={{ packMembers: {} } as unknown as ConfigState} setConfig={() => {}} t={t}>
+        <p>connection tuning</p>
       </PackMember>
     )
-    expect(screen.getByText('clipboard tuning')).toBeTruthy()
-    expect(screen.queryByTestId('pack-member-optin-clipboard')).toBeNull()
+    expect(screen.getByText('connection tuning')).toBeTruthy()
   })
 
   it('lets an ordinary member be dropped without losing the pack', () => {

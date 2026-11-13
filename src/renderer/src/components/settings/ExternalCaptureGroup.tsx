@@ -8,8 +8,7 @@ import { SOURCE_ROW } from '../../lib/sourceRow'
 
 // Capture RedLog cannot start.
 //
-// tcpdump needs root, the transparent proxy rewrites this host's nat rules,
-// the C2 tailer follows a log only the operator knows the path of. RedLog
+// tcpdump needs root, the C2 tailer follows a log only the operator knows the path of. RedLog
 // holds none of that, so the operator runs a command and RedLog watches for
 // what comes back.
 //

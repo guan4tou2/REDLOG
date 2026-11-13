@@ -13,7 +13,7 @@ import { useCaptureHealthState } from '../lib/useCaptureHealth'
 /** A capture source that failed, as the event type its rows carry — so the
  *  alert can narrow the list to it. Sources without a single type of their own
  *  are named but not filterable. */
-const SOURCE_AGENT_TYPE: Record<string, string> = { terminal: 'shell', mitmproxy: 'http', screenshot: 'screenshot', clipboard: 'clipboard' }
+const SOURCE_AGENT_TYPE: Record<string, string> = { terminal: 'shell', mitmproxy: 'http', screenshot: 'screenshot' }
 
 /** Stitch 04: recording state and the project's total beside the title, and a
  *  source that reports a failure as its own line. Each source answers for

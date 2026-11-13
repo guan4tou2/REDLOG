@@ -81,10 +81,10 @@ describe('config patch: applying', () => {
     const before = cfg()
     delete before.packMembers
     const { config } = applyConfigPatch(before, [
-      { path: ['packMembers', 'clipboard'], value: true, baseAbsent: true },
+      { path: ['packMembers', 'fileWatcher'], value: true, baseAbsent: true },
       { path: ['retention', 'casts'], unset: true, base: before.retention!.casts }
     ])
-    expect(config.packMembers).toEqual({ clipboard: true })
+    expect(config.packMembers).toEqual({ fileWatcher: true })
     expect(config.retention!.casts).toBeUndefined()
   })
 
@@ -120,11 +120,11 @@ describe('config patch: the renderer side', () => {
     const draft = structuredClone(base)
     draft.network.checkInterval = 45
     draft.scope.targets = ['x']
-    draft.packMembers = { clipboard: true }
+    draft.packMembers = { fileWatcher: true }
     expect(diffConfig(base, draft)).toEqual([
       { path: ['network', 'checkInterval'], value: 45, base: 60 },
       { path: ['scope', 'targets'], value: ['x'], base: [] },
-      { path: ['packMembers'], value: { clipboard: true }, baseAbsent: true }
+      { path: ['packMembers'], value: { fileWatcher: true }, baseAbsent: true }
     ])
     expect(diffConfig(base, structuredClone(base))).toEqual([])
   })
