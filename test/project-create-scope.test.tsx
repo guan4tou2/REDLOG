@@ -81,7 +81,7 @@ describe('create project with a scope', () => {
     ;(window as unknown as { redlog: unknown }).redlog = {
       project: { list: async () => [], create, open: vi.fn(), delete: async () => true, rename: async () => ({ ok: true }), scopeSummaries: async () => ({}) },
       config: { importProfile: async () => {
-        const r = resolveProfile({ scope: { targets: ['10.1.0.0/16'] } })
+        const r = resolveProfile({ version: 1, scope: { targets: ['10.1.0.0/16'] } })
         if (!r.ok) throw new Error('bad fixture')
         return { status: 'imported', profile: r.profile }
       }, get: async () => ({}), save: async () => true },

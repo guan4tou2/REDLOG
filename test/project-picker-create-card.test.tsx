@@ -20,8 +20,8 @@ import { resolveProfile, type ProfileImportResult } from '../src/core/profile-im
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 const PROFILE = {
-  scope: { targets: ['10.10.11.0/24', '10.10.12.0/24'], warnOnViolation: false },
-  network: { whitelist: ['10.0.0.1'], blacklist: ['8.8.8.8', '1.1.1.1'] }
+  version: 1,
+  scope: { targets: ['10.10.11.0/24', '10.10.12.0/24'], excludeTargets: ['10.10.11.9'] }
 }
 
 // What the picker's native dialog would have produced, as the IPC now answers.
@@ -92,8 +92,8 @@ describe('creating once', () => {
 // #297. What the card shows after an import, and what project.create receives,
 // are the same value; importing replaces rather than layers.
 describe('importing a profile', () => {
-  const A = { scope: { targets: ['192.0.2.0/24'], excludeTargets: ['192.0.2.9'] } }
-  const B = { scope: { targets: ['198.51.100.0/24'] } }
+  const A = { version: 1, scope: { targets: ['192.0.2.0/24'], excludeTargets: ['192.0.2.9'] } }
+  const B = { version: 1, scope: { targets: ['198.51.100.0/24'] } }
 
   async function importAgain(): Promise<void> {
     fireEvent.click(screen.getByText(/Import Profile/i))
@@ -138,25 +138,16 @@ describe('importing a profile', () => {
     expect(cfg.scope.excludeTargets).toEqual(['192.0.2.9'])
   })
 
-  it('a profile that is only warnOnViolation:false is applied, and created', async () => {
-    const { create } = setup(imp({ scope: { warnOnViolation: false } }))
-    await importAgain()
-    expect(screen.getByTestId('profile-applied').textContent).toContain('No warning on out-of-scope targets')
-    const cfg = await createdWith(create)
-    expect(cfg.scope.warnOnViolation).toBe(false)
-  })
-
   it('a profile that is only exclusions is created', async () => {
-    const { create } = setup(imp({ scope: { excludeTargets: ['192.0.2.9'] } }))
+    const { create } = setup(imp({ version: 1, scope: { excludeTargets: ['192.0.2.9'] } }))
     await importAgain()
     const cfg = await createdWith(create)
     expect(cfg.scope.excludeTargets).toEqual(['192.0.2.9'])
     expect(cfg.scope.targets).toEqual([])
-    expect(cfg.scope.warnOnViolation).toBe(true)
   })
 
   it('an explicit empty list replaces what the earlier profile put there', async () => {
-    const { create } = setup(imp(A), imp({ scope: { excludeTargets: [] } }))
+    const { create } = setup(imp(A), imp({ version: 1, scope: { excludeTargets: [] } }))
     await importAgain()
     await importAgain()
     const cfg = await createdWith(create)
@@ -165,7 +156,7 @@ describe('importing a profile', () => {
   })
 
   it('a profile that restates the defaults is still an import, and is still passed', async () => {
-    const { create } = setup(imp({ scope: { targets: [] } }))
+    const { create } = setup(imp({ version: 1, scope: { targets: [] } }))
     await importAgain()
     expect(screen.getByText('Clear imported settings')).toBeTruthy()
     const cfg = await createdWith(create)
@@ -276,20 +267,36 @@ describe('create card', () => {
     fireEvent.click(screen.getByText(/Import Profile/i))
     // Nothing it carries is visible on the card, so all of it is named.
     const applied = await screen.findByTestId('profile-applied')
-    expect(applied.textContent).toContain('Scope 2')
-    expect(applied.textContent).toContain('Safe IPs 1')
-    expect(applied.textContent).toContain('Exposed IPs 2')
+    expect(applied.textContent).toBe('Scope 2 · Excluded 1')
     expect(screen.getByRole('dialog', { name: 'Create new project' })).toBeTruthy()
   })
 
-  it('still creates with everything the profile carried', async () => {
+  it('creates with the two lists the profile carried, and leaves the network lists and the warning to the defaults', async () => {
     const { create } = setup(imp(PROFILE))
     fireEvent.click(screen.getByText(/Import Profile/i))
     await screen.findByTestId('profile-applied')
     fireEvent.click(screen.getByText('Create project'))
-    await vi.waitFor(() => expect(create).toHaveBeenCalledWith('Lab', expect.objectContaining({
-      scope: expect.objectContaining({ targets: ['10.10.11.0/24', '10.10.12.0/24'], warnOnViolation: false }),
-      network: expect.objectContaining({ whitelist: ['10.0.0.1'], blacklist: ['8.8.8.8', '1.1.1.1'] })
-    })))
+    await vi.waitFor(() => expect(create).toHaveBeenCalled())
+    const cfg = create.mock.calls[0][1] as { scope: Record<string, unknown>; network?: unknown }
+    expect(cfg.scope).toMatchObject({ targets: ['10.10.11.0/24', '10.10.12.0/24'], excludeTargets: ['10.10.11.9'] })
+    expect(cfg.scope).not.toHaveProperty('warnOnViolation')
+    expect(cfg).not.toHaveProperty('network')
+  })
+
+  it('names a wrong version and an unknown field, each with what it found', async () => {
+    setup({ status: 'failed', failure: { code: 'version', found: '2' } })
+    fireEvent.click(screen.getByText(/Import Profile/i))
+    expect((await screen.findByTestId('profile-error')).textContent).toMatch(/version is 2; only version 1 is read/)
+    cleanup()
+    setup({ status: 'failed', failure: { code: 'version', found: null } })
+    fireEvent.click(screen.getByText(/Import Profile/i))
+    expect((await screen.findByTestId('profile-error')).textContent).toMatch(/no version; only version 1/)
+    cleanup()
+    setup({ status: 'failed', failure: { code: 'unknown', fields: ['network', 'scope.warnOnViolation'] } })
+    fireEvent.click(screen.getByText(/Import Profile/i))
+    const err = (await screen.findByTestId('profile-error')).textContent!
+    expect(err).toContain('network, scope.warnOnViolation')
+    expect(err).toMatch(/kept/i)
+    expect(screen.queryByTestId('profile-applied')).toBeNull()
   })
 })
