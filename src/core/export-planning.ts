@@ -6,8 +6,8 @@ import { redactEventForExport, type RedactExportOpts } from './redact-export'
 import { iterateExportSelection, iterateSnapshotEvents } from './export-selection'
 import { capabilitiesFor } from './export-capabilities'
 import { listExportAttachments, exportAttachmentDigest, withFrozenSizes } from './export-attachments'
-import { countExportAttachments, countReferencedAttachments, countTruncatedOutputs, countPauseWindows,
-  countCaptureGaps, countInterrupted, countPartialHttpFlows, countPartialHttpFlowsOutside, countOutOfScopeHttpFlows,
+import { countExportAttachments, referencedAttachmentsFold, truncatedOutputsFold, pauseWindowsFold,
+  captureGapsFold, interruptedFold, partialHttpFlowsFold, countPartialHttpFlowsOutside, outOfScopeHttpFlowsFold, sequenceFingerprint,
   createExportPlan, fingerprintValue, fingerprintSequence, normalizeExportRequest, takeExportSnapshot, type ExportPlan, type ExportRequest } from './export-plan'
 
 export function buildExportPlan(project: ProjectMeta, rawRequest: ExportRequest): ExportPlan {
@@ -41,7 +41,23 @@ export function buildExportPlan(project: ProjectMeta, rawRequest: ExportRequest)
   let maskedOutOfScope = 0
   let sanitized = 0
   const selectedEventIds: string[] = []
+  const selectedIdSet = new Set<string>()
   let examined = 0
+  // Everything the plan says about the selected Events is measured here, on the
+  // Events as they will be exported, in the one walk that selects them. This
+  // used to be eight walks of the whole snapshot, one per figure and one more
+  // for the digest, each re-reading and re-redacting every Event. Nothing is
+  // retained but the counters and the digest state; Events are not collected.
+  const outOfScopeHttpFlows = outOfScopeHttpFlowsFold(scope)
+  const referencedAttachments = capabilities.attachments ? null : referencedAttachmentsFold()
+  const truncatedOutputs = truncatedOutputsFold()
+  const pauseWindows = pauseWindowsFold()
+  const captureGaps = captureGapsFold()
+  const interrupted = interruptedFold()
+  const partialHttpFlows = request.format === 'har' ? partialHttpFlowsFold() : null
+  const evidence = sequenceFingerprint()
+  const httpView = request.subset.kind === 'selection' && request.subset.projection === 'http'
+  const exchangeFlowIds = httpView ? new Set<unknown>() : null
   for (const event of events) {
     examined++
     if (doNotExportIds.has(event.id)) { excludedDoNotExport++; continue }
@@ -49,10 +65,22 @@ export function buildExportPlan(project: ProjectMeta, rawRequest: ExportRequest)
     const redacted = redactEventForExport(event, rOpts)
     if (!redacted) continue
     selectedEventIds.push(event.id)
+    selectedIdSet.add(event.id)
     if (request.maskOutOfScope && isOutOfScope(event.targetId, scope)) maskedOutOfScope++
     if (redacted.data !== event.data) sanitized++
+    outOfScopeHttpFlows.add(redacted)
+    referencedAttachments?.add(redacted)
+    truncatedOutputs.add(redacted)
+    pauseWindows.add(redacted)
+    captureGaps.add(redacted)
+    interrupted.add(redacted)
+    partialHttpFlows?.add(redacted)
+    exchangeFlowIds?.add(redacted.data.flow_id)
+    evidence.add(redacted)
   }
-  const selectedIdSet = new Set(selectedEventIds)
+  // The bundle's attachment listing still reads the selected Events more than
+  // once (it resolves casts from one pass before attributing them in another),
+  // so only the bundle keeps this re-walk.
   const selectedEvents: Iterable<import('./db/events').RedLogEvent> = { *[Symbol.iterator]() {
     for (const event of iterateSnapshotEvents(snapshot)) {
       if (!selectedIdSet.has(event.id)) continue
@@ -85,26 +113,26 @@ export function buildExportPlan(project: ProjectMeta, rawRequest: ExportRequest)
       ...(scopeSnap.scopeFileSha256 ? { sourceHash: scopeSnap.scopeFileSha256 } : {})
     },
     counts: {
-      ...(request.subset.kind === 'selection' && request.subset.projection === 'http' ? { exchanges: new Set(Array.from(selectedEvents, event => event.data.flow_id)).size } : {}),
+      ...(exchangeFlowIds ? { exchanges: exchangeFlowIds.size } : {}),
       examined,
       included: selectedEventIds.length,
       excludedDoNotExport,
       excludedPersonal,
-      outOfScopeHttpFlows: countOutOfScopeHttpFlows(selectedEvents, scope),
+      outOfScopeHttpFlows: outOfScopeHttpFlows.done(),
       maskedOutOfScope,
       sanitized,
       attachmentsIncluded: attachmentCounts.included,
       attachmentsMissing: attachmentCounts.missing,
       attachmentsUnattributed: attachmentCounts.unattributed,
       attachmentsExcludedByOperator: attachmentCounts.excludedByOperator,
-      unsupported: capabilities.attachments ? 0 : countReferencedAttachments(selectedEvents),
-      truncatedOutputs: countTruncatedOutputs(selectedEvents),
-      pauseWindows: countPauseWindows(selectedEvents),
-      captureGaps: countCaptureGaps(selectedEvents),
-      ...(({ recordings, commands }) => ({ interruptedRecordings: recordings, interruptedCommands: commands }))(countInterrupted(selectedEvents)),
+      unsupported: referencedAttachments ? referencedAttachments.done() : 0,
+      truncatedOutputs: truncatedOutputs.done(),
+      pauseWindows: pauseWindows.done(),
+      captureGaps: captureGaps.done(),
+      ...(({ recordings, commands }) => ({ interruptedRecordings: recordings, interruptedCommands: commands }))(interrupted.done()),
       ...(request.format === 'har' ? {
-        partialHttpFlows: countPartialHttpFlows(selectedEvents),
-        ...(request.subset.kind === 'selection' && request.subset.projection === 'http' ? {
+        partialHttpFlows: partialHttpFlows!.done(),
+        ...(request.subset.kind === 'selection' && httpView ? {
           partialHttpFlowsOutside: countPartialHttpFlowsOutside(
             iterateSnapshotEvents(snapshot, { agentType: 'scanner', tier: 'logged' }), selectedIdSet,
             { ...request.subset.filter, http: request.subset.http },
@@ -114,7 +142,7 @@ export function buildExportPlan(project: ProjectMeta, rawRequest: ExportRequest)
     },
     attachments,
     selectedEventIds,
-    selectedEvidenceDigest: fingerprintSequence(selectedEvents).digest,
+    selectedEvidenceDigest: evidence.done().digest,
     attachmentDigest: request.format === 'bundle' ? exportAttachmentDigest(project.path, attachments) : '',
     policyFingerprint: fingerprintValue(cfg)
   })

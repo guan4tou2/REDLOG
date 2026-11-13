@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { countCaptureGaps, countInterrupted, countPauseWindows, countTruncatedOutputs } from '../src/core/export-plan'
+import { captureGapsFold, interruptedFold, pauseWindowsFold, truncatedOutputsFold, foldEvents } from '../src/core/export-plan'
 import type { RedLogEvent } from '../src/core/db/event-types'
+const countTruncatedOutputs = (events: RedLogEvent[]) => foldEvents(truncatedOutputsFold(), events)
+const countInterrupted = (events: RedLogEvent[]) => foldEvents(interruptedFold(), events)
+const countPauseWindows = (events: RedLogEvent[]) => foldEvents(pauseWindowsFold(), events)
+const countCaptureGaps = (events: RedLogEvent[]) => foldEvents(captureGapsFold(), events)
 
 // The export preview must say when what a reader sees is not all of what
 // happened: output cut short at capture, and stretches nothing was recorded.
