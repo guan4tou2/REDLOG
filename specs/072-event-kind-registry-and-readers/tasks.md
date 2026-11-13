@@ -17,15 +17,15 @@
 
 ## Phase 1 — 釘住今天的行為（只加測試與 gate，不改程式行為）
 
-- [ ] T002 [P] 種類清單：`test/kinds/inventory.ts`，以 plan D2 的掃描樣式與 AST 列出今天所有寫入者寫出的 `(agent_type, subtype)`，附檔案與行號；與 10 的 A.1 對照，差異寫入 `verification.md`。
-- [ ] T003 [P] 範例列：`test/kinds/examples.ts`，T002 每個種類至少一列（含 relay 的每種 `completeness × output_disposition`、內建終端機 `io` 三種、無欄位的舊 `command_end`、`shell:command`、`agent:*` 的未知 subtype、外掛的 `scanner:packet_flow` 與 `c2_*`）。
-- [ ] T004 golden：`test/kinds/golden/<表>.json`，以**今天的函式**對 T003 的每列求值，涵蓋 plan「表的清點」中要摺的 31 張；SQL 類另存 SQL 文字與 in-memory SQLite 的求值結果。依賴 T003。
-- [ ] T005 [P] `test/kinds/kind-literal-ratchet.test.ts`（plan D3）：量得兩個基準（種類比較、subtype 比較），只能下降；建立空的 `kind-literal-allowlist.json`。另加「以種類為鍵的表」計數：plan 表中 31 張的特徵樣式各一，基準 31。
-- [ ] T006 [P] `test/kinds/registry-pure.test.ts` 的後半：renderer 經非 type import 走訪到、且 import Node 模組的 `src/core` 檔案數，基準 3（FR-022）。
-- [ ] T007 [P] [US1] RED：`test/kinds/completeness.test.ts`，依 spec US1 的七個情境斷言閱讀器第一行與時間軸點標記；以 `it.fails` 標示（今天 `redirected` 顯示為「未產生內容」）。
-- [ ] T008 [P] [US2] RED：`test/kinds/every-kind-presentable.test.tsx`，對 T003 的每列斷言標題不走預設分支、閱讀器不因缺分支而為通用；以 `it.fails` 逐項標示今天的 29 個與截圖。
-- [ ] T009 [P] [US4] RED：內務規則一致性，`HOUSEKEEPING_SQL`、`EVIDENCE_SQL`、`isEvidence`、`knownLists.isHousekeeping` 對同一組列（含 PowerShell profile 與 `tlogger_prompt_command` 行）回答一致；以 `it.fails` 標示（F9）。
-- [ ] T010 [P] 特徵化：擴充 `test/db/tier-classifier.test.ts`，對 T002 的每個種類斷言今天的實際 tier，包括瀏覽器 console 的 chained；修正 `event-write.ts:96-99` 的註解指向本測試。
+- [x] T002 [P] 種類清單：`test/kinds/inventory.ts`，以 plan D2 的掃描樣式與 AST 列出今天所有寫入者寫出的 `(agent_type, subtype)`，附檔案與行號；與 10 的 A.1 對照，差異寫入 `verification.md`。
+- [x] T003 [P] 範例列：`test/kinds/examples.ts`，T002 每個種類至少一列（含 relay 的每種 `completeness × output_disposition`、內建終端機 `io` 三種、無欄位的舊 `command_end`、`shell:command`、`agent:*` 的未知 subtype、外掛的 `scanner:packet_flow` 與 `c2_*`）。
+- [x] T004 golden：`test/kinds/golden/<表>.json`，以**今天的函式**對 T003 的每列求值，涵蓋 plan「表的清點」中要摺的 31 張；SQL 類另存 SQL 文字與 in-memory SQLite 的求值結果。依賴 T003。
+- [x] T005 [P] `test/kinds/kind-literal-ratchet.test.ts`（plan D3）：量得兩個基準（種類比較、subtype 比較），只能下降；建立空的 `kind-literal-allowlist.json`。另加「以種類為鍵的表」計數：plan 表中 31 張的特徵樣式各一，基準 31。
+- [ ] T006 [P] `test/kinds/registry-pure.test.ts` 的後半：renderer 經非 type import 走訪到、且 import Node 模組的 `src/core` 檔案數，基準 3（FR-022）。 （2026-11-13：後半「renderer→core 匯入」已完成於 #757；前半依賴的 `import-graph.ts` 已隨 #754 進 main，尚未接上）
+- [x] T007 [P] [US1] RED：`test/kinds/completeness.test.ts`，依 spec US1 的七個情境斷言閱讀器第一行與時間軸點標記；以 `it.fails` 標示（今天 `redirected` 顯示為「未產生內容」）。
+- [x] T008 [P] [US2] RED：`test/kinds/every-kind-presentable.test.tsx`，對 T003 的每列斷言標題不走預設分支、閱讀器不因缺分支而為通用；以 `it.fails` 逐項標示今天的 29 個與截圖。
+- [x] T009 [P] [US4] RED：內務規則一致性，`HOUSEKEEPING_SQL`、`EVIDENCE_SQL`、`isEvidence`、`knownLists.isHousekeeping` 對同一組列（含 PowerShell profile 與 `tlogger_prompt_command` 行）回答一致；以 `it.fails` 標示（F9）。
+- [x] T010 [P] 特徵化：擴充 `test/db/tier-classifier.test.ts`，對 T002 的每個種類斷言今天的實際 tier，包括瀏覽器 console 的 chained；修正 `event-write.ts:96-99` 的註解指向本測試。
 - **Gate**：五道 gate 全綠；新測試在三個平台的 unit leg 都有執行，或計為 `not-run` 並附原因。
 
 ## Phase 2 — 建立登記表（沒有任何消費者切換，行為不變）

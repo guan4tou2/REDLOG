@@ -17,13 +17,13 @@
 
 ## Phase 1 — 釘住今天的行為（只加測試與 gate，不改程式行為）
 
-- [ ] T002 [P] [US1] `test/extensions/basic-paths-pinned.test.ts`：以 fixture 驅動 shell hook（經 `/api/events`）、AI tailer（Claude Code 與 Codex 的樣本 transcript）、mitmproxy addon 的 flow、標記（IPC、HUD、API 三個寫入點）、快捷鍵截圖、`artifact_added`；釘住每一列除 `id`、時間、`_ingest` 外的欄位與 data，以及 JSON、NDJSON、bundle 匯出的位元組。
-- [ ] T003 [P] [US1] `test/extensions/disable-all.test.ts`：把 `state.json` 中每個可停用的 bundled 外掛停用、所有 pack 關閉後，T002 的同一組 fixture 輸出不變（今天的事實；Phase 3 之後以新的停用方式重跑）。
-- [ ] T004 [P] [US1] `test/extensions/hud-egress-pinned.test.ts`：釘住 `IPSignalProducer` 的狀態轉移（`externalReadAt`、`stale`、`settling`）與 `ip_verdict` 的寫入時機（`policies.ts:85-94`）。
-- [ ] T005 [P] `test/extensions/coupling-baseline.test.ts`：以 import 圖掃描 plan「耦合證據」表的每一列：誰 import 該模組、該模組 import 哪些寫入原語（`configureIngest`、`getDB`、`insertEvent`、`ingestEvent`）、`builtin-terminal` 字面值數（今天 32）。基準只能下降。
-- [ ] T006 [P] `test/extensions/manifest-parsers.test.ts`：manifest 解析點計數（今天 3：`plugins/manifest.ts`、`hooks-manager.ts` 的 producer manifest、`official-agents.ts`），只能下降到 1。
-- [ ] T007 [P] [US4] RED：`test/extensions/integrity.test.ts`。改 `plugins/c2-tailers/parse.js` 一個位元組，今天 `computeContentHash` 不變（`manifest.ts:308-323`）。以 `it.fails` 標示，Phase 2 翻正。
-- [ ] T008 [P] [US2] RED：`test/extensions/activation.test.ts`。新安裝、新專案時有 mitmdump 自動啟動與 CDP 輪詢計時器的登記（13 號 C.1 #19、#23）。以 `it.fails` 標示，Phase 3 翻正。
+- [x] T002 [P] [US1] `test/extensions/basic-paths-pinned.test.ts`：以 fixture 驅動 shell hook（經 `/api/events`）、AI tailer（Claude Code 與 Codex 的樣本 transcript）、mitmproxy addon 的 flow、標記（IPC、HUD、API 三個寫入點）、快捷鍵截圖、`artifact_added`；釘住每一列除 `id`、時間、`_ingest` 外的欄位與 data，以及 JSON、NDJSON、bundle 匯出的位元組。
+- [x] T003 [P] [US1] `test/extensions/disable-all.test.ts`：把 `state.json` 中每個可停用的 bundled 外掛停用、所有 pack 關閉後，T002 的同一組 fixture 輸出不變（今天的事實；Phase 3 之後以新的停用方式重跑）。
+- [x] T004 [P] [US1] `test/extensions/hud-egress-pinned.test.ts`：釘住 `IPSignalProducer` 的狀態轉移（`externalReadAt`、`stale`、`settling`）與 `ip_verdict` 的寫入時機（`policies.ts:85-94`）。
+- [x] T005 [P] `test/extensions/coupling-baseline.test.ts`：以 import 圖掃描 plan「耦合證據」表的每一列：誰 import 該模組、該模組 import 哪些寫入原語（`configureIngest`、`getDB`、`insertEvent`、`ingestEvent`）、`builtin-terminal` 字面值數（今天 32）。基準只能下降。
+- [x] T006 [P] `test/extensions/manifest-parsers.test.ts`：manifest 解析點計數（今天 3：`plugins/manifest.ts`、`hooks-manager.ts` 的 producer manifest、`official-agents.ts`），只能下降到 1。
+- [x] T007 [P] [US4] RED：`test/extensions/integrity.test.ts`。改 `plugins/c2-tailers/parse.js` 一個位元組，今天 `computeContentHash` 不變（`manifest.ts:308-323`）。以 `it.fails` 標示，Phase 2 翻正。
+- [x] T008 [P] [US2] RED：`test/extensions/activation.test.ts`。新安裝、新專案時有 mitmdump 自動啟動與 CDP 輪詢計時器的登記（13 號 C.1 #19、#23）。以 `it.fails` 標示，Phase 3 翻正。
 - **Gate**：五道 gate；新測試在三平台的 unit leg 都有執行，或計 `not-run` 並附原因。
 
 ## Phase 2 — 契約成為檔案（不改執行期行為）
