@@ -208,6 +208,17 @@ sqlite.describe('the write path stamps every new row (FR-005, FR-020)', () => {
     expect(r.event!.data).toEqual(data)
   })
 
+  it('the caller\'s object is not changed: the same object ingested twice records the same `stripped` both times', () => {
+    const forged = { subtype: 'note', text: 'same object', _ingest: { door: 'forged' }, _raw: 'forged' }
+    const first = ingestMod.ingest({ agentType: 'external', data: forged, ...who }).event!
+    expect(forged).toEqual({ subtype: 'note', text: 'same object', _ingest: { door: 'forged' }, _raw: 'forged' })
+    const second = ingestMod.ingest({ agentType: 'external', data: forged, ...who }).event!
+    expect(second.id).not.toBe(first.id)
+    for (const ev of [first, second]) {
+      expect((JSON.parse(stored('events', ev.id).data)._ingest as Record<string, unknown>).stripped).toEqual(['_ingest', '_raw'])
+    }
+  })
+
   it('the receiver\'s own `_raw` is kept: only the caller\'s is replaced', () => {
     const r = ingestMod.ingest({ agentType: 'shell', data: { subtype: 'command_start', command: 'whoami', terminalId: 't-raw', pid: 2, _raw: 'forged' }, ...who,
       envelope: { raw: '{"agent_type":"shell"}', source: 'api' } })

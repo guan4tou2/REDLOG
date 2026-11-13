@@ -148,7 +148,10 @@ export function ingestEvent(
 
 export function ingest(input: IngestInput): IngestResult {
   const { agentType, engagementId, operatorId } = input
-  const data = input.data
+  // A copy: the pipeline below takes keys out of `data` and adds to it, and the
+  // caller's object is the caller's. Reusing one object for two calls must
+  // record the same `stripped` both times.
+  const data = { ...input.data }
   let targetId = input.targetId
 
   // A row for another engagement is work that outlived its project. insertEvent
