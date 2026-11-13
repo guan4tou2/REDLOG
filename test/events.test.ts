@@ -84,12 +84,21 @@ describeDB('insertEvent', () => {
     expect(() => insertEventRaw('marker', { title: 'x' }, { engagementId: 'eng-1' } as unknown as { operatorId: string })).toThrow(/operatorId is required/)
   })
 
-  it('uses provided engagement and operator', () => {
-    const event = insertEvent('marker', { title: 'test' }, {
-      engagementId: 'eng-1', operatorId: 'op-2'
-    })!
-    expect(event.engagementId).toBe('eng-1')
-    expect(event.operatorId).toBe('op-2')
+  // Spec 071 FR-007, lenient form: the open database's engagement wins. A
+  // provided engagement that differs from it is refused, not stored; only a
+  // database with no engagement bound takes the provided one.
+  it('the bound engagement wins: a different provided one is refused; unbound, the provided one is stored', () => {
+    expect(insertEvent('marker', { title: 'test' }, { engagementId: 'eng-other', operatorId: 'op-2' })).toBeNull()
+    expect(getEventCount()).toBe(0)
+    const same = insertEvent('marker', { title: 'test' }, { engagementId: 'eng-1', operatorId: 'op-2' })!
+    expect(same.engagementId).toBe('eng-1')
+    expect(same.operatorId).toBe('op-2')
+
+    closeHttpBodyIndex()
+    closeDB()
+    initDB(tmpDir)
+    const unbound = insertEvent('marker', { title: 'test' }, { engagementId: 'eng-other', operatorId: 'op-2' })!
+    expect(unbound.engagementId).toBe('eng-other')
   })
 })
 

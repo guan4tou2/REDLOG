@@ -477,8 +477,8 @@ export function insertEvent(
   // one database and is now writing to the next. Refused for both tiers, and
   // loudly — not through noteDbError, which would turn the open project's
   // verdict dark when its own log is fine. Only an explicit id is judged: an
-  // omitted one is stored as `default`, as before, which names no owner rather
-  // than a foreign one.
+  // omitted one becomes the open database's (engagementForWrite, in each arm
+  // below), so it cannot name a foreign owner.
   const bound = dbEngagement()
   if (bound !== null && opts?.engagementId !== undefined && opts.engagementId !== bound) {
     console.error(`[db] refused a ${agentType} row for engagement ${opts.engagementId}: the open database belongs to ${bound}`)
