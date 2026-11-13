@@ -43,7 +43,7 @@
 
 - [ ] T020 [US1] 先 RED：`test/ingest-stamp.test.ts`。驗證 `_ingest` 的鍵、覆寫呼叫端給的值、移除保留鍵並記入 `stripped`、只含允許的型別、大小上限（FR-005、FR-006）；`rules` 的有界形式（至多 3 項、`+<n>`）與 `rules_partial` 在最壞情況仍不超過 512 bytes（Spec 075 FR-059 的消費者，075 T091 填值）。
 - [ ] T021 [US1] 實作 `src/core/ingest/stamp.ts`。engagement 由綁定 DB 決定，`'default'` 不再出現；沒有綁定 DB 時拋錯，對應 `retry`／`no-project`（FR-007）。
-- [ ] T022 [P] [US2] 暫停 property test 完整版（至少 10,000 組；SC-005，依 2026-11-13 修訂的規則：暫停期間收到的列為 0；交接檔可用來源時間落在已記錄區間內的列為 0；暫停前的交接項目在暫停結束後寫入）。
+- [x] T022 [P] [US2] 暫停 property test 完整版（至少 10,000 組；SC-005，依 2026-11-13 修訂的規則：暫停期間收到的列為 0；交接檔可用來源時間落在已記錄區間內的列為 0；暫停前的交接項目在暫停結束後寫入）。
 - [ ] T023 [US1] 先 RED：`test/target-via.test.ts`（O11）。驗證 explicit、extracted、command、terminal-last、none 五種，跨重啟一致，不套用全域目前目標。
 - [ ] T024 [US1] 建立 `terminal_targets` 表，寫入路徑在 commit 交易內同步寫入；**不在本規格回填**：含 071 之前事件的專案，在 Spec 074 的回填完成前不套用 `terminal-last`、寫 `none`（FR-010），先 RED 斷言這一點；回填由 074 T052 實作。`command` 的承接改從持久資料查；移除 `ingest.ts:251-255` 的自動套用（app 內操作依 O16）。Spec 072 T043（`identity.target`）同一個 PR。
 - [ ] T025 [P] [US1] `_ingest.terminal` 單一正規值；`causes-resolver.ts:83` 與 `event-write.ts:479` 改讀同一個函式（FR-011）。
