@@ -3,8 +3,6 @@
 
 import { RESERVED_DATA_KEYS } from './ingest/stamp'
 
-const RESERVED: ReadonlySet<string> = new Set(RESERVED_DATA_KEYS)
-
 /** Types an outside tool may report. The ones deliberately absent are
  *  derived — `system`, `pivot`, `cleanup`, `loot`, `scope_violation` are
  *  written by RedLog's own analysis, and letting a caller forge them
@@ -34,7 +32,7 @@ const PRODUCER_ID_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/
 function isProducerHeartbeat(data: unknown): boolean {
   if (data === null || typeof data !== 'object' || Array.isArray(data)) return false
   const d = data as Record<string, unknown>
-  const keys = Object.keys(d).filter((k) => !RESERVED.has(k))
+  const keys = Object.keys(d).filter((k) => !(RESERVED_DATA_KEYS as readonly string[]).includes(k))
   return keys.length === 2
     && d.subtype === 'producer_heartbeat'
     && typeof d.producer === 'string'
