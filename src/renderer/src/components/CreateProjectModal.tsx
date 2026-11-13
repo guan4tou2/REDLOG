@@ -16,6 +16,8 @@ function describeFailure(f: ProfileFailure, t: Translate): string {
     case 'read': return t('project.importFailedRead', { detail: f.detail })
     case 'parse': return t('project.importFailedParse', { detail: f.detail })
     case 'empty': return t('project.importFailedEmpty')
+    case 'version': return f.found === null ? t('project.importFailedVersionMissing') : t('project.importFailedVersion', { found: f.found })
+    case 'unknown': return t('project.importFailedUnknown', { fields: f.fields.join(', ') })
     case 'shape': return t('project.importFailedShape', { field: f.field, expected: t(`project.expect.${f.expected}`) })
   }
 }
@@ -137,7 +139,7 @@ export function CreateProjectModal({ open, onClose, onCreated, root }: {
   }
 
   const appliedText = imported
-    ? profileSummary(imported).map((p) => t(p.key, { count: p.count ?? 0 })).join(' · ') || t('project.appliedNothing')
+    ? profileSummary(imported).map((p) => t(p.key, { count: p.count })).join(' · ') || t('project.appliedNothing')
     : null
   const failureText = importFailure ? describeFailure(importFailure, t) : null
   const ruleCount = targets.length + (imported ? profileToInitialConfig(imported).scope.targets.length : 0)
