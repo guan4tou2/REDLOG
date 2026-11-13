@@ -172,11 +172,17 @@ sqlite.describe('PRAGMA synchronous on the project database', () => {
   const write = (): void => {
     dbMod.getDB().prepare('INSERT INTO bookmarks (id, title, created_at) VALUES (?, ?, ?)').run(crypto.randomUUID(), 'sync', Date.now())
   }
+  let savedReal: string | undefined
   beforeAll(() => {
+    // test/setup.ts runs the suite's writer at NORMAL; this block checks production's setting.
+    savedReal = process.env.REDLOG_TEST_REAL_SYNCHRONOUS
+    process.env.REDLOG_TEST_REAL_SYNCHRONOUS = '1'
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-sync-'))
     other = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-sync-other-'))
   })
   afterAll(() => {
+    if (savedReal === undefined) delete process.env.REDLOG_TEST_REAL_SYNCHRONOUS
+    else process.env.REDLOG_TEST_REAL_SYNCHRONOUS = savedReal
     dbMod.closeDB()
     fs.rmSync(dir, { recursive: true, force: true })
     fs.rmSync(other, { recursive: true, force: true })
@@ -231,5 +237,23 @@ sqlite.describe('PRAGMA synchronous on the project database', () => {
       expect(level(db)).toBe(NORMAL)
     } finally { db.exec('ROLLBACK') }
     dbMod.closeDB()
+  })
+})
+
+// test/setup.ts relaxes the writer to NORMAL for the rest of the suite; this
+// pins that, so suite timings are not mistaken for production ones.
+sqlite.describe('the suite relaxes the writer to synchronous=NORMAL', () => {
+  let dir = ''
+  beforeAll(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-sync-relaxed-')) })
+  afterAll(() => {
+    dbMod.closeDB()
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('reports NORMAL without REDLOG_TEST_REAL_SYNCHRONOUS', () => {
+    expect(process.env.REDLOG_TEST_REAL_SYNCHRONOUS).not.toBe('1')
+    dbMod.initDB(dir)
+    dbMod.getDB().prepare('INSERT INTO bookmarks (id, title, created_at) VALUES (?, ?, ?)').run(crypto.randomUUID(), 'sync', Date.now())
+    expect(dbMod.getDB().pragma('synchronous', { simple: true })).toBe(1)
   })
 })
