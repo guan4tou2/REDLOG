@@ -17,14 +17,14 @@
 
 ## Phase 1 — 釘住今天的行為（只加測試與 gate，不改程式行為）
 
-- [ ] T002 [P] module-state gate：`scripts/verify-architecture.mjs` 新增規則，`scripts/module-state-allowlist.json` 列出今天每一個模組層 `let`／`var`／以 `new`、`[]`、`create*()` 初始化的 `const`（`src/core/**`、`src/main/**`），分類為 `app`／`machine`／`constant`／`test-seam`／`project-legacy`，各附理由。`project-legacy` 的數目記為基準。加入 gate 自身的反向測試（放一個未登記的 `let`，gate 失敗）。
-- [ ] T003 [P] `test/config-direct-read.test.ts`：`loadConfig(` 在 `src/core/config.ts`、`src/main/config-store.ts` 以外的出現數，基準 36，只能下降。
-- [ ] T004 [P] `test/stop-project-order.characterization.test.ts`：以替身記錄 `stopProject` 今天的 27 個步驟順序與 `startProjectResources` 的開啟順序（含 `OPEN_SEQUENCE` hooks），存成 golden。Phase 3 的資源順序快照以它為對照。
-- [ ] T005 [P] `src/core/settings-registry.ts` 與 `test/settings-registry-complete.test.ts`：以 TS compiler 走訪 `RedLogConfig` 的葉節點，每個都在登記表中，附歸屬範圍（plan「設定歸屬表」）。只是資料，沒有讀者。
-- [ ] T006 [P] `LEGACY_V1_DEFAULTS`：凍結目前的 `DEFAULT_CONFIG` 副本；`test/fixtures/config-legacy/` 放 10 份由目前 main 產生的 `config.yaml`（預設、改過 operator、改過 port、改過 personalDomains、含 `overlay` 舊區塊、含 `packMembers` 缺省等），並記錄目前 `loadConfig` 的結果為 golden。
-- [ ] T007 [P] [US2] RED：`test/open-never-writes-config.test.ts`。(a) 開啟一個合法專案後 `config.yaml` 的位元組改變（今天會，因為 `index.ts:782`）；(b) 開啟一個 YAML 壞掉的專案後，檔案被預設值覆蓋。兩者以 `it.fails` 標示。
-- [ ] T008 [P] [US3] RED：`test/airgap-live.test.ts`。專案開著時以 patch 打開 `network.offline`，斷言 NTP、錨定、更新檢查、IP 查詢的排程全部停止。今天 NTP 與更新仍在，`it.fails`。
-- [ ] T009 [P] [US1] RED：`test/session-switch-known-leaks.test.ts`。(a) `startLinkMonitor` 的計時器在關閉後仍在；(b) 不呼叫 `resetBodiesDirCache` 時 body 寫進前一個專案；(c) A 的 DB 錯誤讓 B 的判定維持 dark。皆 `it.fails`。
+- [x] T002 [P] module-state gate：`scripts/verify-architecture.mjs` 新增規則，`scripts/module-state-allowlist.json` 列出今天每一個模組層 `let`／`var`／以 `new`、`[]`、`create*()` 初始化的 `const`（`src/core/**`、`src/main/**`），分類為 `app`／`machine`／`constant`／`test-seam`／`project-legacy`，各附理由。`project-legacy` 的數目記為基準。加入 gate 自身的反向測試（放一個未登記的 `let`，gate 失敗）。
+- [x] T003 [P] `test/config-direct-read.test.ts`：`loadConfig(` 在 `src/core/config.ts`、`src/main/config-store.ts` 以外的出現數，基準 36，只能下降。
+- [x] T004 [P] `test/stop-project-order.characterization.test.ts`：以替身記錄 `stopProject` 今天的 27 個步驟順序與 `startProjectResources` 的開啟順序（含 `OPEN_SEQUENCE` hooks），存成 golden。Phase 3 的資源順序快照以它為對照。
+- [ ] T005 [P] `src/core/settings-registry.ts` 與 `test/settings-registry-complete.test.ts`：以 TS compiler 走訪 `RedLogConfig` 的葉節點，每個都在登記表中，附歸屬範圍（plan「設定歸屬表」）。只是資料，沒有讀者。 （2026-11-13：未做。它要新增一個尚無讀者的 `src/core/settings-registry.ts`，Phase 1 不改正式程式碼，且未被讀取的匯出會被 verify:architecture 擋下；延到第一個讀它的階段）
+- [x] T006 [P] `LEGACY_V1_DEFAULTS`：凍結目前的 `DEFAULT_CONFIG` 副本；`test/fixtures/config-legacy/` 放 10 份由目前 main 產生的 `config.yaml`（預設、改過 operator、改過 port、改過 personalDomains、含 `overlay` 舊區塊、含 `packMembers` 缺省等），並記錄目前 `loadConfig` 的結果為 golden。
+- [x] T007 [P] [US2] RED：`test/open-never-writes-config.test.ts`。(a) 開啟一個合法專案後 `config.yaml` 的位元組改變（今天會，因為 `index.ts:782`）；(b) 開啟一個 YAML 壞掉的專案後，檔案被預設值覆蓋。兩者以 `it.fails` 標示。
+- [x] T008 [P] [US3] RED：`test/airgap-live.test.ts`。專案開著時以 patch 打開 `network.offline`，斷言 NTP、錨定、更新檢查、IP 查詢的排程全部停止。今天 NTP 與更新仍在，`it.fails`。
+- [x] T009 [P] [US1] RED：`test/session-switch-known-leaks.test.ts`。(a) `startLinkMonitor` 的計時器在關閉後仍在；(b) 不呼叫 `resetBodiesDirCache` 時 body 寫進前一個專案；(c) A 的 DB 錯誤讓 B 的判定維持 dark。皆 `it.fails`。
 - **Gate**：五道 gate 全綠；T002–T009 在三個平台的 unit leg 執行，或計為 `not-run` 並附原因。
 
 ## Phase 2 — Session 骨架與「先準備、後交棒」
