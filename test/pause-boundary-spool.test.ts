@@ -27,8 +27,12 @@
 //     (returns false) and retries it every 30 s, and the command_start already
 //     in the record never gets its end.
 //
-// Phase 2 (T015) judges by the persisted pause intervals; then both
-// `it.fails` below become `it`.
+// Phase 2 (T015, as revised 2026-11-13) judges a spool file, after the pause,
+// by its usable source time against the RECORDED pause intervals
+// (src/core/recording-state.ts, src/core/spool-drain.ts); both tests below were
+// `it.fails` until then. The rule itself is property-tested in
+// test/pause-interval-property.test.ts, the review's probes in
+// test/pause-spool-review.test.ts.
 
 import fs from 'node:fs'
 import os from 'node:os'
@@ -75,8 +79,10 @@ sqlite.describe('the pause boundary on spool replay', () => {
     ops.createOperator({ id: OP, name: 'Pause', token: ops.generateToken(), isPrimary: true })
     events.insertEvent('system', { subtype: 'session_start' }, opening)
   })
-  afterEach(() => {
+  afterEach(async () => {
     vi.useRealTimers()
+    // Windows cannot remove a directory that still holds an open database.
+    ;(await import('../src/core/http-body-index')).closeHttpBodyIndex()
     db.closeDB()
     for (const d of [dir, spool, keys]) fs.rmSync(d, { recursive: true, force: true })
     if (prevKeys === undefined) delete process.env.REDLOG_KEYS_DIR
@@ -102,7 +108,7 @@ sqlite.describe('the pause boundary on spool replay', () => {
   })
 
   // (a)
-  sqlite.it.fails('a crash during a pause: nothing the hook spooled inside the pause is replayed', () => {
+  sqlite.it('a crash during a pause: nothing the hook spooled inside the pause is replayed', () => {
     const pausedAt = T0 + 10 * SEC
     stateRow('recording_paused', pausedAt)
     // Typed while paused, with RedLog down: the hook could not POST, so it
@@ -121,10 +127,26 @@ sqlite.describe('the pause boundary on spool replay', () => {
     expect(run).not.toBeNull()
     const insidePause = shellRows().filter((r) => r.timestamp >= pausedAt)
     expect(insidePause, 'shell rows timestamped inside the pause reached the chain').toEqual([])
+    // Refused for good, not left to be retried; counted in a chained gap row at
+    // the time they were observed (Spec 071 T011/T015). The record shows the
+    // pause beginning but not ending — the reopen closed it — so the operator
+    // may have resumed: a loss, not an intentional pause, and the content is
+    // kept in quarantine (FR-082, review rounds 4–5).
+    expect(fs.readdirSync(spool)).toEqual(['quarantine'])
+    expect(fs.readdirSync(path.join(spool, 'quarantine', ENG)).filter((n) => !n.endsWith('.why'))).toHaveLength(2)
+    const gaps = (db.getDB().prepare(`SELECT timestamp, data, hash FROM events WHERE subtype = 'capture_gap'`).all() as Array<{ timestamp: number; data: string; hash: string | null }>)
+    expect(gaps.map((g) => ({ ...JSON.parse(g.data) as Record<string, unknown>, at: g.timestamp, chained: g.hash !== null })))
+      .toEqual([expect.objectContaining({ reason: 'pause-end-unknown', intentional: false, skipped_units: 2, quarantined: 2, at: typedAt, chained: true })])
+    // And a later drain, after the reopen marker, does not change its mind.
+    at(pausedAt + 61 * SEC)
+    events.insertEvent('system', { subtype: 'recording_resumed', source: 'project-open' }, opening)
+    spoolFile({ subtype: 'command_start', command: 'id', terminalId: 'tA', pid: 4242, command_id: 'cA2', source_timestamp: typedAt + 5 * SEC })
+    drain.drainSpoolAsMain(spool, opening)
+    expect(shellRows().filter((r) => r.timestamp >= pausedAt)).toEqual([])
   })
 
   // (b)
-  sqlite.it.fails('a command_end observed before a pause is written once recording has resumed', () => {
+  sqlite.it('a command_end observed before a pause is written once recording has resumed', () => {
     // Recorded live: the command starts at T0+1s.
     at(T0 + SEC)
     const start = ingest.ingest({ agentType: 'shell', engagementId: ENG, operatorId: OP,

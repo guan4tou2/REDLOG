@@ -417,15 +417,21 @@ function resolveOccurredAt(
   if (candidate === undefined || candidate === null) {
     return { occurredAt: now, sourceCandidate: null, rejected: null }
   }
-  const reject = (reason: string): { occurredAt: number; sourceCandidate: null; rejected: { value: unknown; reason: string } } =>
-    ({ occurredAt: now, sourceCandidate: null, rejected: { value: candidate, reason } })
+  const rejection = sourceTimeRejection(candidate, now)
+  if (rejection !== null) return { occurredAt: now, sourceCandidate: null, rejected: { value: candidate, reason: rejection } }
+  return { occurredAt: candidate as number, sourceCandidate: candidate as number, rejected: null }
+}
 
-  if (typeof candidate !== 'number' || !Number.isFinite(candidate)) return reject('not a finite number')
+/** Why a producer-supplied time is not used, or null when it is. The one rule:
+ *  the row's `timestamp` and the pause judgment (core/recording-state.ts) both
+ *  fall back to the receipt time on exactly these. */
+export function sourceTimeRejection(candidate: unknown, now: number): string | null {
+  if (typeof candidate !== 'number' || !Number.isFinite(candidate)) return 'not a finite number'
   // A seconds-precision epoch read as milliseconds lands in 1970 and would drag
   // the row to the far left of every timeline. Cheaper to refuse than to fix.
-  if (candidate < SOURCE_TIME_FLOOR_MS) return reject('before 2015 — probably seconds, not milliseconds')
-  if (candidate > now + SOURCE_TIME_FUTURE_SLACK_MS) return reject(`${candidate - now}ms in the future`)
-  return { occurredAt: candidate, sourceCandidate: candidate, rejected: null }
+  if (candidate < SOURCE_TIME_FLOOR_MS) return 'before 2015 — probably seconds, not milliseconds'
+  if (candidate > now + SOURCE_TIME_FUTURE_SLACK_MS) return `${candidate - now}ms in the future`
+  return null
 }
 
 // The insert path's statements, prepared once per connection. Preparing them

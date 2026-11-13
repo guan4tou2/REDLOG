@@ -73,6 +73,19 @@ describe.each(cases)('safe with %s is shown as unknown', (_name, status) => {
   })
 })
 
+// What main now sends for "only an exposed list, address not on it": unknown,
+// with an address and no error (the verdict is still presumed_safe there).
+describe('an address that matched no safe list is shown as unknown', () => {
+  beforeEach(() => { current = { ipSafety: 'unknown', externalIP: '198.51.100.7', internalIP: '10.0.0.2', lastCheck: Date.now(), error: null } })
+  it('in the status bar', async () => { expect(await statusBarWord()).toBe('IP?') })
+  it('on the dashboard card', async () => { expect(await cardTag()).toBe('IP status unconfirmed') })
+  it('on the HUD', async () => {
+    const text = await hudText()
+    expect(text).toContain('IP?')
+    expect(text).not.toContain('SAFE')
+  })
+})
+
 describe('safe with a failed read is not shown as safe', () => {
   beforeEach(() => { current = { ipSafety: 'safe', externalIP: '198.51.100.7', internalIP: '10.0.0.2', lastCheck: Date.now(), error: 'All IP providers failed' } })
   it('in the status bar', async () => { expect(await statusBarWord()).toBe('IP?') })

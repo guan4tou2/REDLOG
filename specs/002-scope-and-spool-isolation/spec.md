@@ -3,6 +3,31 @@
 **Status**: Verified
 **Created**: 2026-09-20
 
+> **Superseded quarantine location (Spec 071 T012):** an identity-free spool
+> payload is no longer renamed `.unattributed` in place. It is moved to
+> `~/.redlog/pending/quarantine/` as `no-project--<name>` with a `.why` beside
+> it, still writes no event and is still available for inspection and listed
+> in Settings ▸ Retention (#255). `.unattributed` and `.bad` files an earlier
+> version left are moved there once (`no-project`, `legacy-bad`). This replaces
+> the file name in FR-006 and acceptance scenario 6; the rule — never assigned
+> to the active project — stands.
+
+> **Superseded pause rule (Spec 071 T015/T016, as revised 2026-11-13):** the
+> drain still waits while recording is paused. After a resume or a reopen, a
+> spool file whose usable source time lies inside a pause this project
+> recorded (a recorded pause with no resume ends at the reopen) is never
+> written: it is counted in a chained `system.capture_gap` (`reason: paused`)
+> and then removed. Every other file is written — including a `command_end`
+> observed before a pause, which the earlier "older than the last resume" rule
+> kept pending forever, and a file whose source time is missing or not usable.
+> A write that fails is left pending and retried after a back-off, and
+> quarantined (`failed`) after a bounded number of tries; a file that can never
+> be written goes to the quarantine (`malformed`, `kind-not-allowed`). A file
+> is moved or removed only after the gap row that counts it is committed. This
+> replaces FR-007 and acceptance scenario 7: a file leaves the spool only once
+> its event is written, or it is counted and then quarantined or refused for
+> good — never on a failed write.
+
 ## Goal
 
 Finish the existing project identity and scope workflows without adding case

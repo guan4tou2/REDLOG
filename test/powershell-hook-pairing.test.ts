@@ -72,6 +72,19 @@ describePowerShell.each(shells.length ? shells : ['PowerShell unavailable'])('th
     expect(b[0].terminalId).not.toBe(a[0].terminalId)
   }, 60_000)
 
+  it('Redlog-Run stamps its start and end with when they happened, in milliseconds', async () => {
+    const before = Date.now()
+    const events = (await runShell(ps, home, ['Redlog-Run Write-Output wrapped']))
+      .filter((e) => e.command === 'Write-Output wrapped') as Array<Spooled & { source_timestamp?: unknown; output_started_at?: unknown }>
+    const after = Date.now()
+    const start = events.find((e) => e.subtype === 'command_start')
+    const end = events.find((e) => e.subtype === 'command_end')
+    const ms = (v: unknown): number => { expect(typeof v).toBe('number'); expect(v as number).toBeGreaterThanOrEqual(before); expect(v as number).toBeLessThanOrEqual(after); return v as number }
+    const started = ms(start?.source_timestamp)
+    expect(ms(end?.output_started_at)).toBe(started)
+    expect(ms(end?.source_timestamp)).toBeGreaterThanOrEqual(started)
+  }, 60_000)
+
   it('uses the built-in terminal id when the app opened the shell', async () => {
     const events = await runShell(ps, home, ['Write-Output inside'], { REDLOG_TERMINAL_ID: 'term-42' })
     expect(events.length).toBeGreaterThan(0)

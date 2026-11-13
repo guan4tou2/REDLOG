@@ -16,7 +16,8 @@ const IP_VERDICT_KEY: Record<string, string> = {
   safe: 'ip.safeIp',
   unknown: 'ip.unknownIp',
   off_profile: 'eventTitle.ipOffProfile',
-  presumed_safe: 'eventTitle.ipPresumedSafe'
+  // Stored as presumed_safe; shown as unknown, as the IP card does.
+  presumed_safe: 'ip.unknownIp'
 }
 
 /** Exported for the first-run strip, which is a preview of this timeline and

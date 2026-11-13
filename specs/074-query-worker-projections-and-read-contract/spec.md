@@ -34,6 +34,9 @@
 6. 讀取服務停擺時，主行程**絕不**改為自己執行查詢（plan D8）。
 7. 計數只有三種：`exact`、`atLeast`（顯示為「N+」）、`unknown`；清單的完整度另成一欄。全部畫面經同一個格式化函式（plan D11）。
 
+> **指標（2026-11-13）**：[Spec 077](../077-personal-content-and-delivery/spec.md) 在 `derived.db` 新增投影 `delivery_state`、在讀取契約加共用參數 `delivery`（`operator`／`deliver`）與查詢鍵 `delivery:`，並刪除 FR-032 所列的 `sanitized_events`、`do_not_export` 兩表；FR-065 的「不匯出標記」topic 改為 `delivery`。
+
+
 ### 前提更正（已在程式碼確認）
 
 - **第二條連線沒有讓讀取離開寫入的執行緒。** `src/core/db/index.ts:516-529` 與 `src/core/db/event-queries.ts:353` 的註解說唯讀連線讓重掃描「不會序列化擷取寫入」；better-sqlite3 是同步的，兩條連線都在主行程的 JS 執行緒上。分開連線解決的是 `index.ts:473-493` 記載的「connection is busy」，不是回應性（02 §1）。

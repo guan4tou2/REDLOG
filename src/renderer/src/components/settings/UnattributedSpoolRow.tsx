@@ -4,7 +4,8 @@ import { toast } from '../Toast'
 import { formatDateTime } from '../../lib/time'
 
 // Temp files the shell hooks wrote while no project was open. Replay cannot say
-// which project they belong to, so it sets them aside as `*.unattributed` (#255).
+// which project they belong to, so it sets them aside in the spool's quarantine
+// as `no-project` (#255; Spec 071 T012).
 // They say nothing about the open project's capture, so they are not on the
 // dashboard's Capture Health card; this is the one place they are listed, for
 // the operator who wants to look or clear them.

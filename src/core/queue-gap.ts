@@ -1,8 +1,8 @@
 // A queue-full capture gap counts events the proxy addon refused (#460). It is
 // spooled and replayed later, and the replay knows nothing about when
 // recording was paused: a gap counted while paused read as a loss in a stretch
-// nothing was meant to be recorded. These two functions judge it against the
-// pause intervals the Timeline already holds. A gap for events the proxy held
+// nothing was meant to be recorded. These functions judge it against the
+// recorded pause intervals (core/recording-state.ts). A gap for events the proxy held
 // when it stopped (#291) is judged the same way: an event admitted while
 // paused would have been refused by RedLog, so losing it lost nothing. Not
 // quite at a boundary — RedLog judges an http_request_* event by when it
@@ -15,22 +15,6 @@ const PAUSE_JUDGED = new Set(['queue-full', 'proxy-stopped', 'delivery-interrupt
 /** A capture gap whose window says when the events it counts were admitted. */
 export function isPauseJudgedGap(data: Record<string, unknown>): boolean {
   return data.subtype === 'capture_gap' && PAUSE_JUDGED.has(String(data.reason))
-}
-
-/** `recording_paused` / `recording_resumed` rows, oldest first, as intervals.
- *  A pause with no resume after it is still open. */
-export function pauseIntervals(rows: ReadonlyArray<{ subtype: string; timestamp: number }>): PauseInterval[] {
-  const intervals: PauseInterval[] = []
-  let openedAt: number | null = null
-  for (const row of rows) {
-    if (row.subtype === 'recording_paused' && openedAt === null) openedAt = row.timestamp
-    else if (row.subtype === 'recording_resumed' && openedAt !== null) {
-      intervals.push([openedAt, row.timestamp])
-      openedAt = null
-    }
-  }
-  if (openedAt !== null) intervals.push([openedAt, Infinity])
-  return intervals
 }
 
 /** Null when every refusal fell inside one pause: nothing was being recorded,

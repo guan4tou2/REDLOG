@@ -32,7 +32,7 @@ let ingestMod: typeof import('../src/core/ingest')
 let events: typeof import('../src/core/db/events')
 let chain: typeof import('../src/core/chain-anchor')
 let ops: typeof import('../src/core/db/operators')
-let spool: typeof import('../src/core/spool-replay')
+let spoolDrain: typeof import('../src/core/spool-drain')
 let gap: typeof import('../src/core/queue-gap')
 let busMod: typeof import('../src/core/event-bus')
 let dbAvailable = false
@@ -43,7 +43,7 @@ if (requires('better-sqlite3').ok) {
   events = await import('../src/core/db/events')
   chain = await import('../src/core/chain-anchor')
   ops = await import('../src/core/db/operators')
-  spool = await import('../src/core/spool-replay')
+  spoolDrain = await import('../src/core/spool-drain')
   gap = await import('../src/core/queue-gap')
   busMod = await import('../src/core/event-bus')
   dbAvailable = true
@@ -203,22 +203,9 @@ describeDB('ingest characterization (R2-0a)', () => {
       subtype: 'capture_gap', source: 'mitmproxy', reason, capture_delivery: 'not-queued',
       gap_started_at: startedAt, gap_ended_at: endedAt, skipped_units: 7, skipped_body_bytes: 1234, reported_at: endedAt
     })
-    const drain = (): import('../src/core/spool-replay').SpoolReplayResult => {
-      let pauses: ReturnType<typeof gap.pauseIntervals> | null = null
-      const emit = ({ agentType, data: spooled, engagementId: spoolEngagement, operatorId: spoolOperator }: import('../src/core/spool-replay').SpoolReplayEvent): boolean => {
-        const data = gap.isPauseJudgedGap(spooled)
-          ? gap.queueGapAgainstPauses(spooled, pauses ??= gap.pauseIntervals(events.recordingStateRows()))
-          : spooled
-        if (!data) return true
-        const result = ingestMod.ingest({
-          agentType, data, engagementId: spoolEngagement, operatorId: spoolOperator,
-          envelope: { source: 'spool', mapper: { id: 'identity', version: '1' } }
-        })
-        if (result.event) return true
-        return result.skipped !== 'paused'
-      }
-      return spool.replaySpoolDirectory(spoolDir, { engagementId, operatorId: opId }, emit)
-    }
+    // The drain main runs (src/core/spool-drain.ts), not a copy of it.
+    const drain = (): import('../src/core/spool-replay').SpoolReplayResult =>
+      spoolDrain.drainSpoolOnce(spoolDir, { engagementId, operatorId: opId })
     const gaps = (): Array<{ data: Record<string, unknown>; source: unknown }> =>
       rowsOf('events', 'scanner')
         .map((r) => ({ data: JSON.parse(r.data as string) as Record<string, unknown>, source: r.source }))
@@ -227,7 +214,7 @@ describeDB('ingest characterization (R2-0a)', () => {
     it('lands a queue-full gap outside any pause unchanged', () => {
       const data = queueFull(T0 + 30 * MIN, T0 + 31 * MIN)
       const file = spoolFile('gap-a', data)
-      expect(drain()).toEqual({ replayed: 1, deferred: 0, unattributed: 0, invalid: 0, last: 'gap-a.json' })
+      expect(drain()).toEqual({ replayed: 1, deferred: 0, unattributed: 0, invalid: 0, failed: 0, last: 'gap-a.json', losses: [], retries: [], outcomes: { 'gap-a.json': 'ingested' } })
       expect(fs.existsSync(file)).toBe(false)
       const [row, ...rest] = gaps()
       expect(rest).toEqual([])
@@ -238,7 +225,7 @@ describeDB('ingest characterization (R2-0a)', () => {
 
     it('is done with a gap wholly inside a pause: no row, file consumed', () => {
       const file = spoolFile('gap-inside', queueFull(PAUSE[0] + MIN, PAUSE[1] - MIN))
-      expect(drain()).toEqual({ replayed: 1, deferred: 0, unattributed: 0, invalid: 0, last: 'gap-inside.json' })
+      expect(drain()).toEqual({ replayed: 1, deferred: 0, unattributed: 0, invalid: 0, failed: 0, last: 'gap-inside.json', losses: [], retries: [], outcomes: { 'gap-inside.json': 'ingested' } })
       expect(gaps()).toEqual([])
       expect(fs.existsSync(file)).toBe(false)
     })

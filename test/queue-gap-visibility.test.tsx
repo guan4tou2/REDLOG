@@ -14,7 +14,7 @@ import { ManagedHttpProxy, type ManagedProxyStatus } from '../src/main/services/
 import { eventTitle } from '../src/renderer/src/lib/eventTitle'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { CaptureHealthCard } from '../src/renderer/src/components/CaptureHealth'
-import { pauseIntervals, queueGapAgainstPauses } from '../src/core/queue-gap'
+import { queueGapAgainstPauses } from '../src/core/queue-gap'
 import type { RedLogEvent } from '../src/core/db/events'
 
 class FakeChild extends EventEmitter {
@@ -115,30 +115,24 @@ describe('a capture gap on the Timeline', () => {
 })
 
 describe('a queue-full gap replayed after a pause', () => {
-  const rows = [
-    { subtype: 'recording_paused', timestamp: 1000 },
-    { subtype: 'recording_resumed', timestamp: 2000 },
-    { subtype: 'recording_paused', timestamp: 5000 }
-  ]
+  // The recorded pauses, as core/recording-state.ts reads them from the chain
+  // (spool-count-once.test.ts covers that reading).
+  const paused: Array<[number, number]> = [[1000, 2000], [5000, Infinity]]
   const gap = (from: number, to: number): Record<string, unknown> =>
     ({ subtype: 'capture_gap', reason: 'queue-full', gap_started_at: from, gap_ended_at: to, skipped_units: 3 })
 
-  it('reads pauses as intervals, an unresumed one still open', () => {
-    expect(pauseIntervals(rows)).toEqual([[1000, 2000], [5000, Infinity]])
-  })
-
   it('is dropped when every refusal fell while recording was paused', () => {
-    expect(queueGapAgainstPauses(gap(1200, 1800), pauseIntervals(rows))).toBeNull()
-    expect(queueGapAgainstPauses(gap(6000, 7000), pauseIntervals(rows))).toBeNull()
+    expect(queueGapAgainstPauses(gap(1200, 1800), paused)).toBeNull()
+    expect(queueGapAgainstPauses(gap(6000, 7000), paused)).toBeNull()
   })
 
   it('is kept, and says so, when its window crosses a pause boundary', () => {
-    expect(queueGapAgainstPauses(gap(1500, 2500), pauseIntervals(rows))).toMatchObject({ skipped_units: 3, overlaps_pause: true })
+    expect(queueGapAgainstPauses(gap(1500, 2500), paused)).toMatchObject({ skipped_units: 3, overlaps_pause: true })
   })
 
   it('is kept unchanged outside any pause, and other gaps are not judged', () => {
-    expect(queueGapAgainstPauses(gap(3000, 4000), pauseIntervals(rows))).toEqual(gap(3000, 4000))
+    expect(queueGapAgainstPauses(gap(3000, 4000), paused)).toEqual(gap(3000, 4000))
     const other = { subtype: 'capture_gap', reason: 'delivery-unconfirmed', reported_at: 1500 }
-    expect(queueGapAgainstPauses(other, pauseIntervals(rows))).toEqual(other)
+    expect(queueGapAgainstPauses(other, paused)).toEqual(other)
   })
 })

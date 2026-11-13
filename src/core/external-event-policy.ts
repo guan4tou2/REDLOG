@@ -39,3 +39,29 @@ export function isExternalEventAllowed(agentType: string, data: unknown): boolea
   if (EXTERNAL_ALLOWED_AGENT_TYPES.has(agentType)) return true
   return agentType === 'system' && isProducerHeartbeat(data)
 }
+
+/** Who is writing, as far as the receiver can tell before Spec 071's
+ *  credentials exist (FR-071 names the classes that come with them).
+ *
+ *  - `legacy`: the bearer of today's per-project token on POST /api/events.
+ *    What it may write is `isExternalEventAllowed` plus the API's own refusal
+ *    of a marker amendment; the API answers those with two different 403s, so
+ *    it keeps its two checks and this table records that they are one policy.
+ *  - `legacy-handoff`: a file in ~/.redlog/pending. It carries no credential at
+ *    all — any process running as the operator can put one there — so it gets
+ *    the narrowest scope: no `system` of any kind (not even the heartbeat, which
+ *    no spooling producer sends), no derived kind, and no `marker` (FR-065: a
+ *    marker only from a credential whose scope names it). */
+export type ProducerClass = 'legacy' | 'legacy-handoff'
+
+const KIND_POLICY: Readonly<Record<ProducerClass, (agentType: string, data: unknown) => boolean>> = {
+  legacy: (agentType, data) => isExternalEventAllowed(agentType, data)
+    && !(agentType === 'marker' && (data as Record<string, unknown> | null)?.subtype === 'amended'),
+  'legacy-handoff': (agentType) => agentType !== 'marker' && EXTERNAL_ALLOWED_AGENT_TYPES.has(agentType)
+}
+
+/** May `producer` write an event of this kind? Every door that is not RedLog's
+ *  own asks this; the spool drain is the one that did not (Spec 071 T010). */
+export function isKindAllowed(producer: ProducerClass, agentType: string, data: unknown): boolean {
+  return KIND_POLICY[producer](agentType, data)
+}

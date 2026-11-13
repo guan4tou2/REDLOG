@@ -35,7 +35,7 @@
 - [ ] T012 [P] [US3] 既有的 `.bad` 與 `.unattributed` 一次移入隔離區（`legacy-bad`、`no-project`）；#255 的卡片改讀隔離區，語意不變。
 - [ ] T013 [P] 開專案時的排空改為有界切片、在背景進行（`main/index.ts:968`），測試沿用 `spool-drain-slices` 的形式。
 - [ ] T014 [P] `active-identity.json` 改原子寫入（`main/index.ts:378-383`），加入讀到半寫內容的測試。
-- [ ] T015 [US2] `recordingStateAt(t)` 依持久化的暫停區間判斷，取代 `ingest.ts:160-168` 的延遲閘門，並套用到所有項目；排空在暫停中照常進行。T008 翻正，並加入 property test（T022 的雛形）。
+- [ ] T015 [US2] （修訂 2026-11-13，見 spec US2 與 FR-082/083）`recordedPauses()`／`stateAt(t)` 只讀已記錄的暫停區間 `[暫停, 恢復)`（沒有恢復紀錄的暫停：本次開啟前開始的在重開時結束，之後開始的結束時間未知、排空延後），只給交接目錄用；`command_end` 另依起點與跨越規則判斷；暫停／恢復列寫入失敗時重試：暫停中不排空；暫停結束後，可用來源時間落在已記錄區間內的檔拒絕為 `paused`，其餘寫入，交接檔不再經過 `ingest.ts:160-168` 的延遲閘門。即時入口維持今天依收到時間的判斷（含該閘門）。T008 翻正，並加入 property test（T022 的雛形）。
 - [ ] T016 [US2] 修訂 Spec 002 FR-007（暫停時不再保留檔案），與 T015 同一個 PR。
 - **Gate**：五道 gate；T002、T003 不變。
 
@@ -43,7 +43,7 @@
 
 - [ ] T020 [US1] 先 RED：`test/ingest-stamp.test.ts`。驗證 `_ingest` 的鍵、覆寫呼叫端給的值、移除保留鍵並記入 `stripped`、只含允許的型別、大小上限（FR-005、FR-006）；`rules` 的有界形式（至多 3 項、`+<n>`）與 `rules_partial` 在最壞情況仍不超過 512 bytes（Spec 075 FR-059 的消費者，075 T091 填值）。
 - [ ] T021 [US1] 實作 `src/core/ingest/stamp.ts`。engagement 由綁定 DB 決定，`'default'` 不再出現；沒有綁定 DB 時拋錯，對應 `retry`／`no-project`（FR-007）。
-- [ ] T022 [P] [US2] 暫停 property test 完整版（至少 10,000 組；SC-005）。
+- [ ] T022 [P] [US2] 暫停 property test 完整版（至少 10,000 組；SC-005，依 2026-11-13 修訂的規則：暫停期間收到的列為 0；交接檔可用來源時間落在已記錄區間內的列為 0；暫停前的交接項目在暫停結束後寫入）。
 - [ ] T023 [US1] 先 RED：`test/target-via.test.ts`（O11）。驗證 explicit、extracted、command、terminal-last、none 五種，跨重啟一致，不套用全域目前目標。
 - [ ] T024 [US1] 建立 `terminal_targets` 表，寫入路徑在 commit 交易內同步寫入；**不在本規格回填**：含 071 之前事件的專案，在 Spec 074 的回填完成前不套用 `terminal-last`、寫 `none`（FR-010），先 RED 斷言這一點；回填由 074 T052 實作。`command` 的承接改從持久資料查；移除 `ingest.ts:251-255` 的自動套用（app 內操作依 O16）。Spec 072 T043（`identity.target`）同一個 PR。
 - [ ] T025 [P] [US1] `_ingest.terminal` 單一正規值；`causes-resolver.ts:83` 與 `event-write.ts:479` 改讀同一個函式（FR-011）。
