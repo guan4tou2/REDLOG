@@ -278,7 +278,14 @@ const DEFECTS: Array<{ producer: string; response: Response; finding: string; ch
   { producer: 'pcap-agent', response: 'duplicate', finding: '01-F1 table: pcap-agent spools a 409 dedup in full, as the shell does (F1(b))',
     check: (d) => expect(d).not.toBe('spool') },
   { producer: 'mitm', response: 'policy', finding: '01-F1(d): a 4xx refusal is neither replayed nor recorded as a gap',
-    check: (d) => expect(d).toBe('gap') }
+    check: (d) => expect(d).toBe('gap') },
+  // A 409 dedup is not a loss (the event is recorded), so `duplicate → nothing`
+  // stays a pin; every refused or failed answer is.
+  ...(['engagement', 'policy', 'malformed', 'unauthorized', 'noProject', 'internal', 'unreachable'] as Response[]).map((response) => ({
+    producer: 'pcap-capture', response,
+    finding: 'T004 (corrects 01-F1): pcap-capture ignores what post returns, so a refused or failed flow is lost without trace',
+    check: (d: Decision) => expect(d).not.toBe('nothing')
+  }))
 ]
 const isDefect = (producer: string, response: Response): boolean => DEFECTS.some((d) => d.producer === producer && d.response === response)
 
@@ -316,33 +323,54 @@ listen.describe('legacy producers × /api/events answers', () => {
   })
 
   // hooks/redlog-send.ps1 posts from a background runspace inside `try {} catch {}`
-  // and keeps nothing, whatever the answer. Known defect 01-F3 item 4 (the
-  // swallowed refusal is not recorded anywhere); it stays a pin rather than an
-  // `it.fails` because pwsh was not available where this was written, so the
-  // failure could not be watched happen. One pwsh session sends one event per
-  // answer and waits for all of them to arrive.
-  pwsh.it('redlog-send.ps1 keeps nothing and says nothing, whatever the answer', async () => {
-    const mocks = new Map<Response, Mock>()
-    for (const r of RESPONSES) mocks.set(r, await mock(r))
-    const h = home(null)
-    const sender = path.join(ROOT, 'hooks', 'redlog-send.ps1')
-    const lines = [`. '${sender.replace(/'/g, "''")}'`]
-    for (const r of RESPONSES) {
-      lines.push(`Set-Content -NoNewline -Path (Join-Path $env:USERPROFILE '.redlog/api-port') -Value '${mocks.get(r)!.port}'`)
-      lines.push(`Send-RedLogEvent 'echo ${r}' command_start`)
-      // Each runspace reads nothing back, so give it time to send before the
-      // next one changes the port file it no longer reads.
-      lines.push('Start-Sleep -Milliseconds 300')
-    }
-    lines.push('Start-Sleep -Seconds 3')
-    const script = path.join(h, 'send.ps1')
-    fs.writeFileSync(script, lines.join('\n') + '\n')
-    const r = await run('pwsh', ['-NoProfile', '-NonInteractive', '-File', script], { USERPROFILE: h, HOME: h }, 60_000)
-    expect({ status: r.status, stdout: r.stdout.trim(), stderr: r.stderr.trim() }).toEqual({ status: 0, stdout: '', stderr: '' })
-    // Every answer was actually given, so "keeps nothing" is not vacuous.
-    const received = RESPONSES.filter((x) => x !== 'unreachable' && mocks.get(x)!.requests.length === 1)
-    expect(received).toEqual(RESPONSES.filter((x) => x !== 'unreachable'))
-    expect(spooledIn(h)).toEqual([])
-    expect(fs.readdirSync(path.join(h, '.redlog')).sort()).toEqual(['active-identity.json', 'api-port', 'api-token'])
+  // and keeps nothing, whatever the answer. Right for an answer that recorded
+  // the event (or already had it); for a refused or failed one it is known
+  // defect 01-F3 item 4, the swallowed refusal recorded nowhere.
+  const PS_DONE: Response[] = ['accepted', 'paused', 'unrecorded', 'duplicate']
+  const PS_LOST: Response[] = ['engagement', 'policy', 'malformed', 'unauthorized', 'noProject', 'internal', 'unreachable']
+
+  pwsh.it(`redlog-send.ps1 keeps nothing and says nothing for ${PS_DONE.join(', ')}`, async () => {
+    const r = await powershell(PS_DONE)
+    expect({ status: r.status, stdout: r.stdout, stderr: r.stderr }).toEqual({ status: 0, stdout: '', stderr: '' })
+    expect(r.kept).toEqual(Object.fromEntries(PS_DONE.map((x) => [x, []])))
+  }, 90_000)
+
+  pwsh.it.fails('redlog-send.ps1 keeps a record of each refused or failed event (01-F3 item 4: `catch {}` swallows it)', async () => {
+    const r = await powershell(PS_LOST)
+    expect(r.status, r.stderr).toBe(0)
+    expect(PS_LOST.filter((x) => r.kept[x].length === 0)).toEqual([])
   }, 90_000)
 })
+
+/** One pwsh session sends one event per answer, each from its own home (the
+ *  sender reads its home when dot-sourced, so it is dot-sourced again for
+ *  each), and waits for all of them to arrive. `kept` is what each home holds
+ *  under .redlog beyond the three files `home()` put there. */
+async function powershell(responses: Response[]): Promise<{ status: number | null; stdout: string; stderr: string; kept: Record<string, string[]> }> {
+  const sender = path.join(ROOT, 'hooks', 'redlog-send.ps1')
+  const runDir = home(null)
+  const homes = new Map<Response, { m: Mock; h: string }>()
+  const lines: string[] = []
+  for (const r of responses) {
+    const m = await mock(r)
+    const h = home(m.port)
+    homes.set(r, { m, h })
+    lines.push(`$env:USERPROFILE = '${h.replace(/'/g, "''")}'`)
+    lines.push(`. '${sender.replace(/'/g, "''")}'`)
+    lines.push(`Send-RedLogEvent 'echo ${r}' command_start`)
+    // Each runspace reads nothing back, so give it time to send before the
+    // next one starts.
+    lines.push('Start-Sleep -Milliseconds 300')
+  }
+  lines.push('Start-Sleep -Seconds 3')
+  const script = path.join(runDir, 'send.ps1')
+  fs.writeFileSync(script, lines.join('\n') + '\n')
+  const r = await run('pwsh', ['-NoProfile', '-NonInteractive', '-File', script], { USERPROFILE: runDir, HOME: runDir }, 60_000)
+  // Every answer was actually given, so "keeps nothing" is not vacuous.
+  const received = responses.filter((x) => x !== 'unreachable' && homes.get(x)!.m.requests.length === 1)
+  expect(received).toEqual(responses.filter((x) => x !== 'unreachable'))
+  const seeded = ['active-identity.json', 'api-port', 'api-token']
+  const kept = Object.fromEntries(responses.map((x) => [x,
+    fs.readdirSync(path.join(homes.get(x)!.h, '.redlog')).filter((f) => !seeded.includes(f)).sort()]))
+  return { status: r.status, stdout: r.stdout.trim(), stderr: r.stderr.trim(), kept }
+}
