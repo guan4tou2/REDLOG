@@ -1,0 +1,23 @@
+{
+ "location": "src/core/causes-resolver.ts",
+ "mode": "extracted",
+ "n": 6,
+ "table": "causes-resolver kind judgements",
+ "words": {
+  "noteStartEvent": [
+   "command_start",
+   "http_request_start",
+   "scanner",
+   "shell"
+  ],
+  "resolveIncomingCauses": [
+   "command_end",
+   "command_output",
+   "http_error",
+   "http_request_dropped",
+   "http_response",
+   "scanner",
+   "shell"
+  ]
+ }
+}

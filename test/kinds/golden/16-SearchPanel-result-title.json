@@ -1,0 +1,20 @@
+{
+ "location": "src/renderer/src/components/SearchPanel.tsx",
+ "mode": "extracted",
+ "n": 16,
+ "table": "SearchPanel result title",
+ "words": {
+  "eventSummary": [
+   "agent",
+   "artifact_added",
+   "command_end",
+   "command_start",
+   "file_transfer",
+   "loot",
+   "marker",
+   "screenshot",
+   "session_output",
+   "shell"
+  ]
+ }
+}

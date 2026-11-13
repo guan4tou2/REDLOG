@@ -1,0 +1,13 @@
+{
+ "location": "src/core/ingest.ts",
+ "mode": "extracted",
+ "n": 4,
+ "table": "ACTIVE_TARGET_FALLBACK_TYPES",
+ "words": {
+  "ACTIVE_TARGET_FALLBACK_TYPES": [
+   "marker",
+   "screenshot",
+   "shell"
+  ]
+ }
+}

@@ -1,0 +1,712 @@
+{
+ "answers": {
+  "agent:api_error": {
+   "agentTypeLabel": "timeline.agent",
+   "laneLabel": "timeline.agent"
+  },
+  "agent:assistant_message": {
+   "agentTypeLabel": "timeline.agent",
+   "laneLabel": "timeline.agent"
+  },
+  "agent:away_summary": {
+   "agentTypeLabel": "timeline.agent",
+   "laneLabel": "timeline.agent"
+  },
+  "agent:compact_summary": {
+   "agentTypeLabel": "timeline.agent",
+   "laneLabel": "timeline.agent"
+  },
+  "agent:future_subtype#unknown-subtype": {
+   "agentTypeLabel": "timeline.agent",
+   "laneLabel": "timeline.agent"
+  },
+  "agent:model_refusal": {
+   "agentTypeLabel": "timeline.agent",
+   "laneLabel": "timeline.agent"
+  },
+  "agent:session_end": {
+   "agentTypeLabel": "timeline.agent",
+   "laneLabel": "timeline.agent"
+  },
+  "agent:system#open-branch": {
+   "agentTypeLabel": "timeline.agent",
+   "laneLabel": "timeline.agent"
+  },
+  "agent:thinking": {
+   "agentTypeLabel": "timeline.agent",
+   "laneLabel": "timeline.agent"
+  },
+  "agent:tool_call": {
+   "agentTypeLabel": "timeline.agent",
+   "laneLabel": "timeline.agent"
+  },
+  "agent:tool_interrupted": {
+   "agentTypeLabel": "timeline.agent",
+   "laneLabel": "timeline.agent"
+  },
+  "agent:tool_result": {
+   "agentTypeLabel": "timeline.agent",
+   "laneLabel": "timeline.agent"
+  },
+  "agent:transcript_capture_started": {
+   "agentTypeLabel": "timeline.agent",
+   "laneLabel": "timeline.agent"
+  },
+  "agent:transcript_compacted": {
+   "agentTypeLabel": "timeline.agent",
+   "laneLabel": "timeline.agent"
+  },
+  "agent:transcript_parent_missing": {
+   "agentTypeLabel": "timeline.agent",
+   "laneLabel": "timeline.agent"
+  },
+  "agent:transcript_schema_drift": {
+   "agentTypeLabel": "timeline.agent",
+   "laneLabel": "timeline.agent"
+  },
+  "agent:transcript_snapshot": {
+   "agentTypeLabel": "timeline.agent",
+   "laneLabel": "timeline.agent"
+  },
+  "agent:transcript_tool_gap": {
+   "agentTypeLabel": "timeline.agent",
+   "laneLabel": "timeline.agent"
+  },
+  "agent:user_message": {
+   "agentTypeLabel": "timeline.agent",
+   "laneLabel": "timeline.agent"
+  },
+  "browser:console_debug": {
+   "agentTypeLabel": "timeline.browser",
+   "laneLabel": "timeline.browser"
+  },
+  "browser:console_error": {
+   "agentTypeLabel": "timeline.browser",
+   "laneLabel": "timeline.browser"
+  },
+  "browser:console_info": {
+   "agentTypeLabel": "timeline.browser",
+   "laneLabel": "timeline.browser"
+  },
+  "browser:console_log": {
+   "agentTypeLabel": "timeline.browser",
+   "laneLabel": "timeline.browser"
+  },
+  "browser:console_trace": {
+   "agentTypeLabel": "timeline.browser",
+   "laneLabel": "timeline.browser"
+  },
+  "browser:console_warn": {
+   "agentTypeLabel": "timeline.browser",
+   "laneLabel": "timeline.browser"
+  },
+  "browser:exception": {
+   "agentTypeLabel": "timeline.browser",
+   "laneLabel": "timeline.browser"
+  },
+  "browser:log_entry": {
+   "agentTypeLabel": "timeline.browser",
+   "laneLabel": "timeline.browser"
+  },
+  "c2_checkin:beacon#agent-type-with-no-writer": {
+   "agentTypeLabel": "timeline.c2Checkin",
+   "laneLabel": "timeline.c2Checkin"
+  },
+  "cleanup:attr_hide": {
+   "agentTypeLabel": "timeline.cleanup",
+   "laneLabel": "timeline.cleanup"
+  },
+  "cleanup:file_shred": {
+   "agentTypeLabel": "timeline.cleanup",
+   "laneLabel": "timeline.cleanup"
+  },
+  "cleanup:history_clear": {
+   "agentTypeLabel": "timeline.cleanup",
+   "laneLabel": "timeline.cleanup"
+  },
+  "cleanup:log_clear": {
+   "agentTypeLabel": "timeline.cleanup",
+   "laneLabel": "timeline.cleanup"
+  },
+  "cleanup:timestomp": {
+   "agentTypeLabel": "timeline.cleanup",
+   "laneLabel": "timeline.cleanup"
+  },
+  "credential_use:api_key": {
+   "agentTypeLabel": "timeline.credentialUse",
+   "laneLabel": "timeline.credentialUse"
+  },
+  "credential_use:auth_header": {
+   "agentTypeLabel": "timeline.credentialUse",
+   "laneLabel": "timeline.credentialUse"
+  },
+  "credential_use:basic_auth": {
+   "agentTypeLabel": "timeline.credentialUse",
+   "laneLabel": "timeline.credentialUse"
+  },
+  "credential_use:bearer_token": {
+   "agentTypeLabel": "timeline.credentialUse",
+   "laneLabel": "timeline.credentialUse"
+  },
+  "credential_use:digest": {
+   "agentTypeLabel": "timeline.credentialUse",
+   "laneLabel": "timeline.credentialUse"
+  },
+  "credential_use:form_login": {
+   "agentTypeLabel": "timeline.credentialUse",
+   "laneLabel": "timeline.credentialUse"
+  },
+  "credential_use:negotiate": {
+   "agentTypeLabel": "timeline.credentialUse",
+   "laneLabel": "timeline.credentialUse"
+  },
+  "credential_use:ntlm": {
+   "agentTypeLabel": "timeline.credentialUse",
+   "laneLabel": "timeline.credentialUse"
+  },
+  "credential_use:password_flag": {
+   "agentTypeLabel": "timeline.credentialUse",
+   "laneLabel": "timeline.credentialUse"
+  },
+  "credential_use:session_cookie": {
+   "agentTypeLabel": "timeline.credentialUse",
+   "laneLabel": "timeline.credentialUse"
+  },
+  "credential_use:url_userinfo": {
+   "agentTypeLabel": "timeline.credentialUse",
+   "laneLabel": "timeline.credentialUse"
+  },
+  "dns:dns_query": {
+   "agentTypeLabel": "timeline.dns",
+   "laneLabel": "timeline.dns"
+  },
+  "dns:dns_response": {
+   "agentTypeLabel": "timeline.dns",
+   "laneLabel": "timeline.dns"
+  },
+  "external:note#external-family": {
+   "agentTypeLabel": "external",
+   "laneLabel": "timeline.system"
+  },
+  "file_transfer:artifact_added": {
+   "agentTypeLabel": "timeline.files",
+   "laneLabel": "timeline.files"
+  },
+  "file_transfer:download": {
+   "agentTypeLabel": "timeline.files",
+   "laneLabel": "timeline.files"
+  },
+  "file_transfer:file_created": {
+   "agentTypeLabel": "timeline.files",
+   "laneLabel": "timeline.files"
+  },
+  "file_transfer:file_deleted": {
+   "agentTypeLabel": "timeline.files",
+   "laneLabel": "timeline.files"
+  },
+  "file_transfer:file_modified": {
+   "agentTypeLabel": "timeline.files",
+   "laneLabel": "timeline.files"
+  },
+  "file_transfer:upload": {
+   "agentTypeLabel": "timeline.files",
+   "laneLabel": "timeline.files"
+  },
+  "http_navigation:navigation": {
+   "agentTypeLabel": "timeline.http",
+   "laneLabel": "timeline.http"
+  },
+  "loot:credential_detected": {
+   "agentTypeLabel": "timeline.loot",
+   "laneLabel": "timeline.loot"
+  },
+  "marker": {
+   "agentTypeLabel": "timeline.markers",
+   "laneLabel": "timeline.markers"
+  },
+  "marker:amended": {
+   "agentTypeLabel": "timeline.markers",
+   "laneLabel": "timeline.markers"
+  },
+  "pcap:connection_attempt": {
+   "agentTypeLabel": "pcap",
+   "laneLabel": "timeline.scanner"
+  },
+  "pcap:connection_established": {
+   "agentTypeLabel": "pcap",
+   "laneLabel": "timeline.scanner"
+  },
+  "pcap:connection_refused": {
+   "agentTypeLabel": "pcap",
+   "laneLabel": "timeline.scanner"
+  },
+  "pcap:port_scan": {
+   "agentTypeLabel": "pcap",
+   "laneLabel": "timeline.scanner"
+  },
+  "pcap:udp_flow": {
+   "agentTypeLabel": "pcap",
+   "laneLabel": "timeline.scanner"
+  },
+  "pivot:agent_connect": {
+   "agentTypeLabel": "timeline.pivot",
+   "laneLabel": "timeline.pivot"
+  },
+  "pivot:closed": {
+   "agentTypeLabel": "timeline.pivot",
+   "laneLabel": "timeline.pivot"
+  },
+  "pivot:interactive": {
+   "agentTypeLabel": "timeline.pivot",
+   "laneLabel": "timeline.pivot"
+  },
+  "pivot:port_forward": {
+   "agentTypeLabel": "timeline.pivot",
+   "laneLabel": "timeline.pivot"
+  },
+  "pivot:proxied": {
+   "agentTypeLabel": "timeline.pivot",
+   "laneLabel": "timeline.pivot"
+  },
+  "pivot:route_add": {
+   "agentTypeLabel": "timeline.pivot",
+   "laneLabel": "timeline.pivot"
+  },
+  "pivot:socks_up": {
+   "agentTypeLabel": "timeline.pivot",
+   "laneLabel": "timeline.pivot"
+  },
+  "pivot:tunnel_start": {
+   "agentTypeLabel": "timeline.pivot",
+   "laneLabel": "timeline.pivot"
+  },
+  "plugin-kind:probe#plugin-declared": {
+   "agentTypeLabel": "plugin-kind",
+   "laneLabel": "timeline.system"
+  },
+  "process:process_exit": {
+   "agentTypeLabel": "timeline.process",
+   "laneLabel": "timeline.process"
+  },
+  "process:process_spawn": {
+   "agentTypeLabel": "timeline.process",
+   "laneLabel": "timeline.process"
+  },
+  "scanner:c2_checkin": {
+   "agentTypeLabel": "timeline.scanner",
+   "laneLabel": "timeline.c2Checkin"
+  },
+  "scanner:c2_checkin#generic": {
+   "agentTypeLabel": "timeline.scanner",
+   "laneLabel": "timeline.c2Checkin"
+  },
+  "scanner:c2_pivot": {
+   "agentTypeLabel": "timeline.scanner",
+   "laneLabel": "timeline.c2Checkin"
+  },
+  "scanner:c2_pivot#closed": {
+   "agentTypeLabel": "timeline.scanner",
+   "laneLabel": "timeline.c2Checkin"
+  },
+  "scanner:c2_task": {
+   "agentTypeLabel": "timeline.scanner",
+   "laneLabel": "timeline.c2Checkin"
+  },
+  "scanner:capture_gap": {
+   "agentTypeLabel": "timeline.scanner",
+   "laneLabel": "timeline.scanner"
+  },
+  "scanner:capture_gap#inflight": {
+   "agentTypeLabel": "timeline.scanner",
+   "laneLabel": "timeline.scanner"
+  },
+  "scanner:connection": {
+   "agentTypeLabel": "timeline.scanner",
+   "laneLabel": "timeline.scanner"
+  },
+  "scanner:connection_end": {
+   "agentTypeLabel": "timeline.scanner",
+   "laneLabel": "timeline.scanner"
+  },
+  "scanner:cookie_change": {
+   "agentTypeLabel": "timeline.scanner",
+   "laneLabel": "timeline.scanner"
+  },
+  "scanner:http_error": {
+   "agentTypeLabel": "timeline.scanner",
+   "laneLabel": "timeline.scanner"
+  },
+  "scanner:http_request_dropped": {
+   "agentTypeLabel": "timeline.scanner",
+   "laneLabel": "timeline.scanner"
+  },
+  "scanner:http_request_start": {
+   "agentTypeLabel": "timeline.scanner",
+   "laneLabel": "timeline.scanner"
+  },
+  "scanner:http_response": {
+   "agentTypeLabel": "timeline.scanner",
+   "laneLabel": "timeline.scanner"
+  },
+  "scanner:http_response_chunk": {
+   "agentTypeLabel": "timeline.scanner",
+   "laneLabel": "timeline.scanner"
+  },
+  "scanner:packet_flow": {
+   "agentTypeLabel": "timeline.scanner",
+   "laneLabel": "timeline.scanner"
+  },
+  "scanner:packet_flow#syn-only": {
+   "agentTypeLabel": "timeline.scanner",
+   "laneLabel": "timeline.scanner"
+  },
+  "scanner:pcap_segment": {
+   "agentTypeLabel": "timeline.scanner",
+   "laneLabel": "timeline.scanner"
+  },
+  "scanner:tcp_end": {
+   "agentTypeLabel": "timeline.scanner",
+   "laneLabel": "timeline.scanner"
+  },
+  "scanner:tcp_message": {
+   "agentTypeLabel": "timeline.scanner",
+   "laneLabel": "timeline.scanner"
+  },
+  "scanner:websocket_end": {
+   "agentTypeLabel": "timeline.scanner",
+   "laneLabel": "timeline.scanner"
+  },
+  "scanner:ws_message": {
+   "agentTypeLabel": "timeline.scanner",
+   "laneLabel": "timeline.scanner"
+  },
+  "screenshot": {
+   "agentTypeLabel": "timeline.screenshot",
+   "laneLabel": "timeline.screenshot"
+  },
+  "shell:capture_resumed": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:capture_stopped": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command#legacy": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command_boundary": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command_end": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command_end#builtin-io-bytes": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command_end#builtin-io-empty": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command_end#builtin-io-unbracketed": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command_end#hook-source": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command_end#legacy-no-fields": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command_end#powershell-profile": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command_end#powershell-transcript": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command_end#redlog-run-builtin": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command_end#relay-complete": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command_end#relay-complete-empty": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command_end#relay-drain-timeout": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command_end#relay-not-captured": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command_end#relay-partial-background": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command_end#relay-partial-streamed": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command_end#relay-redirected": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command_end#relay-truncated": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command_end#tlogger-prompt": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command_output": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command_output#foreground": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command_output#streamed": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command_start": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command_start#powershell-profile": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:command_start#tlogger-prompt": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:session_end": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:session_end#incomplete": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:session_end#recovered": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:session_output": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:session_start": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:session_start#external": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "shell:wsl_test": {
+   "agentTypeLabel": "timeline.shell",
+   "laneLabel": "timeline.shell"
+  },
+  "system:active_target_changed": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:agent_transcript_pruned": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:anchor_failed": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:api_started#legacy": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:body_evicted": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:bookmarks_pruned": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:browser_launched": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:capture_gap": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:cast_evicted": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:cast_pruned": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:chain_sample_broken": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:config_changed": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:connection_capture_started": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:connection_monitor_saturated": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:export_sealed": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:http_body_pruned": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:http_proxy_failed": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:http_proxy_orphan_reclaimed": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:http_proxy_started": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:http_proxy_stopped": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:ip_verdict": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:logged_tier_digest": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:opsec_airgap": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:opsec_state_changed": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:process_monitor_ps_unavailable": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:process_monitor_saturated": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:producer_heartbeat": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:recording_paused": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:recording_resumed": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:retention_pruned_logged": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:sanitized": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:scope_cleared": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.scope"
+  },
+  "system:scope_recomputed": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.scope"
+  },
+  "system:scope_violation": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.scope"
+  },
+  "system:scope_violation#in-scope-tally": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.scope"
+  },
+  "system:screenshot_deleted": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:screenshot_evicted": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:screenshot_pruned": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:session_start": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:session_start#api": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:update_completed": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:update_not_applied": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "system:update_pending": {
+   "agentTypeLabel": "timeline.system",
+   "laneLabel": "timeline.system"
+  },
+  "terminal:command#cli-help-text": {
+   "agentTypeLabel": "terminal",
+   "laneLabel": "timeline.system"
+  },
+  "terminal:session_start#legacy": {
+   "agentTypeLabel": "terminal",
+   "laneLabel": "timeline.system"
+  }
+ },
+ "location": "src/renderer/src/lib/timelineDomain.ts",
+ "mode": "evaluated",
+ "n": 13,
+ "table": "LANE_LABEL_KEYS / agentTypeLabel"
+}

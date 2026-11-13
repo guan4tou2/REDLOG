@@ -1,0 +1,13 @@
+{
+ "location": "src/core/socket-attribution.ts",
+ "mode": "extracted",
+ "n": 7,
+ "table": "socket-attribution kinds",
+ "words": {
+  "socketCausesFor": [
+   "dns",
+   "http_navigation",
+   "scanner"
+  ]
+ }
+}
