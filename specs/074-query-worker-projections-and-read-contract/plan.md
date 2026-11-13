@@ -278,6 +278,8 @@ interface ProjectResource {
 
 落後的呈現：讀取結果的 `completeness = {kind: 'behind', lag}`；`projection:<name>` topic 在推進後送出，畫面的項目據此重讀。
 
+**對一組列重建（修訂 E1，spec FR-049）**：`Projection.apply(db, rows, kinds)` 本來就只依 rowid 順序消費列，所以匯出不需要第二份實作：匯出 worker 開一個 in-memory SQLite，呼叫 `intervals` 的 `createSchema` 與 `apply`，輸入為 077 `deliver` 交付的完整列，再依 `(start_ts, interval, key)` 輸出成行。兩點要在 `intervals.ts` 中成立，由 T056 釘住：(a) 結束列找不到起點時不丟錯，產生 `start_id = null` 的一行（今天全專案重建時這只發生在 retention 刪掉起點之後，所以也是既有情況）；(b) 不從輸入以外的地方讀任何列（不經 `getDB`、不讀 `derived.db`），否則 bundle 會帶出被扣下的列。投影版本號寫在 072 的 `kinds.json`（`projections.intervals`）。
+
 ## 協定
 
 ```ts
@@ -328,7 +330,7 @@ type FromWorker =
 | 規格 | 我需要 | 我提供 |
 |---|---|---|
 | 071 寫入契約 | (a) commit 原語在 commit 之後回傳 `CommitReceipt {seq, chainedMaxRowId, loggedMaxRowId}`（071 FR-096、T038；不寫入列）；(b) effect 與註記的 `_causes` 帶來源指令的事件 id（O18：`REDLOG_COMMAND_ID`／proxy userinfo）——**071 尚未展開為 FR 與任務**，未展開前 `cause_counts` 只依今天的 `_causes`；(c) `_ingest.terminal` 為正規終端 id（FR-011）；(d) commit 後處理呼叫 `queryService.notifyCommit(receipt)` 與 `topicsForCommit`（071 plan D8）；(e) `linkHttpBodyEvent` 從 ingest 移除，改送 `derived-op`（071 plan D8）；(f) `terminal_targets` 回填期間的 `target_via` 為 `none`、永久（071 FR-010） | `terminal_targets` 的投影契約（版本、等價測試、回填由 `heavy` 計算、回填完成的通知） |
-| 072 種類註冊表 | `role`、`shape`、`family`、`housekeeping`、`counts.total`、`INTERVALS`（配對鍵 `key`／`fallbackKey`）、`STATES`（`groupBy` 全域／每終端）、`status: legacy`；`kindOf(row, plugins?)` 為純函式，worker 可匯入；`KIND_REGISTRY_VERSION`（變更即重建 `intervals`、`cause_counts`）；`project_closed` 種類 | topics 由註冊表推導；`intervals`／`cause_counts` 依註冊表的宣告建立；不自行定義任何角色；`gapOverlaps`（FR-048）給 072 的 `completenessOf` |
+| 072 種類註冊表 | `role`、`shape`、`family`、`housekeeping`、`counts.total`、`INTERVALS`（配對鍵 `key`／`fallbackKey`）、`STATES`（`groupBy` 全域／每終端）、`status: legacy`；`kindOf(row, plugins?)` 為純函式，worker 可匯入；`KIND_REGISTRY_VERSION`（變更即重建 `intervals`、`cause_counts`）；`project_closed` 種類 | topics 由註冊表推導；`intervals`／`cause_counts` 依註冊表的宣告建立；不自行定義任何角色；`gapOverlaps`（FR-048）給 072 的 `completenessOf`；（修訂 E1）FR-049 的重建函式與 `intervals` 投影版本號，供 072 的 bundle 附檔（072 T064） |
 | 073 專案執行期 | `ProjectResource`（073 的定義，見上）；`SessionToken` 的 generation 與 signal；設定存檔的唯一出口發出 `config` topic（073 FR-013、T043）；`project_closed` 由 073 在關閉時寫入（經 071） | `QueryService` 實作 `ProjectResource`；`health()` |
 | 075 來源狀態 | 不需要 | `kind_totals` 可回答「某種類最後一筆的時間」（若 075 要讀，經 `query`，不直接讀表）；`capture` topic 由 075 定義 |
 

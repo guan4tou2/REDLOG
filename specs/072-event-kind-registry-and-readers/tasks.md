@@ -13,7 +13,7 @@
 
 ## Phase 0 — 工作流程前置
 
-- [ ] T001 依憲章（跨層契約、證據呈現）執行 Clarify、Checklist、Analyze，結果記入 `verification.md` 的 Gates。開放問題 Q1–Q3 取得擁有者答覆前，Phase 4 的 T040 與 T042 不開始。
+- [ ] T001 依憲章（跨層契約、證據呈現）執行 Clarify、Checklist、Analyze，結果記入 `verification.md` 的 Gates。開放問題 Q1–Q3 取得擁有者答覆前，Phase 4 的 T040 與 T042 不開始。（2026-11-13：Q1–Q3 已裁定，DECISIONS §9；新增的 Q4–Q6 答覆前，Phase 6 的 T063–T066 依建議進行，答覆與建議不同時先改 spec G 段再實作。）
 
 ## Phase 1 — 釘住今天的行為（只加測試與 gate，不改程式行為）
 
@@ -76,7 +76,12 @@
 - [ ] T060 [P] 匯出：`export-plan.ts` 的摘要計數、`export-attachments.ts` 的附件、`export-selection.ts` 的 HTTP 伴隨列、`do-not-export.ts` 的串連改讀 `export` 與 `INTERVALS` 的 `members`。golden 不變；071 T002 的匯出位元組不變。
 - [ ] T061 [US5] 外掛：`validatePluginKind` 取代 `event-registry.ts`；075 的 manifest v2 載入時呼叫它，拒絕原因由 075 呈現；`color`、`icon` 不再接受。依賴 075 的 manifest v2。
 - [ ] T062 capture-health 的來源探測（#28）改由 075 的來源描述列出 `KindId`（075 的任務；本任務只確認 `KindId` 型別被使用）。
-- **Gate**：五道 gate；T005 的表數為 0（扣除 2 張不摺的）；SC-001。
+- [ ] T063 [P] [US8] RED（修訂 D1）：`test/kinds/export-companions.test.ts`：`kindsJsonFor(rows, plugins)` 的形狀（FR-061）、只列交付的完整列中出現的種類、外掛種類帶 `source: plugin:<id>`、未登記的種類 `role: null`、同一組列兩次產生逐位元組相同；並在 `test/evidence-vectors.test.ts` 加入 plan D12 的向量 a–i，兩個 verifier 都以 `it.fails` 標示（今天的 verifier 不認得這兩個檔）。
+- [ ] T064 [US8] `src/core/kinds/export.ts` 的 `kindsJsonFor`（純函式，受 FR-020 的純度 gate）；匯出 worker 的 bundle writer 依 plan D12 的四步產生兩個檔並列入 manifest 的 `files`，在 `manifestSha256` 與 seal 之前。依賴 074 T056（重建函式）與 077 T043（`deliver` 的 bundle writer）；077 尚未落地時不開始（Q6：不另做第 4 版的過渡）。T063 的形狀測試翻正。
+- [ ] T065 [US8] 兩個 verifier（`bundle-verify.ts`、`tools/redlog-verify.py`，規則在 `evidence-rules.ts`）：FR-065 的五項；依 Q5 的答覆決定不一致時的判定（答覆前依建議：判定類別與結束碼不變，另印一行並在 verdict 加 `derived` 欄）。與 077 T041、T042 同一個 PR 或配對 PR（Q6）。T063 的向量翻正；任一向量讓任一 verifier 丟例外即失敗。
+- [ ] T066 [P] 077 的不洩漏 property test（077 T002）擴及 `kinds.json` 與 `intervals.jsonl`（FR-063、SC-012）：被扣下列的 id、時間、種類與值出現 0 次。依賴 T064。
+- [ ] T067 [P] `docs/audit-trail.md`「Evidence bundle」一節加入兩個檔、它們在 `files` 中、受 seal 涵蓋、只是解讀不是證據；`docs/USER-GUIDE.md` 的匯出說明若列出 bundle 的檔案，同一個 PR 更新。與 T065 同一個 PR。
+- **Gate**：五道 gate；T005 的表數為 0（扣除 2 張不摺的）；SC-001；（修訂 D1）SC-011、SC-012；`verify:package-resources` 不受影響（兩個檔不是打包資源）。
 
 ## Phase 7 — 文件與領域契約
 
@@ -88,17 +93,19 @@
 
 ## Phase 8 — 驗收
 
-- [ ] T080 建立 `verification.md`（依 `.specify/templates/overrides/verification-template.md`）：RED（T007–T009、T042、T050 失敗的原因）、GREEN、Gates、`DOCUMENTED_FIXES` 的逐項證據。
+- [ ] T080 建立 `verification.md`（依 `.specify/templates/overrides/verification-template.md`）：RED（T007–T009、T042、T050、T063 失敗的原因）、GREEN、Gates、`DOCUMENTED_FIXES` 的逐項證據。
 - [ ] T081 真機驗收：
   - macOS：T031 與 T053 的全部情境；bash 3.2；受管代理 `curl`；claude-code adapter 一段對話；匯出對話框與 HTTP 紀錄沒有變化。
   - Linux 或 Kali：pcap-capture 外掛與 `hooks/pcap-agent.py`（sudo）、host-monitors pack 的連線監控、c2 tailer 範例日誌：三者同泳道、同閱讀器；外掛寫入的新列為 logged（071 T027）。
   - Windows：PowerShell transcript pack 的 `command_end` 在閱讀器的完整性（確認其欄位）。
+  - （修訂 D1）任一平台：從真實 app 匯出一份含指令、暫停、專案切換與被扣下列的 bundle，在另一台沒有 RedLog 的機器以 bundle 內附的 `redlog-verify.py` 驗證，並人工對照 `intervals.jsonl` 與時間軸。
   - 沒有環境的項目記為 NOT RUN 並附原因。
 - [ ] T082 更新 `specs/README.md` 的索引；全部完成並驗證前，Spec 072 維持 Draft。
 
 ## Dependencies & Execution Order
 
 - 依序：Phase 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8；Phase 7 可與 4–6 平行。
+- （修訂 D1）T063 可在 Phase 2 之後任何時候寫；T064 依賴 074 T056 與 077 T043；T065 與 077 T041、T042 同一個 PR 或配對 PR；T066 依賴 T064 與 077 T002；T067 與 T065 同一個 PR。
 - Phase 1 的 T002、T005–T010 互相平行；T003 依賴 T002，T004 依賴 T003。
 - Phase 3 的順序是 T020 → T021 → T023 → T024 → T025，其後 T022、T026、T027 平行；T030 隨各自的 PR。
 - Phase 4 需要 071 Phase 3（T040 與 071 T027 同 PR；T041 與 071 T015、T042 與 071 T010、T043 與 071 T024 同 PR）；Phase 5 的 T051 需要 071 的行程內入口（073 的掛鉤可選）；T052 需要 074 Phase 5；Phase 6 的 T061、T062 需要 075 Phase 7。跨 071–075 的順序只寫在 [specs/README.md](../README.md)「071–075 的跨規格順序」。

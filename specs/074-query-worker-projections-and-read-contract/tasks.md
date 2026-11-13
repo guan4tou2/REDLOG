@@ -80,6 +80,7 @@
 - [ ] T053 [US3] HUD 與 `pivots:getActive` 改讀 `intervals` 的 tunnel，移除 `active-pivots.ts` 的 30 分鐘猜測；呈現仍為「偵測於」（UX-005）。
 - [ ] T054 [P] 等價測試擴充到 `intervals`、`cause_counts`、`terminal_targets`（SC-004）。
 - [ ] T055 [P] [real shell] 真實 zsh hook 與 mitmproxy：`ffuf … &` 加前景指令、暫停一分鐘、`ssh -L` tunnel；以 `stateAt` 與 `cause_counts` 讀回，與資料庫查詢對照。
+- [ ] T056 [US3] （修訂 E1）FR-049：`intervals` 的 `rebuild` 對任意一組列執行。先 RED：`test/intervals-subset.test.ts`：(a) 以 in-memory 資料庫對一個子集執行，不呼叫 `getDB`／`getReadonlyDB`、不開 `derived.db`（以替身斷言）；(b) 起點不在子集中的區間產生 `start_id = null` 的一行而不丟錯；終點不在子集中的區間 `end_basis = open`；(c) 對全部列執行的結果與 `derived.db` 的 `intervals` 表相同（等價測試的一組）。072 T064 依賴本任務。
 - **Gate**：五道 gate；七個投影都在登記表且有等價測試。
 
 ## Phase 6 — 畫面的讀取模型、變更通知與計數

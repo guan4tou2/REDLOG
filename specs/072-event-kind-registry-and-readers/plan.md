@@ -293,6 +293,39 @@ record-fact 的適用區間欄位：`system:sanitized`、`system:retention_*`、
 - 經 071 的行程內入口，身分 `in-process`；`system` 暫停豁免；失敗不阻擋關閉，寫入 capture 狀態。
 - 沒有存活戳記可據的當機（073 之前的版本、戳記遺失）不補寫；那一段在 `project-open` 區間中為 `unknown-before`。
 
+### D12 匯出附檔：`kinds.json` 與 `intervals.jsonl`（修訂 D1，2026-11-13）
+
+擁有者對 Q3 的答覆是兩者都附（DECISIONS §9）。裁定本身沒有決定的事，本節逐項寫出；仍是選擇的三項列為 spec 的 Q4–Q6，本節依建議撰寫。
+
+**歸屬**：
+
+| 項目 | 擁有者 |
+|---|---|
+| bundle 的格式、`BUNDLE_VERSION`、「只理解一個版本」、manifest 欄位白名單、seal | Spec 077 FR-042（第 5 版；Q6 的建議是兩個檔併入這一版） |
+| `kinds.json` 的形狀與內容；兩個檔的 verifier 規則（FR-065） | 本規格 |
+| `intervals.jsonl` 每一行的意義與重建函式 | Spec 074（FR-049：`intervals` 投影的 `rebuild` 對任意一組列可執行） |
+| 哪些列算交付、stub、遮蔽 | Spec 077（`deliver`） |
+
+**產生**（在匯出 worker，`deliver` 的同一條串流上）：
+
+1. `deliver` 決定交付的完整列（077）；`system:redacted` 列在此之後、seal 之前寫入（077 FR-053），它也是交付的列。
+2. 以 in-memory SQLite 執行 074 `intervals` 投影的 `createSchema` 與 `apply`，輸入為步驟 1 的完整列（兩層依 `(timestamp, rowId, tierRank)` 排序，同 `event-order.ts`），輸出依 `(start_ts, interval, key)` 排序寫成 `intervals.jsonl`。不讀 `derived.db`：它是整個專案的投影，含被扣下的列（074 FR-033 照舊不進任何匯出）。
+3. 由同一組列的種類集合產生 `kinds.json`（FR-061），種類依 `id` 排序、鍵依 `canonicalStringify`，使同一組列產生逐位元組相同的檔。
+4. 兩個檔加入 manifest 的 `files`；之後才算 `manifestSha256` 並寫 seal 列（seal 列不在步驟 1 的那組列中）。
+
+**為何對交付的列重建，而不是從專案投影裁切**：077 FR-042 要求 stub 不帶時間與種類；從專案投影裁切，一段區間的另一端若是被扣下的列，就會帶出它的時間或 id。只用交付的列，兩個檔不可能引用被扣下的列（FR-063），而且 bundle 自己就含有重建所需的全部輸入，讀者可以重算。代價：`window` 匯出切過的區間只有一端（`null`），範圍之前開始的暫停在 bundle 中沒有起點。
+
+**被否決**：
+
+- **把 `derived.db` 的 `intervals` 表匯出**：含被扣下的列、含範圍外的列；違反 074 FR-033。
+- **`kinds.json` 附整份登記表**：多數種類不在這份 bundle 中；外掛宣告的種類仍需另列。只列出現的種類，讀者要的對照已完整。
+- **在 manifest 加欄位放登記表版本**：manifest 有欄位白名單（`bundle-verify.ts:45-49`、`redlog-verify.py:216`），每加一欄兩個 verifier 都要改；版本放在 `kinds.json` 內，同樣受 seal 承諾。
+- **verifier 完整重算區間**：需要 074 的 `PairKey` 計算有 Python 版，是第二份實作（Q5）。FR-065 第 3 項只做不需要配對規則的檢查：引用存在、種類屬於宣告、時間相符。
+
+**verifier 遇到它不懂的東西**：產品尚未發布，077 FR-042 已定 verifier 只理解第 5 版、其他一律 `UNSUPPORTED`，所以不需要「沒有這兩個檔的第 5 版」這種讀法：缺檔就是 `malformed`。但 verifier 不得因為讀到較新的 RedLog 寫的值而崩潰：不認得的欄位略過、不認得的列舉值計數、無法解析的檔回 `malformed` 與原因（FR-065 第 5 項）。這幾種各有一個共用向量。
+
+**共用向量**（#711 的 `test/evidence-vectors.test.ts`，兩個 verifier 同結果）：新增 (a) 完整鏈含指令、暫停、專案開關；(b) `window` 切過一段指令與一段暫停；(c) 含 stub 與被扣下的 logged 列；(d) 缺 `kinds.json`；(e) 缺 `intervals.jsonl`；(f) `intervals.jsonl` 改一個位元組；(g) 雜湊相符但引用不存在的列（重新產生 manifest 與 seal 的竄改向量，模擬寫出端的錯誤）；(h) 不認得的 `end_basis` 與多出的欄位；(i) `kinds.json` 無法解析。
+
 ## 登記項目的欄位
 
 ```ts
@@ -387,6 +420,8 @@ export function intervalsOf(id: KindId): readonly IntervalDef[]
 | 073 專案執行期 | 關閉序列中、資料庫關閉前的掛鉤與 reason 判定（073 FR-033、FR-034） | `project_closed` 的種類與欄位（`reason`、`last_alive_at`） | 關閉流程、reason 的值與時機歸 073；紀錄的形狀歸 072 |
 | 074 查詢與投影 | 「列是否與缺口重疊」（074 FR-048 的 `gapOverlaps`）；以 `counts.total` 計數的總數查詢（074 的 `kind_totals`、`counts:snapshot`）；區間、狀態帶、`stateAt`、效應總數的計算；`invalidates` 的變更通知；`PairKey` 的計算函式 | `INTERVALS`、`STATES`、`role`、`family`、`annotation`、`appliesRange`、`housekeepingSql()`、`workSql()`、`invalidates`、`KIND_REGISTRY_VERSION`；`kindOf(row, plugins?)` | 宣告歸 072；計算與查詢歸 074；074 的投影不得另寫種類表：`src/core/projections/**` 在本規格的 `kind-literal-ratchet` 中允許數為 0（074 plan 的閘門表引用它） |
 | 075 來源描述與 manifest v2 | manifest 中每個 `emits` 項目的 `{kind, label, reader?}`；來源描述列出它證明的 `KindId`（取代 #28） | `validatePluginKind`、`requireKind`、`ReaderId`、`LaneId`、`KindId` | manifest 格式、外掛頁的拒絕呈現、來源狀態歸 075；種類項目的預設值歸 072 |
+| 074（修訂 D1） | `intervals` 投影的重建函式對任意一組列可執行、不讀 `derived.db`、對 `window` 切過的區間輸出 `null` 端（074 FR-049、T056）；投影版本號 | `INTERVALS` 與種類項目（`kinds.json` 的內容來源） | `intervals.jsonl` 每行的意義歸 074；它在 bundle 中的位置與驗證歸 072 |
+| 077（修訂 D1） | `deliver` 產生的交付列（含 `system:redacted`、不含 stub）；第 5 版的 manifest 與 seal；不洩漏 property test（077 T002）擴及兩個檔 | `kinds.json`、`intervals.jsonl` 的產生與 verifier 規則（FR-060–FR-065） | bundle 的格式與版本歸 077；兩個檔的內容歸 072／074 |
 
 ## 驗證策略
 
@@ -404,6 +439,8 @@ export function intervalsOf(id: KindId): readonly IntervalDef[]
   | 摺疊等價 | `test/kinds/folded-tables.test.ts` |
   | 完整性一致 | `test/kinds/completeness.test.ts` |
   | 外掛種類驗證 | `test/kinds/plugin-kinds.test.ts` |
+  | 匯出附檔的形狀、只列交付列、逐位元組可重現（修訂 D1） | `test/kinds/export-companions.test.ts` |
+  | 兩個 verifier 對附檔同結果、不丟例外（修訂 D1） | 擴充 `test/evidence-vectors.test.ts`（D12 的向量 a–i） |
   | 新匯出可達 | 既有 `verify:architecture`（Phase 2 期間以 allowlist 附理由，Phase 3 第一個 PR 移除） |
 
   **沒有 gate 的規則**：一個種類的**角色**是否選對。這是語意判斷，由 PR 審查依 DESIGN-two-tier-chain 的問題式與本計畫 D6 判定；gate 只保證它有值且區間一致。
@@ -424,6 +461,8 @@ export function intervalsOf(id: KindId): readonly IntervalDef[]
 | 型別化入口牽動 33 處呼叫與 071 的 T037 遷移 | 與 071 T037 同一批 PR 處理同一檔案群；ratchet 只降 |
 | 登記表成為新的「大檔」 | 依資料生命週期而非行數：登記表就是資料，一個項目一行物件；不拆 |
 | 外掛宣告的種類在外掛停用後仍有舊列 | Edge Cases：沿用最後宣告或 `fields`，不隱藏 |
+| （修訂 D1）兩個附檔透露被扣下的列 | 只對交付的列重建（D12）；077 的不洩漏 property test 涵蓋兩個檔（SC-012） |
+| （修訂 D1）附檔與 077 的第 5 版分兩次改版，verifier 與向量多改一輪 | Q6：併入第 5 版，配對 PR |
 
 ## Project Structure
 
@@ -444,7 +483,10 @@ src/core/kinds/{types,registry,rules,completeness,plugin,index}.ts      # 新增
 src/renderer/src/lib/kindPresentation.tsx                               # 新增：TITLES、READERS
 src/renderer/src/components/readers/{Image,PacketFlow,RecordFact,TextOutput}Reader.tsx  # 新增的閱讀器
 test/kinds/{registry-pure,registry-shape,writers-registered,untyped-kind-calls,every-kind-presentable,
-            kind-literal-ratchet,folded-tables,completeness,plugin-kinds}.test.ts(x)
+            kind-literal-ratchet,folded-tables,completeness,plugin-kinds,export-companions}.test.ts(x)
+src/core/kinds/export.ts                                                # 修訂 D1：kindsJsonFor(rows, plugins)（純函式）
+# 修訂 D1 另改：src/core/delivery/writers/bundle（077）、src/core/evidence-rules.ts、src/core/bundle-verify.ts、
+# tools/redlog-verify.py、test/evidence-vectors.test.ts、docs/audit-trail.md
 test/kinds/{examples.ts,golden/,kind-literal-allowlist.json}
 # 改為讀登記表：event-write.ts、ingest.ts、external-event-policy.ts、causes-resolver.ts、socket-attribution.ts、
 # alert/scope-signal.ts、activity-projection.ts、event-queries.ts、content-contract.ts、export-*.ts、

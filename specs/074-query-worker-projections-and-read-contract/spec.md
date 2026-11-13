@@ -36,6 +36,13 @@
 
 > **指標（2026-11-13）**：[Spec 077](../077-personal-content-and-delivery/spec.md) 在 `derived.db` 新增投影 `delivery_state`、在讀取契約加共用參數 `delivery`（`operator`／`deliver`）與查詢鍵 `delivery:`，並刪除 FR-032 所列的 `sanitized_events`、`do_not_export` 兩表；FR-065 的「不匯出標記」topic 改為 `delivery`。
 
+### 修訂（2026-11-13，DECISIONS §9）
+
+依 [2026-11-13 的決定](../../docs/records/2026-11-13/DECISIONS.md) §9。被取代的原文保留在原處，以「> **Superseded（2026-11-13，修訂 E…）**」標示。
+
+| # | 改了什麼 | 為什麼 | 落點 |
+|---|---|---|---|
+| E1 | **bundle 附 `intervals.jsonl`**（072 Q3 的答覆）：本規格提供 `intervals` 投影的重建函式，可對任意一組列執行、不讀 `derived.db`；匯出 worker 以它對交付的列產生 `intervals.jsonl`。檔案在 bundle 中的位置、驗證規則屬 072 G 段，bundle 格式屬 077。「不在範圍」中「`intervals.jsonl` 與 `kinds.json` 是否隨匯出附帶」一句刪除 | 擁有者對 072 Q3 的答覆：兩者都附 | FR-049；plan「投影」；T056 |
 
 ### 前提更正（已在程式碼確認）
 
@@ -230,6 +237,7 @@
 - **FR-045** `cause_counts` 只計 `caused` 參照；`candidate`（例如 `file_created` 的 `related_commands`）另計為「可能相關」，永不併入效應數（Domain Invariant 6）。
 - **FR-046** body 搜尋涵蓋：`bodySearchCoverage` 不再每頁走訪全部 body 參照；改由 `body_event_refs` 的狀態變更以差量維護每種來源 × 狀態的數目與位元組，`revision` 為單調遞增的整數。`recheck` 不再每次搜尋執行，改為背景週期、有界切片。進行中的增量化（`work/1112-search`）以本條為準併入，不另寫一份規格。
 - **FR-047** 投影的推進不得改變任何讀取的語意：同一個問題在追上之後的答案，與今天在主行程直接執行的答案相同（等價測試，FR-095）。
+- **FR-049**（修訂 E1，2026-11-13）`intervals` 投影的 `rebuild` 必須能對**任意一組有序的列**執行，不需要 `derived.db`、不需要讀取服務：輸入為一組列（依 `event-order.ts` 排序）與 072 的登記表，輸出為 `intervals` 的列。匯出 worker 以它對 077 `deliver` 交付的完整列產生 bundle 的 `intervals.jsonl`（072 FR-062）。對一個子集執行時，起點或終點不在該子集中的區間，那一端為 `null`（不讀子集以外的列）；這與從零重建整個專案用的是同一個函式，只是輸入不同。`derived.db` 照舊不進任何匯出（FR-033）。
 - **FR-048** 缺口重疊：`gapOverlaps(rowIds[])` 一次查詢回答每一列的時間區間是否與一筆缺口紀錄（072 `IntervalDef('capture-gap')`：`scanner:capture_gap`、`system:capture_gap` 的資料範圍）重疊，並回傳該缺口列的 id；由 `intervals` 投影回答（`interactive`）。這是 072 `completenessOf(kind, data, overlapsGap)` 的 `overlapsGap` 唯一的來源（072 FR-034、plan D5）；在本條落地前，072 以已載入的缺口列判斷並標明是有限的判斷。
 
 #### D. 讀取契約（US2、US5、US6）
@@ -324,7 +332,7 @@
 - 專案執行期、設定範圍、安裝帳本（073）；本規格只實作它定義的資源介面。
 - 來源狀態模型與詞表（075）。
 - 狀態帶、區間、效應數、密度在畫面上的外觀（UIUX-STANDARD）；本規格只保證資料與其語意。
-- 匯出 worker 的行為；bundle、NDJSON、HAR 的格式。`intervals.jsonl` 與 `kinds.json` 是否隨匯出附帶（10 §E.9）是 Spec 072 的開放問題 Q3。
+- 匯出 worker 的行為；bundle、NDJSON、HAR 的格式（bundle 的格式歸 Spec 077 FR-042，`kinds.json`／`intervals.jsonl` 在 bundle 中的位置與驗證歸 072 G 段）。例外：匯出 worker 呼叫本規格的重建函式產生 `intervals.jsonl`（FR-049，修訂 E1）。
 - 渲染端與 worker 之間的直接 MessagePort。
 - 保存查詢、跨專案搜尋、多視窗。
 - 依行數拆 `Timeline.tsx`；以資料生命週期抽出 hook（03 F6）只在本規格的讀取模型落地後、由另一項工作進行。
@@ -361,7 +369,7 @@
 | Q4 | 返回時保留幾個隱藏但仍掛載的頁面、路徑多深？ | 保留 1 頁、深度 3 |
 | Q5 | 「只看上鏈」是以儲存層命名的顯示篩選：各頁是否保留？ | 只留在有篩選列的頁面，並另外改名 |
 
-除上表外：取代 Spec 038 共用篩選是擁有者已做的決定（O3）。相關但由他規格擁有的：匯出是否附 `intervals.jsonl`（Spec 072 Q3）；`_causes` 帶指令 id 的 O18 尚待 071 展開為 FR 與任務（影響 `cause_counts` 的完整度，不阻擋本規格任何 Phase）。
+除上表外：取代 Spec 038 共用篩選是擁有者已做的決定（O3）。相關但由他規格擁有的：`intervals.jsonl` 隨 bundle 附帶（Spec 072 Q3，2026-11-13 裁定為附，見修訂 E1；它的判定規則見 072 Q5）；`_causes` 帶指令 id 的 O18 尚待 071 展開為 FR 與任務（影響 `cause_counts` 的完整度，不阻擋本規格任何 Phase）。
 
 ## Domain References
 
