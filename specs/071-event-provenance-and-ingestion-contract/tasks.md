@@ -46,7 +46,7 @@
   - 2026-11-14 對帳（PR #765）：`engagementForWrite`（`stamp.ts`）在綁定 DB 時一律用它，兩個層的寫入都走它；都沒有綁定也沒有呼叫端的名稱時拋 `no-project`（`test/ingest-stamp.test.ts` 的「nothing bound and no engagement named」）。未達成兩處：(1) 沒有綁定 DB 時，若呼叫端帶了 engagement 仍照用，而不是拋錯（同檔 `KNOWN GAP (FR-007 / T021)`，2026-11-13 決定暫時寬鬆）；(2) 專案目錄沒有 `config.yaml` 時，`readConfig` 回 `defaults()`（`src/core/config.ts:415`、`DEFAULT_CONFIG.engagement.id = 'default'`），`main/index.ts:814` 把它綁定，新列因此寫在 `default` 引擎下（`test/config-invalid-file.test.ts` 釘住「absent 回預設值」）。
 - [x] T022 [P] [US2] 暫停 property test 完整版（至少 10,000 組；SC-005，依 2026-11-13 修訂的規則：暫停期間收到的列為 0；交接檔可用來源時間落在已記錄區間內的列為 0；暫停前的交接項目在暫停結束後寫入）。
 - [ ] T023 [US1] 先 RED：`test/target-via.test.ts`（O11）。驗證 explicit、extracted、command、terminal-last、none 五種，跨重啟一致，不套用全域目前目標。
-- [ ] T024 [US1] 建立 `terminal_targets` 表，寫入路徑在 commit 交易內同步寫入；**不在本規格回填**：含 071 之前事件的專案，在 Spec 074 的回填完成前不套用 `terminal-last`、寫 `none`（FR-010），先 RED 斷言這一點；回填由 074 T052 實作。`command` 的承接改從持久資料查；移除 `ingest.ts:251-255` 的自動套用（app 內操作依 O16）。Spec 072 T043（`identity.target`）同一個 PR。
+- [ ] T024 [US1] 建立 `terminal_targets` 表，寫入路徑在 commit 交易內同步寫入；**不在本規格回填**：含 071 之前事件的專案，在 Spec 074 的回填完成前不套用 `terminal-last`、寫 `none`（FR-010），先 RED 斷言這一點；回填由 074 T052 實作。`command` 的承接改從持久資料查（2026-11-15 已做，見 T032 的註記；`target_via` 尚未寫）；移除 `ingest.ts:251-255` 的自動套用（app 內操作依 O16）。Spec 072 T043（`identity.target`）同一個 PR。
 - [x] T025 [P] [US1] `_ingest.terminal` 單一正規值；`causes-resolver.ts:83` 與 `event-write.ts:479` 改讀同一個函式（FR-011）。
   - 函式在 `src/core/ingest/terminal.ts`（`terminalIdentity`、讀已存列的 `rowTerminal`）；`ingest.ts` 的 cast 範圍與輸出尾段也改讀它。`test/ingest-terminal-identity.test.ts`。
   - 正規形式：存入的形式（JSON 字串的 UTF-8）在 128 bytes 以內就原樣保留；超過時取在字元邊界切下的前綴、`#`、整個 id 的 UTF-8 位元組 sha256 前 16 個 hex，總長仍在 128 bytes 內。不同的 id 不會合併。值是送出者自己的，不是接收端判定的。
@@ -59,7 +59,8 @@
 - [x] T031 [P] [US5] 新列的 golden 向量 `test/fixtures/provenance-vectors/`，兩個 verifier 都要接受。
 - [ ] T032 [US1] 重啟等價測試：即時、中途重啟、全部經交接，三者一致（SC-003）。
   - 測試在 `test/ingest-restart-equivalence.test.ts`：即時與全部經交接、即時與在兩個指令之間重啟，SC-003 的欄位一致。
-  - 未成立：在一個指令的起訖之間重啟，結束列失去 `_causes`（連結只在記憶體），以 KNOWN GAP 釘住。把連結改存在持久資料是 O18 的範圍，O18 尚未展開成 FR 或任務（spec「O18 是起草後才做的決定」），目前沒有任務會翻正它。`_ingest.target_via` 尚不存在（T023／T024）。
+  - 2026-11-15：在一個指令的起訖之間、或在宣告 `late_output` 的結束列與它的背景輸出之間重啟，現在與即時相同。記憶體中的 map 仍是快速路徑；查不到時以同一個鍵（開啟中專案內的 `command_id`，HTTP 為 `flow_id`）讀已存的列（`src/core/db/stored-links.ts`，索引 `idx_events_shell_command`），答案與記憶體未遺失時相同：結束列的 `_causes`、背景輸出的 `_causes` 與 `target_id`（指令被歸入的目標，不是全域目前目標）、重送的結束列與 `final` 之後的輸出不再連結、重送的輸出（同指令同 `seq`）仍只保留一次。HTTP 的回應在請求與回應之間重啟時原本也失去 `_causes`（同一個形狀），一併處理。測試：`test/ingest-restart-equivalence.test.ts`（含經交接、另一專案、重送）與 `test/stored-links.test.ts`（記憶體命中不多跑語句；遺失時是索引查詢）。原 KNOWN GAP 標成 O18 是誤標：O18 是把指令 id 帶給子行程（`REDLOG_COMMAND_ID`）與流量歸屬，不是指令自己各列之間的連結。
+  - 未成立，所以不勾：`_ingest.target_via` 尚不存在（T023／T024）。沒有 `command_id` 的指令（外部 agent）仍只以記憶體中的終端機＋pid＋指令文字配對，重啟後其結束列不帶 `_causes`；檔案事件的 `related_commands` 提示與 socket 的流量歸屬（O18）也只在記憶體。
 - [ ] T033 [US1] FTS 排除 `$._ingest`。只替換 trigger、不重建；用 10 萬列的 fixture 斷言開啟時沒有重建（FR-025）。
   - 2026-11-14 對帳（PR #765）：`db/index.ts:443-459` 只替換兩個 insert trigger，`test/fts-excludes-ingest.test.ts` 斷言以舊 trigger 建立的專案開啟時沒有重建語句、索引列數與每列 token 大小不變、新列找不到 stamp 的字。未達成：該測試只用 80 列（檔頭：10 萬列的量測留給 T091／CI），沒有 10 萬列的 fixture。
 - [x] T034 [P] 檢查 064 的 contract coverage 與其他依 `data` 鍵集合判斷的讀者（plan「其他讀者」），斷言隨變更一起修改。

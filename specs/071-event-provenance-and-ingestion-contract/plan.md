@@ -92,7 +92,7 @@
 - **操作者**：見 FR-009，讀機器層級設定（O12）。
 - **時間**：沿用 `timestamp`（來源時間）與 `created_at`（收到時間）的雙時間設計。另記觀察時間 `observed_at`（OTel 的 Timestamp 與 ObservedTimestamp）。目標承接用觀察時間。暫停判斷**不**用觀察時間（修訂 2026-11-13）：即時入口依收到時間；交接目錄只在暫停結束後、以可用的來源時間對照已記錄的暫停區間（spec FR-082）。觀察時間是來源的自述；Phase 2 審查以 probe 證明信任它會在來源時鐘偏慢、relay chunk 延遲送出、系統時鐘倒退三種情況寫入暫停內容。
 - **目標**（O11）：`explicit` → `extracted` → `command` → `terminal-last` → `none`。
-  - `terminal-last` 與 `command` 改從持久資料查，取代 `ingest.ts:83,399` 只存在記憶體的 map（01-F5(a)(b)）。
+  - `terminal-last` 與 `command` 改從持久資料查，取代 `ingest.ts:83,399` 只存在記憶體的 map（01-F5(a)(b)）。`command` 已做（2026-11-15，T032 的註記）：map 保留為快速路徑，查不到時讀指令已存的列（`db/stored-links.ts`）。
   - 新增衍生、可重建的 `terminal_targets(terminal, observed_at, target)` 表，放在專案 DB，本規格擁有；寫入路徑在同一個 commit 交易內寫入（Spec 074 的投影執行器在此呼叫 `advanceInTransaction`）。
   - **回填**（含 071 之前事件的專案）不在本規格做：由 Spec 074 的 `heavy` 執行緒以唯讀連線計算，分批交回主行程，由寫入者以小交易依序寫入（074 plan D5 的 `tt-backfill`）。回填完成前，這種專案的新列不套用 `terminal-last`，寫 `target_via: "none"`，永久（spec FR-010）。回填是否完成由 074 回報（`terminal_targets` 投影的狀態）；寫入路徑在記憶體中保存最近一次的回報，未知時（含 074 尚未落地）視為未完成。不需要回填的專案（沒有 071 之前的事件）視為已完成。
   - 不再套用 `ingest.ts:251-255` 的全域目前目標（app 內操作見 O16）。
