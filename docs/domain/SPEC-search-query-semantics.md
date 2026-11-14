@@ -140,6 +140,18 @@ typed text
   original import path. UTF-8 text is searchable; binary/images are unsupported
   for content search. Small inline base64 uses the Reader's decoded bytes;
   encoded data over 16 KiB requires a saved reference and reports limited.
+- Request, response, WebSocket and TCP bodies, inline or saved, are also
+  searchable with JSON `\uXXXX` escapes decoded (surrogate pairs combined),
+  whatever their content type: a word an encoder wrote escaped matches as the
+  word. The body is never parsed for this, and text that only shows an escape
+  literally matches the character it names. Bytes that are not UTF-8 are text
+  when the event declares a charset (content type) that decodes them without
+  a NUL or a replacement character; otherwise they stay binary. Big5 caveat:
+  the app's runtime (Electron 45, ICU 78) rejects invalid Big5, but Node 24.12
+  (ICU 77) drops invalid Big5 bytes with no error, so under that Node an
+  invalid Big5 body is indexed with those bytes missing and counted as
+  indexed. The decoded text shares its saved body's status, pruning and
+  coverage.
 - AI raw search admits only the latest `transcript_snapshot` prefix per saved
   project file within the query dataset, with matching cumulative size/hash.
   Opening an older snapshot still reads that confirmed prefix. Capture-start

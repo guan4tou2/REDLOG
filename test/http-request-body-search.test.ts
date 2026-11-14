@@ -1,18 +1,25 @@
-// Is a word inside a JSON request body still found now that the addon no longer
-// puts a parsed copy of it in `params.body_json`?
+// Is a word inside a JSON body found now that the addon no longer puts a
+// parsed copy of a request body in `params.body_json`?
 //
 // Two indexes can answer. The events index (events_fts) tokenizes every key and
 // value of the event's `data`; the body index (http-body-index.db) tokenizes the
-// saved bytes of a body that went to the sidecar (more than 4096 characters).
-// Search (Timeline, Activity) asks both.
+// saved bytes of a body that went to the sidecar (more than 4096 characters),
+// plus, for request/response/WebSocket/TCP bodies, the same text with JSON
+// `\uXXXX` escapes decoded, inline or not, and a body in a declared non-UTF-8
+// charset decoded in that charset. Search (Timeline, Activity) asks both.
 //
-// "before" is the payload the addon used to send: today's payload plus
+// "before" is the request payload the addon used to send: today's payload plus
 // `params.body_json`, the JSON.parse of the body text, which is exactly what
-// `json.loads` gave. "after" is what the real addon sends now.
+// `json.loads` gave. "after" is what the real addon sends now. Responses never
+// had a parsed copy; their events are written here in the shape the addon's
+// response hook sends (`_capture_body`), since the fixture runs request hooks.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { createHash } from 'node:crypto'
 import { requires } from './helpers/requires'
 import { runAddonRequests } from './helpers/addon-request-payload'
 import { parseQuery } from '../src/core/query/contract'
+import { decodeJsonEscapes } from '../src/core/json-escape-text'
+import Database from 'better-sqlite3'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -25,6 +32,7 @@ let executeEventQuery: typeof import('../src/core/db/event-queries').executeEven
 let closeHttpBodyIndex: typeof import('../src/core/http-body-index').closeHttpBodyIndex
 let pruneHttpBodyIndex: typeof import('../src/core/http-body-index').pruneHttpBodyIndex
 let searchHttpBodyEventIds: typeof import('../src/core/http-body-index').searchHttpBodyEventIds
+let bodySearchCoverage: typeof import('../src/core/http-body-index').bodySearchCoverage
 let available = false
 if (requires('better-sqlite3').ok) {
   const db = await import('../src/core/db')
@@ -35,21 +43,28 @@ if (requires('better-sqlite3').ok) {
   ingest = ing.ingest
   executeEventQuery = queries.executeEventQuery
   closeHttpBodyIndex = idx.closeHttpBodyIndex; pruneHttpBodyIndex = idx.pruneHttpBodyIndex
-  searchHttpBodyEventIds = idx.searchHttpBodyEventIds
+  searchHttpBodyEventIds = idx.searchHttpBodyEventIds; bodySearchCoverage = idx.bodySearchCoverage
   available = true
 }
 const describeDB = available ? describe : describe.skip
 
-// Non-ASCII as \uXXXX, the way an encoder that escapes it (Python's
-// json.dumps default) writes it.
+// Non-ASCII as \uXXXX (UTF-16 units, so an astral character is a surrogate
+// pair), the way an encoder that escapes it (Python's json.dumps default)
+// writes it.
 const asciiEscaped = (text: string): string => text.replace(/[^\x00-\x7f]/g, c => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)
 
-const SMALL = asciiEscaped(JSON.stringify({ smallkeyx: 'SMALLWORDX', escaped: '中文詞' }))
+const SMALL = asciiEscaped(JSON.stringify({ smallkeyx: 'SMALLWORDX', escaped: '中文詞', astral: '𠀋𠀌' }))
 // HEAD* sit inside the first 4096 characters, TAIL* after them.
 const LARGE = asciiEscaped(JSON.stringify({ headkeyx: 'HEADWORDX', pad: 'x'.repeat(6000), tailkeyx: 'TAILWORDX', tailescaped: '中文詞' }))
+// Nothing to decode: stays out of the body index.
+const PLAIN = JSON.stringify({ plainkeyx: 'PLAINWORDX' })
 
+type Which = 'small' | 'large' | 'plain'
 let dir: string
-let ids: Record<'small' | 'large', { before: string; after: string }>
+let ids: Record<Which, { before: string; after: string }>
+
+const post = (data: Record<string, unknown>): string =>
+  ingest({ agentType: 'scanner', engagementId: 'eng', operatorId: 'op', targetId: 'api.test', data }).event!.id
 
 function surface(query: string): string[] {
   const outcome = parseQuery(query)
@@ -63,42 +78,62 @@ function viaEvents(query: string): string[] {
     (getDB().prepare(`SELECT id FROM ${table} WHERE rowid IN (SELECT rowid FROM ${table}_fts WHERE ${table}_fts MATCH ?)`).all(match) as { id: string }[]).map(r => r.id))
 }
 const viaBody = (query: string): string[] => searchHttpBodyEventIds(query, dir)
+const where = (query: string, id: string) => ({ events: viaEvents(query).includes(id), body: viaBody(query).includes(id), surface: surface(query).includes(id) })
 
 /** [before, after] for one query: found, and through which index. */
-function found(query: string, which: 'small' | 'large') {
-  const at = (list: string[], key: 'before' | 'after') => list.includes(ids[which][key])
-  return {
-    before: { events: at(viaEvents(query), 'before'), body: at(viaBody(query), 'before'), surface: at(surface(query), 'before') },
-    after: { events: at(viaEvents(query), 'after'), body: at(viaBody(query), 'after'), surface: at(surface(query), 'after') }
-  }
+function found(query: string, which: Which) {
+  return { before: where(query, ids[which].before), after: where(query, ids[which].after) }
 }
 
-describeDB('searching a JSON request body without params.body_json', () => {
+/** An http_response event as the addon's response hook sends it. */
+function response(text: string | Buffer, contentType: string, flowId: string): string {
+  const bytes = Buffer.isBuffer(text) ? text : Buffer.from(text)
+  const asText = !Buffer.isBuffer(text)
+  const body = {
+    data: asText ? text : bytes.toString('base64'), encoding: asText ? 'text' : 'base64', size: bytes.length,
+    sha256: createHash('sha256').update(bytes).digest('hex'), truncated: false, content_type: contentType
+  }
+  const preview = asText ? (text.length > 4096 ? `${text.slice(0, 4096)}...[truncated, ${text.length} total]` : text) : ''
+  return post({
+    subtype: 'http_response', flow_id: flowId, method: 'POST', url: 'http://10.0.0.5:8080/api/items', status: 200,
+    content_length: bytes.length, content_type: contentType, response_headers: [['Content-Type', contentType]],
+    ...(preview ? { response_preview: preview } : {}), response_body: body
+  })
+}
+function request(contentType: string, body: Buffer, flowId: string): string {
+  const { results, python } = runAddonRequests([{ contentType, body }])
+  const sent = results[0]
+  if (!('data' in sent)) throw new Error(`addon (python ${python}): ${sent.error}`)
+  return post({ ...sent.data, flow_id: flowId })
+}
+
+describeDB('searching a JSON body without params.body_json', () => {
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-reqbody-search-'))
     initDB(dir)
-    const { results, python } = runAddonRequests([SMALL, LARGE].map(body => ({ contentType: 'application/json', body: Buffer.from(body) })))
+    const texts: Record<Which, string> = { small: SMALL, large: LARGE, plain: PLAIN }
+    const order: Which[] = ['small', 'large', 'plain']
+    const { results, python } = runAddonRequests(order.map(which => ({ contentType: 'application/json', body: Buffer.from(texts[which]) })))
     ids = {} as typeof ids
-    ;(['small', 'large'] as const).forEach((which, i) => {
+    order.forEach((which, i) => {
       const sent = results[i]
       if (!('data' in sent)) throw new Error(`addon (python ${python}): ${sent.error}`)
-      const text = which === 'small' ? SMALL : LARGE
-      const after = ingest({ agentType: 'scanner', engagementId: 'eng', operatorId: 'op', targetId: 'api.test', data: { ...sent.data, flow_id: `${which}-after` } })
-      const before = ingest({ agentType: 'scanner', engagementId: 'eng', operatorId: 'op', targetId: 'api.test',
-        data: { ...sent.data, flow_id: `${which}-before`, params: { ...(sent.data.params as object | undefined), body_json: JSON.parse(text) } } })
-      ids[which] = { before: before.event!.id, after: after.event!.id }
+      const after = post({ ...sent.data, flow_id: `${which}-after` })
+      const before = post({ ...sent.data, flow_id: `${which}-before`, params: { ...(sent.data.params as object | undefined), body_json: JSON.parse(texts[which]) } })
+      ids[which] = { before, after }
     })
   })
   afterEach(() => { closeHttpBodyIndex(); closeDB(); fs.rmSync(dir, { recursive: true, force: true }) })
 
+  const row = (id: string) => JSON.parse((getDB().prepare('SELECT data FROM events_logged WHERE id=?').get(id) as { data: string }).data) as Record<string, unknown>
+
   it('the addon now sends the long body as a sidecar reference and the short one inline, with no params', () => {
-    const row = (id: string) => (getDB().prepare('SELECT data FROM events_logged WHERE id=?').get(id) as { data: string })
-    const large = JSON.parse(row(ids.large.after).data), small = JSON.parse(row(ids.small.after).data)
+    const large = row(ids.large.after), small = row(ids.small.after)
     expect(large.request_body).toBeUndefined()
-    expect(large.request_body_ref.size).toBe(Buffer.byteLength(LARGE))
-    expect(small.request_body.data).toBe(SMALL)
+    expect((large.request_body_ref as { size: number }).size).toBe(Buffer.byteLength(LARGE))
+    expect((small.request_body as { data: string }).data).toBe(SMALL)
     expect(large.params).toBeUndefined()
-    expect(JSON.parse(row(ids.large.before).data).params.body_json.headkeyx).toBe('HEADWORDX')
+    expect((row(ids.large.before).params as { body_json: { headkeyx: string } }).body_json.headkeyx).toBe('HEADWORDX')
   })
 
   it('(a) a value in the first 4096 characters is found before and after, by the events index (preview) and the body index (sidecar)', () => {
@@ -126,23 +161,108 @@ describeDB('searching a JSON request body without params.body_json', () => {
     })
   })
 
-  it('a short body (inline in the event, so not in the body index) is found by the events index before and after', () => {
+  it('a short body with nothing to decode is found by the events index alone, before and after: it adds nothing to the body index', () => {
     const both = { events: true, body: false, surface: true }
-    expect(found('SMALLWORDX', 'small')).toEqual({ before: both, after: both })
-    expect(found('smallkeyx', 'small')).toEqual({ before: both, after: both })
+    expect(found('PLAINWORDX', 'plain')).toEqual({ before: both, after: both })
+    expect(found('plainkeyx', 'plain')).toEqual({ before: both, after: both })
+    const refs = getIndexRows().filter(r => r.event_id === ids.plain.after || r.event_id === ids.plain.before)
+    expect(refs).toEqual([])
   })
 
-  it('LOSS: text the encoder wrote as \\uXXXX escapes was found by its decoded form before and is not now', () => {
-    const lost = { before: { events: true, body: false, surface: true }, after: { events: false, body: false, surface: false } }
-    expect(found('中文詞', 'small')).toEqual(lost)
-    // Long body: the escapes sit beyond the preview, and the body index tokenizes the saved bytes as written.
-    expect(found('中文詞', 'large')).toEqual({ before: { events: true, body: false, surface: true }, after: { events: false, body: false, surface: false } })
-    // The escape sequence itself is the only thing the saved bytes can be searched by.
+  it('FOUND: request text written as \\uXXXX escapes is found by the decoded word, inline and in the sidecar, through the body index', () => {
+    const decoded = { before: { events: true, body: true, surface: true }, after: { events: false, body: true, surface: true } }
+    expect(found('中文詞', 'small')).toEqual(decoded)
+    expect(found('中文詞', 'large')).toEqual(decoded)
+    // An astral character is written as a surrogate pair of escapes.
+    expect(found('𠀋𠀌', 'small')).toEqual(decoded)
+    // The saved bytes are still found as written.
     expect(found('u4e2d', 'large').after).toEqual({ events: false, body: true, surface: true })
+    expect(found('u4e2d', 'small').after).toEqual({ events: true, body: false, surface: true })
+    // AND across a decoded word and a plain one stays within one body.
+    expect(surface('中文詞 SMALLWORDX')).toContain(ids.small.after)
+    expect(surface('中文詞 TAILWORDX')).not.toContain(ids.small.after)
   })
 
-  it('LOSS: once retention removes the saved body, what is beyond the preview is no longer searchable', () => {
-    const ref = JSON.parse((getDB().prepare('SELECT data FROM events_logged WHERE id=?').get(ids.large.after) as { data: string }).data).request_body_ref as { file: string; sha256: string }
+  it('index size: a saved body with escapes is indexed twice (as saved and decoded), one without escapes once', () => {
+    const plainLarge = response(JSON.stringify({ pad: 'q'.repeat(6000), w: 'PLAINLARGEX' }), 'application/json', 'resp-plain-large')
+    viaBody('PLAINLARGEX')
+    const db = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
+    const chars = (id: string): number => (db.prepare('SELECT coalesce(sum(length(content)),0) AS n FROM body_fts WHERE event_id=?').get(id) as { n: number }).n
+    const escaped = chars(ids.large.after), plain = chars(plainLarge), inline = chars(ids.small.after)
+    db.close()
+    console.log(`[index size] escaped sidecar ${LARGE.length} chars -> ${escaped}; plain sidecar ${JSON.stringify({ pad: 'q'.repeat(6000), w: 'PLAINLARGEX' }).length} -> ${plain}; escaped inline ${SMALL.length} -> ${inline}`)
+    expect(plain).toBe(JSON.stringify({ pad: 'q'.repeat(6000), w: 'PLAINLARGEX' }).length)
+    expect(escaped).toBe(LARGE.length + (decodeJsonEscapes(LARGE) ?? '').length)
+    // SQLite's length() counts characters; the astral pair is one each.
+    expect(inline).toBe([...(decodeJsonEscapes(SMALL) ?? '')].length)
+  })
+
+  it('IMPROVEMENT: response text written as \\uXXXX escapes, never found by the decoded word before (no parsed copy existed), is found now, inline and in the sidecar', () => {
+    const small = response(asciiEscaped(JSON.stringify({ msg: '回應詞彙' })), 'application/json; charset=utf-8', 'resp-small')
+    const large = response(asciiEscaped(JSON.stringify({ pad: 'y'.repeat(6000), msg: '回應詞彙' })), 'application/json', 'resp-large')
+    expect(where('回應詞彙', small)).toEqual({ events: false, body: true, surface: true })
+    expect(where('回應詞彙', large)).toEqual({ events: false, body: true, surface: true })
+  })
+
+  it('decodes escapes in any text body, not by content type: an HTML page with an inline script, and documentation that writes an escape literally', () => {
+    const page = response(`<script>window.STATE={"t":"${asciiEscaped('網頁標題')}"}</script>`, 'text/html', 'resp-html')
+    expect(where('網頁標題', page).surface).toBe(true)
+    // The accepted false match: text that shows an escape literally matches
+    // the letter it stands for.
+    // The letters AQZX never appear as such in this body.
+    const literal = response('JSON writes the letter as \\u0041QZX in this example.', 'text/plain', 'resp-literal')
+    expect(where('AQZX', literal)).toEqual({ events: false, body: true, surface: true })
+  })
+
+  it('coverage counts the decoded entry of an inline body, and decoded text follows the event when it is deleted', () => {
+    surface('中文詞')
+    const body = bodySearchCoverage().sources!.find(s => s.kind === 'body')!
+    expect(body.status).toBe('covered')
+    expect(getIndexRows().filter(r => r.event_id === ids.small.after)).toEqual([expect.objectContaining({ status: 'indexed', file: 'inline:request_body' })])
+    getDB().prepare('DELETE FROM events_logged WHERE id=?').run(ids.small.after)
+    expect(surface('中文詞')).not.toContain(ids.small.after)
+    expect(getIndexRows().filter(r => r.event_id === ids.small.after)).toEqual([])
+  })
+
+  it('an export snapshot finds decoded text only for events inside its boundary', () => {
+    const boundary = (getDB().prepare('SELECT max(rowid) AS n FROM events_logged').get() as { n: number }).n
+    const later = response(asciiEscaped(JSON.stringify({ k: '後來詞' })), 'application/json', 'resp-later')
+    const chained = (getDB().prepare('SELECT coalesce(max(rowid),0) AS n FROM events').get() as { n: number }).n
+    const snapshot = { chainedMaxRowId: chained, loggedMaxRowId: boundary, takenAt: 0 }
+    expect(searchHttpBodyEventIds('後來詞', dir, false, snapshot)).toEqual([])
+    expect(searchHttpBodyEventIds('中文詞', dir, false, snapshot)).toEqual(expect.arrayContaining([ids.small.after, ids.large.after]))
+    expect(searchHttpBodyEventIds('後來詞', dir)).toEqual([later])
+  })
+
+  it('a deleted body index is rebuilt with the decoded text; an index from before decoding (v7) is replaced', () => {
+    expect(surface('中文詞')).toContain(ids.large.after)
+    closeHttpBodyIndex()
+    fs.rmSync(path.join(dir, 'http-body-index.db'), { force: true })
+    for (const suffix of ['-wal', '-shm']) fs.rmSync(path.join(dir, `http-body-index.db${suffix}`), { force: true })
+    expect(surface('中文詞')).toEqual(expect.arrayContaining([ids.small.after, ids.large.after]))
+    closeHttpBodyIndex()
+    const old = new Database(path.join(dir, 'http-body-index.db'))
+    old.exec('DELETE FROM body_fts; DELETE FROM body_event_refs;')
+    old.pragma('user_version=7')
+    old.close()
+    expect(surface('中文詞')).toEqual(expect.arrayContaining([ids.small.after, ids.large.after]))
+  })
+
+  it('a project whose content-ref index was built from the older predicate gets it rebuilt at open, and finds inline escaped bodies', () => {
+    const db = getDB()
+    for (const table of ['events', 'events_logged']) {
+      db.exec(`DROP INDEX idx_${table}_content_refs`)
+      db.exec(`CREATE INDEX idx_${table}_content_refs ON ${table}(id) WHERE CASE WHEN json_valid(data) THEN json_extract(data,'$.request_body_ref.sha256') IS NOT NULL ELSE 0 END`)
+    }
+    closeHttpBodyIndex(); closeDB()
+    initDB(dir)
+    const sql = (getDB().prepare("SELECT sql FROM sqlite_master WHERE name='idx_events_logged_content_refs'").get() as { sql: string }).sql
+    expect(sql).toContain("instr(json_extract(data,'$.request_body.data'),'\\u')>0")
+    expect(surface('中文詞')).toContain(ids.small.after)
+  })
+
+  it('KNOWN, BY DESIGN: once retention removes the saved body, what is beyond the preview is no longer searchable, decoded or not', () => {
+    const ref = row(ids.large.after).request_body_ref as { file: string; sha256: string }
     fs.unlinkSync(path.join(dir, 'http-bodies', ref.file))
     pruneHttpBodyIndex(ref.sha256, dir)
     expect(found('TAILWORDX', 'large')).toEqual({
@@ -150,21 +270,84 @@ describeDB('searching a JSON request body without params.body_json', () => {
       before: { events: true, body: false, surface: true },
       after: { events: false, body: false, surface: false }
     })
+    expect(found('中文詞', 'large').after).toEqual({ events: false, body: false, surface: false })
     // The preview is on the event itself and stays.
     expect(found('HEADWORDX', 'large').after.surface).toBe(true)
+    // And search says the body is gone rather than that it was searched.
+    expect(bodySearchCoverage().sources!.find(s => s.kind === 'body')).toEqual(expect.objectContaining({ status: 'unavailable', missing: 2 }))
   })
 
-  it('LOSS: a JSON body in a charset other than UTF-8 is saved as base64 bytes the body index cannot read', () => {
-    const bytes = Buffer.from('{"city":"Zürichx"}', 'latin1')
-    const { results, python } = runAddonRequests([{ contentType: 'application/json; charset=iso-8859-1', body: bytes }])
+  it('KNOWN: words past the capture cap (REDLOG_MAX_BODY, 10 MiB by default) are not saved, so neither index has them; the parsed copy used to hold the whole body', () => {
+    const text = JSON.stringify({ pad: 'z'.repeat(9000), capword: 'CAPWORDX' })
+    const { results, python } = runAddonRequests([{ contentType: 'application/json', body: Buffer.from(text) }], { env: { REDLOG_MAX_BODY: '8192' } })
     const sent = results[0]
     if (!('data' in sent)) throw new Error(`addon (python ${python}): ${sent.error}`)
-    expect((sent.data.request_body as { encoding: string }).encoding).toBe('base64')
-    const post = (data: Record<string, unknown>) => ingest({ agentType: 'scanner', engagementId: 'eng', operatorId: 'op', targetId: 'api.test', data }).event!.id
-    const after = post({ ...sent.data, flow_id: 'latin-after' })
-    const before = post({ ...sent.data, flow_id: 'latin-before', params: { body_json: { city: 'Zürichx' } } })
-    expect(surface('Zürichx')).toEqual([before])
-    expect(viaBody('Zürichx')).toEqual([])
-    expect(surface('Zürichx')).not.toContain(after)
+    const after = post({ ...sent.data, flow_id: 'cap-after' })
+    const before = post({ ...sent.data, flow_id: 'cap-before', params: { body_json: JSON.parse(text) } })
+    expect(row(after).request_body_ref).toEqual(expect.objectContaining({ size: 8192, truncated: true }))
+    expect(surface('CAPWORDX')).toEqual([before])
+  })
+
+  describe('a JSON body in a declared charset other than UTF-8 (saved as base64)', () => {
+    const latin = (word: string, pad = 0): Buffer => Buffer.from(JSON.stringify({ pad: 'p'.repeat(pad), city: word }), 'latin1')
+    const big5 = (pad = 0): Buffer => Buffer.concat([Buffer.from(`{"pad":"${'p'.repeat(pad)}","w":"`), Buffer.from('a4a4a4e5b5fc', 'hex'), Buffer.from('"}')])
+
+    it('FOUND: a request in iso-8859-1, inline and in the sidecar', () => {
+      const inline = request('application/json; charset=iso-8859-1', latin('Zürichx'), 'latin-inline')
+      const sidecar = request('application/json; charset=ISO-8859-1', latin('Zürichy', 5000), 'latin-sidecar')
+      expect((row(inline).request_body as { encoding: string }).encoding).toBe('base64')
+      expect(row(sidecar).request_body_ref).toEqual(expect.objectContaining({ encoding: 'base64' }))
+      expect(where('Zürichx', inline)).toEqual({ events: false, body: true, surface: true })
+      expect(where('Zürichy', sidecar)).toEqual({ events: false, body: true, surface: true })
+    })
+
+    it('FOUND: a request and a response in big5, inline and in the sidecar', () => {
+      const req = request('application/json; charset=big5', big5(), 'big5-request')
+      const reqLarge = request('application/json; charset="Big5"', big5(5000), 'big5-request-large')
+      const res = response(big5(), 'application/json; charset=big5', 'big5-response')
+      const resLarge = response(big5(5000), 'application/json;charset=big5', 'big5-response-large')
+      expect(viaBody('中文詞')).toEqual(expect.arrayContaining([req, reqLarge, res, resLarge]))
+      expect(getIndexRows().filter(r => [req, reqLarge, res, resLarge].includes(r.event_id)).map(r => r.status)).toEqual(['indexed', 'indexed', 'indexed', 'indexed'])
+    })
+
+    it('FOUND: a response in iso-8859-1 whose text also carries escapes is found by both', () => {
+      const res = response(Buffer.from(`{"a":"Genèvex","b":"${asciiEscaped('日本語x')}"}`, 'latin1'), 'application/json; charset=iso-8859-1', 'latin-response')
+      expect(viaBody('Genèvex')).toEqual([res])
+      expect(viaBody('日本語x')).toEqual([res])
+    })
+
+    // Electron's runtime (Node 24.22 / ICU 78) fails on invalid Big5; Node
+    // 24.12 (ICU 77) drops the bytes with no error and no U+FFFD, so there a
+    // corrupt Big5 body is indexed with those bytes missing and counted indexed.
+    const big5Signals = ((): boolean => { try { new TextDecoder('big5', { fatal: true }).decode(Buffer.from('80ff41', 'hex')); return false } catch { return true } })()
+    it(big5Signals
+      ? 'leaves a body declared big5 whose bytes are not valid Big5 binary'
+      : 'KNOWN (this runtime): a body declared big5 with invalid bytes is indexed with those bytes missing — the decoder gives no signal', () => {
+      const bad = response(Buffer.concat([big5(), Buffer.from(' QZBADX '), Buffer.from('80ff', 'hex')]), 'application/json; charset=big5', 'big5-invalid')
+      const body = () => bodySearchCoverage().sources!.find(s => s.kind === 'body')!
+      viaBody('QZBADX')
+      if (big5Signals) {
+        expect(viaBody('QZBADX')).toEqual([])
+        expect(body()).toEqual(expect.objectContaining({ binary: 1 }))
+      } else {
+        expect(viaBody('QZBADX')).toEqual([bad])
+        expect(body()).toEqual(expect.objectContaining({ binary: 0 }))
+      }
+    })
+
+    it('leaves alone a body with no declared charset, or one whose bytes hold a NUL, and says so in coverage', () => {
+      const undeclared = response(latin('Zürichz'), 'application/json', 'latin-undeclared')
+      const nul = response(Buffer.concat([latin('Zürichw'), Buffer.from([0])]), 'application/json; charset=iso-8859-1', 'latin-nul')
+      expect(viaBody('Zürichz')).not.toContain(undeclared)
+      expect(viaBody('Zürichw')).not.toContain(nul)
+      const body = bodySearchCoverage().sources!.find(s => s.kind === 'body')!
+      expect(body).toEqual(expect.objectContaining({ binary: 2, status: 'partial' }))
+    })
   })
 })
+
+function getIndexRows(): Array<{ event_id: string; status: string; file: string }> {
+  const db = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
+  try { return db.prepare('SELECT event_id,status,file FROM body_event_refs').all() as Array<{ event_id: string; status: string; file: string }> }
+  finally { db.close() }
+}

@@ -286,6 +286,10 @@
       "class": "constant",
       "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
     },
+    "src/core/content-contract.ts#ESCAPE_DECODED_BODY_FIELDS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
     "src/core/credential-detector.ts#LONG_FLAGS": {
       "class": "constant",
       "reason": "Lookup table filled at declaration; nothing mutates it afterwards."

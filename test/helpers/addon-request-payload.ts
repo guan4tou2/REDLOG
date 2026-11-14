@@ -12,12 +12,12 @@ export type RequestResult = { data: Record<string, unknown> } | { error: string 
 
 const ROOT = path.resolve(__dirname, '..', '..')
 
-export function runAddonRequests(cases: RequestCase[], opts: { addon?: string; python?: string } = {}): { python: string; results: RequestResult[] } {
+export function runAddonRequests(cases: RequestCase[], opts: { addon?: string; python?: string; env?: Record<string, string> } = {}): { python: string; results: RequestResult[] } {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-addon-home-'))
   try {
     const run = spawnSync(opts.python ?? 'python3', ['-I', path.join(ROOT, 'test', 'fixtures', 'mitm-request-payload.py'), opts.addon ?? path.join(ROOT, 'hooks', 'mitmproxy-addon.py')], {
       input: JSON.stringify(cases.map(c => ({ content_type: c.contentType, body_b64: c.body.toString('base64'), ...(c.url ? { url: c.url } : {}) }))),
-      encoding: 'utf8', timeout: 20_000, env: { ...process.env, HOME: home, USERPROFILE: home }, maxBuffer: 64 * 1024 * 1024
+      encoding: 'utf8', timeout: 20_000, env: { ...process.env, ...opts.env, HOME: home, USERPROFILE: home }, maxBuffer: 64 * 1024 * 1024
     })
     if (run.status !== 0) throw new Error(`addon fixture failed (${run.status}): ${run.stderr}`)
     return JSON.parse(run.stdout) as { python: string; results: RequestResult[] }

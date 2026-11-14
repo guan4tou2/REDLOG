@@ -381,7 +381,13 @@ function applySchema(): void {
   `)
 
   for (const table of ['events', 'events_logged']) {
-    db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_content_refs ON ${table}(id) WHERE ${BODY_SOURCE_PREDICATE}`)
+    // The predicate is the index: a project whose index was built from an
+    // older predicate gets it rebuilt, since the body index reads it with
+    // INDEXED BY and a query cannot use a partial index its WHERE does not imply.
+    const name = `idx_${table}_content_refs`
+    const built = (db.prepare("SELECT sql FROM sqlite_master WHERE type='index' AND name=?").get(name) as { sql: string } | undefined)?.sql
+    if (built !== undefined && !built.endsWith(`WHERE ${BODY_SOURCE_PREDICATE}`)) db.exec(`DROP INDEX ${name}`)
+    db.exec(`CREATE INDEX IF NOT EXISTS ${name} ON ${table}(id) WHERE ${BODY_SOURCE_PREDICATE}`)
   }
 
   // The Capture Health probes (src/core/capture-health.ts, newestEvent). Each

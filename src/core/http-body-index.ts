@@ -1,4 +1,5 @@
-import { BODY_SOURCE_PREDICATE } from './content-contract'
+import { BODY_SOURCE_PREDICATE, ESCAPE_DECODED_BODY_FIELDS } from './content-contract'
+import { decodeJsonEscapes, jsonEscapeDecoder } from './json-escape-text'
 import Database from 'better-sqlite3'
 import fs, { existsSync } from 'node:fs'
 import path from 'node:path'
@@ -13,6 +14,7 @@ import { BODY_REF_FIELDS, type BodyRef } from './http-body-store'
 import { withVerifiedBody, withVerifiedSavedFile, savedFileRefs, withInlineBase64, ContentAccessError, type ByteSource, type SavedFileRef } from './body-source'
 const INDEX_CHUNK_BYTES = 1024 * 1024
 const INDEX_OVERLAP_CHARS = 65536
+const INDEX_VERSION = 8
 let index: Database.Database | null = null, indexDir: string | null = null
 function getIndex(projectDir = getProjectDir()): Database.Database {
   if (index && indexDir === projectDir)
@@ -24,10 +26,12 @@ function getIndex(projectDir = getProjectDir()): Database.Database {
   // row lost to an OS crash here is linked again by the first search after
   // launch, which walks every content-ref event (see the backfill note below).
   // Rebuild only this disposable index, never a source Event or sidecar.
-  // v7 added the verification columns below; an older index is rebuilt once.
-  // The schema is written in one transaction, and an index already at v7 is
+  // v7 added the verification columns below; v8 added the decoded text of
+  // JSON escapes and of bodies in a declared non-UTF-8 charset. An older
+  // index is rebuilt once, from the source rows, at the next search.
+  // The schema is written in one transaction, and an index already at v8 is
   // opened without a write: each commit is a flush, slow on Windows.
-  if (db.pragma('user_version', { simple: true }) !== 7) db.transaction(() => {
+  if (db.pragma('user_version', { simple: true }) !== INDEX_VERSION) db.transaction(() => {
     db.exec('DROP TABLE IF EXISTS body_fts; DROP TABLE IF EXISTS body_event_refs; DROP TABLE IF EXISTS body_index_state; DROP TABLE IF EXISTS body_index_meta')
     db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS body_fts USING fts5(content,event_id UNINDEXED,sha256 UNINDEXED,tokenize='unicode61 remove_diacritics 2',prefix='2 3');
     CREATE TABLE IF NOT EXISTS body_event_refs (
@@ -37,7 +41,7 @@ function getIndex(projectDir = getProjectDir()): Database.Database {
     );
     CREATE INDEX IF NOT EXISTS body_event_refs_sha256 ON body_event_refs(sha256);
     CREATE TABLE IF NOT EXISTS body_index_meta (key TEXT PRIMARY KEY,value TEXT NOT NULL);`)
-    db.pragma('user_version=7')
+    db.pragma(`user_version=${INDEX_VERSION}`)
   })()
   db.exec('CREATE TEMP TABLE body_seen(event_id TEXT NOT NULL,sha256 TEXT NOT NULL,PRIMARY KEY(event_id,sha256));')
   indexDir = projectDir
@@ -118,25 +122,117 @@ function refFile(ref: IndexedRef, projectDir: string): string | null {
   if (ref.kind === 'body') return ref.inline !== undefined ? null : path.join(projectDir, 'http-bodies', ref.file)
   return ref.pending ? null : path.resolve(projectDir, ref.file)
 }
-type IndexedRef = (BodyRef & {kind:'body';inline?:string}) | (SavedFileRef & {kind:'artifact'|'ai-raw';encoding:'text'})
+/** `decode`: also index the text with JSON escapes decoded. `charset`: the
+ *  declared charset (never UTF-8) to read bytes that are not UTF-8 with.
+ *  `inline`: the body is on the event itself, as its `encoding` says. */
+type BodyIndexRef = BodyRef & {kind:'body';inline?:string;decode:boolean;charset?:string}
+type IndexedRef = BodyIndexRef | (SavedFileRef & {kind:'artifact'|'ai-raw';encoding:'text'})
 // Resolve after module initialization: artifact -> events -> body-store is a cycle.
 function inlineBodyFields():string[]{return BODY_REF_FIELDS.filter(field=>field.endsWith('_body_ref')).map(field=>field.slice(0,-4))}
+const decodesEscapes = (field: string): boolean => (ESCAPE_DECODED_BODY_FIELDS as readonly string[]).includes(field)
+function headerValue(headers: unknown, name: string): string | undefined {
+  if (Array.isArray(headers)) {
+    const pair = headers.find(h => Array.isArray(h) && typeof h[0] === 'string' && h[0].toLowerCase() === name && typeof h[1] === 'string') as [string, string] | undefined
+    return pair?.[1]
+  }
+  if (headers && typeof headers === 'object')
+    for (const [key, value] of Object.entries(headers)) if (key.toLowerCase() === name && typeof value === 'string') return value
+  return undefined
+}
+/** The charset a body's content type declares, as the name TextDecoder
+ *  knows it; undefined for UTF-8, for none, and for one this runtime cannot
+ *  decode. */
+function declaredCharset(contentType: unknown): string | undefined {
+  if (typeof contentType !== 'string' || contentType.length > 1024) return undefined
+  for (const param of contentType.split(';').slice(1)) {
+    const eq = param.indexOf('=')
+    if (eq < 0 || param.slice(0, eq).trim().toLowerCase() !== 'charset') continue
+    const label = param.slice(eq + 1).trim().replace(/^"|"$/g, '')
+    try {
+      const encoding = new TextDecoder(label).encoding
+      return encoding === 'utf-8' ? undefined : encoding
+    } catch { return undefined }
+  }
+  return undefined
+}
+/** Where the event says what a body's content type is: the inline envelope,
+ *  else the request headers or the response's content type. */
+function charsetOf(data: Record<string, unknown>, field: string): string | undefined {
+  const envelope = (data[field] as { content_type?: unknown } | undefined)?.content_type
+  if (typeof envelope === 'string') return declaredCharset(envelope)
+  if (field === 'request_body') return declaredCharset(headerValue(data.request_headers, 'content-type'))
+  if (field === 'response_body') return declaredCharset(typeof data.content_type === 'string' ? data.content_type : headerValue(data.response_headers, 'content-type'))
+  return undefined
+}
 function refsOf(event: {agentType?:string;data:Record<string,unknown>}): IndexedRef[] {
   return [
     ...BODY_REF_FIELDS.flatMap(field => {
       const value = event.data[field]
+      const body = field.endsWith('_body_ref') ? field.slice(0, -4) : null
+      const charset = body ? charsetOf(event.data, body) : undefined
       return value && typeof value === 'object' && typeof (value as BodyRef).sha256 === 'string' && typeof (value as BodyRef).file === 'string'
         ? [{sha256:(value as BodyRef).sha256,file:(value as BodyRef).file,size:(value as BodyRef).size,
-          encoding:(value as BodyRef).encoding,truncated:(value as BodyRef).truncated,kind:'body' as const}] : []
+          encoding:(value as BodyRef).encoding,truncated:(value as BodyRef).truncated,kind:'body' as const,
+          decode:body !== null && decodesEscapes(body),...(charset ? {charset} : {})}] : []
     }),
-    ...inlineBodyFields().flatMap(field=>{
+    ...inlineBodyFields().flatMap((field):BodyIndexRef[]=>{
       const value=event.data[field] as {data?:unknown;encoding?:unknown}|undefined
-      if(event.data[`${field}_ref`]||value?.encoding!=='base64'||typeof value.data!=='string')return []
+      if(event.data[`${field}_ref`]||typeof value?.data!=='string')return []
+      const decode=decodesEscapes(field)
+      if(value.encoding==='base64'){
+        const charset=charsetOf(event.data,field)
+        return [{kind:'body' as const,file:`inline:${field}`,sha256:createHash('sha256').update(value.data).digest('hex'),
+          size:Buffer.byteLength(value.data,'base64'),encoding:'base64' as const,inline:value.data,decode,...(charset ? {charset} : {})}]
+      }
+      // Inline text is in the events index already, as written. Only a body
+      // with an escape to decode needs a body-index entry, and that entry
+      // holds the decoded text alone.
+      if(!decode||decodeJsonEscapes(value.data)===null)return []
       return [{kind:'body' as const,file:`inline:${field}`,sha256:createHash('sha256').update(value.data).digest('hex'),
-        size:Buffer.byteLength(value.data,'base64'),encoding:'base64' as const,inline:value.data}]
+        size:Buffer.byteLength(value.data,'utf8'),encoding:'text' as const,inline:value.data,decode}]
     }),
     ...savedFileRefs(event).map(ref=>({...ref,kind:ref.field==='artifact'?'artifact' as const:'ai-raw' as const,encoding:'text' as const}))
   ]
+}
+/** Bytes in a declared charset that are not text after all: a NUL, or a
+ *  replacement character from a decoder that substituted instead of failing.
+ *  (Node 24.12's ICU Big5 decoder drops invalid bytes with no signal at all,
+ *  fatal or not; Electron's runtime fails as specified.) */
+class NotText extends Error {}
+function withInlineText(text: string, use: (source: ByteSource) => void): void {
+  const bytes = Buffer.from(text, 'utf8')
+  use({ bytes: bytes.length, digest: createHash('sha256').update(bytes).digest('hex'), format: 'utf8', read: (offset, length) => bytes.subarray(offset, offset + length) })
+}
+/** One FTS document stream: text in, rows of about INDEX_CHUNK_BYTES out,
+ *  each cut at a tokenizer boundary and overlapping the one before. Call with
+ *  `final` once, last. */
+function ftsWriter(write: (part: string) => void): (part: string, final?: boolean) => void {
+  let text = '', skippingToken = false
+  const separator = /[^\p{L}\p{N}\p{Co}\p{M}]/u
+  return (part, final = false) => {
+    if(skippingToken) {
+      const at=part.search(separator)
+      if(at<0) return
+      part=part.slice(at); skippingToken=false
+    }
+    text+=part
+    if(final) { write(text); text=''; return }
+    if(text.length<INDEX_CHUNK_BYTES) return
+    let end=text.length-1
+    while(end>=0 && !separator.test(text[end])) end--
+    if(end<0) {
+      // The FTS tokenizer itself caps a single token at 32768 bytes. Preserve
+      // that prefix once; never turn a huge token's suffix into a hit.
+      write(Buffer.from(text).subarray(0,32768).toString('utf8'))
+      text=''; skippingToken=true; return
+    }
+    const complete=text.slice(0,end+1)
+    write(complete)
+    let start=complete.length>INDEX_OVERLAP_CHARS ? complete.length-INDEX_OVERLAP_CHARS : complete.length
+    // Both ends of every overlapping document are tokenizer boundaries.
+    while(start<complete.length && start>0 && !separator.test(complete[start-1])) start++
+    text=complete.slice(start)+text.slice(end+1)
+  }
 }
 export function linkHttpBodyEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}, projectDir = getProjectDir()): void {
   getIndex(projectDir)
@@ -155,7 +251,8 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
         status: string; tier: Tier | null; verified_desc: string | null; verified_file: string | null; verified_sig: string | null
       } | undefined
       const file = refFile(ref, projectDir)
-      const desc = JSON.stringify([ref.file, ref.size, ref.encoding ?? null, ref.kind, ref.kind !== 'body' && ref.pending === true, ref.kind === 'body' && ref.inline !== undefined])
+      const desc = JSON.stringify([ref.file, ref.size, ref.encoding ?? null, ref.kind, ref.kind !== 'body' && ref.pending === true, ref.kind === 'body' && ref.inline !== undefined,
+        ref.kind === 'body' && ref.decode, (ref.kind === 'body' && ref.charset) || null])
       // Nothing that decides this row has changed since it was verified.
       if (prior && prior.verified_desc === desc && FINAL_STATUSES.has(prior.status)
         && (prior.verified_file === null || (prior.verified_file === file && fileSignature(prior.verified_file) === prior.verified_sig))) {
@@ -167,14 +264,18 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
       const sig = file === null ? null : fileSignature(file)
       try {
         const read = (use: (source:ByteSource)=>void):void => {
-          if(ref.kind==='body'&&ref.inline!==undefined)withInlineBase64(ref.inline,use)
+          if(ref.kind==='body'&&ref.inline!==undefined&&ref.encoding==='text')withInlineText(ref.inline,use)
+          else if(ref.kind==='body'&&ref.inline!==undefined)withInlineBase64(ref.inline,use)
           else if(ref.kind==='body') withVerifiedBody(ref,use,projectDir)
           else withVerifiedSavedFile(ref,use,projectDir)
         }
         if(ref.kind!=='body'&&ref.pending)status='pending'
         else read(source => {
           availableBytes=source.availableBytes??source.bytes
-          if (source.format === 'binary') {
+          // Bytes that are not UTF-8 are text only in the charset the event
+          // declares for them, and only if every byte decodes in it.
+          const charset = source.format !== 'binary' ? 'utf-8' : ref.kind === 'body' ? ref.charset : undefined
+          if (!charset) {
             status = 'binary'
             reason = 'binary'
             return
@@ -186,37 +287,40 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
           // this transaction and removed together), so a new body skips it.
           if (prior) stmt(db, 'DELETE FROM body_fts WHERE event_id=? AND sha256=?').run(event.id, ref.sha256)
           const insert = stmt(db, 'INSERT INTO body_fts(content,event_id,sha256) VALUES(?,?,?)')
-          const decoder = new TextDecoder('utf-8', { fatal: true })
-          let text = '', skippingToken = false
-          const separator = /[^\p{L}\p{N}\p{Co}\p{M}]/u
           const write = (part: string): void => { if(part) insert.run(part,event.id,ref.sha256) }
-          const consume = (part: string, final = false): void => {
-            if(skippingToken) {
-              const at=part.search(separator)
-              if(at<0) return
-              part=part.slice(at); skippingToken=false
-            }
-            text+=part
-            if(final) { write(text); text=''; return }
-            if(text.length<INDEX_CHUNK_BYTES) return
-            let end=text.length-1
-            while(end>=0 && !separator.test(text[end])) end--
-            if(end<0) {
-              // The FTS tokenizer itself caps a single token at 32768 bytes. Preserve
-              // that prefix once; never turn a huge token's suffix into a hit.
-              write(Buffer.from(text).subarray(0,32768).toString('utf8'))
-              text=''; skippingToken=true; return
-            }
-            const complete=text.slice(0,end+1)
-            write(complete)
-            let start=complete.length>INDEX_OVERLAP_CHARS ? complete.length-INDEX_OVERLAP_CHARS : complete.length
-            // Both ends of every overlapping document are tokenizer boundaries.
-            while(start<complete.length && start>0 && !separator.test(complete[start-1])) start++
-            text=complete.slice(start)+text.slice(end+1)
+          const pieces = (each: (text: string) => void): void => {
+            const decoder = new TextDecoder(charset, { fatal: true })
+            const checked = (text: string): void => { if (charset !== 'utf-8' && (text.includes('\0') || text.includes('\uFFFD'))) throw new NotText(); each(text) }
+            for (let off = 0; off < source.bytes; off += INDEX_CHUNK_BYTES)
+              checked(decoder.decode(source.read(off, Math.min(INDEX_CHUNK_BYTES, source.bytes - off)), {stream:true}))
+            checked(decoder.decode())
           }
-          for (let off = 0; off < source.bytes; off += INDEX_CHUNK_BYTES)
-            consume(decoder.decode(source.read(off, Math.min(INDEX_CHUNK_BYTES, source.bytes - off)), {stream:true}))
-          consume(decoder.decode(),true)
+          const decode = ref.kind === 'body' && ref.decode
+          try {
+            // The text as saved, unless it is inline text the events index
+            // already holds; then, only when it has an escape to decode, the
+            // decoded text as a second document of the same (event, body)
+            // pair, so it is pruned, verified and counted with the saved text.
+            let escaped = ref.kind === 'body' && ref.inline !== undefined && ref.encoding === 'text'
+            if (!escaped) {
+              const saved = ftsWriter(write), probe = decode ? jsonEscapeDecoder() : null
+              pieces(text => { saved(text); if (probe && !probe.changed) probe.push(text) })
+              saved('', true)
+              if (probe && !probe.changed) probe.end()
+              escaped = probe?.changed ?? false
+            }
+            if (escaped) {
+              const decoded = ftsWriter(write), escapes = jsonEscapeDecoder()
+              pieces(text => decoded(escapes.push(text)))
+              decoded(escapes.end(), true)
+            }
+          } catch (error) {
+            if (charset === 'utf-8' || !(error instanceof TypeError || error instanceof NotText)) throw error
+            stmt(db, 'DELETE FROM body_fts WHERE event_id=? AND sha256=?').run(event.id, ref.sha256)
+            bytes = 0
+            status = 'binary'
+            reason = 'binary'
+          }
         })
       }
       catch (error) {
@@ -451,7 +555,7 @@ export function bodySearchCoverage(snapshot?: ExportSnapshot, projectId?: string
     groups.set(kind,{kind,status:'covered',revision:'',indexed:0,missing:0,binary:0,pending:0,failed:0,unsupported:0,limited:0,indexedBytes:0,sourceBytes:0,
       representation:kind==='events'?'decoded-event-json':kind==='ai-raw'?'confirmed-jsonl-prefix':'saved-bytes',precision:kind==='events'?'event':'file',
       filters:{applied:applied.filter(key=>!unsupported.includes(key)),unsupported}})
-    hashes.set(kind,createHash('sha256').update('saved-index-v7').update(JSON.stringify([applied,unsupported])))
+    hashes.set(kind,createHash('sha256').update(`saved-index-v${INDEX_VERSION}`).update(JSON.stringify([applied,unsupported])))
   }
   const eventGroup=groups.get('events')!,eventHash=hashes.get('events')!
   for(const [table,max] of [['events',snapshot?.chainedMaxRowId],['events_logged',snapshot?.loggedMaxRowId]] as const){

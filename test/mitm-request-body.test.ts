@@ -51,6 +51,14 @@ describe('mitmproxy addon: JSON request bodies', () => {
     expect(data.request_body_preview).toBe(text)
   })
 
+  it('classifies a valid integer longer than Python converts as JSON, not as a raw body', () => {
+    // json.loads alone raises ValueError past 4,300 digits; the addon's parse
+    // never converts a number, so the answer is the one for valid JSON.
+    const text = `[${'9'.repeat(5000)}]`
+    expect(send(JSON_TYPE, text).params).toBeUndefined()
+    expect(send(JSON_TYPE, '[1,]').params).toEqual({ body_raw: '[1,]' })
+  })
+
   it('sends a body nested 2,000 levels deep, flat in the event', () => {
     const text = '['.repeat(2000) + ']'.repeat(2000)
     const data = send(JSON_TYPE, text)
