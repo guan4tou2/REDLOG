@@ -175,6 +175,20 @@ beforeEach(() => { localStorage.setItem('redlog-locale', 'zh-TW') })
 afterEach(() => { cleanup(); vi.useRealTimers(); localStorage.clear() })
 
 describe('first run: Commands and HTTP(S) are set up side by side (#217)', () => {
+  // The steps were two columns once, with the recent rows under step 01 and
+  // beside step 02. In one column that put the rows between the steps; the two
+  // steps now read together and the rows follow them.
+  it('keeps step 01 and step 02 together, with the recent rows after both', async () => {
+    install({ rows: [BUILTIN] })
+    draw()
+    const recent = await screen.findByTestId('first-run-recent')
+    const commands = screen.getByTestId('first-run-commands')
+    const http = await screen.findByTestId('first-run-http')
+    const follows = (a: Element, b: Element): boolean => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(follows(commands, http)).toBe(true)
+    expect(follows(http, recent)).toBe(true)
+  })
+
   it('shows both core captures before any event, each unverified, and asks no "web or hosts" question', async () => {
     install({ rows: [] })
     draw()

@@ -224,7 +224,7 @@ test.describe.serial('the first run', () => {
     await expect(page.getByTestId('first-run-later')).toHaveCount(0)
   })
 
-  test('keeps work actions above the single-column setup and recent evidence', async () => {
+  test('keeps work actions above the single-column setup, its two steps together, and recent evidence after them', async () => {
     for (const [width, height] of [[1600, 900], [800, 600]]) {
       await resizeMainWindow(app, width, height)
       const commands = page.getByTestId('first-run-commands')
@@ -235,10 +235,10 @@ test.describe.serial('the first run', () => {
       expect(boxes.every(Boolean)).toBe(true)
       const [c, h, r, w] = boxes.map(box => box!)
       expect(w.y + w.height).toBeLessThanOrEqual(c.y + 1)
-      expect(r.y).toBeGreaterThanOrEqual(c.y + c.height)
+      expect(h.y).toBeGreaterThanOrEqual(c.y + c.height)
+      expect(r.y).toBeGreaterThanOrEqual(h.y + h.height)
       expect(Math.abs(r.x - c.x)).toBeLessThanOrEqual(1)
       expect(r.x + r.width).toBeLessThanOrEqual(c.x + c.width + 1)
-      expect(h.y).toBeGreaterThanOrEqual(r.y + r.height)
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     }
     await resizeMainWindow(app, 1280, 800)
