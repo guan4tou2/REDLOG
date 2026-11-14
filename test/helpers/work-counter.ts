@@ -156,5 +156,21 @@ export function measureWork<T>(read: () => T): { result: T; work: WorkProfile; s
   }
 }
 
+/** `measureWork` for a read that returns a promise: counts what the calling
+ *  thread does until it settles. Work in a worker thread is not counted, the
+ *  wrappers live on this thread's module instances. Not reentrant. */
+export async function measureWorkAsync<T>(read: () => Promise<T>): Promise<{ result: T; work: WorkProfile; scanStatements: string[] }> {
+  if (!original) throw new Error('installWorkCounter() first')
+  const work = { ...ZERO }
+  current = work
+  scanned = []
+  try {
+    const result = await read()
+    return { result, work, scanStatements: scanned }
+  } finally {
+    current = null
+  }
+}
+
 export const workTuple = (w: WorkProfile): [number, number, number, number, number, number, number] =>
   [w.statements, w.rows, w.udfCalls, w.jsonParse, w.lstat, w.open, w.scans]
