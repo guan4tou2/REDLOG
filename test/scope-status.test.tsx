@@ -134,11 +134,20 @@ describe('Scope & Evidence page', () => {
   it('points an unconfigured scope at the settings page that owns the rules', async () => {
     installBridge({ rows: [], truncated: false }, 0)
     window.redlog.scope.isConfigured = vi.fn(async () => false)
-    const onOpenSettings = vi.fn()
-    render(<I18nProvider><ScopeStatus onOpenSettings={onOpenSettings} /></I18nProvider>)
-    fireEvent.click(await screen.findByRole('button', { name: /Settings ▸/ }))
-    expect(onOpenSettings).toHaveBeenCalledOnce()
+    render(<I18nProvider><ScopeStatus onOpenSettings={vi.fn()} /></I18nProvider>)
+    expect(await screen.findByText(/Settings ▸/)).toBeTruthy()
     expect(screen.queryByText('No out-of-scope observations')).toBeNull()
+  })
+
+  // The page header's "Set scope rules" button already opens Settings ▸ scope,
+  // where the rule tester lives; a second link at the foot of the page went to
+  // the same place.
+  it('leaves the way to the scope settings to the page header', async () => {
+    installBridge({ rows: [], truncated: false }, 0)
+    render(<I18nProvider><ScopeStatus onOpenSettings={vi.fn()} /></I18nProvider>)
+    await screen.findByText('Out-of-scope observations')
+    expect(screen.queryByRole('button', { name: /Settings ▸/ })).toBeNull()
+    expect(screen.queryByText(/testing whether a target matches/)).toBeNull()
   })
 
 

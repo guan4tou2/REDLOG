@@ -346,12 +346,8 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
           </div>
           {chainLen !== null && <span data-testid="scope-chain-entries" className="text-redlog-text-dim text-xs font-mono tabular-nums">{t('scope.entries', { count: chainLen })}</span>}
         </div>
-        {onOpenSettings && (
-          <div className="flex flex-wrap items-center gap-2 border-t border-redlog-border px-4 py-3 text-xs text-redlog-text-dim">
-            <span>{t('scope.rulesLiveInSettings')}</span>
-            <Button level="quiet" size="compact" onClick={() => onOpenSettings()}>{t('scope.openSettingsLink', { page: t('settings.pageScope') })}</Button>
-          </div>
-        )}
+        {/* No link to Settings here: the page header's "Set scope rules" opens
+            the same page, where the rule tester also lives. */}
       </div>
     </div></div>
   )
