@@ -18,6 +18,7 @@ import { evaluateScope, type ScopePolicy } from '../scope-evaluator'
 import { bodySearchCoverage, type BodySearchCoverage, searchHttpBodyEventIds, rawTranscriptFiltersUnsupported } from '../http-body-index'
 import type { ParsedQuery, QueryCondition } from '../query/contract'
 import { toFtsMatch } from '../query/fts-match'
+import { builtinTerminalRecordingSql } from '../ingest/builtin-terminal'
 
 /** Operator-selected predicates shared by investigation surfaces. Scope rules
  * are attached by trusted main-process code when `inScopeOnly` is requested. */
@@ -804,7 +805,7 @@ export function queryEventById(id: string): RedLogEvent | null {
 export function queryBuiltinTerminalSessionStart(recordingId: string): RedLogEvent | null {
   const row = getReadonlyDB().prepare(`SELECT * FROM events
     WHERE agent_type = 'shell' AND subtype = 'session_start'
-      AND json_extract(data, '$.source') = 'builtin-terminal'
+      AND ${builtinTerminalRecordingSql()}
       AND json_extract(data, '$.recordingId') = ?
     ORDER BY rowid DESC LIMIT 1`).get(recordingId) as Record<string, unknown> | undefined
   return row ? rowToEvent({ ...row, tier: 'chained' }) : null
@@ -813,7 +814,7 @@ export function queryBuiltinTerminalSessionStart(recordingId: string): RedLogEve
 export function queryBuiltinTerminalSessions(): RedLogEvent[] {
   const rows = getReadonlyDB().prepare(`SELECT * FROM events
     WHERE agent_type = 'shell' AND subtype IN ('session_start', 'session_end')
-      AND json_extract(data, '$.source') = 'builtin-terminal'
+      AND ${builtinTerminalRecordingSql()}
     ORDER BY timestamp DESC, rowid DESC`).all() as Array<Record<string, unknown>>
   return rows.map(row => rowToEvent({ ...row, tier: 'chained' }))
 }

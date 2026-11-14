@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { terminalIdentity } from './ingest/terminal'
 
 // v0.6.89 P0-A: `_causes` upstream-event lookup for events that arrive via
 // /api/events (or any other post-hoc insertion path). Each event pair follows
@@ -80,8 +81,10 @@ function commandIdOf(data: Record<string, unknown>): string | null {
 }
 
 function shellKey(data: Record<string, unknown>): string | null {
-  const tidValue = data.terminal_id ?? data.terminalId
-  const tid = tidValue != null ? String(tidValue) : ''
+  // FR-011: derived from `data` by the one function the stamp's `terminal` is
+  // written by, not by this module's own reading of the two fields (it used to
+  // take `terminal_id` first, the duplicate window `terminalId` first).
+  const tid = terminalIdentity(data) ?? ''
   const pid = data.pid != null ? String(data.pid) : ''
   const cmd = data.command != null ? String(data.command) : ''
   if (!cmd) return null

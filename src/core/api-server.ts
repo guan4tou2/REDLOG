@@ -39,6 +39,7 @@ import { getCaptureHealth, getCaptureError, noteDbError } from './capture-health
 import { resolveIncomingCauses, noteStartEvent } from './causes-resolver'
 import { ingest, type LootDetectorLike } from './ingest'
 import { LEGACY_API, withEntrance } from './ingest/stamp'
+import { bodyTargetId } from './ingest/body-target'
 import { isInsideDir } from './paths'
 import { getProjectDir } from './db/index'
 import { extractBodyToSidecar, readBody as readHttpBody, type BodyRef } from './http-body-store'
@@ -371,7 +372,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         json(res, 403, { error: 'marker amendments are written only from the app' })
         return
       }
-      let targetId = (body.target_id || body.targetId || undefined) as string | undefined
+      let targetId = bodyTargetId(body)
 
       // Causal links, enrichment, redaction, insert, publish, scope and
       // companions all run inside ingest() below (docs/design/DESIGN-plugin-kernel.md

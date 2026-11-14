@@ -219,7 +219,7 @@ export function drainSpoolOnce(
   const sliceOptions = own.options(options)
   const migrated = after === '' ? migrateLegacySpoolFiles(directory, opening, sliceOptions) : null
   const pauses = recordedPauses()
-  const emit = ({ agentType, data: spooled, engagementId: spoolEngagement, operatorId: spoolOperator }: SpoolReplayEvent): boolean | SpoolOutcome => {
+  const emit = ({ agentType, data: spooled, engagementId: spoolEngagement, operatorId: spoolOperator, targetId }: SpoolReplayEvent): boolean | SpoolOutcome => {
     // The question the API asks, asked first: a forged file gets no further.
     if (!isKindAllowed('legacy-handoff', agentType, spooled)) {
       return { outcome: 'invalid', reason: 'kind-not-allowed', detail: `agent_type "${agentType}" may not be written through the spool` }
@@ -247,7 +247,7 @@ export function drainSpoolOnce(
     let result: ReturnType<typeof ingest>
     try {
       result = ingest({
-        agentType, data, engagementId: spoolEngagement, operatorId: spoolOperator, spoolJudged: true,
+        agentType, data, engagementId: spoolEngagement, operatorId: spoolOperator, targetId, spoolJudged: true,
         entrance: LEGACY_HANDOFF,
         envelope: { source: 'spool', mapper: { id: 'identity', version: '1' } }
       })

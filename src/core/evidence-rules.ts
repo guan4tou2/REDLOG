@@ -66,6 +66,18 @@ const baseName = (p: string): string => p.split(/[\\/]/).pop() ?? ''
 const size = (v: unknown): number | null => (typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 ? v : null)
 const hex = (v: unknown): v is string => typeof v === 'string' && HEX64.test(v)
 
+/** Spec 071 FR-012: a `session_end` names the built-in terminal's cast
+ *  digests only when RedLog wrote it. Those rows are written in-process
+ *  (main/terminal-manager.ts); one posted to the API or carried by a spool
+ *  file is the producer's word, and could otherwise name a genuine recording
+ *  with a wrong digest. A row written before the stamp is read as before.
+ *  tools/redlog-verify.py `_casts_are_the_terminals` is the same rule. */
+function castsAreTheTerminals(data: Record<string, unknown>): boolean {
+  if (!Object.prototype.hasOwnProperty.call(data, '_ingest')) return true
+  const stamp = data._ingest
+  return stamp !== null && typeof stamp === 'object' && !Array.isArray(stamp) && (stamp as Record<string, unknown>).producer === 'in-process'
+}
+
 /** The attachment digests an event recorded when it was captured. */
 export function attachmentRefs(agentType: string, data: Record<string, unknown>): AttachmentRef[] {
   const out: AttachmentRef[] = []
@@ -73,7 +85,7 @@ export function attachmentRefs(agentType: string, data: Record<string, unknown>)
   if (agentType === 'screenshot' && plainName(data.filename) && hex(data.sha256)) {
     out.push({ path: `screenshots/${data.filename}`, kind: 'screenshot', sha256: data.sha256, bytes: size(data.size), prefix: false })
   }
-  if (agentType === 'shell' && subtype === 'session_end') {
+  if (agentType === 'shell' && subtype === 'session_end' && castsAreTheTerminals(data)) {
     const segments = Array.isArray(data.castSegments) ? data.castSegments as Array<Record<string, unknown>> : []
     if (segments.length > 0) {
       for (const s of segments) {

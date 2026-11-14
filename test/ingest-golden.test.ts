@@ -31,9 +31,12 @@ vi.mock('../src/core/signing', async (actual) => {
 // row now carries the receiver's stamp `data._ingest` (FR-005), which is
 // inside the chained hash, and its event_id takes one randomUUID per row, so
 // the ids that follow shift too. The evidence content of new rows changed.
+// Re-recorded 2026-11-14 for Spec 071 T025: a row with a terminal carries it
+// as `_ingest.terminal` (FR-011). With that one key held back the previous
+// digest comes out unchanged, so nothing else moved.
 const GOLDEN = {
-  rows: 'e719bcfdf95f0e82c9afefd5a9f8eb8b6a28a07cbad8584c58be50b770c286ac',
-  head: '55e74822b63eb7d8bf139cb6f0cb44180b77ebc673fc030bd32b00074c1b5c76'
+  rows: '5a3ecc37b7d6b96841587aabb9550891989c01b8f0c3f4fb8b3d3fa19c41a624',
+  head: '039143cb03fcfec4c55c0f68ca92ec8b231313ab3aa7c67b607c465403cec9d8'
 }
 
 let dir: string

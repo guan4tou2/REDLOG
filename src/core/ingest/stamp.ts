@@ -98,6 +98,7 @@ export interface IngestStamp {
   event_id: string
   instance?: string
   seq?: number
+  terminal?: string
   claimed?: { producer?: string; operator?: string }
   stripped?: string[]
   rules?: string[]
@@ -152,10 +153,11 @@ function uuidV7(now: number): string {
 }
 
 /** The stamp for one new row. `stripped` is what stripReserved removed from
- *  the caller's data; `now` is the receipt time. */
+ *  the caller's data; `now` is the receipt time; `terminal` is the row's
+ *  terminalIdentity (./terminal.ts). */
 export function ingestStamp(
   entrance: IngestEntrance,
-  opts: { tier: 'chained' | 'logged'; now: number; stripped?: readonly string[]; item?: StampItem }
+  opts: { tier: 'chained' | 'logged'; now: number; stripped?: readonly string[]; item?: StampItem; terminal?: string | null }
 ): IngestStamp {
   const item = opts.item ?? {}
   const stamp: IngestStamp = {
@@ -169,6 +171,7 @@ export function ingestStamp(
   }
   if (item.instance) stamp.instance = clip(item.instance, ID_MAX)
   if (typeof item.seq === 'number' && Number.isSafeInteger(item.seq)) stamp.seq = item.seq
+  if (opts.terminal) stamp.terminal = opts.terminal
   // A logged row has no claims: the instance's own account is kept beside it
   // (plan, data shapes).
   if (opts.tier === 'chained' && item.claimed) {
