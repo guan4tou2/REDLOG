@@ -87,3 +87,41 @@ describe('A. the dialog opens on the whole project unless the operator narrowed 
     expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'ndjson', subset: { kind: 'selection' } })
   })
 })
+
+describe('B. each fact said once', () => {
+  it('names hiding personal traffic only in the selection summary', async () => {
+    draw(); open(); await ready()
+    fireEvent.change(screen.getByLabelText('Export range'), { target: { value: 'current' } }); await ready()
+    const dialog = screen.getByRole('dialog').textContent ?? ''
+    expect(dialog.split('Hide personal traffic').length - 1).toBe(1)
+    expect(screen.getByTestId('export-preview-subset').textContent).toContain('Hide personal traffic')
+  })
+  it('says the current filter is not applied only when there is one to not apply', async () => {
+    draw(); open(); await ready()
+    expect(screen.queryByText('The whole project; the current filter is not applied')).toBeNull()
+    cleanup()
+    draw({ label: 'Search', request: { format: 'json', subset: { kind: 'selection', projection: 'events', filter: { targetId: 'corp.test' } } } })
+    open(); await ready()
+    fireEvent.change(screen.getByLabelText('Export range'), { target: { value: 'all' } }); await ready()
+    expect(screen.getByText('The whole project; the current filter is not applied')).toBeTruthy()
+  })
+  it('shows no PII control for a format that cannot scrub, and no sentence about it', async () => {
+    draw(); open(); await ready()
+    expect((screen.getByLabelText('Export format') as HTMLSelectElement).value).toBe('bundle')
+    expect(screen.queryByLabelText(/scrub operator pii/i)).toBeNull()
+    expect(screen.queryByText('This format cannot scrub PII')).toBeNull()
+    format('json'); await ready()
+    expect(screen.getByLabelText(/scrub operator pii/i)).toBeTruthy()
+  })
+  it('never asks a format that cannot scrub to scrub, and the plan says nothing was scrubbed', async () => {
+    draw(); open(); await ready()
+    format('json'); await ready()
+    fireEvent.click(screen.getByLabelText(/scrub operator pii/i)); await ready()
+    expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'json', scrubPii: true })
+    format('bundle'); await ready()
+    expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'bundle', scrubPii: false })
+    expect(screen.getByTestId('export-preview-policy').textContent).not.toContain('PII scrubbed')
+    format('json'); await ready()
+    expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'json', scrubPii: true })
+  })
+})

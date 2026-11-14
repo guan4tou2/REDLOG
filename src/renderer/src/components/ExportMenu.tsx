@@ -281,7 +281,9 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
     ...selection.current?.request,
     format: next.format,
     subset: next.range === 'all' ? { kind: 'all' } : selection.current!.subset,
-    scrubPii: next.scrubPii,
+    // A format that cannot scrub has no control for it; the plan's Policy row
+    // then says nothing was scrubbed rather than the request being refused.
+    scrubPii: next.scrubPii && capabilitiesFor(next.format).piiScrubbing,
     maskOutOfScope: capabilitiesFor(next.format).scopeMasking === 'always' || next.maskScope,
     excludeAttachments: next.excludeAttachments,
     includeAttachments: next.includeAttachments
@@ -340,7 +342,6 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
   }
 
   const changeFormat = (format: ExportFormat): void => {
-    if (draft.scrubPii && !capabilitiesFor(format).piiScrubbing) return
     if (format === 'json' || format === 'ndjson' || format === 'bundle') {
       try { localStorage.setItem(FORMAT_KEY, format) } catch { /* convenience only */ }
     }
@@ -505,7 +506,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
               <label className="min-w-0 text-redlog-text-dim">
                 {t('export.currentFormat')}
                 <select aria-label={t('export.currentFormat')} value={formats.includes(draft.format) ? draft.format : 'other'} disabled={busy} onChange={e => changeFormat(e.target.value === 'other' ? 'json' : e.target.value as ExportFormat)} className="mt-1 block w-full bg-redlog-elevated border border-redlog-border rounded px-2 py-1.5 text-redlog-text">
-                  {formats.map(format => <option key={format} value={format} disabled={draft.scrubPii && !capabilitiesFor(format).piiScrubbing}>{format === 'bundle' ? t('export.bundle') : format.toUpperCase()}</option>)}
+                  {formats.map(format => <option key={format} value={format}>{format === 'bundle' ? t('export.bundle') : format.toUpperCase()}</option>)}
                   <option value="other">{t('export.otherFormats')}</option>
                 </select>
               </label>
@@ -516,11 +517,13 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                 {otherFormats.map(format => <option key={format} value={format}>{format.toUpperCase()}</option>)}
               </select>
             </label>}
-            <p data-testid="export-range-current" className="px-3 pb-1 text-xs text-redlog-text-dim">{draft.range === 'current' ? t('export.range.current', { summary: subsetSummary(selection.current!.subset, t) }) : t('export.range.allHint')}</p>
+            {/* What "current" covers is said once, in the preview's Selection
+                row. This line is only for leaving a filter the operator set. */}
+            {draft.range === 'all' && subsetNarrows(selection.current!.subset)
+              && <p data-testid="export-range-current" className="px-3 pb-1 text-xs text-redlog-text-dim">{t('export.range.allHint')}</p>}
             <p className="px-3 pb-2 text-xs text-redlog-text-faint">{t(`export.formatHelp.${draft.format}`)}</p>
             {totalCount === 0 && <p className="px-3 pb-2 text-xs text-redlog-text-faint">{t('export.empty')}</p>}
-            <Toggle on={draft.scrubPii} setOn={scrubPii => updateDraft({ ...draft, scrubPii })} label={t('export.scrubPii')} disabled={busy || !capability.piiScrubbing} />
-            {!capability.piiScrubbing && <p className="px-3 text-xs text-redlog-text-faint">{t('export.cannotScrub')}</p>}
+            {capability.piiScrubbing && <Toggle on={draft.scrubPii} setOn={scrubPii => updateDraft({ ...draft, scrubPii })} label={t('export.scrubPii')} disabled={busy} />}
             {/* A format that always masks has no toggle; the preview's Policy
                 row says whether anything is masked. */}
             {capability.scopeMasking === 'optional'
