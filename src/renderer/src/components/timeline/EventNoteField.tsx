@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { formatDateTime } from '../../lib/time'
 import { runMutation } from '../../lib/mutation'
-import { Button } from '../Button'
+import { Button, FIELD_FOCUS_RING } from '../Button'
 
 // What the operator made of this event.
 //
@@ -94,7 +94,7 @@ export function EventNoteField({ eventId, t }: {
           onBlur={() => { void commit() }}
           rows={2}
           maxLength={4000}
-          className="w-full resize-y rounded border border-redlog-border bg-redlog-bg px-2 py-1.5 text-xs text-redlog-text focus:outline-none focus:border-redlog-accent/60"
+          className={`w-full resize-y rounded border border-redlog-border bg-redlog-bg px-2 py-1.5 text-xs text-redlog-text focus:border-redlog-accent/60 ${FIELD_FOCUS_RING}`}
         />
       )}
     </div>

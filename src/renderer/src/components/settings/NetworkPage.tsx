@@ -1,3 +1,4 @@
+import { FIELD_FOCUS_RING } from '../Button'
 import { useState } from 'react'
 import { toast } from '../Toast'
 import { useI18n } from '../../i18n'
@@ -78,7 +79,7 @@ function VpnAdaptersField({ config, setConfig }: { config: ConfigState; setConfi
             onChange={(e) => setNewName(e.target.value)}
             placeholder={t('settings.vpnNamePlaceholder')}
             aria-label={t('settings.vpnNamePlaceholder')}
-            className="min-w-0 basis-40 flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text focus:outline-none focus:border-red-500"
+            className={`min-w-0 basis-40 flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text focus:border-red-500 ${FIELD_FOCUS_RING}`}
           />
           <input
             value={newPattern}
@@ -86,7 +87,7 @@ function VpnAdaptersField({ config, setConfig }: { config: ConfigState; setConfi
             onKeyDown={(e) => { if (e.key === 'Enter' && !isComposing(e)) addCustom() }}
             placeholder={t('settings.vpnPatternPlaceholder')}
             aria-label={t('settings.vpnPatternPlaceholder')}
-            className="min-w-0 basis-40 flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500"
+            className={`min-w-0 basis-40 flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:border-red-500 ${FIELD_FOCUS_RING}`}
           />
           <IconButton label={t('common.addItem')} onClick={addCustom} className="px-2 py-1 bg-redlog-elevated text-redlog-text-dim text-xs hover:bg-redlog-elevated-hover">+</IconButton>
         </div>

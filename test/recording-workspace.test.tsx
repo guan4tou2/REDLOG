@@ -12,12 +12,11 @@ vi.mock('../src/renderer/src/components/SearchPanel', async () => {
 })
 vi.mock('../src/renderer/src/components/TranscriptView', () => ({ default: ({ reading, externalQuery, active }: any) => <div data-testid={`workspace-${reading}`} data-active={active}><input aria-label={`position-${reading}`} defaultValue="" />{externalQuery}</div> }))
 vi.mock('../src/renderer/src/components/SourceSessionPicker', () => ({default: () => null}))
-// Stitch 04: the title row reads the project total, capture health and the
-// recording state; this suite is about the reading modes, so those answer simply.
-vi.mock('../src/renderer/src/lib/useAppCounts', () => ({ useAppCounts: () => ({ eventCount: 3, loggedCount: 1 }) }))
-vi.mock('../src/renderer/src/lib/useCaptureHealth', () => ({ useCaptureHealthState: () => ({ health: null, status: 'ok', lastOkAt: null, refresh: () => {} }) }))
+// The title row reads capture health for a failing source; null unless a test sets one.
+const capture = vi.hoisted(() => ({ health: null as unknown }))
+vi.mock('../src/renderer/src/lib/useCaptureHealth', () => ({ useCaptureHealthState: () => ({ health: capture.health, status: 'ok', lastOkAt: null, refresh: () => {} }) }))
 beforeEach(() => { (window as any).redlog = { recording: { get: async () => true, onChange: () => () => {} } } })
-afterEach(cleanup)
+afterEach(() => { cleanup(); capture.health = null })
 
 describe('recording workspace', () => {
   it('opens a requested reader without losing its query or mounted reading position', async () => {
@@ -63,13 +62,26 @@ describe('recording workspace', () => {
   })
 })
 
-describe('recording workspace title row (Stitch 04)', () => {
-  it('says the recording state and the project total, and that each source answers for itself', async () => {
+describe('recording workspace title row (2026-11-14)', () => {
+  // The status bar says recording and the project's event count on every
+  // page; the chip beside the title said the same two things again, plus a
+  // caption, and did nothing when clicked.
+  it('has no recording chip: the title shares one row with the search, the source and the time zone', () => {
     render(<I18nProvider><RecordingWorkspace onOpenInTimeline={vi.fn()} /></I18nProvider>)
-    const pill = screen.getByTestId('activity-recording')
-    expect(pill.textContent).toContain('4 events')
-    expect(pill.textContent).toContain('each source confirmed on its own')
-    expect(await screen.findByText('Recording')).toBeTruthy()
+    expect(screen.queryByTestId('activity-recording')).toBeNull()
+    const row = screen.getByTestId('activity-title-row')
+    for (const id of ['activity-title', 'search-input', 'activity-source', 'activity-zone']) {
+      expect(row.contains(screen.getByTestId(id)), id).toBe(true)
+    }
+    expect(row.className).toContain('flex-wrap')
+  })
+
+  it('keeps the one thing the chip row had that nothing else on the page says: a failing source', () => {
+    capture.health = { sources: [{ id: 'mitmproxy', label: 'HTTP proxy', state: 'error' }] }
+    render(<I18nProvider><RecordingWorkspace onOpenInTimeline={vi.fn()} /></I18nProvider>)
+    const alert = screen.getByTestId('activity-source-alert')
+    expect(alert.textContent).toContain('HTTP proxy')
+    expect(screen.getByTestId('activity-title-row').contains(alert)).toBe(true)
   })
 })
 

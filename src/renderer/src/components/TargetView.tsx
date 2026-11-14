@@ -1,5 +1,5 @@
-import { PAGE_BODY } from '../lib/pageLayout'
-import { Button } from './Button'
+import { PAGE_BODY, SCROLL_GUTTER } from '../lib/pageLayout'
+import { Button, FIELD_FOCUS_RING } from './Button'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
@@ -269,7 +269,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
       : <span className="text-xs text-redlog-text-dim bg-redlog-elevated px-1.5 py-0.5 rounded">{scopeFailed ? t('targets.scopeUnknown') : t('targets.scopeUnset')}</span>
 
   return (
-    <div className="p-pad h-full overflow-auto"><div className={`${PAGE_BODY} space-y-4`}>
+    <div className={`p-pad h-full overflow-auto ${SCROLL_GUTTER}`}><div className={`${PAGE_BODY} space-y-4`}>
       <div className="bg-redlog-surface border border-redlog-border rounded-lg overflow-hidden">
         <div className="flex flex-wrap items-start justify-between gap-2 px-4 py-3 border-b border-redlog-border">
           <div>
@@ -281,7 +281,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
         <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-redlog-border">
           <input type="search" data-testid="targets-search" value={query} onChange={(e) => setQuery(e.target.value)}
             placeholder={t('targets.searchPlaceholder')} aria-label={t('targets.searchLabel')}
-            className="min-w-[12rem] flex-1 max-w-md rounded border border-redlog-border bg-redlog-bg px-3 py-1.5 text-sm text-redlog-text focus:outline-none focus:border-redlog-accent" />
+            className={`min-w-[12rem] flex-1 max-w-md rounded border border-redlog-border bg-redlog-bg px-3 py-1.5 text-sm text-redlog-text focus:border-redlog-accent ${FIELD_FOCUS_RING}`} />
           <div className="flex gap-1 rounded border border-redlog-border p-0.5" role="group" aria-label={t('targets.scopeFilter')}>
             {(['all', 'in_scope', 'out_scope'] as const).map((f) => (
               <button

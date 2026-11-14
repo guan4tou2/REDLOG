@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Button } from '../Button'
+import { Button, FIELD_FOCUS_RING } from '../Button'
 import { FieldGroup, type ConfigState } from './SettingsShared'
 import { SourceLastSeen } from './SourceLastSeen'
 import { CheckRow } from './CheckRow'
@@ -149,7 +149,7 @@ function AgentRow({ item, source, active, config, setConfig, t, onOpenPlugins, f
         {paths.length > 0 && <ul aria-label={t('settings.agents.projectWork')} className="space-y-1">{paths.map(dir => <li key={dir} className="flex flex-wrap items-center gap-2 text-xs"><span className="min-w-0 flex-1 break-all font-mono">{dir}</span><Button level="secondary" type="button" disabled={picking} aria-label={t('settings.agents.removeWork', { path: dir })} onClick={() => changeScope(paths.filter(p => p !== dir))}>{t('settings.agents.removeDirectory')}</Button></li>)}</ul>}
         <Button level="secondary" type="button" data-testid={`agent-add-path-${item.agentKind}`} disabled={picking} onClick={() => void pick()}>{t('settings.agents.pickWork')}</Button>
         <div className="flex flex-wrap items-center gap-2">
-          <input type="text" data-testid={`agent-path-input-${item.agentKind}`} aria-label={t('settings.agents.workPathPlaceholder')} placeholder={t('settings.agents.workPathPlaceholder')} value={manualPath} onChange={(e) => setManualPath(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addManualPath() } }} className="flex-1 min-w-0 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500" disabled={picking} />
+          <input type="text" data-testid={`agent-path-input-${item.agentKind}`} aria-label={t('settings.agents.workPathPlaceholder')} placeholder={t('settings.agents.workPathPlaceholder')} value={manualPath} onChange={(e) => setManualPath(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addManualPath() } }} className={`flex-1 min-w-0 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:border-red-500 ${FIELD_FOCUS_RING}`} disabled={picking} />
           <Button level="secondary" type="button" data-testid={`agent-path-add-${item.agentKind}`} disabled={picking || !manualPath.trim()} onClick={addManualPath}>{t('settings.agents.addWork')}</Button>
         </div>
       </div>
@@ -175,7 +175,7 @@ function AgentRow({ item, source, active, config, setConfig, t, onOpenPlugins, f
           <div className="flex flex-wrap gap-2">
             <Button level="secondary" type="button" data-testid={`agent-source-path-${item.agentKind}`} disabled={picking} onClick={() => void pickSource()}>{t('settings.agents.changeSource')}</Button>
             <div className="flex flex-wrap items-center gap-2">
-              <input type="text" data-testid={`agent-source-input-${item.agentKind}`} aria-label={t('settings.agents.sourcePathPlaceholder')} placeholder={t('settings.agents.sourcePathPlaceholder')} value={manualSource} onChange={(e) => setManualSource(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyManualSource() } }} className="flex-1 min-w-0 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500" disabled={picking} />
+              <input type="text" data-testid={`agent-source-input-${item.agentKind}`} aria-label={t('settings.agents.sourcePathPlaceholder')} placeholder={t('settings.agents.sourcePathPlaceholder')} value={manualSource} onChange={(e) => setManualSource(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyManualSource() } }} className={`flex-1 min-w-0 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:border-red-500 ${FIELD_FOCUS_RING}`} disabled={picking} />
               <Button level="secondary" type="button" data-testid={`agent-source-apply-${item.agentKind}`} disabled={picking || !manualSource.trim()} onClick={applyManualSource}>{t('settings.agents.applySource')}</Button>
             </div>
             {value.sourceRoot !== undefined && <Button level="secondary" type="button" disabled={picking} onClick={() => update({ ...value, sourceRoot: undefined, enabled: false, startedAt: undefined, scopeChangedAt: value.enabled ? Date.now() : undefined })}>{t('settings.agents.defaultSource')}</Button>}

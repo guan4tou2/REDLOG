@@ -194,3 +194,36 @@ describe('official catalog failure (Spec 067)', () => {
     expect((await screen.findByTestId('plugins-load-error')).textContent).toContain('list down')
   })
 })
+
+// 2026-11-14: the detail header read «Not installed · Not installed» — with no
+// loaded plugin behind it, the status line's first half is the install state
+// too. And «Last received» comes from this project's stored rows for that
+// agent (capture-health's lastEventAt), so it shows only when such rows exist.
+describe('an integration that is not installed', () => {
+  beforeEach(() => {
+    _resetCaptureHealth(); toasts.length = 0; shown.length = 0; answer = true
+    Object.values(api).forEach((f) => f.mockReset()); health.mockReset()
+    api.list.mockResolvedValue([]); api.officialAgents.mockResolvedValue([entry('not-installed')])
+    health.mockResolvedValue(snapshot([]))
+  })
+  afterEach(() => cleanup())
+
+  it('says Not installed once in its header', async () => {
+    draw(); await open()
+    const line = screen.getByTestId('plugin-install-state-official-ai-codex').parentElement as HTMLElement
+    expect(line.textContent?.match(/Not installed/g)).toHaveLength(1)
+  })
+
+  it('claims no last-received time when the project holds no rows from it', async () => {
+    draw(); await open()
+    const health = await screen.findByTestId('plugin-health-official-ai-codex')
+    expect(health.textContent).not.toContain('Last received')
+    expect(health.textContent).toBe(en['plugins.healthAxis.inactive'])
+  })
+
+  it('does say when it last delivered if the project holds rows from it (installed once, since removed)', async () => {
+    health.mockResolvedValue(snapshot([{ id: 'agent-codex', state: 'unset', enabled: false, installed: false, lastEventAt: 1_700_000_000_000 }]))
+    draw(); await open()
+    await waitFor(() => expect(screen.getByTestId('plugin-health-official-ai-codex').textContent).toContain('Last received'))
+  })
+})

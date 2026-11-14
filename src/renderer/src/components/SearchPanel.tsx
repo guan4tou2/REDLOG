@@ -1,12 +1,13 @@
 import { ActivityResults, SearchCoverage } from './ActivityResults'
 import type { BodySearchCoverage } from '../../../core/http-body-index'
-import { Button } from './Button'
+import { Button, FIELD_FOCUS_RING } from './Button'
 import { eventTitle } from '../lib/eventTitle'
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { useKeepScroll } from '../lib/useKeepScroll'
 import { useI18n } from '../i18n'
 import { formatTime } from '../lib/time'
+import { SCROLL_GUTTER } from '../lib/pageLayout'
 import { CastResults, type CastHit } from './CastResults'
 import { isMarkerAmendment, foldAllMarkers, amendedFields, type MarkerFold } from '../lib/markerFold'
 import { useContributeExport } from '../lib/exportScope'
@@ -348,26 +349,26 @@ export function SearchPanel({ onOpenInTimeline, active = true, browse = false, c
   }, [controlledQuery, active])
 
   return (
-    <div className="p-4 h-full flex flex-col">
-      {viewMode === undefined && <div className="flex flex-wrap gap-2 mb-3 shrink-0" role="group" aria-label={t('activity.view')}>
+    <div className="py-4 h-full flex flex-col">
+      {viewMode === undefined && <div className="flex flex-wrap gap-2 mb-3 px-pad shrink-0" role="group" aria-label={t('activity.view')}>
         <Button level="quiet" size="compact" aria-pressed={mode === 'activities'} onClick={() => setMode('activities')}>{t('activity.operations')}</Button>
         <Button level="quiet" size="compact" aria-pressed={mode === 'events'} onClick={() => setMode('events')}>{t('activity.rawEvents')}</Button>
       </div>}
-      {controlledQuery === undefined && <div className="relative mb-3 shrink-0">
+      {controlledQuery === undefined && <div className="relative mb-3 px-pad shrink-0">
         <input
           value={query}
           data-testid="search-input"
           onChange={(e) => onChange(e.target.value)}
           placeholder={t('search.placeholder')}
           autoFocus
-          className="w-full bg-redlog-elevated border border-redlog-border rounded-lg px-4 py-2.5 text-sm text-redlog-text font-mono focus:outline-none focus:border-red-500 placeholder-redlog-text-faint"
+          className={`w-full bg-redlog-elevated border border-redlog-border rounded-lg px-4 py-2.5 text-sm text-redlog-text font-mono focus:border-red-500 placeholder-redlog-text-faint ${FIELD_FOCUS_RING}`}
         />
         {searching && (
           <span className="absolute right-3 top-3 text-redlog-text-dim text-xs animate-pulse">...</span>
         )}
       </div>}
 
-      <div data-testid="search-results" ref={resultsRef} className={`flex-1 overflow-auto min-h-0 ${query !== submitted ? 'opacity-50' : ''}`} inert={query !== submitted} aria-busy={query !== submitted || searching}>
+      <div data-testid="search-results" ref={resultsRef} className={`flex-1 overflow-auto min-h-0 px-pad ${SCROLL_GUTTER} ${query !== submitted ? 'opacity-50' : ''}`} inert={query !== submitted} aria-busy={query !== submitted || searching}>
         {parse && (
           <div className="mb-2">
             <QueryReadout outcome={parse} testId="search-query" unparsableTitle={t('search.queryUnparsable')} />

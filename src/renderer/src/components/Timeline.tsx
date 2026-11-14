@@ -2333,8 +2333,10 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
                     key={ts}
                     data-testid="timeline-axis-label"
                     data-align={align}
+                    // The end labels hang inward from their tick (tickLabelAlign)
+                    // and keep 4px off the pane's edge, where the axis clips.
                     className={`absolute whitespace-nowrap text-xs text-redlog-text-faint font-mono tabular-nums ${
-                      align === 'center' ? '-translate-x-1/2' : align === 'end' ? '-translate-x-full' : ''
+                      align === 'center' ? '-translate-x-1/2' : align === 'end' ? '-translate-x-full pr-1' : 'pl-1'
                     }`}
                     style={{ left: toX(ts), top: timelineMode === 'standard' ? 2 : 6 }}
                   >

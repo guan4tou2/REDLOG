@@ -1,3 +1,4 @@
+import { FIELD_FOCUS_RING } from '../Button'
 import { useId, useState } from 'react'
 import { SectionLabel } from '../SectionLabel'
 import { useI18n } from '../../i18n'
@@ -142,7 +143,7 @@ export function Field({ label, value, onChange, onBlur, onKeyDown, type = 'text'
         // `cursor-not-allowed` on a read-only field was wrong twice over: it is
         // not disabled, and copying the value is the first thing anyone does
         // with it -- a bug report starts there.
-        className={`${type === 'number' ? 'w-32 max-w-full' : 'w-full'} bg-redlog-surface border border-redlog-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none ${readOnly ? 'text-redlog-text-dim select-text cursor-text' : 'text-redlog-text focus:border-red-500'}`}
+        className={`${type === 'number' ? 'w-32 max-w-full' : 'w-full'} bg-redlog-surface border border-redlog-border rounded px-2 py-1.5 text-xs font-mono ${readOnly ? 'text-redlog-text-dim select-text cursor-text' : 'text-redlog-text focus:border-red-500'} ${FIELD_FOCUS_RING}`}
       />
       {error && <p id={errorId} role="alert" className="text-xs text-red-400 mt-1">{error}</p>}
     </div>
@@ -218,7 +219,7 @@ export function ListField({ label, items, onChange, placeholder, parse, initialD
             onChange={(e) => { setInput(e.target.value); setRejected([]) }}
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !isComposing(e)) { e.preventDefault(); addItem() } }}
             placeholder={placeholder}
-            className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono resize-y focus:outline-none focus:border-red-500"
+            className={`flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono resize-y focus:border-red-500 ${FIELD_FOCUS_RING}`}
           />
         ) : (
           <input
@@ -229,7 +230,7 @@ export function ListField({ label, items, onChange, placeholder, parse, initialD
             onChange={(e) => { setInput(e.target.value); setRejected([]) }}
             onKeyDown={(e) => { if (e.key === 'Enter' && !isComposing(e)) addItem() }}
             placeholder={placeholder}
-            className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500"
+            className={`flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:border-red-500 ${FIELD_FOCUS_RING}`}
           />
         )}
         <IconButton label={t('common.addItem')} onClick={addItem} className="px-2 py-1 bg-redlog-elevated text-redlog-text-dim text-xs hover:bg-redlog-elevated-hover">+</IconButton>

@@ -1,4 +1,4 @@
-import { Button } from './Button'
+import { Button, FIELD_FOCUS_RING } from './Button'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import AboutPage from './settings/AboutPage'
 import { useI18n } from '../i18n'
@@ -121,6 +121,11 @@ export default function Settings({ request = null }: { request?: { page: Setting
   // Spec 066: a link between an integration's plugin detail and its Capture
   // sources row. View-only; each side clears it once it has landed.
   const [pluginFocus, setPluginFocus] = useState<{ pluginId: string } | null>(null)
+  // The plugin whose detail is open, in place of the plugin list. Held here so
+  // the one back control above the page can say where it goes: to the list
+  // from a detail, to Settings from the list.
+  const [pluginDetail, setPluginDetail] = useState<string | null>(null)
+  useEffect(() => { if (tab !== 'plugins') setPluginDetail(null) }, [tab])
   // The capture source (health id) the Capture sources page should land on:
   // from a dashboard warning (`request.sourceId`) or from a plugin's detail.
   const [captureFocus, setCaptureFocus] = useState<string | null>(request?.sourceId ?? null)
@@ -370,7 +375,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
               onChange={(e) => setPageQuery(e.target.value)}
               placeholder={t('settings.searchSettings')}
               aria-label={t('settings.searchSettings')}
-              className="w-full px-3 py-2 bg-redlog-elevated border border-redlog-border rounded text-sm text-redlog-text placeholder-redlog-muted outline-none focus:border-redlog-accent/60"
+              className={`w-full px-3 py-2 bg-redlog-elevated border border-redlog-border rounded text-sm text-redlog-text placeholder-redlog-muted focus:border-redlog-accent/60 ${FIELD_FOCUS_RING}`}
             />
             {q !== '' && hits.length === 0 && !HOME_SECTIONS.some((sec) => sec.rows.some((r) => pageLabel.get(r.id)?.toLowerCase().includes(q) || t(`settings.home.${r.id}.title`).toLowerCase().includes(q))) && (
               <p className="py-4 text-xs text-redlog-text-faint text-center">
@@ -420,8 +425,9 @@ export default function Settings({ request = null }: { request?: { page: Setting
           </div>
         ) : (
           <div className="flex items-center gap-3 pb-1">
-            <Button size="compact" level="quiet" data-testid="settings-back" onClick={() => setTab(null)}>
-              ← {t('nav.backTo', { view: t('sidebar.settings') })}
+            <Button size="compact" level="quiet" data-testid="settings-back"
+              onClick={() => { if (tab === 'plugins' && pluginDetail !== null) setPluginDetail(null); else setTab(null) }}>
+              ← {tab === 'plugins' && pluginDetail !== null ? t('plugins.back') : t('nav.backTo', { view: t('sidebar.settings') })}
             </Button>
             <h2 className="text-sm font-semibold text-redlog-text">{pageLabel.get(tab)}</h2>
           </div>
@@ -448,12 +454,16 @@ export default function Settings({ request = null }: { request?: { page: Setting
         {tab === 'retention' && <RetentionPage config={config} setConfig={setConfig} t={t} />}
         {tab === 'integrity' && <IntegrityPanel t={t} />}
         {tab === 'plugins' && <PluginsPanel t={t} config={config} focus={pluginFocus} onFocusHandled={() => setPluginFocus(null)}
+          selectedId={pluginDetail} onSelect={setPluginDetail}
           onOpenCaptureSources={(agentKind) => { setCaptureFocus(`agent-${agentKind}`); setTab('captureControl') }} />}
         {tab === 'about' && <AboutPage t={t} />}
       </div>
 
-      <div className="px-4 py-2 border-t border-redlog-border shrink-0 flex flex-wrap items-center gap-x-3">
-        <span className="text-redlog-text-faint text-xs">{t('settings.autoSaveHint')}</span>
+      {/* Plugins are enabled, installed and trusted through their own calls,
+          each answered at once; nothing on that page is a setting this form
+          saves. The bar still appears there for a save already in flight. */}
+      {(tab !== 'plugins' || saveState !== 'idle') && <div data-testid="settings-save-bar" className="px-4 py-2 border-t border-redlog-border shrink-0 flex flex-wrap items-center gap-x-3">
+        {tab !== 'plugins' && <span className="text-redlog-text-faint text-xs">{t('settings.autoSaveHint')}</span>}
         {saveState !== 'idle' && (
           <span
             data-testid={`settings-save-${saveState}`}
@@ -469,7 +479,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
             )}
           </span>
         )}
-      </div>
+      </div>}
     </div>
   )
 }
