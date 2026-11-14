@@ -6,6 +6,7 @@ import os from 'os'
 import path from 'path'
 import { initDB, closeDB } from '../src/core/db/index'
 import { linkHttpBodyEvent, closeHttpBodyIndex } from '../src/core/http-body-index'
+import { documentRowids } from './helpers/body-index-layout'
 
 // `body_fts.event_id` is an UNINDEXED FTS5 column, so `DELETE FROM body_fts
 // WHERE event_id=? AND sha256=?` reads every indexed chunk. Linking ran it for
@@ -16,8 +17,9 @@ import { linkHttpBodyEvent, closeHttpBodyIndex } from '../src/core/http-body-ind
 // The rows for a (event, body) pair are only ever written beside its
 // body_event_refs row, in one transaction, and every delete removes both. No
 // ref row means no FTS rows, so there is nothing to delete. (Removal now goes
-// by rowid through body_docs; test/http-body-index-work.test.ts checks that
-// no statement filters body_fts on anything else.)
+// by rowid, derived from the ref's id and its recorded counts;
+// test/http-body-index-work.test.ts checks that no statement filters body_fts
+// on anything else.)
 
 let dir: string
 beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-body-link-')); initDB(dir) })
@@ -38,11 +40,17 @@ function ftsDeletes(run: () => void): number {
   try { run() } finally { spy.mockRestore() }
   return seen.length
 }
-const indexed = (): Array<{ event_id: string; content: string }> => {
+const read = <T>(run: (db: Database.Database) => T): T => {
   const db = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
-  try { return db.prepare('SELECT d.event_id,f.content FROM body_fts f JOIN body_docs d ON d.doc=f.rowid ORDER BY d.event_id,f.rowid').all() as Array<{ event_id: string; content: string }> }
-  finally { db.close() }
+  try { return run(db) } finally { db.close() }
 }
+/** Per event with documents, the rowids of its documents. */
+const indexed = (): Array<{ event_id: string; docs: number[] }> => read(db =>
+  (db.prepare('SELECT DISTINCT event_id FROM body_event_refs ORDER BY event_id').all() as { event_id: string }[])
+    .map(({ event_id }) => ({ event_id, docs: documentRowids(db, event_id) })).filter(e => e.docs.length))
+/** The rowids of the documents that hold `phrase`. */
+const holding = (phrase: string): number[] => read(db =>
+  (db.prepare('SELECT rowid AS id FROM body_fts WHERE body_fts MATCH ? ORDER BY rowid').all(`"${phrase}"`) as { id: number }[]).map(r => r.id))
 
 describe('linking a saved body into the search index', () => {
   it('does not delete from the FTS table for a body it has never seen', () => {
@@ -60,6 +68,8 @@ describe('linking a saved body into the search index', () => {
     linkHttpBodyEvent(event)
     // Indexed already: kept as is, nothing deleted or duplicated.
     expect(ftsDeletes(() => linkHttpBodyEvent(event))).toBe(0)
-    expect(indexed()).toEqual([{ event_id: 'again', content: 'gamma token' }])
+    const [again, ...rest] = indexed()
+    expect({ again, rest }).toEqual({ again: { event_id: 'again', docs: [expect.any(Number)] }, rest: [] })
+    expect(holding('gamma token')).toEqual(again.docs)
   })
 })

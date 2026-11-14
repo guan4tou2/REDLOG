@@ -211,7 +211,13 @@ nothing. Joining a command's rows was not decided (2026-11-15).
   Anything else stays binary. A body cut short at capture
   (`REDLOG_MAX_BODY`), or whose declared charset stops decoding at its end, is
   indexed as far as it goes and counted `partial`, not covered — when the
-  body index holds it. A body of at most 4,096 characters stays inline on
+  body index holds it. So is a body that needs more than 2,048 index
+  documents of one kind (about 2 GiB; at the default cap a body needs at
+  most 12): only with the cap raised or lifted, or for a transcript or an
+  artifact that arrives through ingest, which no cap bounds (an artifact
+  added from the app is capped at 200 MiB by default). The read stops at
+  the first kind that is full, so the other kind, saved or decoded, is
+  indexed only that far too. A body of at most 4,096 characters stays inline on
   the event, and an inline text body with no `\uXXXX` escape has no body-index
   entry: the events index searches it, and coverage does not count it. So
   with `REDLOG_MAX_BODY` at 4096 or less, a text body cut short at capture
@@ -402,3 +408,6 @@ For every query Q and shared-filter dataset D:
   2026-11-15 §1 item 5); before, every term had to be in one Event.
 - 2026-11-15: the Reader's Find reads `\uXXXX` escapes in bodies, as the body
   index does, and reports the saved range it matched.
+- 2026-11-15: the body index addresses a document by a rowid derived from its
+  ref and keeps no copy of the text (decision 2026-11-14 §6); a body that
+  needs more documents of one kind than a ref's rowids hold is partial.

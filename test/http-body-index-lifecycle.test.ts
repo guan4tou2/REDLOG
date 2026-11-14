@@ -1,7 +1,9 @@
 // The body index's lifecycle, pinned by a seeded random sequence against a
 // model, because three review rounds each found a lifecycle bug that example
 // tests missed. Operations: ingest a row with no body, a response with a saved
-// body, one with an inline escaped body, one whose request and response are the
+// body, one with a saved escaped body (a saved and a decoded document, both of
+// which go when the file vanishes), one with an inline escaped body, one whose
+// request and response are the
 // same bytes; search under a fresh snapshot and under an older one; a live
 // count and match; a search by a second module instance (its own index
 // connection) bounded by an older snapshot; a real worker opened read-only with
@@ -19,10 +21,12 @@
 //      since its previous sync plus the refs retried every time (missing and
 //      failed), never by the project's size;
 //  (c) live coverage counts one ref per body the model has.
-// At the end, and after every step: every document has a body_docs row and
-// every body_docs row a document, and only a ref with text has documents.
+// At the end, and after every step: every document's rowid decodes to a ref
+// whose recorded counts cover it, every counted document exists (so documents
+// and counts match one to one), and only a ref with text has documents.
+// SQLite's integrity check runs too, but proves none of this (see there).
 //
-// REDLOG_LIFECYCLE_SEED=<n> replays one seed.
+// REDLOG_LIFECYCLE_SEED=<n> replays one seed, REDLOG_LIFECYCLE_SEED=<a>-<b> a range.
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import Database from 'better-sqlite3'
 import { createHash } from 'node:crypto'
@@ -32,6 +36,7 @@ import path from 'node:path'
 import { requires } from './helpers/requires'
 import { cost, parsed, escapeNonAscii } from './helpers/body-index-work'
 import { openFrozenReader, type FrozenReader } from './helpers/frozen-export-reader'
+import { layoutViolations } from './helpers/body-index-layout'
 import type { ExportSnapshot } from '../src/core/export-plan'
 
 const sqlite = requires('better-sqlite3')
@@ -65,7 +70,13 @@ interface Body { file: string | null; words: string[] }
  *  is a row of (one capture session, one source, so the flow id is the key). */
 interface Modelled { id: string; tier: 'events' | 'events_logged'; rowid: number; fields: string[]; bodies: Body[]; deleted?: number; flow?: string }
 
-const SEEDS = process.env.REDLOG_LIFECYCLE_SEED ? [Number(process.env.REDLOG_LIFECYCLE_SEED)] : [1, 2, 3]
+/** One seed, or a range `a-b`; by default 1, 2 and 3. */
+function seeds(spec = process.env.REDLOG_LIFECYCLE_SEED): number[] {
+  if (!spec) return [1, 2, 3]
+  const [from, to = from] = spec.split('-').map(Number)
+  return Array.from({ length: to - from + 1 }, (_, i) => from + i)
+}
+const SEEDS = seeds()
 const STEPS = 300
 let dir = ''
 
@@ -109,6 +120,12 @@ sqlite.describe('body index lifecycle, seeded', () => {
         const k = n++, ref = save(`{"v":"b${k} shared words"}`)
         post('scanner', { subtype: 'http_response', url: `http://h${k}.test/`, response_body_ref: ref }, ['http', `h${k}`, 'test'], [{ file: ref.file, words: ['v', `b${k}`, 'shared', 'words'] }])
       },
+      // Saved, written with \uXXXX escapes: its word `詞k` is only in the
+      // decoded document, `u8a5ek` only in the saved one.
+      escaped: () => {
+        const k = n++, ref = save(`{"v":"${escapeNonAscii(`詞${k}`)}"}`)
+        post('scanner', { subtype: 'http_response', url: `http://h${k}.test/`, response_body_ref: ref }, ['http', `h${k}`, 'test'], [{ file: ref.file, words: ['v', `詞${k}`, `u8a5e${k}`] }])
+      },
       inline: () => {
         const k = n++, text = `{"v":"${escapeNonAscii(`e${k} 新詞`)}"}`
         post('scanner', { subtype: 'http_response', url: `http://h${k}.test/`,
@@ -132,7 +149,9 @@ sqlite.describe('body index lifecycle, seeded', () => {
     // The starting project in one commit (a commit per row is a flush per row on Windows).
     db.getDB().transaction(() => {
       for (let i = 0; i < 60; i++) add.bodiless()
-      for (let i = 0; i < 60; i++) add.saved()
+      // Interleaved, so that retention, which takes the oldest logged rows,
+      // reaches escaped bodies too.
+      for (let i = 0; i < 60; i++) { add.saved(); if (i % 3 === 0) add.escaped() }
       for (let i = 0; i < 30; i++) add.inline()
       for (let i = 0; i < 3; i++) add.same()
       for (let i = 0; i < 20; i++) add.exchange()
@@ -166,6 +185,9 @@ sqlite.describe('body index lifecycle, seeded', () => {
       const counted = cost(run)
       // Rows deleted under the watermark: the next sync walks, by design.
       if (!walkExpected) expect(counted.rows, `${where()}: source rows read`).toBeLessThanOrEqual(addedSince + retried() + 3)
+      // That walk takes out the rows retention deleted: from now on the
+      // shared index no longer describes a frozen view that still has them.
+      if (walkExpected && frozenRetained) { frozenUnvouched = true; frozenRetained = false }
       walkExpected = false
       addedSince = 0
       missingSinceSync.clear(); for (const f of gone.keys()) missingSinceSync.add(f)
@@ -183,11 +205,14 @@ sqlite.describe('body index lifecycle, seeded', () => {
     function documentsHold(): void {
       const index = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
       try {
-        expect(index.prepare('SELECT count(*) AS n FROM body_fts WHERE rowid NOT IN (SELECT doc FROM body_docs)').get(), `${where()}: documents without body_docs`).toEqual({ n: 0 })
-        expect(index.prepare('SELECT count(*) AS n FROM body_docs WHERE doc NOT IN (SELECT rowid FROM body_fts)').get(), `${where()}: body_docs without a document`).toEqual({ n: 0 })
-        const keyed = (index.prepare("SELECT name FROM pragma_table_info('body_docs')").all() as { name: string }[]).some(c => c.name === 'slot') ? 'slot' : 'sha256'
-        expect(index.prepare(`SELECT count(*) AS n FROM body_docs d WHERE NOT EXISTS(SELECT 1 FROM body_event_refs r WHERE r.event_id=d.event_id AND r.${keyed}=d.${keyed} AND r.status IN ('indexed','partial'))`).get(),
-          `${where()}: documents of a ref without text`).toEqual({ n: 0 })
+        // stray: documents no ref accounts for; missing: counted documents
+        // that are not there; textless: documents of a ref without text.
+        expect(layoutViolations(index), `${where()}: documents and the refs that count them`).toEqual({ stray: 0, missing: 0, textless: 0 })
+        // SQLite's own check, kept because it is cheap. It is not evidence
+        // that the index is right: on a contentless table it passes with a
+        // %_docsize row deleted by hand, and with a plain INSERT merged into
+        // a rowid it holds. The three counts above are.
+        expect(index.pragma('integrity_check'), `${where()}: integrity`).toEqual([{ integrity_check: 'ok' }])
       } finally { index.close() }
     }
 
@@ -195,10 +220,19 @@ sqlite.describe('body index lifecycle, seeded', () => {
     let older: ExportSnapshot = readActivitySnapshot(db.getReadonlyDB())
     let other: { db: typeof db; queries: typeof queries; idx: typeof idx } | null = null
     let frozen: FrozenReader | null = null, frozenAt = 0, frozenBehindRetention = false, walkExpected = false
+    // frozenRetained: retention deleted rows the frozen view still has, and
+    // main has not walked since (the shared index still holds them, so it
+    // still vouches for the view). frozenUnvouched: main has walked since,
+    // and the shared index no longer describes the view.
+    let frozenRetained = false, frozenUnvouched = false
+    /** The content rows the frozen view holds: what an unvouched reader
+     *  reads into its own tables, once. */
+    const frozenView = (): number => model.filter(e => e.bodies.length && (e.deleted === undefined || e.deleted >= frozenAt)
+      && e.rowid <= (e.tier === 'events' ? frozen!.snapshot.chainedMaxRowId : frozen!.snapshot.loggedMaxRowId)).length
     const sharedState = (): unknown => {
       const index = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
       try {
-        return { refs: index.prepare('SELECT count(*) AS n FROM body_event_refs').get(), docs: index.prepare('SELECT count(*) AS n FROM body_docs').get(),
+        return { refs: index.prepare('SELECT count(*) AS n FROM body_event_refs').get(), docs: index.prepare('SELECT count(*) AS n FROM body_fts').get(),
           mark: index.prepare("SELECT value FROM body_index_meta WHERE key='mark'").get() }
       } finally { index.close() }
     }
@@ -207,7 +241,8 @@ sqlite.describe('body index lifecycle, seeded', () => {
       for (step = 0; step < STEPS; step++) {
         const r = random()
         if (r < 0.10) { op = 'bodiless'; add.bodiless() }
-        else if (r < 0.18) { op = 'saved'; add.saved() }
+        else if (r < 0.14) { op = 'saved'; add.saved() }
+        else if (r < 0.18) { op = 'escaped'; add.escaped() }
         else if (r < 0.24) { op = 'inline'; add.inline() }
         else if (r < 0.26) { op = 'same'; add.same() }
         else if (r < 0.28) { op = 'exchange'; add.exchange() }
@@ -234,16 +269,19 @@ sqlite.describe('body index lifecycle, seeded', () => {
           // The export worker: read-only, one read transaction for its life,
           // so its view falls behind while main goes on.
           op = 'frozen reader'
-          if (!frozen || random() < 0.3) { await frozen?.close(); frozen = await openFrozenReader(dir, 'eng'); frozenAt = step; frozenBehindRetention = walkExpected }
+          if (!frozen || random() < 0.3) { await frozen?.close(); frozen = await openFrozenReader(dir, 'eng'); frozenAt = step; frozenBehindRetention = walkExpected; frozenRetained = false; frozenUnvouched = false }
           const before = sharedState(), text = query()
           const answer = await frozen.search(text)
           if (answer.coverage.status === 'covered') expect(answer.ids, `${where()}: frozen reader, "${text}"`).toEqual(oracle(text, frozen.snapshot, frozenAt))
-          // When the shared index does not vouch for its view (retention
-          // deleted rows its view still has, or main has not walked since a
-          // deletion its view already shows), its first search reads that
-          // view into TEMP; then it is bounded again.
-          if (!frozenBehindRetention) expect(answer.rows, `${where()}: source rows the frozen reader read`).toBeLessThanOrEqual(40)
-          frozenBehindRetention = false
+          // When the shared index does not vouch for its view (main has walked
+          // past rows retention deleted that its view still has, or has not
+          // walked since a deletion its view already shows), its first search
+          // reads that view into TEMP, by design: bounded by the view. Then,
+          // and whenever the index vouches for it, by the tight bound.
+          const unvouched = frozenBehindRetention || frozenUnvouched
+          expect(answer.rows, `${where()}: source rows the frozen reader read${unvouched ? ' (not vouched for: its view)' : ''}`)
+            .toBeLessThanOrEqual(unvouched ? frozenView() : 40)
+          frozenBehindRetention = false; frozenUnvouched = false
           expect(sharedState(), `${where()}: the frozen reader wrote the shared index`).toEqual(before)
         } else if (r < 0.75) {
           op = 'other instance, older snapshot'
@@ -269,7 +307,7 @@ sqlite.describe('body index lifecycle, seeded', () => {
           // A snapshot from before the deletion is refused ("changed by retention"): take a new one.
           older = readActivitySnapshot(db.getReadonlyDB())
           walkExpected = true
-          if (frozen) frozenBehindRetention = true
+          if (frozen) frozenRetained = true
         } else if (r < 0.79) {
           op = 'vanish'
           const files = model.flatMap(e => e.bodies.map(b => b.file)).filter((f): f is string => !!f && !gone.has(f))

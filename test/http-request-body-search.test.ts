@@ -18,6 +18,7 @@ import { createHash } from 'node:crypto'
 import { requires } from './helpers/requires'
 import { runAddonRequests } from './helpers/addon-request-payload'
 import { searchHttpBodyEventIds } from './helpers/body-search'
+import { documentRowids, documentTerms, termsOf } from './helpers/body-index-layout'
 import { parseQuery } from '../src/core/query/contract'
 import { decodeJsonEscapes } from '../src/core/json-escape-text'
 import Database from 'better-sqlite3'
@@ -33,6 +34,7 @@ let executeEventQuery: typeof import('../src/core/db/event-queries').executeEven
 let countEvents: typeof import('../src/core/db/event-queries').countEvents
 let closeHttpBodyIndex: typeof import('../src/core/http-body-index').closeHttpBodyIndex
 let pruneHttpBodyIndex: typeof import('../src/core/http-body-index').pruneHttpBodyIndex
+let _documentLayout: typeof import('../src/core/http-body-index')._documentLayout
 let bodySearchCoverage: typeof import('../src/core/http-body-index').bodySearchCoverage
 let available = false
 if (requires('better-sqlite3').ok) {
@@ -43,7 +45,7 @@ if (requires('better-sqlite3').ok) {
   initDB = db.initDB; closeDB = db.closeDB; getDB = db.getDB
   ingest = ing.ingest
   executeEventQuery = queries.executeEventQuery; countEvents = queries.countEvents
-  closeHttpBodyIndex = idx.closeHttpBodyIndex; pruneHttpBodyIndex = idx.pruneHttpBodyIndex
+  closeHttpBodyIndex = idx.closeHttpBodyIndex; pruneHttpBodyIndex = idx.pruneHttpBodyIndex; _documentLayout = idx._documentLayout
   bodySearchCoverage = idx.bodySearchCoverage
   available = true
 }
@@ -201,14 +203,16 @@ describeDB('searching a JSON body without params.body_json', () => {
     const plainLarge = response(JSON.stringify({ pad: 'q'.repeat(6000), w: 'PLAINLARGEX' }), 'application/json', 'resp-plain-large')
     viaBody('PLAINLARGEX')
     const db = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
-    const chars = (id: string): number => (db.prepare('SELECT coalesce(sum(length(f.content)),0) AS n FROM body_fts f JOIN body_docs d ON d.doc=f.rowid WHERE d.event_id=?').get(id) as { n: number }).n
-    const escaped = chars(ids.large.after), plain = chars(plainLarge), inline = chars(ids.small.after)
+    // The index keeps each document's words, not its text: compare the words,
+    // document after document in rowid order (the saved text, then the decoded).
+    const words = (id: string): string[] => documentRowids(db, id).flatMap(rowid => documentTerms(db, rowid))
+    const escaped = words(ids.large.after), plain = words(plainLarge), inline = words(ids.small.after)
     db.close()
-    console.log(`[index size] escaped sidecar ${LARGE.length} chars -> ${escaped}; plain sidecar ${JSON.stringify({ pad: 'q'.repeat(6000), w: 'PLAINLARGEX' }).length} -> ${plain}; escaped inline ${SMALL.length} -> ${inline}`)
-    expect(plain).toBe(JSON.stringify({ pad: 'q'.repeat(6000), w: 'PLAINLARGEX' }).length)
-    expect(escaped).toBe(LARGE.length + (decodeJsonEscapes(LARGE) ?? '').length)
-    // SQLite's length() counts characters; the astral pair is one each.
-    expect(inline).toBe([...(decodeJsonEscapes(SMALL) ?? '')].length)
+    const plainText = JSON.stringify({ pad: 'q'.repeat(6000), w: 'PLAINLARGEX' })
+    console.log(`[index size] escaped sidecar ${LARGE.length} chars -> ${escaped.length} words; plain sidecar ${plainText.length} -> ${plain.length}; escaped inline ${SMALL.length} -> ${inline.length}`)
+    expect(plain).toEqual(termsOf(plainText))
+    expect(escaped).toEqual([...termsOf(LARGE), ...termsOf(decodeJsonEscapes(LARGE) ?? '')])
+    expect(inline).toEqual(termsOf(decodeJsonEscapes(SMALL) ?? ''))
   })
 
   it('IMPROVEMENT: response text written as \\uXXXX escapes, never found by the decoded word before (no parsed copy existed), is found now, inline and in the sidecar', () => {
@@ -256,7 +260,7 @@ describeDB('searching a JSON body without params.body_json', () => {
     expect(surface('中文詞')).toEqual(expect.arrayContaining([ids.small.after, ids.large.after]))
     closeHttpBodyIndex()
     const old = new Database(path.join(dir, 'http-body-index.db'))
-    old.exec('DELETE FROM body_fts; DELETE FROM body_docs; DELETE FROM body_event_refs;')
+    old.exec('DELETE FROM body_fts; DELETE FROM body_event_refs;')
     old.pragma('user_version=7')
     old.close()
     expect(surface('中文詞')).toEqual(expect.arrayContaining([ids.small.after, ids.large.after]))
@@ -277,12 +281,18 @@ describeDB('searching a JSON body without params.body_json', () => {
 
   it('KNOWN, BY DESIGN: once retention removes the saved body, what is beyond the preview is no longer searchable, decoded or not', () => {
     const ref = row(ids.large.after).request_body_ref as { file: string; sha256: string }
+    const before = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
+    // The refs of that body, and so the rowids their documents had.
+    const held = before.prepare('SELECT ref FROM body_event_refs WHERE sha256=?').all(ref.sha256) as { ref: number }[]
+    before.close()
+    expect(held.length).toBeGreaterThan(0)
     fs.unlinkSync(path.join(dir, 'http-bodies', ref.file))
     pruneHttpBodyIndex(ref.sha256, dir)
     // At once, before any walk: no document of that body is left to match.
     const index = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
     try {
-      expect(index.prepare('SELECT count(*) AS n FROM body_docs WHERE sha256=?').get(ref.sha256)).toEqual({ n: 0 })
+      const span = _documentLayout().refSpan
+      expect(index.prepare(`SELECT count(*) AS n FROM body_fts WHERE rowid/${span} IN (SELECT value FROM json_each(?))`).get(JSON.stringify(held.map(h => h.ref)))).toEqual({ n: 0 })
       expect(index.prepare("SELECT count(*) AS n FROM body_fts WHERE body_fts MATCH 'TAILWORDX'").get()).toEqual({ n: 0 })
     } finally { index.close() }
     expect(found('TAILWORDX', 'large')).toEqual({
