@@ -171,14 +171,39 @@ it('shows what a finished command carries, and nothing for an event without it',
   expect(screen.getByTestId('reader-event-info').textContent).not.toContain('activity.reader.field.exit')
 })
 
-it('puts the session and pid on the expanded summary, and marks today in the day separator', async () => {
+// Decision 2026-11-15 §1 item 8: the expanded row repeated the row's hit
+// counts and printed the session UUID, both of which the row or the Reader
+// (事件資訊) already shows. The source count stays: with no query the row has
+// no count of its own, and the Reader shows its sources as tabs, not a number.
+it('says each thing once on the expanded summary, and marks today in the day separator', async () => {
   const now = Date.now()
-  mount([summary('p', ev('p', { timestamp: now, data: { command: 'p', subtype: 'command_start', pid: 77 } }))].map((s) => ({ ...s, firstAt: now })))
+  mount([summary('p', ev('p', { timestamp: now, data: { command: 'p', subtype: 'command_start', pid: 77 } }))].map((s) => ({ ...s, firstAt: now, sourceCount: 3 })))
   fireEvent.click((await rows())[0])
-  const meta = await screen.findByTestId('activity-summary-meta')
-  expect(meta.textContent).toContain('sess-p')
-  expect(meta.textContent).toContain('77')
+  const summaryBox = await screen.findByTestId('activity-summary')
+  expect(summaryBox.textContent).not.toContain('sess-p')
+  expect(summaryBox.textContent).not.toContain('activity.reader.field.session')
+  expect(summaryBox.textContent).not.toContain('77')
+  expect(screen.getByTestId('activity-summary-meta').textContent).toContain('activity.summary.sources {"count":3}')
   expect(screen.getByTestId('activity-day').textContent).toContain('activity.today')
+  fireEvent.click(screen.getByTestId('activity-read'))
+  expect((await screen.findByTestId('reader-event-info')).textContent).toContain('sess-p')
+})
+
+it('shows the hit counts on the row only, not again when it is expanded', async () => {
+  const item = { ...summary('q'), matchedCount: 2, contextCount: 0 }
+  api.activityPage.mockResolvedValueOnce({ items: [item], hasMore: false, nextCursor: null, totalGroups: 1, totalMatches: 2, snapshot: {} })
+  ;(window as any).redlog = {
+    config: { get: vi.fn().mockResolvedValue({ engagement: { id: 'p' } }) },
+    events: { onNewBatch: () => () => {}, ...api },
+    content: { list: vi.fn().mockResolvedValue({ ok: true, value: [] }), read: vi.fn() }
+  }
+  render(<ActivityResults request={{ parsed: { text: 'q', conditions: [], tokens: [] } } as any} />)
+  fireEvent.click((await rows())[0])
+  await screen.findByTestId('activity-summary')
+  const counts = 'activity.sources {"matches":2,"context":0}'
+  expect(screen.getAllByText(counts)).toHaveLength(1)
+  expect(screen.getByTestId('activity-summary').textContent).not.toContain(counts)
+  expect(screen.queryByTestId('activity-summary-meta')).toBeNull()
 })
 
 // 2026-11-14: with a slot to sit in (the workspace's tab row) the count goes
