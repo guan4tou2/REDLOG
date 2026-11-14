@@ -208,7 +208,8 @@ recomputable by anyone holding the bundle. A file is reported as one of:
 - **differs** — the bytes are not what the event recorded. Always a failure.
 
 Layer-4 sanitizing and scope masking change **rows**, never attachment bytes:
-a masked row is listed in `evidence.transformedEventIds`, its body references
+a masked row (its bodies, `params`, header, cookie and query values replaced by
+the marker) is listed in `evidence.transformedEventIds`, its body references
 are dropped (so the body is not referenced and not shipped), and screenshots
 of out-of-scope targets are left out and declared. No attachment is ever
 substituted by policy, so there is nothing for the verifier to excuse.

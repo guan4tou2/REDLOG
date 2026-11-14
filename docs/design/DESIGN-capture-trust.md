@@ -264,5 +264,5 @@ Line references drift; the function names are the stable handle.
 | Shell relay keeps 8 MiB per stream | `hooks/shell-common.sh` `_REDLOG_MAX_BYTES` | Known limit, labelled `truncated`; streaming to disk proposed (§4) |
 | `.cast` stops at 50 MiB | `config.ts` `maxCastBytes` | Known limit, writes a truncation marker; segment rotation proposed |
 | Connection monitor, CDP and file watcher swallow runtime errors | the three services | Reported, not yet verified |
-| Out-of-scope sanitising skips headers, cookies, URLs | `scope-sanitize.ts` | Reported, not yet verified |
+| Out-of-scope sanitising skips headers, cookies, URLs | `scope-sanitize.ts` | **Confirmed and fixed**: `params`, header and cookie values and URL query values are masked; names, host and path stay |
 | Targets counts events as "commands"; Scope says "all commands in scope"; ScopeStatus can spin forever on a failed read | `TargetView.tsx`, `ScopeStatus.tsx` | Reported, not yet verified |
