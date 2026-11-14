@@ -13,6 +13,10 @@ export type ActivitySegment =
   | { kind: 'item'; item: ActivitySummary; at: number }
   | { kind: 'fold'; key: string; items: ActivitySummary[]; at: number }
 
+/** The row's data when RedLog wrote it about itself (agent type `system`). */
+const systemData = (item: ActivitySummary): Record<string, unknown> | undefined =>
+  item.anchor.agentType === 'system' ? item.anchor.data ?? {} : undefined
+
 /** A clean scope verdict: every in-scope action writes one, the positive
  *  record that scope was observed (`ScopePolicy` always emits `in_scope`). It
  *  stays in the chain and in every count; here it is RedLog's own bookkeeping
@@ -21,15 +25,15 @@ export type ActivitySegment =
  *  With no scope configured the same row says 範圍未判定 (`authority:
  *  'unknown'`). Any other distance is an observation and never folds. */
 function isScopeAdherence(item: ActivitySummary): boolean {
-  const d = item.anchor.agentType === 'system' ? item.anchor.data : undefined
+  const d = systemData(item)
   return d?.subtype === SCOPE_VIOLATION_SUBTYPE && d.distance === 'in_scope'
 }
 
 /** A RedLog state change. Scope observations are findings, not plumbing;
  *  a clean verdict is not an observation. */
 export function isFoldableSystem(item: ActivitySummary): boolean {
-  if (item.anchor.agentType !== 'system') return false
-  return item.anchor.data?.subtype !== SCOPE_VIOLATION_SUBTYPE || isScopeAdherence(item)
+  const d = systemData(item)
+  return !!d && (d.subtype !== SCOPE_VIOLATION_SUBTYPE || isScopeAdherence(item))
 }
 
 /** The list as rows and folds, in order; `at` is each segment's first index.
