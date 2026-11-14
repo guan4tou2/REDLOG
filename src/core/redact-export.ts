@@ -52,6 +52,17 @@ export function scopeBodyRefsToDrop(
   return [...new Set(Object.values(BODY_REF_FOR))].filter((ref) => ref in data)
 }
 
+/** Whether scope masking rewrites anything on this event: a masked field, or a
+ *  body-store pointer it drops. False for an in-scope event, and for an
+ *  out-of-scope or unclassified one that carries nothing to mask. */
+export function scopeMaskChanges(
+  data: Record<string, unknown>,
+  targetId: string | null | undefined,
+  scope: ScopeForSanitize | undefined
+): boolean {
+  return scopeMaskReplacements(data, targetId, scope) !== null || scopeBodyRefsToDrop(data, targetId, scope).length > 0
+}
+
 export interface RedactExportOpts {
   scope?: ScopeForSanitize
   /** Row-level "don't export this event" flags. Loaded once by the caller. */

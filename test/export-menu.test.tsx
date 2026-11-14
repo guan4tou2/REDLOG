@@ -48,7 +48,7 @@ describe('ExportMenu plan preview', () => {
     expect(screen.getByTestId('export-preview-no-attachments').textContent).toContain('Attachments')
     expect(screen.getByTestId('export-projection-notice').textContent).toContain('not proof of the complete source chain')
     expect(container.textContent).not.toMatch(/attachments are chosen individually|Entire recording attachments|HTTP bodies/)
-    expect(screen.getByTestId('export-commands-note').textContent).toContain('not filtered by web scope')
+    expect(screen.getByTestId('export-commands-note').textContent).toContain('Command text is kept')
   })
 
   afterEach(() => { cleanup(); localStorage.clear(); vi.restoreAllMocks() })
