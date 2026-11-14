@@ -777,9 +777,6 @@ export function rawTranscriptFiltersUnsupported(conditions: readonly {field:stri
   return conditions.some(c=>['tool','transcript','event','operator','source'].includes(c.field)) || Boolean(filter &&
     (filter.targetId || filter.since != null || filter.before != null || filter.inScopeOnly || filter.tier))
 }
-/** Filter keys that say nothing about a raw transcript: neither applied to it
- *  nor a reason to leave it out (rawTranscriptFiltersUnsupported). */
-const RAW_IGNORED = ['hidePersonal', 'personalDomains']
 /** For each term of `query` (as ftsTerms quotes it: a phrase, the last one a
  *  prefix), the events that have a body document containing it. A term is
  *  matched within one document; different terms may sit in different
@@ -895,13 +892,16 @@ export function bodySearchCoverage(snapshot?: ExportSnapshot, projectId?: string
   const applied = [...(options?.parsed?.conditions.map(c=>c.field)??[]),
     ...Object.entries(options?.filter??{}).filter(([,v])=>v!=null&&v!==false&&v!=='').map(([key])=>key)].sort()
   const rawUnsupported = applied.filter(key=>['tool','transcript','event','operator','source','targetId','since','before','inScopeOnly','tier'].includes(key))
+  // Said nothing of a raw transcript: neither applied to it nor a reason to
+  // leave it out (rawTranscriptFiltersUnsupported).
+  const rawIgnored = ['hidePersonal','personalDomains']
   const groups = new Map<string,SearchCoverageSource>()
   const hashes = new Map<string,ReturnType<typeof createHash>>()
   for (const kind of ['events','body','artifact','ai-raw'] as const) {
     const unsupported = kind==='ai-raw'?rawUnsupported:[]
     groups.set(kind,{kind,status:'covered',revision:'',indexed:0,missing:0,binary:0,pending:0,failed:0,unsupported:0,limited:0,partial:0,indexedBytes:0,sourceBytes:0,
       representation:kind==='events'?'decoded-event-json':kind==='ai-raw'?'confirmed-jsonl-prefix':'saved-bytes',precision:kind==='events'?'event':'file',
-      filters:{applied:applied.filter(key=>!unsupported.includes(key)&&!(kind==='ai-raw'&&RAW_IGNORED.includes(key))),unsupported}})
+      filters:{applied:applied.filter(key=>!unsupported.includes(key)&&!(kind==='ai-raw'&&rawIgnored.includes(key))),unsupported}})
     hashes.set(kind,createHash('sha256').update(`saved-index-v${INDEX_VERSION}`).update(JSON.stringify([applied,unsupported])))
   }
   const eventGroup=groups.get('events')!,eventHash=hashes.get('events')!
