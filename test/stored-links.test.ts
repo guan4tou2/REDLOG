@@ -22,6 +22,8 @@ const bodyIndex = await import('../src/core/http-body-index')
 // delete a directory holding an open file, so both are closed before it goes.
 const closeProject = (): void => { bodyIndex.closeHttpBodyIndex(); db.closeDB() }
 const links = await import('../src/core/db/stored-links')
+const bus = await import('../src/core/event-bus')
+const health = await import('../src/core/capture-health')
 
 const ENG = 'eng-links'
 const OP = 'op-links'
@@ -69,7 +71,7 @@ sqlite.describe('stored links (SC-003)', () => {
       const plans = probes().map(plan)
       expect(plans).toEqual([
         'SEARCH events USING INDEX idx_events_shell_command (<expr>=? AND subtype=?)',
-        'SEARCH events USING INDEX idx_events_shell_command_final (<expr>=? AND rowid>?)',
+        'SEARCH events USING INDEX idx_events_shell_command_final (<expr>=?)',
         'SEARCH events USING INDEX idx_events_shell_command (<expr>=? AND subtype=?)',
         'SEARCH events USING INDEX idx_events_shell_command (<expr>=? AND subtype=? AND <expr>=? AND rowid>?)',
         'SEARCH events_logged USING INDEX idx_events_logged_http_flow (<expr>=?)'
@@ -78,6 +80,59 @@ sqlite.describe('stored links (SC-003)', () => {
   })
 
   describe('work per row', () => {
+    // Second review F8: what makes a refused row change nothing is memory
+    // keeping the entry, not the database repairing it; the resend shows it
+    // by asking the database nothing.
+    it('a command_end refused while paused leaves its start in memory: sent again, it asks the database nothing', () => {
+      start('r1', 1)
+      start('r2', 2)
+      const hit = measureWork(() => end('r2', 2)).work
+      bus.eventBus.pause()
+      try { expect(end('r1', 1).skipped).toBe('paused') } finally { bus.eventBus.resume() }
+      const resent = measureWork(() => end('r1', 1))
+      expect(resent.result.event?.data._causes).toHaveLength(1)
+      expect(resent.work.statements).toBe(hit.statements)
+    })
+
+    it('an http_response refused while paused leaves its flow open in memory: sent again, it asks the database nothing', () => {
+      const req = (flow_id: string) => put('scanner', { subtype: 'http_request_start', flow_id, method: 'GET', url: 'http://10.0.0.9/', host: '10.0.0.9' })
+      const res = (flow_id: string) => put('scanner', { subtype: 'http_response', flow_id, status_code: 200, url: 'http://10.0.0.9/', host: '10.0.0.9' })
+      req('p1'); req('p2')
+      const hit = measureWork(() => res('p2')).work
+      bus.eventBus.pause()
+      try { expect(res('p1').skipped).toBe('paused') } finally { bus.eventBus.resume() }
+      const resent = measureWork(() => res('p1'))
+      expect(resent.result.event?.data._causes).toHaveLength(1)
+      expect(resent.work.statements).toBe(hit.statements)
+    })
+
+    // Second review F7: a lookup that fails costs the link, never the row.
+    it('a stored lookup that throws: the row is stored unlinked, a warning is noted, and the next row asks again', () => {
+      ingestMod.configureIngest({ activeTarget: 'A' })
+      const s = start('t1', 1); end('t1', 1, true); chunk('t1', 0)
+      ingestMod._resetIngest()
+      ingestMod.configureIngest({ activeTarget: 'B' })
+      const conn = db.getDB()
+      const prepare = conn.prepare.bind(conn)
+      const spy = vi.spyOn(conn, 'prepare').mockImplementation(((sql: string) => {
+        if (sql.includes("json_type(data, '$.command_id') = 'text'")) throw new Error('database disk image is malformed')
+        return prepare(sql)
+      }) as typeof conn.prepare)
+      const before = health.getCaptureHealth().pipelineWarningTotal ?? 0
+      let failed
+      try { failed = chunk('t1', 1) } finally { spy.mockRestore() }
+      expect(failed.event, 'the row is stored').not.toBeNull()
+      expect(failed.event?.data.unattributed).toBe(true)
+      const after = health.getCaptureHealth(Date.now() + 1)
+      expect(after.lastPipelineWarning).toMatchObject({ source: 'ingest-stored-links', message: 'database disk image is malformed' })
+      expect(after.pipelineWarningTotal).toBe(before + 1)
+      // Not remembered as "no command", nor as a command with no target: the
+      // next chunk asks again and finds both.
+      const next = chunk('t1', 2)
+      expect(next.event?.data._causes).toEqual([s.event?.id])
+      expect(next.event?.targetId).toBe('A')
+    })
+
     it('a command_end whose start is remembered runs no statement more than one paired by its text', () => {
       start('c1', 1)
       start(null, 2)
@@ -117,6 +172,12 @@ sqlite.describe('stored links (SC-003)', () => {
     // `final` chunk came before — must not re-read that id's earlier chunks
     // each time: the relay sends one a second, and ingest runs on the main
     // process.
+    //
+    // What this can see: statements, rows handed to JavaScript and scan-class
+    // plans (helpers/work-counter.ts). It cannot see a walk inside one
+    // statement — better-sqlite3 exposes no VM step count — so "the same work"
+    // here means the same statements and rows. storedHighestSeq does walk:
+    // see the header of src/core/db/stored-links.ts for its bound.
     describe('a chunk with no open command costs the same however many came before it', () => {
       const tuple = (w: { statements: number; rows: number; scans: number }) => [w.statements, w.rows, w.scans]
       const many = (cid: string, from: number, to: number): void => {

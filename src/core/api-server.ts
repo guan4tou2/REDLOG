@@ -434,7 +434,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       })
       if (!result.event) {
         // A deliberate pause/unrecorded interval is acknowledged so the hook
-        // never spools it. Ingest still settles runtime pairs before its gate.
+        // never spools it. Before its gate ingest settles only the terminal
+        // hints (cwd, terminal key); a refused row leaves the causal links as
+        // they were, as its absence from the record does.
         if (result.skipped === 'paused') {
           json(res, 200, { ok: true, recording: false, skipped: 'recording paused' })
           return

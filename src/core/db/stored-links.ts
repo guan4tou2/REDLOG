@@ -7,9 +7,13 @@
 // already stored. Memory is the fast path and stays it. When it has nothing —
 // the app restarted, or the entry was evicted — the answer is read here, from
 // the rows themselves, by the key memory uses: the `command_id` string exactly
-// as sent (the flow id for HTTP), within the open project. Each probe is an
-// index seek that returns at most a handful of rows, however many chunks the
-// command has stored.
+// as sent (the flow id for HTTP), within the open project. Each probe is one
+// statement on a partial index, returning one row or the id's few starts and
+// ends. The work inside it is one index step, except storedHighestSeq, which
+// walks down the id's chunk numbers past those written before `after` or
+// carrying neither flag: bounded by that id's chunk count, not the table's
+// (measured on 268k rows: 0.04 ms usually, 14 ms for an id with 20,000
+// unflagged chunks). ingest asks it once per rebuilt entry, then remembers.
 //
 // The two sides mean the same things: a flag is set only when it is the JSON
 // `true` (memory tests `=== true`), and an id is an id only when it is a JSON
@@ -20,12 +24,18 @@
 
 import { getDB } from './index'
 
-/** The newest round of one command: its newest command_start and the newest
- *  command_end after it. Rowids order rows as they were written, which is the
- *  order memory saw them in. */
+/** The newest round of one command. Rowids order rows as they were written,
+ *  which is the order memory saw them in. Two ends, because memory reads two:
+ *  the link is the first end's (a second end finds the command closed and
+ *  changes nothing), the late-output target the last late end's (ingest files
+ *  under every end that says a job keeps printing). With no start, every end
+ *  of the id counts. */
 export interface StoredCommand {
   start: { id: string; rowid: number; targetId: string | null } | null
-  end: { rowid: number; targetId: string | null; lateOutput: boolean } | null
+  /** The first command_end after `start`. */
+  firstEnd: { rowid: number; targetId: string | null; lateOutput: boolean } | null
+  /** The newest command_end after `start` that declared late output. */
+  lastLateEnd: { rowid: number; targetId: string | null } | null
 }
 
 /** The newest round of command `commandId` in the open project, or null when
@@ -43,28 +53,32 @@ export function storedCommand(commandId: string): StoredCommand | null {
   if (rows.length === 0) return null
   rows.sort((a, b) => a.r - b.r)
   let start: (typeof rows)[number] | undefined
-  let end: (typeof rows)[number] | undefined
+  let firstEnd: (typeof rows)[number] | undefined
+  let lastLateEnd: (typeof rows)[number] | undefined
   for (const row of rows) {
     // In rowid order: an end before the newest start belongs to an earlier round.
-    if (row.subtype === 'command_start') { start = row; end = undefined } else end = row
+    if (row.subtype === 'command_start') { start = row; firstEnd = undefined; lastLateEnd = undefined; continue }
+    firstEnd ??= row
+    if (row.late === 1) lastLateEnd = row
   }
   return {
     start: start ? { id: start.id, rowid: start.r, targetId: start.target_id } : null,
-    end: end ? { rowid: end.r, targetId: end.target_id, lateOutput: end.late === 1 } : null
+    firstEnd: firstEnd ? { rowid: firstEnd.r, targetId: firstEnd.target_id, lateOutput: firstEnd.late === 1 } : null,
+    lastLateEnd: lastLateEnd ? { rowid: lastLateEnd.r, targetId: lastLateEnd.target_id } : null
   }
 }
 
-/** The rowid of the newest chunk of command `commandId`, written after rowid
- *  `after`, that said it was the last; null when there is none. One seek on a
- *  small index: only final chunks are in it. */
-export function storedLastFinal(commandId: string, after: number): number | null {
+/** The rowid of the newest chunk of command `commandId` that said it was the
+ *  last; null when there is none. One seek on a small index: only final chunks
+ *  are in it. */
+export function storedLastFinal(commandId: string): number | null {
   const db = openWriter()
   if (!db) return null
   const row = db.prepare(`SELECT rowid AS r FROM events
     WHERE agent_type = 'shell' AND subtype = 'command_output' AND json_type(data, '$.final') = 'true'
-      AND json_extract(data, '$.command_id') = ? AND json_type(data, '$.command_id') = 'text' AND rowid > ?
+      AND json_extract(data, '$.command_id') = ? AND json_type(data, '$.command_id') = 'text'
     ORDER BY rowid DESC LIMIT 1`)
-    .get(commandId, after) as { r: number } | undefined
+    .get(commandId) as { r: number } | undefined
   return row ? row.r : null
 }
 

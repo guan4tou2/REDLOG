@@ -123,7 +123,9 @@ export function noteStartEvent(agentType: string, data: Record<string, unknown>,
   }
   if (agentType === 'shell' && data.subtype === 'command_start') {
     const commandId = commandIdOf(data)
-    if (commandId) { commandIdMap.set(commandId, eventId); closedCommandIds.delete(commandId) }
+    // A new round of this id: whatever the last round left open for late
+    // output is that round's, not this one's.
+    if (commandId) { commandIdMap.set(commandId, eventId); lateCommandIdMap.delete(commandId); closedCommandIds.delete(commandId) }
     const key = shellKey(data)
     if (key) {
       shellStartMap.set(key, eventId)
@@ -139,9 +141,12 @@ export function noteStartEvent(agentType: string, data: Record<string, unknown>,
  *  Handed in by ingest, so this module stays free of the database. */
 export interface StoredLinks {
   command: (commandId: string) => StoredCommand | null
-  /** The rowid of the newest final chunk of `commandId` after rowid `after`. */
-  lastFinal: (commandId: string, after: number) => number | null
+  /** The rowid of the newest final chunk of `commandId`. */
+  lastFinal: (commandId: string) => number | null
   openFlowStart: (flowId: string) => string | null
+  /** A lookup threw since this row began, so "nothing found" may not be
+   *  true: nothing may be remembered as closed on it. */
+  readonly failed: boolean
 }
 
 /**
@@ -154,9 +159,12 @@ export interface StoredLinks {
  * ingest runs only once the row is stored: a row refused (paused, unrecorded,
  * a duplicate) was never recorded, and the record must still read as if it
  * had not come, which is what the stored rows will say after a restart.
- * Without `settle` it is done at once. The cwd hint below
- * (`activeShellCommands`) is settled at once either way: it is no link, and a
- * command that ended while paused must not be offered as still running.
+ * Without `settle` it is done at once. Two terminal hints settle at once
+ * either way, as they always did: the cwd hint (`activeShellCommands`), so a
+ * command that ended while paused is not offered as still running, and the
+ * terminal key (`shellStartMap`), which nothing stored stands behind, so an
+ * end refused while paused does not leave its start for the next command
+ * with the same text to cite.
  */
 export function resolveIncomingCauses(agentType: string, data: Record<string, unknown>, stored?: StoredLinks, settle?: (change: () => void) => void): string[] {
   const later = settle ?? ((change: () => void) => change())
@@ -200,8 +208,11 @@ export function resolveIncomingCauses(agentType: string, data: Record<string, un
   if (agentType === 'shell' && data.subtype === 'command_end') {
     const commandId = commandIdOf(data)
     const key = shellKey(data)
-    // The cwd hint settles now, recorded or not.
+    // The terminal hints settle now, recorded or not; what the key held is
+    // still the answer for this row.
+    const keyed = key ? shellStartMap.get(key) : undefined
     if (key) {
+      shellStartMap.delete(key)
       const active = activeShellCommands.get(key)
       activeShellCommands.delete(key)
       if (active) recentShellCommands.set(key, { ...active, endedAt: Date.now() })
@@ -218,19 +229,11 @@ export function resolveIncomingCauses(agentType: string, data: Record<string, un
         later(() => {
           commandIdMap.delete(commandId)
           if (late) { lateCommandIdMap.set(commandId, id); closedCommandIds.delete(commandId) } else closedCommandIds.set(commandId, true)
-          if (key) shellStartMap.delete(key)
         })
         return [id]
       }
     }
-    if (key) {
-      const id = shellStartMap.get(key)
-      if (id) {
-        later(() => shellStartMap.delete(key))
-        return [id]
-      }
-    }
-    return []
+    return keyed ? [keyed] : []
   }
   return []
 }
@@ -239,7 +242,7 @@ export function resolveIncomingCauses(agentType: string, data: Record<string, un
  *  `commandIdMap` would hold it. */
 function storedOpenCommand(commandId: string, stored: StoredLinks | undefined): string | undefined {
   const command = stored?.command(commandId)
-  return command?.start && !command.end ? command.start.id : undefined
+  return command?.start && !command.firstEnd ? command.start.id : undefined
 }
 
 /** The command a chunk belongs to, as the maps would hold it: still running
@@ -251,19 +254,21 @@ function storedChunkCommand(commandId: string, stored: StoredLinks | undefined):
   if (!stored) return undefined
   const command = stored.command(commandId)
   const start = command?.start
-  const end = command?.end
+  // The end memory honoured: the first after the start. A second end found
+  // the command already closed and changed nothing.
+  const end = command?.firstEnd
   if (start && !end) {
     commandIdMap.set(commandId, start.id)
     return start.id
   }
-  // The newest final chunk of this round, asked from its start as ingest asks
-  // it (one seek between the two); a final before the end closed nothing.
-  const finalAt = start && end?.lateOutput ? stored.lastFinal(commandId, start.rowid) : null
+  // A final chunk before that end closed nothing after it.
+  const finalAt = start && end?.lateOutput ? stored.lastFinal(commandId) : null
   if (start && end?.lateOutput && (finalAt === null || finalAt < end.rowid)) {
     lateCommandIdMap.set(commandId, start.id)
     return start.id
   }
-  closedCommandIds.set(commandId, true)
+  // A lookup that failed is no answer: ask again with the next chunk.
+  if (!stored.failed) closedCommandIds.set(commandId, true)
   return undefined
 }
 

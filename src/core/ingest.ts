@@ -276,7 +276,8 @@ export function ingest(input: IngestInput): IngestResult {
   //     on the final row stops matching what is stored.
   if (late && lateCommandId && (data.late === true || data.streamed === true) && typeof data.seq === 'number'
       && (late.seen.has(data.seq)
-        || (late.stored !== undefined && data.seq <= late.stored.highest && storedSeqSeen(lateCommandId, data.seq, late.stored.after)))) {
+        || (late.stored !== undefined && data.seq <= late.stored.highest
+          && stored.guard(() => storedSeqSeen(lateCommandId, data.seq as number, late.stored!.after), false)))) {
     return { event: null, skipped: 'dedup', companions: [] }
   }
 
@@ -338,14 +339,17 @@ export function ingest(input: IngestInput): IngestResult {
     const commandId = agentType === 'shell' && !input.derived ? commandIdOf(data) : null
     if (!commandId) return
     if (data.subtype === 'command_start') {
-      // A new round of this id: its chunks are counted afresh.
+      // A new round of this id: its chunks are counted afresh. (A chunk that
+      // came before its start is forgotten here, so its resend after the start
+      // is stored again; keeping it would take a lookup at every start to
+      // agree after a restart. The reader keeps one row per number.)
       remember(commandId, { filed: true, target: targetId ?? null, seen: new Set() })
     } else if (data.subtype === 'command_end' && (data.late_output === true || data.output_streamed === true)) {
       const entry = lateByCommand.get(commandId)
       if (entry) { entry.filed = true; entry.target = targetId ?? null } else remember(commandId, { filed: true, target: targetId ?? null, seen: new Set() })
     } else if (lateCommandId && data.final === true) {
       lateByCommand.delete(commandId)
-    } else if (lateCommandId && (data.late === true || data.streamed === true) && typeof data.seq === 'number') {
+    } else if (lateCommandId && !late?.transient && (data.late === true || data.streamed === true) && typeof data.seq === 'number') {
       const entry = late ?? lateByCommand.get(commandId)
       if (entry && lateByCommand.get(commandId) === entry) entry.seen.add(data.seq)
       else remember(commandId, { ...(entry ?? { filed: false, target: null }), seen: new Set([...(entry?.seen ?? []), data.seq]) })
@@ -488,6 +492,8 @@ interface LateCommand {
    *  rowid `after` are stored but not in `seen`, so a resend among them is
    *  asked of the database, one seek. */
   stored?: { after: number; highest: number }
+  /** Rebuilt while a lookup failed: used for this row, never kept. */
+  transient?: true
 }
 const lateByCommand = new Map<string, LateCommand>()
 const LATE_TARGET_MAX = 256
@@ -500,39 +506,66 @@ function remember(commandId: string, entry: LateCommand): LateCommand {
 }
 
 /** Rebuild `commandId`'s entry from its stored rows, as the bookkeeping would
- *  have left it. The target is the one last filed — a command_end's that said a
- *  job keeps printing, else the command_start's — unless a final chunk came
- *  after it. Chunk numbers count from the newer of the round's start and the
- *  last final chunk. At most four seeks, however many chunks are stored; and
- *  the entry is kept, so the next chunk of this id asks nothing. */
-function restoreLateState(commandId: string, stored: StoredLinks): LateCommand {
+ *  have left it. The target is the one last filed — the newest command_end of
+ *  the round that said a job keeps printing, else the command_start — unless a
+ *  final chunk came after it. Chunk numbers count from the newer of the round's
+ *  start and the last final chunk, as the bookkeeping forgets them at both.
+ *  Three statements. Two are one
+ *  index step; the highest-number probe walks down that id's chunk numbers past
+ *  any written before the last final chunk or carrying neither flag, so it is
+ *  bounded by the id's chunk count, not the table's. Once per restore: the
+ *  entry is kept, and the next chunk of this id asks nothing. If a lookup
+ *  failed the entry is not kept, so the next chunk asks again. */
+function restoreLateState(commandId: string, stored: StoredReads): LateCommand {
   const command = stored.command(commandId)
-  const filedBy = command?.end?.lateOutput ? command.end : command?.start ?? null
-  const finalAt = stored.lastFinal(commandId, command?.start?.rowid ?? 0)
+  const filedBy = command?.lastLateEnd ?? command?.start ?? null
+  const finalAt = stored.lastFinal(commandId)
   const filed = filedBy !== null && (finalAt === null || finalAt < filedBy.rowid)
   const after = Math.max(command?.start?.rowid ?? 0, finalAt ?? 0)
-  const highest = storedHighestSeq(commandId, after)
-  return remember(commandId, {
+  const highest = stored.guard(() => storedHighestSeq(commandId, after), null)
+  const entry: LateCommand = {
     filed, target: filed ? filedBy.targetId : null, seen: new Set(),
     ...(highest !== null ? { stored: { after, highest } } : {})
-  })
+  }
+  return stored.failed ? { ...entry, transient: true } : remember(commandId, entry)
+}
+
+/** The stored reads, for ingest and the resolver. */
+interface StoredReads extends StoredLinks {
+  /** `read`, or `none` if it throws: a failed lookup costs the link, never the
+   *  row. The failure is noted as a pipeline warning and marks the row
+   *  `failed`, so nothing is remembered on it. */
+  guard<T>(read: () => T, none: T): T
 }
 
 /** The project's rows, read once per ingested row however many steps ask. */
-function storedLinks(): StoredLinks {
+function storedLinks(): StoredReads {
   const commands = new Map<string, StoredCommand | null>()
   const finals = new Map<string, number | null>()
+  let failed = false
+  const guard = <T>(read: () => T, none: T): T => {
+    try { return read() } catch (error) {
+      // Once per row: the first failure is the one to see.
+      if (!failed) {
+        console.error('[ingest] a stored-link lookup failed; the row is written without the link:', error)
+        notePipelineWarning('ingest-stored-links', error)
+      }
+      failed = true
+      return none
+    }
+  }
   return {
     command(commandId) {
-      if (!commands.has(commandId)) commands.set(commandId, storedCommand(commandId))
+      if (!commands.has(commandId)) commands.set(commandId, guard(() => storedCommand(commandId), null))
       return commands.get(commandId) ?? null
     },
-    lastFinal(commandId, after) {
-      const key = `${after}:${commandId}`
-      if (!finals.has(key)) finals.set(key, storedLastFinal(commandId, after))
-      return finals.get(key) ?? null
+    lastFinal(commandId) {
+      if (!finals.has(commandId)) finals.set(commandId, guard(() => storedLastFinal(commandId), null))
+      return finals.get(commandId) ?? null
     },
-    openFlowStart: storedOpenFlowStart
+    openFlowStart: (flowId) => guard(() => storedOpenFlowStart(flowId), null),
+    get failed() { return failed },
+    guard
   }
 }
 const SESSION_TAIL_CHARS = 4096

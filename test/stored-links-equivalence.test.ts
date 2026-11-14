@@ -12,7 +12,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { requires } from './helpers/requires'
 
 const sqlite = requires('better-sqlite3')
@@ -33,6 +33,8 @@ type Step =
   | { scanner: Record<string, unknown> }
   | { target: string | null }
   | { pause: boolean }
+  /** Let this much time pass: past insertEvent's 2 s duplicate window, say. */
+  | { wait: number }
 
 interface Row { subtype: unknown; command_id: unknown; seq: unknown; target_id: unknown; unattributed: unknown; causes: string[] | undefined }
 
@@ -50,6 +52,7 @@ sqlite.describe('memory and stored rows agree (SC-003)', () => {
   })
   afterEach(() => {
     if (bus.eventBus.paused) bus.eventBus.resume()
+    vi.useRealTimers()
     closeProject()
     fs.rmSync(dir, { recursive: true, force: true })
   })
@@ -64,12 +67,14 @@ sqlite.describe('memory and stored rows agree (SC-003)', () => {
     ops.ensurePrimaryOperator(OP, 'Eq', ops.generateToken())
     ingestMod._resetIngest()
     let target: string | null = null
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 10, 15, 9) })
     const skipped: Array<string | undefined> = []
     db.getDB().transaction(() => {
       for (const [i, step] of steps.entries()) {
         if (restarts.includes(i)) { ingestMod._resetIngest(); ingestMod.configureIngest({ activeTarget: target }) }
         if ('target' in step) { target = step.target; ingestMod.configureIngest({ activeTarget: target }); continue }
         if ('pause' in step) { if (step.pause) bus.eventBus.pause(); else bus.eventBus.resume(); continue }
+        if ('wait' in step) { vi.setSystemTime(Date.now() + step.wait); continue }
         const [agentType, data] = 'shell' in step ? ['shell', step.shell] : ['scanner', step.scanner]
         skipped.push(ingestMod.ingest({ agentType, data, engagementId: ENG, operatorId: OP }).skipped)
       }
@@ -202,6 +207,90 @@ sqlite.describe('memory and stored rows agree (SC-003)', () => {
       const live = expectEquivalent([start('D', 'sleep 12', { pid: 121 }), start('D', 'sleep 13', { pid: 131 }), end('D', 'sleep 14', { pid: 141 })])
       expect(causesOf(live.rows, 'command_end')).toEqual([['#1']])
     })
+  })
+
+  // Second review F1. The terminal key (terminal + pid + text) is a hint with
+  // nothing stored behind it, so it settles when the row arrives, recorded or
+  // not, as it always has; only the id maps wait for the commit.
+  describe('the terminal key settles at once', () => {
+    const nmap = 'nmap -sV 10.0.0.5'
+    it('an end refused while paused takes its start off the key: a later command with the same text does not cite it', () => {
+      const live = expectEquivalent([
+        start('X1', nmap), { pause: true }, end('X1', nmap), start('X2', nmap), { pause: false }, end('X2', nmap)
+      ])
+      expect(causesOf(live.rows, 'command_end')).toEqual([undefined])
+    })
+    it('the same without ids', () => {
+      const live = expectEquivalent([start(undefined, nmap), { pause: true }, end(undefined, nmap), start(undefined, nmap), { pause: false }, end(undefined, nmap)])
+      expect(causesOf(live.rows, 'command_end')).toEqual([undefined])
+    })
+    it('an end without an id refused while paused and sent again cites nothing, as on main; with an id it cites its start', () => {
+      const live = expectEquivalent([
+        start(undefined, 'sleep 30', { pid: 301 }), { pause: true }, end(undefined, 'sleep 30', { pid: 301 }), { pause: false }, end(undefined, 'sleep 30', { pid: 301 }),
+        start('K', 'sleep 31', { pid: 311 }), { pause: true }, end('K', 'sleep 31', { pid: 311 }), { pause: false }, end('K', 'sleep 31', { pid: 311 })
+      ], [])
+      expect(causesOf(live.rows, 'command_end')).toEqual([undefined, ['#2']])
+    })
+  })
+
+  // Second review F2. A command_end sent twice (the hook's curl gave up after
+  // the server had committed; the spooled copy arrives more than 2 s later, past
+  // the duplicate window). The link is the first end's; the late-output target
+  // is whatever the bookkeeping last filed, a late end's or the start's.
+  describe('a second command_end for one id', () => {
+    const ends = (rows: Row[]) => rows.filter((r) => r.subtype === 'command_end').length
+    it('late, final chunk, late again: the chunk after stays unattributed', () => {
+      const live = expectEquivalent([
+        start('G1', 'sleep 40 &'), end('G1', 'sleep 40 &', { late_output: true }), chunk('G1', 0), chunk('G1', 1, { final: true }),
+        { wait: 3000 }, end('G1', 'sleep 40 &', { late_output: true, exit_code: 1 }), chunk('G1', 2)
+      ])
+      expect(ends(live.rows), 'both ends are stored').toBe(2)
+      expect(live.rows[live.rows.length - 1].causes).toBeUndefined()
+    })
+    it('late under B, then not late under C: the chunk is the command\'s, under B', () => {
+      const live = expectEquivalent([
+        { target: 'A' }, start('G2', 'sleep 41 &'), { target: 'B' }, end('G2', 'sleep 41 &', { late_output: true }),
+        { target: 'C' }, { wait: 3000 }, end('G2', 'sleep 41 &', { exit_code: 1 }), chunk('G2', 0)
+      ])
+      const last = live.rows[live.rows.length - 1]
+      expect(ends(live.rows), 'both ends are stored').toBe(2)
+      expect([last.target_id, last.causes]).toEqual(['B', ['#0']])
+    })
+    it('late under B, then late again under C: the chunk is the command\'s, under C, where the bookkeeping last filed it (as on main)', () => {
+      const live = expectEquivalent([
+        { target: 'A' }, start('G4', 'sleep 46 &'), { target: 'B' }, end('G4', 'sleep 46 &', { late_output: true }),
+        { target: 'C' }, { wait: 3000 }, end('G4', 'sleep 46 &', { late_output: true, exit_code: 1 }), chunk('G4', 0)
+      ])
+      const last = live.rows[live.rows.length - 1]
+      expect(ends(live.rows), 'both ends are stored').toBe(2)
+      expect([last.target_id, last.causes]).toEqual(['C', ['#0']])
+    })
+    it('not late, then late: the chunk stays unattributed', () => {
+      const live = expectEquivalent([
+        start('G3', 'sleep 42 &'), end('G3', 'sleep 42 &'), { wait: 3000 }, end('G3', 'sleep 42 &', { late_output: true, exit_code: 1 }), chunk('G3', 0)
+      ])
+      expect(ends(live.rows), 'both ends are stored').toBe(2)
+      expect(live.rows[live.rows.length - 1].causes).toBeUndefined()
+    })
+  })
+
+  // Second review F3.
+  it('a reused id\'s first round does not come back after its second round ends', () => {
+    const live = expectEquivalent([
+      start('H', 'sleep 43 &'), end('H', 'sleep 43 &', { late_output: true }), chunk('H', 0),
+      start('H', 'sleep 44 &'), end('H', 'sleep 44 &'), chunk('H', 1)
+    ])
+    expect(live.rows[live.rows.length - 1].causes).toBeUndefined()
+  })
+
+  // Second review F4. A chunk can arrive before its command_start (the relay
+  // and the hook are two senders). Main kept its resend after the start once;
+  // here the start begins the round's count, so the resend is stored again,
+  // live as after a restart (declared in the PR; the reader keeps one row per
+  // number). Keeping it once would take a lookup at every command_start.
+  it('a chunk before its start, then the start, then the chunk again: stored twice, live as after a restart', () => {
+    const live = expectEquivalent([chunk('P', 0), start('P', 'sleep 45 &'), chunk('P', 0)])
+    expect(live.skipped).toEqual([undefined, undefined, undefined])
   })
 
   it('a late chunk takes the target its command\'s late end was filed under, not its start\'s', () => {
