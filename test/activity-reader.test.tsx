@@ -229,3 +229,28 @@ it('draws the count in the slot it is given, only while active, and no zone on t
   expect(slot.querySelector('[data-testid="activity-stats"]')).toBeNull()
   slot.remove()
 })
+
+// Decision 2026-11-15 §1 item 6: clean scope verdicts match a search for the
+// command they judged (their `action` repeats it). They fold under a query as
+// they do without one; an observation that is not clean stays a row, and the
+// count still counts every operation.
+it('folds clean scope verdicts in search results, keeps an observation as a row, and keeps the count', async () => {
+  const verdict = (id: string, distance: string, severity: string) => ({
+    ...summary(id, ev(id, { agentType: 'system', data: { subtype: 'scope_violation', distance, severity, authority: 'fact', target: '10.20.0.5', action: 'nmap 10.20.0.5' } })),
+    kind: 'security'
+  })
+  const items = [summary('nmap'), verdict('c1', 'in_scope', 'clean'), verdict('c2', 'in_scope', 'clean'), verdict('c3', 'in_scope', 'clean'), verdict('x', 'excluded', 'critical')]
+  api.activityPage.mockResolvedValueOnce({ items, hasMore: false, nextCursor: null, totalGroups: 5, totalMatches: 5, snapshot: {} })
+  ;(window as any).redlog = {
+    config: { get: vi.fn().mockResolvedValue({ engagement: { id: 'p' } }) },
+    events: { onNewBatch: () => () => {}, ...api },
+    content: { list: vi.fn().mockResolvedValue({ ok: true, value: [] }), read: vi.fn() }
+  }
+  render(<ActivityResults request={{ parsed: { text: 'nmap', conditions: [], tokens: [] } } as any} />)
+  expect(await rows()).toHaveLength(2)
+  const fold = screen.getByTestId('activity-system-fold')
+  expect(fold.textContent).toContain('activity.systemFold {"count":3}')
+  expect(screen.getByTestId('activity-stats').textContent).toContain('activity.count {"groups":5,"matches":5}')
+  fireEvent.click(fold)
+  expect(screen.getAllByTestId('activity-row')).toHaveLength(5)
+})

@@ -170,7 +170,8 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
           </div>}
           </div>
         </div>
-          // A query asked for these rows; never fold what was searched for.
+          // A query asked for these rows; of what it matched only clean scope
+          // verdicts fold (src/renderer/src/lib/activityFolds.ts).
           return foldSystemRuns(page.items, !filtering).map((seg) => {
             if (seg.kind === 'item') return row(seg.item, seg.at, true)
             // A run holding the open row or the Reader's row stays open.
