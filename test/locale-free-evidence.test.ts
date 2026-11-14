@@ -12,7 +12,7 @@
 // Danish and English collators order them otherwise — so the assertions hold
 // whatever locale the machine running them has.
 //
-// Then a ratchet: no locale-dependent string API in src/core or src/main, the
+// Then a ratchet: no locale-dependent name in src/core or src/main code, the
 // processes that write evidence.
 
 import crypto from 'node:crypto'
@@ -20,6 +20,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import glob from 'fast-glob'
+import ts from 'typescript'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { compareCodeUnits } from '../src/core/code-unit-order'
 import { exportAttachmentDigest, listExportAttachments, type ExportAttachment } from '../src/core/export-attachments'
@@ -129,16 +130,62 @@ describe('related_commands of a file-watcher row', () => {
 // formatting belongs in the renderer. Anything that must stay here is listed
 // with the reason it never reaches evidence bytes, and the test fails when an
 // allowed use is gone so the list does not go stale.
-const LOCALE_DEPENDENT = /\.localeCompare\s*\(|\bIntl\s*\.\s*[A-Z]\w*|\.toLocale(?:Lower|Upper)Case\s*\(|\.toLocale(?:Date|Time)?String\s*\(/g
+//
+// The rule is about the names, not the call shape: `a['localeCompare'](b)`,
+// `String.prototype.localeCompare.call(a, b)`, `const { Collator } = Intl`,
+// `Intl?.Collator` and `Reflect.apply(''.localeCompare, …)` all name one of
+// them. The file is parsed, so comments are not code; an identifier is a hit,
+// and so is a string literal that names one and has no whitespace (a key, not
+// a sentence).
+const LOCALE_NAMES = ['localeCompare', 'toLocaleLowerCase', 'toLocaleUpperCase', 'toLocaleString', 'toLocaleDateString', 'toLocaleTimeString', 'Intl']
+const NAME_IN_STRING = new RegExp(`\\b(?:${LOCALE_NAMES.join('|')})\\b`)
+
+/** The locale-dependent names `source` uses in code, in order. */
+function localeNamesIn(source: string, fileName = 'x.ts'): string[] {
+  const kind = /\.[cm]?js$/.test(fileName) ? ts.ScriptKind.JS : fileName.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+  const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, false, kind)
+  const hits: string[] = []
+  const visit = (node: ts.Node): void => {
+    if ((ts.isIdentifier(node) || ts.isPrivateIdentifier(node)) && LOCALE_NAMES.includes(node.text.replace(/^#/, ''))) hits.push(node.text)
+    else if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node))
+      && !/\s/.test(node.text) && NAME_IN_STRING.test(node.text)) hits.push(JSON.stringify(node.text))
+    ts.forEachChild(node, visit)
+  }
+  visit(sf)
+  return hits
+}
+
 const ALLOWED: ReadonlyMap<string, string> = new Map<string, string>([
   // 'src/main/example.ts': 'why it is display-only'
 ])
+
+it('the matcher sees every way of naming them, and not a comment or a sentence', () => {
+  for (const code of [
+    'a.localeCompare(b)',
+    "a['localeCompare'](b)",
+    'String.prototype.localeCompare.call(a, b)',
+    'const { Collator } = Intl',
+    'new Intl.Collator().compare(a, b)',
+    'Intl?.Collator',
+    "Reflect.apply(''.localeCompare, a, [b])",
+    'x.toLocaleLowerCase()', 'x.toLocaleUpperCase()', 'd.toLocaleString()', 'd.toLocaleDateString()', 'd.toLocaleTimeString()',
+    'const k = `toLocaleString`',
+    "const { localeCompare: cmp } = String.prototype"
+  ]) expect(localeNamesIn(code), code).not.toEqual([])
+  for (const code of [
+    '// never localeCompare here: it collates by the process locale',
+    '/* Intl.Collator orders by locale */ const x = 1',
+    "throw new Error('use compareCodeUnits, not localeCompare')",
+    'const s = `Intl formatting belongs in the renderer`',
+    'const internals = 1; const Intlx = 2'
+  ]) expect(localeNamesIn(code), code).toEqual([])
+})
 
 it('no locale-dependent string API in src/core or src/main', () => {
   const found = new Map<string, string[]>()
   for (const file of glob.sync('src/{core,main}/**/*.{ts,tsx,js,mjs,cjs}', { cwd: ROOT, absolute: true })) {
     const rel = repoRelative(ROOT, file)
-    const hits = [...fs.readFileSync(file, 'utf8').matchAll(LOCALE_DEPENDENT)].map((m) => m[0])
+    const hits = localeNamesIn(fs.readFileSync(file, 'utf8'), file)
     if (hits.length) found.set(rel, hits)
   }
   const unexpected = [...found].filter(([rel]) => !ALLOWED.has(rel))
