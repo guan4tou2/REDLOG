@@ -157,9 +157,13 @@ function readsFor(fx: ReturnType<typeof seed>): Array<[name: string, run: () => 
 
 /** [read, work at 10k rows, work at 100k rows], each [statements, rows, udfCalls, jsonParse, lstat, open, scans]. */
 const PINNED: Array<[name: string, small: Tuple, large: Tuple]> = [
-  ['events:runQuery text, cold', [1028, 473, 0, 229, 1003, 200, 13], [10028, 4402, 0, 2101, 10003, 2000, 13]],
-  ['events:runQuery text, warm', [26, 475, 0, 29, 203, 0, 12], [26, 4404, 0, 101, 2003, 0, 12]],
-  ['events:runQuery coverage only', [10, 208, 0, 0, 0, 0, 6], [10, 2008, 0, 0, 0, 0, 6]],
+  // The body index's watermark is in its database: each sync reads it, counts
+  // both tiers against it (two scan-class counts more than the in-memory
+  // bookkeeping it replaced) and parses the one stored mark. 11 statements
+  // more on a warm read, the same at 10k and at 100k rows.
+  ['events:runQuery text, cold', [1038, 477, 0, 231, 1003, 200, 14], [10038, 4406, 0, 2103, 10003, 2000, 14]],
+  ['events:runQuery text, warm', [37, 480, 0, 32, 203, 0, 14], [37, 4409, 0, 104, 2003, 0, 14]],
+  ['events:runQuery coverage only', [17, 211, 0, 1, 0, 0, 8], [17, 2011, 0, 1, 0, 0, 8]],
   ['events:runQuery conditions only', [9, 109, 0, 100, 0, 0, 4], [9, 109, 0, 100, 0, 0, 4]],
   ['events:activityPage first page', [62, 109, 30000, 30250, 0, 0, 7], [62, 109, 300000, 300250, 0, 0, 7]],
   ['events:activityPage next page', [63, 113, 0, 251, 0, 0, 7], [63, 113, 0, 251, 0, 0, 7]],
