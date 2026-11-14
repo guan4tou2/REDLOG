@@ -511,7 +511,8 @@ export function recoverOrphanSessions(): number {
           SELECT 1 FROM events e
           WHERE e.agent_type = 'shell'
             AND e.subtype = 'session_end'
-            AND json_extract(e.data,'$.source') = 'builtin-terminal'
+            -- Spec 071 FR-012: a posted end does not close the terminal's session.
+            AND ${builtinTerminalRecordingSql('e.data')}
             AND EXISTS (SELECT 1 FROM json_each(e.data, '$._causes') c WHERE c.value = s.id)
         )
     `).all() as Array<{ start_id: string; start_data: string }>

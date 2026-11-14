@@ -232,6 +232,24 @@ describe('orphan recovery on project open', () => {
     expect(ends).toEqual([])
   })
 
+  // Review: the other half of the same query. An end that cites a start
+  // closes it; a posted end must not, or the genuine recording is never
+  // recovered and its segment hashes never enter the chain.
+  it('a session_end posted to the API does not close the terminal\'s own orphaned session', async () => {
+    const start = ingestEvent('shell', sessionStart('rec-n', cast('genuine-n.cast', 'GENUINE-N')), ids)!
+    await viaApi({ subtype: 'session_end', source: 'builtin-terminal', terminalId: 't-rec-n', recordingId: 'rec-n', _causes: [start.id] })
+    expect(recoverOrphanSessions()).toBe(1)
+    const ends = recoveredEnds().filter((d) => d.recordingId === 'rec-n' && d.recovered === true)
+    expect(ends.map((d) => (d.castSegments as Array<{ path: string }>).map((p) => path.basename(p.path)))).toEqual([['genuine-n.cast']])
+  })
+
+  it('an end written before 071 still closes a session written before 071', () => {
+    const start = preStamp(sessionStart('rec-o', cast('old-o.cast', 'OLD-O')))
+    preStamp({ subtype: 'session_end', source: 'builtin-terminal', terminalId: 't-rec-o', recordingId: 'rec-o', _causes: [start] })
+    recoverOrphanSessions()
+    expect(recoveredEnds().filter((d) => d.recordingId === 'rec-o' && d.recovered === true)).toEqual([])
+  })
+
   it('still closes the terminal\'s own orphaned session, and one written before 071', () => {
     ingestEvent('shell', sessionStart('rec-l', cast('genuine-l.cast', 'GENUINE-L')), ids)
     preStamp(sessionStart('rec-m', cast('old-m.cast', 'OLD-M')))
