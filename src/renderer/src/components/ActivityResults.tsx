@@ -1,13 +1,14 @@
 import type { ExportRequest } from '../../../core/export-plan'
 import { sourceSessionKey } from '../../../core/operation-pair-key'
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { ActivityPage, ActivityRequest, ActivitySummary } from '../../../core/activity-contract'
 import type { BodySearchCoverage } from '../../../core/http-body-index'
 import { useI18n } from '../i18n'
 import { useReadState } from '../lib/readState'
 import { eventTitle } from '../lib/eventTitle'
 import { foldSystemRuns } from '../lib/activityFolds'
-import { formatDate, formatTime, useDisplayZone, zoneLabel } from '../lib/time'
+import { formatDate, formatTime } from '../lib/time'
 import { Button } from './Button'
 import { activityResultLabel } from '../lib/commandStatus'
 import { ActivityReader, sourceName } from './ActivityReader'
@@ -31,7 +32,7 @@ export function SearchCoverage({ coverage }: { coverage?: BodySearchCoverage }):
 }
 
 /** Same parsed query and EventFilter as raw Search; grouping happens in SQL. */
-export function ActivityResults({ request, onOpen, onExportSelection, onClearQuery, active = true }: { active?: boolean; onClearQuery?: () => void; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: Omit<ActivityRequest, 'projectId'>; onOpen?: (id: string, ts: number) => void }): JSX.Element {
+export function ActivityResults({ request, onOpen, onExportSelection, onClearQuery, active = true, statsSlot }: { active?: boolean; statsSlot?: HTMLElement | null; onClearQuery?: () => void; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: Omit<ActivityRequest, 'projectId'>; onOpen?: (id: string, ts: number) => void }): JSX.Element {
   const { t } = useI18n()
   const project = useReadState(async () => {
     const config = await window.redlog.config.get() as { engagement?: unknown }
@@ -41,12 +42,11 @@ export function ActivityResults({ request, onOpen, onExportSelection, onClearQue
   })
   if (project.state.phase === 'failed') return <div role="alert">{project.state.error} <Button onClick={project.retry}>{t('common.retry')}</Button></div>
   if (!project.state.value) return <span role="status">{t('search.loading')}</span>
-  return <ActivityList key={`${project.state.value}:${JSON.stringify(request)}`} active={active} request={{ ...request, projectId: project.state.value }} onOpen={onOpen} onExportSelection={onExportSelection} onClearQuery={onClearQuery} />
+  return <ActivityList key={`${project.state.value}:${JSON.stringify(request)}`} active={active} request={{ ...request, projectId: project.state.value }} onOpen={onOpen} onExportSelection={onExportSelection} onClearQuery={onClearQuery} statsSlot={statsSlot} />
 }
-function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active }: { active: boolean; onClearQuery?: () => void; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: ActivityRequest; onOpen?: (id: string, ts: number) => void }): JSX.Element {
+function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active, statsSlot }: { active: boolean; statsSlot?: HTMLElement | null; onClearQuery?: () => void; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: ActivityRequest; onOpen?: (id: string, ts: number) => void }): JSX.Element {
   const { t } = useI18n()
   const read = useReadState(() => window.redlog.events.activityPage({ ...request, limit: 50 }))
-  const zone = useDisplayZone()
   const [exportKind,setExportKind] = useState<'activity' | 'session'>('activity')
   const [expanded, setExpanded] = useState<string | null>(null)
   // System-event folds the operator opened, by the first row's id.
@@ -102,12 +102,19 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
       const filtering = request.parsed.text.trim().length > 0 || request.parsed.conditions.length > 0
       return <>
       <SearchCoverage coverage={page.bodyCoverage} />
-      <div data-testid="activity-stats" className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-redlog-text-dim">
-        <span>{t('activity.count', { groups: page.totalGroups, matches: page.totalMatches })}
-          {filtering && onClearQuery && <button type="button" data-testid="activity-clear-filter" onClick={onClearQuery} className="ml-2 underline hover:text-redlog-text focus-visible:outline focus-visible:outline-red-400">{t('activity.clearFilter')}</button>}
-        </span>
-        {newEvents > 0 && <button type="button" data-testid="activity-new-events" onClick={refresh} className="flex items-center gap-1.5 rounded border border-redlog-border bg-redlog-elevated px-2 py-0.5 text-redlog-text hover:border-redlog-text-dim focus-visible:outline focus-visible:outline-red-400"><span aria-hidden className="text-emerald-400">↑</span>{t('workspace.newActivity', { count: newEvents })}</button>}
-      </div>
+      {(() => {
+        // The count and what acts on it. With a host row to sit in (the
+        // workspace's tab row) it goes there instead of taking a row of its
+        // own, and only while this reading is the one shown.
+        const stats = <div data-testid="activity-stats" className={`flex flex-wrap items-center gap-2 text-xs text-redlog-text-dim ${statsSlot ? '' : 'mb-2 justify-between'}`}>
+          <span>{t('activity.count', { groups: page.totalGroups, matches: page.totalMatches })}
+            {filtering && onClearQuery && <button type="button" data-testid="activity-clear-filter" onClick={onClearQuery} className="ml-2 underline hover:text-redlog-text focus-visible:outline focus-visible:outline-red-400">{t('activity.clearFilter')}</button>}
+          </span>
+          {newEvents > 0 && <button type="button" data-testid="activity-new-events" onClick={refresh} className="flex items-center gap-1.5 rounded border border-redlog-border bg-redlog-elevated px-2 py-0.5 text-redlog-text hover:border-redlog-text-dim focus-visible:outline focus-visible:outline-red-400"><span aria-hidden className="text-emerald-400">↑</span>{t('workspace.newActivity', { count: newEvents })}</button>}
+        </div>
+        if (!statsSlot) return stats
+        return active ? createPortal(stats, statsSlot) : null
+      })()}
       {page.items.length > 0 && <div aria-hidden="true" className={`${ROW_GRID} px-2 py-1 text-xs uppercase text-redlog-text-faint select-none`}>
         <span>{t('activity.col.time')}</span><span>{t('activity.col.source')}</span><span>{t('activity.col.content')}</span>{/* The column is the 24px chevron's; the label may be wider, so it stays on
             one line and reaches left into the gap instead of stacking 檢/視. */}
@@ -118,7 +125,7 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
         {(() => {
           const day = (at: number): JSX.Element | null => (at === 0 || formatDate(page.items[at - 1].firstAt) !== formatDate(page.items[at].firstAt))
             ? <div data-testid="activity-day" role="separator" className="flex items-center gap-2 px-2 py-1.5 text-xs text-redlog-text-dim select-none">
-              <span className="rounded border border-redlog-border px-2 py-0.5 font-mono">{formatDate(page.items[at].firstAt)}{formatDate(page.items[at].firstAt) === formatDate(Date.now()) && <span className="font-sans text-redlog-text-dim"> ({t('activity.today')})</span>}</span><span className="h-px flex-1 bg-redlog-border-subtle" /><span className="font-mono text-redlog-text-faint">{zoneLabel(zone, t)}</span>
+              <span className="rounded border border-redlog-border px-2 py-0.5 font-mono">{formatDate(page.items[at].firstAt)}{formatDate(page.items[at].firstAt) === formatDate(Date.now()) && <span className="font-sans text-redlog-text-dim"> ({t('activity.today')})</span>}</span><span className="h-px flex-1 bg-redlog-border-subtle" />
             </div>
             : null
           const row = (item: ActivitySummary, at: number, withDay: boolean): JSX.Element => <div key={item.id} className="min-w-0">

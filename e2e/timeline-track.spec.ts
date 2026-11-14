@@ -1,7 +1,7 @@
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test'
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { launchWithTempHome, makeTempHome, mainWindowSize, resetSharedApp, openTestProject, openView, resizeMainWindow, openSwimLanes } from './helpers'
+import { launchWithTempHome, makeTempHome, mainWindowSize, resetSharedApp, openTestProject, openView, resizeMainWindow, openSwimLanes, setTimelineMode, timelineMode, resetTimelineZoom } from './helpers'
 
 // The timeline's own journeys share ONE Electron launch (each used to start the
 // app for itself, which was most of this suite's wall-clock). Each describe
@@ -197,8 +197,7 @@ test.describe.serial('timeline-geometry: timeline geometry + startup gates', () 
     // Visual evidence: reset the zoom (100% is the whole domain since
     // 2026-11-08) and both scroll axes so the real events at the left edge and
     // the far-future marker at the right are on screen at once.
-    const reset = page.getByTestId('timeline-zoom-reset')
-    if (await reset.isEnabled()) await reset.click()
+    await resetTimelineZoom(page)
     await page.evaluate(() => {
       const outer = document.querySelector('[data-testid="timeline-lane-scroll"]') as HTMLElement
       const scroll = document.querySelector('div.cursor-grab') as HTMLElement
@@ -520,11 +519,11 @@ test.describe.serial('timeline-standard-mode: timeline standard / swim-lane mode
     await post('marker', { title: 'mode-note', severity: 'info' })
     await page.waitForTimeout(600)
     await openView(page, 'timeline')
-    await page.getByTestId('timeline-mode-standard').waitFor({ state: 'visible', timeout: 10_000 })
+    await page.getByTestId('timeline-more-menu').waitFor({ state: 'visible', timeout: 10_000 })
   })
 
   test('opens in standard mode: one track of every event, no swim-lane rows', async () => {
-    await expect(page.getByTestId('timeline-mode-standard')).toHaveAttribute('aria-pressed', 'true')
+    expect(await timelineMode(page)).toBe('standard')
     await expect(page.getByTestId('timeline-standard-track')).toBeVisible()
     await expect(page.locator('[data-testid^="timeline-band-"]')).toHaveCount(0)
     // The shell command AND the Evidence marker share the one track.
@@ -536,8 +535,7 @@ test.describe.serial('timeline-standard-mode: timeline standard / swim-lane mode
   // scroll to. Centred end labels hung past the track and made it scroll a few
   // pixels, clipped as ":12" and "03:". Widths are CSS px on both sides.
   test('at 100% the track does not scroll, and the end labels sit inside it', async () => {
-    const reset = page.getByTestId('timeline-zoom-reset')
-    if (await reset.isEnabled()) await reset.click()
+    await resetTimelineZoom(page)
     await expect(page.getByTestId('timeline-zoom-level')).toHaveText('100%')
     await expect.poll(() => page.evaluate(() => {
       const s = document.querySelector('div.cursor-grab') as HTMLElement
@@ -574,26 +572,22 @@ test.describe.serial('timeline-standard-mode: timeline standard / swim-lane mode
     await expect(page.getByTestId('timeline-follow-badge')).toContainText(/Live|即時/)
   })
 
-  test('the toolbar Activity link opens the activity log and returns to the selected event', async () => {
-    await selectWhoami()
-    await page.getByTestId('timeline-open-activity').click()
-    await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'search')
-    await page.getByTestId('activity-return').getByRole('button').click()
-    await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'timeline')
-    await expect(page.getByTestId('timeline-detail-panel')).toContainText('whoami')
+  // 2026-11-14: the toolbar's 活動紀錄 link was removed (the sidebar has it).
+  test('the toolbar has no Activity link', async () => {
+    await expect(page.getByTestId('timeline-open-activity')).toHaveCount(0)
   })
 
   test('switching to swim lanes keeps the selection and the zoom', async () => {
-    // The Activity-link test before this one comes back with whoami still
-    // selected, and a click on the selected event deselects it. Select only if
-    // nothing is open, so this test owns its precondition.
+    // An earlier test can leave whoami selected, and a click on the selected
+    // event deselects it. Select only if nothing is open, so this test owns
+    // its precondition.
     if (!(await page.getByTestId('timeline-detail-panel').isVisible())) {
       await page.getByRole('button', { name: /whoami/ }).first().click()
     }
     await expect(page.getByTestId('timeline-detail-panel')).toContainText('whoami')
     await page.getByRole('button', { name: /Zoom in/ }).click()
     const zoom = await page.getByTestId('timeline-zoom-level').textContent()
-    await page.getByTestId('timeline-mode-lanes').click()
+    await setTimelineMode(page, 'lanes')
     await expect(page.getByTestId('timeline-standard-track')).toHaveCount(0)
     await expect(page.locator('[data-testid^="timeline-band-"]').first()).toBeVisible()
     await expect(page.getByTestId('timeline-detail-panel')).toBeVisible()
@@ -604,27 +598,29 @@ test.describe.serial('timeline-standard-mode: timeline standard / swim-lane mode
   test('swim lanes show their own header and hide the bottom list; the header folds back', async () => {
     // Lanes mode (user decision 2026-11-08): the list is hidden, as in the
     // Stitch prototype. The selection still opens in the detail pane.
-    await expect(page.getByTestId('timeline-mode-lanes')).toHaveAttribute('aria-pressed', 'true')
+    expect(await timelineMode(page)).toBe('lanes')
     const header = page.getByTestId('timeline-lanes-header')
     await expect(header).toBeVisible()
     await expect(page.getByTestId('timeline-lanes-active')).toContainText(/\d+/)
     await expect(page.getByTestId('timeline-log-resize')).toHaveCount(0)
     await expect(page.getByTestId('timeline-detail-panel')).toBeVisible()
     await page.getByTestId('timeline-lanes-collapse').click()
-    await expect(page.getByTestId('timeline-mode-standard')).toHaveAttribute('aria-pressed', 'true')
     await expect(page.getByTestId('timeline-lanes-header')).toHaveCount(0)
-    await expect(page.getByTestId('rail-count')).toBeVisible()
+    expect(await timelineMode(page)).toBe('standard')
+    // The list is back: its cards, not a count (the toolbar's count is the
+    // page's one count since 2026-11-14).
+    await expect(page.getByTestId('rail-card').first()).toBeVisible()
     // The next test reads the choice back, so leave lanes selected.
-    await page.getByTestId('timeline-mode-lanes').click()
+    await setTimelineMode(page, 'lanes')
   })
 
   test('the choice is remembered for the project', async () => {
-    await expect(page.getByTestId('timeline-mode-lanes')).toHaveAttribute('aria-pressed', 'true')
+    expect(await timelineMode(page)).toBe('lanes')
     await openView(page, 'dashboard')
     await openView(page, 'timeline')
-    await expect(page.getByTestId('timeline-mode-lanes')).toHaveAttribute('aria-pressed', 'true')
+    expect(await timelineMode(page)).toBe('lanes')
     await expect(page.getByTestId('timeline-standard-track')).toHaveCount(0)
-    await page.getByTestId('timeline-mode-standard').click()
+    await setTimelineMode(page, 'standard')
     await expect(page.getByTestId('timeline-standard-track')).toBeVisible()
   })
 })
@@ -842,9 +838,13 @@ test.describe.serial('timeline-focus-window: minimap focus window', () => {
     await expect(page.getByTestId('minimap-window')).toBeVisible()
   })
 
-  test('the strip is titled and says what span it covers', async () => {
-    await expect(page.getByText(/^Event density/)).toBeVisible()
-    await expect(page.getByTestId('minimap-span')).toHaveText(/\d{2}:\d{2}:\d{2} - \d{2}:\d{2}:\d{2}/)
+  // 2026-11-14: the caption row above the strip is gone — the span is on the
+  // ruler and in the range control — and the strip itself is unchanged.
+  test('the strip has no caption row; the ruler says the span', async () => {
+    await expect(page.getByTestId('minimap-span')).toHaveCount(0)
+    await expect(page.getByText(/^Event density/)).toHaveCount(0)
+    await expect(page.getByTestId('timeline-minimap')).toBeVisible()
+    await expect(page.getByTestId('timeline-axis-label').first()).toHaveText(/\d{2}:\d{2}/)
   })
 
   test('dragging the window body pans the track', async () => {

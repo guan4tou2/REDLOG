@@ -44,7 +44,7 @@ const FIRST_RUN: PageSpec = { name: 'first run', open: p => openView(p, 'dashboa
 
 const PAGES: PageSpec[] = [
   { name: 'dashboard', open: p => openView(p, 'dashboard'), first: '[data-testid="dashboard-header"] h1', body: '[data-testid="dashboard-header"]' },
-  { name: 'activity', open: p => openView(p, 'search'), first: '[data-testid="activity-title"]', body: '[data-testid="recording-workspace"] [role="tablist"]' },
+  { name: 'activity', open: p => openView(p, 'search'), first: '[data-testid="activity-title"]', body: '[data-testid="activity-tab-row"]' },
   { name: 'targets', open: p => openView(p, 'targets'), first: '[data-testid="targets-scope-header"] h1', body: '[data-testid="targets-scope-header"] > div' },
   { name: 'evidence', open: p => openView(p, 'screenshots'), first: '[data-testid="evidence-header"] h1', body: '[data-testid="evidence-header"] [role="tablist"]' },
   { name: 'settings home', open: settingsHome, first: '[data-testid="settings-home"] h1', body: '[data-testid="settings-home"]' },

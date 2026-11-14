@@ -15,9 +15,10 @@ function Harness(over: Partial<Props>): JSX.Element {
     t, timeRange: null, setTimeRange: vi.fn(), hasMore: false, loadedCount: 3, loadedSpanMs: 90 * 60_000, projectSpanMs: null,
     total: { state: 'ok', value: 3 }, onRetryTotal: vi.fn(), onLoadMore: vi.fn(),
     zoom: 1, onZoomOut: vi.fn(), onZoomIn: vi.fn(), onResetZoom: vi.fn(), anchorTs: null,
-    mode: 'standard', onModeChange: vi.fn(), onOpenActivity: vi.fn(),
+    mode: 'standard', onModeChange: vi.fn(),
     filterQuery: '', onFilterQueryChange: vi.fn(), searchInputRef: createRef<HTMLInputElement>(),
-    onHelp: vi.fn(), moreMenu: <span data-testid="more-slot" />, followBadge: <span data-testid="follow-slot" />,
+    onHelp: vi.fn(), attributionBlind: false, lanes: new Set(),
+    moreItems: <span data-testid="more-slot" />, followBadge: <span data-testid="follow-slot" />,
     ...over
   }
   return <TimelineToolbar {...props} />
@@ -85,13 +86,16 @@ describe('TimelineToolbar', () => {
     expect(level.textContent).toBe('150%')
     expect(level.tagName).not.toBe('BUTTON')
     fireEvent.click(screen.getByText('−')); fireEvent.click(screen.getByText('+'))
+    // Reset zoom is in 更多 (2026-11-14), with its `0` shortcut beside it.
+    fireEvent.click(screen.getByTestId('timeline-more-menu'))
     fireEvent.click(screen.getByText('Reset zoom'))
     expect([onZoomOut, onZoomIn, onResetZoom].map((f) => f.mock.calls.length)).toEqual([1, 1, 1])
   })
 
-  it('anchor is a dash with no selection and the event time with one', () => {
+  it('anchor is absent with no selection (no placeholder) and the event time with one', () => {
     draw()
-    expect(screen.getByTestId('timeline-anchor').textContent).toBe('—')
+    expect(screen.queryByTestId('timeline-anchor')).toBeNull()
+    expect(screen.queryByText('Current anchor')).toBeNull()
     cleanup()
     draw({ anchorTs: Date.UTC(2026, 0, 2, 3, 4, 5) })
     expect(screen.getByTestId('timeline-anchor').textContent).toMatch(/\d{2}:\d{2}:05/)
@@ -129,21 +133,28 @@ describe('TimelineToolbar', () => {
     expect(onRetryTotal).toHaveBeenCalled()
   })
 
-  it('Activity link calls openActivity; mode toggle reports the mode', () => {
-    const onOpenActivity = vi.fn(); const onModeChange = vi.fn()
-    draw({ onOpenActivity, onModeChange })
-    fireEvent.click(screen.getByTestId('timeline-open-activity'))
-    expect(onOpenActivity).toHaveBeenCalledTimes(1)
+  // 2026-11-14: the Activity link is gone (the sidebar has it); the mode is
+  // set once per project and lives in 更多.
+  it('has no Activity link; the mode toggle in 更多 reports the mode', () => {
+    const onModeChange = vi.fn()
+    draw({ onModeChange })
+    expect(screen.queryByTestId('timeline-open-activity')).toBeNull()
+    fireEvent.click(screen.getByTestId('timeline-more-menu'))
     fireEvent.click(screen.getByTestId('timeline-mode-lanes'))
     expect(onModeChange).toHaveBeenCalledWith('lanes')
-    expect(screen.getByTestId('timeline-mode-standard').getAttribute('aria-pressed')).toBe('true')
+    // Choosing closes the menu; the harness's mode prop is still standard.
+    expect(screen.queryByTestId('timeline-more-panel')).toBeNull()
+    fireEvent.click(screen.getByTestId('timeline-more-menu'))
+    expect(screen.getByTestId('timeline-mode-standard').getAttribute('aria-checked')).toBe('true')
   })
 
-  it('Search range focuses the highlight input', () => {
+  it('Search range in 更多 focuses the highlight input and closes the menu', () => {
     draw()
     const input = screen.getByTestId('timeline-search-input')
     expect(document.activeElement).not.toBe(input)
+    fireEvent.click(screen.getByTestId('timeline-more-menu'))
     fireEvent.click(screen.getByTestId('timeline-search-toggle'))
     expect(document.activeElement).toBe(input)
+    expect(screen.queryByTestId('timeline-more-panel')).toBeNull()
   })
 })

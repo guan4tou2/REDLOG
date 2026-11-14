@@ -180,3 +180,27 @@ it('puts the session and pid on the expanded summary, and marks today in the day
   expect(meta.textContent).toContain('77')
   expect(screen.getByTestId('activity-day').textContent).toContain('activity.today')
 })
+
+// 2026-11-14: with a slot to sit in (the workspace's tab row) the count goes
+// there instead of taking a row, and the day separator no longer repeats the
+// zone the workspace states once.
+it('draws the count in the slot it is given, only while active, and no zone on the day separator', async () => {
+  const slot = document.createElement('div')
+  document.body.appendChild(slot)
+  api.activityPage.mockResolvedValueOnce({ items: [summary('a')], hasMore: false, nextCursor: null, totalGroups: 1, totalMatches: 1, snapshot: {} })
+  ;(window as any).redlog = {
+    config: { get: vi.fn().mockResolvedValue({ engagement: { id: 'p' } }) },
+    events: { onNewBatch: () => () => {}, ...api },
+    content: { list: vi.fn().mockResolvedValue({ ok: true, value: [] }), read: vi.fn() }
+  }
+  const { rerender } = render(<ActivityResults statsSlot={slot} request={{ parsed: { text: '', conditions: [], tokens: [] } } as any} />)
+  await rows()
+  expect(slot.querySelector('[data-testid="activity-stats"]')?.textContent).toContain('activity.count')
+  expect(screen.getAllByTestId('activity-stats')).toHaveLength(1)
+  const day = screen.getByTestId('activity-day').textContent ?? ''
+  expect(day).not.toContain('filter.localTime')
+  expect(day).not.toContain('UTC')
+  rerender(<ActivityResults active={false} statsSlot={slot} request={{ parsed: { text: '', conditions: [], tokens: [] } } as any} />)
+  expect(slot.querySelector('[data-testid="activity-stats"]')).toBeNull()
+  slot.remove()
+})
