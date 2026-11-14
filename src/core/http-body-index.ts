@@ -60,6 +60,35 @@ export function _documentRowid(ref: number, kind: DocKind, n: number): number { 
 let documentsPerKind = KIND_SPAN
 export function _limitDocumentsPerKind(n?: number): void { documentsPerKind = Math.min(n ?? KIND_SPAN, KIND_SPAN) }
 class TooManyDocuments extends Error {}
+// ── When SQLite rolls the transaction back itself ─────────────────────────
+// SQLITE_FULL (a full disk, an ordinary event for a recorder), SQLITE_IOERR
+// and a few others end the whole transaction, not just the statement: on
+// this build `db.inTransaction` is false right after. Any statement run after
+// that runs in autocommit, one by one, and a watermark written that way
+// vouches for rows that were rolled back. So: when an index statement throws
+// and the transaction is gone, nothing more is written; the error leaves the
+// transaction as IndexRolledBack. A statement error that does not end the
+// transaction (a constraint, a malformed input) still fails only its ref.
+// The rollback took everything of that transaction with it (refs, documents,
+// verifications, the directories row, a new watermark), so the stored
+// watermark is the previous one, still true, and the next sync carries on
+// from it.
+class IndexRolledBack extends Error {
+  constructor(readonly cause: unknown) { super(`The body index's transaction was rolled back: ${cause instanceof Error ? cause.message : String(cause)}`) }
+}
+/** Inside a transaction's body: what to throw for `error`. */
+function rolledBack(db: Database.Database, error: unknown): unknown {
+  return error instanceof IndexRolledBack || db.inTransaction ? error : new IndexRolledBack(error)
+}
+/** A sync or TEMP link that could not be written this call: its transaction
+ *  was rolled back (by SQLite, or by better-sqlite3 when the error left the
+ *  transaction), so the index is as it was before the call. Locked, full,
+ *  failing I/O, out of memory, interrupted. Anything else is a fault in this
+ *  code and stays loud. */
+function indexUnavailable(error: unknown): boolean {
+  return error instanceof IndexRolledBack
+    || (error instanceof Database.SqliteError && /^SQLITE_(BUSY|FULL|IOERR|NOMEM|INTERRUPT)/.test(error.code))
+}
 // Contentless: the index holds each document's words, not a second copy of
 // its text (the saved body is the text). Nothing reads a document back, so
 // what that gives up is unused: SELECT content is NULL, and snippet() and
@@ -486,6 +515,9 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
         })
       }
       catch (error) {
+        // SQLite rolled the transaction back (the error may arrive wrapped,
+        // as body-source wraps what its reader throws): stop here.
+        if (!db.inTransaction) throw new IndexRolledBack(error)
         bytes = 0
         status = error instanceof ContentAccessError && error.status === 'missing' ? 'missing' : error instanceof ContentAccessError && error.status==='unsupported'?'limited':'failed'
         reason = error instanceof ContentAccessError ? error.status : 'failed'
@@ -623,7 +655,7 @@ function sync(projectDir: string): void {
   const dirs = directorySignature(projectDir)
   // IMMEDIATE: the write lock is waited for at BEGIN (the busy timeout), not
   // refused mid-walk when another connection committed after this one read.
-  db.transaction(() => {
+  db.transaction(() => { try {
     // Under the lock, like the watermark it is compared with.
     const latest = latestSnapshots(), latestIds = latest.map(l => l.id).sort(compareCodeUnits)
     const directoriesChanged = (stmt(db, "SELECT value FROM body_index_meta WHERE key='directories'").get() as { value: string } | undefined)?.value !== dirs
@@ -651,7 +683,7 @@ function sync(projectDir: string): void {
     const next: Mark = { latest: latestIds, tiers: tiers.map(({ n, max, idAtMax }) => ({ n, max, idAtMax })) }
     // Unchanged, it is not written: a commit is a flush, slow on Windows.
     stmt(db, "INSERT INTO body_index_meta VALUES('mark',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE value IS NOT excluded.value").run(JSON.stringify(next))
-  }).immediate()
+  } catch (error) { throw rolledBack(db, error) } }).immediate()
 }
 function walkAll(db: Database.Database, projectDir: string, latest: string[], range: Array<{ after: number; upTo: number }>): void {
   stmt(db, 'DELETE FROM body_seen').run()
@@ -820,9 +852,13 @@ function readPlan(projectDir: string, snapshot: ExportSnapshot | undefined, link
         AND ${ONLY_LATEST_PREFIX}`).all(bounds[i], Math.max(upTo[i], 0), JSON.stringify(latestIds)) as Array<{ id: string; r: number }>)
       local.set(row.id, { id: row.id, tier: table, r: row.r })
   }
-  if (link && (local.size || hasExtraTables(db))) {
-    ensureExtraTables(db)
-    db.transaction(() => {
+  // TEMP lives in a temporary file of its own, which can fill independently
+  // of the index. A TEMP link that cannot be written is rolled back to what
+  // the last call left; the events it did not link have no TEMP rows, so
+  // they are not matched and coverage counts them pending.
+  if (link && (local.size || hasExtraTables(db))) try {
+    db.transaction(() => { try {
+      ensureExtraTables(db)
       for (const { event_id } of stmt(db, 'SELECT DISTINCT event_id FROM body_x_refs').all() as { event_id: string }[]) if (!local.has(event_id)) dropExtra(db, event_id)
       const linked = stmt(db, 'SELECT status,verified_desc,verified_file,verified_sig FROM body_x_refs WHERE event_id=?')
       for (const l of local.values()) {
@@ -832,8 +868,8 @@ function readPlan(projectDir: string, snapshot: ExportSnapshot | undefined, link
         const row = source.prepare(`SELECT id,data,agent_type,rowid AS r,engagement_id FROM ${l.tier} WHERE rowid=?`).get(l.r) as ContentRow | undefined
         if (row) linkRow(row, projectDir, l.tier, EXTRA)
       }
-    })()
-  }
+    } catch (error) { throw rolledBack(db, error) } })()
+  } catch (error) { if (!indexUnavailable(error)) throw error }
   const skip = new Set([...held].filter(id => !wanted.has(id)))
   for (const id of local.keys()) skip.add(id)
   return { upTo, local: [...local.values()], skip: [...skip] }
@@ -894,11 +930,13 @@ export function searchHttpBodyTermIds(query: string, projectDir = getProjectDir(
   const terms = ftsTerms(query)
   if (!terms.length)
     return []
-  // Another writer held the index past the busy timeout: this call reads the
-  // rows the watermark does not cover from TEMP instead (readPlan).
+  // Another writer held the index past the busy timeout, or the sync could
+  // not be written (a full disk) and was rolled back whole: this call reads
+  // the rows the watermark does not cover from TEMP instead (readPlan), and
+  // the next search syncs again.
   if (!getDB().readonly) {
     try { sync(projectDir) }
-    catch (error) { if (!(error instanceof Database.SqliteError && error.code.startsWith('SQLITE_BUSY'))) throw error }
+    catch (error) { if (!indexUnavailable(error)) throw error }
   }
   const db = getIndex(projectDir), plan = readPlan(projectDir, snapshot, true)
   const kind = excludeAiRaw ? " AND r.kind<>'ai-raw'" : ''
@@ -911,7 +949,8 @@ export function searchHttpBodyTermIds(query: string, projectDir = getProjectDir(
   const find = stmt(db, `SELECT DISTINCT r.event_id FROM body_fts JOIN body_event_refs r ON ${documentOf('body_fts.rowid', 'r')} WHERE body_fts MATCH @term
       AND r.row<=CASE r.tier WHEN 'events' THEN @chained ELSE @logged END${kind}
       AND r.event_id NOT IN (SELECT value FROM json_each(@skip))`)
-  const findLocal = plan.local.length ? stmt(db, `SELECT DISTINCT r.event_id FROM body_x_fts JOIN body_x_refs r ON ${documentOf('body_x_fts.rowid', 'r')}
+  // No TEMP tables: a first TEMP link that was rolled back made none.
+  const findLocal = plan.local.length && hasExtraTables(db) ? stmt(db, `SELECT DISTINCT r.event_id FROM body_x_fts JOIN body_x_refs r ON ${documentOf('body_x_fts.rowid', 'r')}
       WHERE body_x_fts MATCH @term AND r.event_id IN (SELECT value FROM json_each(@local))${kind}`) : null
   const skip = JSON.stringify(plan.skip), local = JSON.stringify(plan.local.map(l => l.id))
   return terms.map(term => {
