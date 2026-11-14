@@ -47,7 +47,11 @@ function hasToken(terms: string[]): boolean[] {
     db.exec(`CREATE VIRTUAL TABLE probe USING fts5(t, tokenize='${FTS_TOKENIZE}')`)
     const insert = db.prepare('INSERT INTO probe(rowid,t) VALUES(?,?)')
     terms.forEach((term, i) => insert.run(i + 1, term))
-    const found = db.prepare('SELECT count(*) AS n FROM probe WHERE probe MATCH ? AND rowid=?')
+    // CAST: a JS number binds as REAL, and FTS5 ignores a REAL rowid
+    // equality beside MATCH. A tokenless phrase matches no row at all, so the
+    // answer was right without it; with it, a term is matched against its own
+    // row only, as said above.
+    const found = db.prepare('SELECT count(*) AS n FROM probe WHERE probe MATCH ? AND rowid=CAST(? AS INTEGER)')
     return terms.map((term, i) => ascii[i] ? /[A-Za-z0-9]/.test(term)
       : (found.get(`"${term.replace(/"/g, '""')}"`, i + 1) as { n: number }).n > 0)
   } finally { db.close() }
