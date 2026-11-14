@@ -120,6 +120,9 @@ const noHousekeeping = { excludeHousekeeping: true }
 function readsFor(fx: ReturnType<typeof seed>): Array<[name: string, run: () => unknown]> {
   const text = parseQuery('needle-3'); if (!text.ok) throw new Error('fixture query')
   const none = parseQuery('operator:operator'); if (!none.ok) throw new Error('fixture query')
+  // A word only in a response body with a word only in the request URL: two
+  // rows of one exchange, the case decision 2026-11-15 §1 item 5 joined.
+  const across = parseQuery('needle-3 https'); if (!across.ok) throw new Error('fixture query')
   const empty = parseQuery(''); if (!empty.ok) throw new Error('fixture query')
   const activityRequest = { projectId: 'eng', parsed: empty.parsed, limit: 50 }
   let firstActivity: { nextCursor?: string | null } | undefined
@@ -129,6 +132,8 @@ function readsFor(fx: ReturnType<typeof seed>): Array<[name: string, run: () => 
     ['events:runQuery text, warm', () => reads.executeEventQuery({ parsed: text.parsed, limit: 100 })],
     ['events:runQuery coverage only', () => bodyCoverage(text.parsed)],
     ['events:runQuery conditions only', () => reads.executeEventQuery({ parsed: none.parsed, limit: 100 })],
+    ['events:runQuery two terms across an exchange', () => reads.executeEventQuery({ parsed: across.parsed, limit: 100 })],
+    ['events:count two terms across an exchange', () => reads.countEvents({ parsed: across.parsed, filter: {} })],
     ['events:activityPage first page', () => (firstActivity = activity.queryActivityPage(activityRequest))],
     ['events:activityPage next page', () => activity.queryActivityPage({ ...activityRequest, cursor: firstActivity?.nextCursor ?? undefined })],
     ['events:sourceSessions', () => querySourceSessions({ projectId: 'eng', kind: 'agent', limit: 50 })],
@@ -169,6 +174,15 @@ const PINNED: Array<[name: string, small: Tuple, large: Tuple]> = [
   ['events:runQuery text, warm', [41, 482, 0, 32, 203, 0, 18], [41, 4411, 0, 104, 2003, 0, 18]],
   ['events:runQuery coverage only', [15, 210, 0, 1, 0, 0, 8], [15, 2010, 0, 1, 0, 0, 8]],
   ['events:runQuery conditions only', [9, 109, 0, 100, 0, 0, 4], [9, 109, 0, 100, 0, 0, 4]],
+  // Two terms joined across an exchange (decision 2026-11-15 §1 item 5). The
+  // per-Event matching it replaced measured the page at [42, 453, 0, 3, 203,
+  // 0, 18] (10k) and [42, 4310, 0, 3, 2003, 0, 18] (100k), and the count
+  // exactly as below: the same statements and scan-class statements. The
+  // extra rows and JSON.parse calls are the matches it now finds, 3 before
+  // and a full page now. The exchanges are found from the rows that hold a
+  // term, by rowid and id, never by reading the tier.
+  ['events:runQuery two terms across an exchange', [42, 511, 0, 61, 203, 0, 18], [42, 4411, 0, 104, 2003, 0, 18]],
+  ['events:count two terms across an exchange', [23, 240, 0, 2, 203, 0, 9], [23, 2297, 0, 2, 2003, 0, 9]],
   // The first page projects every row, then joins clean scope verdicts to the
   // Activity they judged in one more statement (attachVerdicts: a primary-key
   // range and an id lookup, plain SQL, so no UDF call and no scan). The next
@@ -200,6 +214,7 @@ const PINNED: Array<[name: string, small: Tuple, large: Tuple]> = [
 /** Reads that grow today, in PINNED's order. Only ever shorter. */
 const GROWS_TODAY = [
   'events:runQuery text, cold', 'events:runQuery text, warm', 'events:runQuery coverage only', 'events:runQuery conditions only',
+  'events:runQuery two terms across an exchange', 'events:count two terms across an exchange',
   'events:activityPage first page', 'events:activityPage next page', 'events:sourceSessions', 'events:aggregateTargets',
   'events:distinctHosts', 'events:distinctAgentTypes', 'events:count', 'events:span', 'events:query limit -1',
   'events:getCount all', 'chain:length'

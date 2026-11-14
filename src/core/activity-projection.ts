@@ -9,7 +9,8 @@ const SHELL = new Set(['command_start', 'command_end', 'command_output', 'comman
 const TOOLS = new Set(['tool_call', 'tool_result', 'tool_interrupted'])
 // `ws_message`, not the addon's hook name `websocket_message`; nothing writes a
 // `websocket_start` (hooks/mitmproxy-addon.py).
-const HTTP = new Set(['http_request_start', 'http_response', 'http_response_chunk', 'http_error', 'ws_message', 'websocket_end'])
+export const HTTP = new Set(['http_request_start', 'http_response', 'http_response_chunk', 'http_error', 'ws_message', 'websocket_end'])
+const HTTP_AGENT = 'scanner'
 const MESSAGES = new Set(['user_message', 'assistant_message', 'thinking', 'compact_summary', 'away_summary'])
 
 /** Derived identity only. Payload text, target, time, query, page and pairing state
@@ -22,7 +23,7 @@ export function activityKey(event: Source): string {
   if (pair && ((event.agentType === 'shell' && SHELL.has(sub)) || (event.agentType === 'agent' && TOOLS.has(sub)))) {
     kind = event.agentType === 'shell' ? 'command' : 'tool'
     tuple = ['act1', kind, pair]
-  } else if (event.agentType === 'scanner' && HTTP.has(sub) && event.engagementId && event.sessionId && typeof d.flow_id === 'string' && d.flow_id) {
+  } else if (event.agentType === HTTP_AGENT && HTTP.has(sub) && event.engagementId && event.sessionId && typeof d.flow_id === 'string' && d.flow_id) {
     kind = 'http'
     tuple = ['act1', kind, event.engagementId, event.sessionId, event.agentType, typeof d.source === 'string' ? d.source : '', d.flow_id]
   } else if (event.agentType === 'agent' && MESSAGES.has(sub) && typeof d.transcript_uuid === 'string' && d.transcript_uuid) {
@@ -30,6 +31,27 @@ export function activityKey(event: Source): string {
     if (session) { kind = 'message'; tuple = ['act1', kind, session, d.transcript_uuid] }
   }
   return JSON.stringify(tuple)
+}
+
+/** activityKey's `http` arm in SQL over the row alias `a`: `eligible` holds
+ *  for exactly the rows activityKey gives an `http` key, and `key` is equal
+ *  for two of them exactly when their activityKey is. Search's exchange unit
+ *  (event-queries.ts) reads it, so search and the Activity page cannot
+ *  disagree about which rows are one exchange; test/search-exchange-unit.test.ts
+ *  pins the two together. `params` bind the `?` of `eligible`, in order.
+ *  The unary `+` keeps the planner off the agent_type index: a search reaches
+ *  these rows through the rows that hold a term, and reading every scanner
+ *  row by that index would be a read of nearly the whole logged tier. */
+export function httpExchangeSql(a: string): { eligible: string; key: string; params: unknown[] } {
+  return {
+    eligible: `(+${a}.agent_type = ? AND EXISTS (SELECT 1 FROM json_each(?) WHERE value = ${a}.subtype)
+      AND ${a}.engagement_id <> '' AND ${a}.session_id <> ''
+      AND json_type(${a}.data,'$.flow_id') = 'text' AND json_extract(${a}.data,'$.flow_id') <> '')`,
+    key: `json_array(${a}.engagement_id, ${a}.session_id,
+      CASE WHEN json_type(${a}.data,'$.source') = 'text' THEN json_extract(${a}.data,'$.source') ELSE '' END,
+      json_extract(${a}.data,'$.flow_id'))`,
+    params: [HTTP_AGENT, JSON.stringify([...HTTP])]
+  }
 }
 
 /** A scope verdict ChainEmitter or a recompute wrote, at any distance. */

@@ -42,12 +42,15 @@ const ROOT = path.join(__dirname, '..', '..')
 // Counted 2026-11-13 on origin/main c27ed558: 276 agent_type comparisons in 68 files, 303 subtype
 // comparisons in 68 files. The spec's figure (about 274 in
 // 62 files) was counted by a looser pattern on 2026-11-12; this is the parser's.
-// +1 / +1 on 2026-11-15: ATTACHED_CAUSE_SQL (src/core/activity-projection.ts),
-// the SQL twin of attachedCauseId. The projection has to ask it in SQL — a UDF
-// would add a JavaScript call per projected row — and there is no registry yet
-// to ask instead. The JavaScript side reuses the classification's existing
-// comparison and adds none.
-const AGENT_BASELINE = 277
+// 2026-11-15, two changes:
+// - activityKey's `'scanner'` became the HTTP_AGENT constant that search's
+//   exchange unit binds (activity-projection.ts httpExchangeSql): agent -1.
+// - ATTACHED_CAUSE_SQL (activity-projection.ts), the SQL twin of
+//   attachedCauseId: agent +1, subtype +1. The projection has to ask it in SQL —
+//   a UDF would add a JavaScript call per projected row — and there is no
+//   registry yet to ask instead. The JavaScript side reuses the classification's
+//   existing comparison and adds none.
+const AGENT_BASELINE = 276
 const SUBTYPE_BASELINE = 304
 const TABLE_BASELINE = 31
 
