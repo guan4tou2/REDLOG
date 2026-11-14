@@ -97,15 +97,18 @@ test.describe('plugin explore & manage — batch A journey', () => {
       }
       await expect(page.getByTestId('plugin-card-capture-e2e-loot')).toHaveCount(0)
 
-      // The detail replaces the list; Back returns to it, and a second row opens in turn.
+      // The detail replaces the list; the page's one back control returns to
+      // it (2026-11-14: the detail no longer has a second one), and a second
+      // row opens in turn.
       await expect(page.getByTestId('plugin-details-e2e-clean')).toHaveCount(0)
-      await page.getByTestId('plugin-back-e2e-loot').click()
+      await expect(page.getByTestId('settings-back')).toHaveText(`← ${enT('plugins.back')}`)
+      await page.getByTestId('settings-back').click()
       await page.getByTestId('plugin-details-e2e-clean').click()
       await expect(page.getByTestId('plugin-detail-e2e-clean')).toBeVisible()
       await expect(page.getByTestId('plugin-detail-e2e-loot')).toHaveCount(0)
       // A plugin that declared nothing produced no report: the page says
       // "no diagnosis yet" rather than drawing a box of accepted counts.
-      await page.getByTestId('plugin-back-e2e-clean').click()
+      await page.getByTestId('settings-back').click()
       await page.getByTestId('plugin-details-e2e-empty').click()
       await expect(page.getByTestId('plugin-detail-e2e-empty')).toBeVisible()
       await expect(page.getByTestId('plugin-detail-e2e-clean')).toHaveCount(0)
@@ -116,8 +119,8 @@ test.describe('plugin explore & manage — batch A journey', () => {
       await resizeMainWindow(app, 800, 700)
       await expect(page.getByTestId('plugin-detail-e2e-empty')).toBeVisible()
       await expect(page.getByTestId('plugin-details-e2e-empty')).toHaveCount(0)
-      await expect(page.getByTestId('plugin-detail-e2e-empty').getByText(enT('plugins.back'))).toBeVisible()
-      await page.getByTestId('plugin-back-e2e-empty').click()
+      await expect(page.getByTestId('settings-back')).toHaveText(`← ${enT('plugins.back')}`)
+      await page.getByTestId('settings-back').click()
       await expect(page.getByTestId('plugin-details-e2e-empty')).toBeVisible()
       await expect(page.getByTestId('plugin-detail-e2e-empty')).toHaveCount(0)
       // Selecting again replaces the list with the detail.

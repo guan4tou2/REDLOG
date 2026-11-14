@@ -52,6 +52,31 @@ describe('the Timeline opens an event it is sent to, in either mode', () => {
     expect(document.querySelectorAll('[data-timeline-event]').length).toBe(2)
   })
 
+  // 2026-11-14: the end labels hang inward from their tick and keep 4px off
+  // the pane edge, where the axis clips; the ticks do not move. [Latest]
+  // draws 14px tall and its ::after reaches 13px up, for a 27px target
+  // (IconButton's 24px floor, §4.1).
+  it('keeps the first and last ruler labels inside the pane, and gives [Latest] a full-size target', async () => {
+    render(<I18nProvider><FilterProvider><TimelinePanel /></FilterProvider></I18nProvider>)
+    await screen.findByTestId('timeline-marker-latest')
+    const labels = screen.getAllByTestId('timeline-axis-label')
+    expect(labels.length).toBeGreaterThan(1)
+    const first = labels[0]
+    const last = labels[labels.length - 1]
+    expect(first.dataset.align).toBe('start')
+    expect(first.className).toMatch(/\bpl-1\b/)
+    expect(first.className).not.toContain('translate-x')
+    expect(last.dataset.align).toBe('end')
+    expect(last.className).toContain('-translate-x-full')
+    expect(last.className).toMatch(/\bpr-1\b/)
+    // Tick positions are the time map's, unchanged by the inset.
+    expect(first.style.left).toBe('0px')
+    const latest = screen.getByTestId('timeline-marker-latest')
+    expect(latest.className).toContain('h-3.5')
+    expect(latest.className).toContain('after:absolute')
+    expect(latest.className).toContain('after:-top-[13px]')
+  })
+
   it('clicking [Latest] resumes follow', async () => {
     const FOLLOW = 'redlog-timeline-follow-mode'
     try { localStorage.setItem(FOLLOW, '0') } catch { /* ignore */ }

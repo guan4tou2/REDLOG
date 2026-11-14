@@ -236,7 +236,8 @@ obsolete requirement belongs in history, not a permanently skipped runnable
 test. UI snapshots and a window opening do not prove successful recording.
 
 The 2026-10-24 cleanup removed seven duplicate source-expression assertions
-from `timeline-geometry-units`: zoom behavior remains in `timeline-geometry`,
+from `timeline-geometry-units`: zoom behavior remains in the `timeline-geometry`
+describe of `e2e/timeline-track.spec.ts`,
 gap detection/inversion in `timeline-time-map`, and viewport anchoring in the
 presentation E2E. The three remaining source integration guards are now named
 `timeline-track-wiring`; they are not visual acceptance. The obsolete dropdown

@@ -56,6 +56,12 @@ export const TITLEBAR_CONTROL =
   'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ' +
   'focus-visible:ring-offset-redlog-bg disabled:opacity-50'
 
+/** Keyboard focus on a text field, select or textarea: the button's ring,
+ *  outside the border (§25.4), in the accent. A border colour alone is not a
+ *  focus indicator anyone can find on a dark field. */
+export const FIELD_FOCUS_RING =
+  'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-redlog-bg focus-visible:ring-redlog-accent/40'
+
 /** Same box, sized for a single icon. */
 export const TITLEBAR_ICON = TITLEBAR_CONTROL.replace('px-2.5', 'w-7 px-0')
 

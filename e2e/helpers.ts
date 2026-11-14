@@ -231,7 +231,8 @@ export async function openSettingsPage(page: Page, id: string): Promise<void> {
   // One column (#590): the list of pages, or a page with a way back to it.
   const content = page.getByTestId('settings-content')
   await expect(content).toBeVisible()
-  if ((await content.getAttribute('data-page')) !== 'home') await page.getByTestId('settings-back').click()
+  // A plugin detail sits one level below its page, so back may take two steps.
+  for (let i = 0; i < 3 && (await content.getAttribute('data-page')) !== 'home'; i++) await page.getByTestId('settings-back').click()
   await page.locator(`[data-settings-page="${id}"]`).click()
   await expect(content).toHaveAttribute('data-page', id)
 }

@@ -71,7 +71,7 @@ describe('the stamp (FR-005, FR-006)', () => {
 
   it('every key it can carry is one FR-005 names, in the table\'s order, of the types FR-006 allows', () => {
     const s = ingestStamp(TYPICAL_ENTRANCE, {
-      tier: 'chained', now: Date.now(), stripped: ['_raw', '_ingest'],
+      tier: 'chained', now: Date.now(), stripped: ['_raw', '_ingest'], terminal: 't-ab12',
       item: { ...TYPICAL, rules: [{ pluginId: 'b', contentHash: 'f'.repeat(64) }, { pluginId: 'a', contentHash: '0'.repeat(64) }], rulesPartial: true }
     }) as Record<string, unknown>
     const keys = Object.keys(s)
@@ -80,7 +80,7 @@ describe('the stamp (FR-005, FR-006)', () => {
     expect(typeViolations(s)).toEqual([])
     expect(s).toMatchObject({
       door: 'api', producer: 'shell', credential: 'c4kq2x9a:1', auth: 'bearer',
-      event_id: TYPICAL.eventId, instance: TYPICAL.instance, seq: 42,
+      event_id: TYPICAL.eventId, instance: TYPICAL.instance, seq: 42, terminal: 't-ab12',
       claimed: { producer: 'zsh-hook@0.18.0+c1', operator: 'op-1' },
       // In RESERVED_DATA_KEYS order, whatever order they were found in.
       stripped: ['_ingest', '_raw'],
@@ -97,7 +97,7 @@ describe('the stamp (FR-005, FR-006)', () => {
 
   it('optional keys are omitted, not null, when there is nothing to say', () => {
     const s = ingestStamp(IN_PROCESS, { tier: 'chained', now: Date.now(), stripped: [], item: { rules: [], rulesPartial: false } }) as Record<string, unknown>
-    for (const k of ['instance', 'seq', 'claimed', 'stripped', 'rules', 'rules_partial']) expect(k in s, k).toBe(false)
+    for (const k of ['instance', 'seq', 'terminal', 'claimed', 'stripped', 'rules', 'rules_partial']) expect(k in s, k).toBe(false)
   })
 
   it('a claimed value is a claim: bounded, and only identifier characters survive', () => {
@@ -137,7 +137,8 @@ describe('the stamp (FR-005, FR-006)', () => {
 
   describe('size (FR-006, SC-009)', () => {
     it('a typical stamp is at most 320 bytes', () => {
-      const s = ingestStamp(TYPICAL_ENTRANCE, { tier: 'chained', now: Date.now(), item: TYPICAL })
+      // plan.md's example row, which names its terminal (FR-011).
+      const s = ingestStamp(TYPICAL_ENTRANCE, { tier: 'chained', now: Date.now(), item: TYPICAL, terminal: 't-ab12' })
       expect(bytes(s)).toBeLessThanOrEqual(320)
     })
 

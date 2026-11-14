@@ -1,3 +1,4 @@
+import { FIELD_FOCUS_RING } from './Button'
 import SourceSessionPicker from './SourceSessionPicker'
 import type { SourceSession } from '../../../core/source-sessions'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
@@ -7,48 +8,31 @@ import { useSharedFilter } from '../lib/FilterContext'
 import { useDisplayZone, zoneLabel } from '../lib/time'
 import { agentTypeLabel } from '../lib/timelineDomain'
 import { Search } from 'lucide-react'
-import { useAppCounts } from '../lib/useAppCounts'
 import { useCaptureHealthState } from '../lib/useCaptureHealth'
+import { HEADER_GUTTER } from '../lib/pageLayout'
 
 /** A capture source that failed, as the event type its rows carry — so the
  *  alert can narrow the list to it. Sources without a single type of their own
  *  are named but not filterable. */
 const SOURCE_AGENT_TYPE: Record<string, string> = { terminal: 'shell', mitmproxy: 'http', screenshot: 'screenshot' }
 
-/** Stitch 04: recording state and the project's total beside the title, and a
- *  source that reports a failure as its own line. Each source answers for
- *  itself, so the pill says so instead of implying the whole record is fine. */
-function RecordingStatus({ onFilter, knownAgentTypes }: { onFilter: (agentType: string) => void; knownAgentTypes: string[] }): JSX.Element {
+/** A capture source that reports a failure, beside the title: the one thing
+ *  about capture this page says that the status bar does not, because it can
+ *  narrow the list to that source. Recording state and the project's event
+ *  count are the status bar's, on every page. */
+function SourceAlert({ onFilter, knownAgentTypes }: { onFilter: (agentType: string) => void; knownAgentTypes: string[] }): JSX.Element | null {
   const { t } = useI18n()
-  const { eventCount, loggedCount } = useAppCounts()
   const { health, status } = useCaptureHealthState()
-  // Unknown until the bridge answers: never drawn as "recording" on a guess.
-  const [recording, setRecording] = useState<boolean | undefined>(undefined)
-  useEffect(() => {
-    let live = true
-    window.redlog.recording.get().then((r) => { if (live) setRecording(r) }).catch(() => { if (live) setRecording(undefined) })
-    const unsub = window.redlog.recording.onChange((r) => setRecording(r))
-    return () => { live = false; unsub() }
-  }, [])
   const failing = status === 'ok' ? (health?.sources ?? []).filter((s) => s.state === 'error' && !s.informational) : []
+  if (failing.length === 0) return null
   const filterable = failing.map((s) => SOURCE_AGENT_TYPE[s.id]).find((at) => at && knownAgentTypes.includes(at))
-  return <div className="flex flex-wrap items-center gap-2 text-xs">
-    <span data-testid="activity-recording" className="flex items-center gap-1.5 rounded border border-redlog-border bg-redlog-surface px-2 py-0.5">
-      <span aria-hidden className={`inline-block h-2 w-2 rounded-full ${recording === true ? 'bg-emerald-500' : recording === false ? 'bg-amber-500' : 'bg-redlog-text-faint'}`} />
-      <span className="font-medium text-redlog-text">{t(recording === true ? 'activity.status.recording' : recording === false ? 'activity.status.paused' : 'activity.status.unknown')}</span>
-      <span className="text-redlog-text-faint">·</span>
-      <span className="text-redlog-text-dim">{t('targets.events', { count: (eventCount + loggedCount).toLocaleString() })}</span>
-      <span className="text-redlog-text-faint">·</span>
-      <span className="text-redlog-text-dim">{t('activity.status.perSource')}</span>
-    </span>
-    {failing.length > 0 && <button type="button" data-testid="activity-source-alert" disabled={!filterable}
-      onClick={() => { if (filterable) onFilter(filterable) }}
-      className="flex items-center gap-1 rounded border border-redlog-danger/80 bg-redlog-danger/15 px-2 py-0.5 font-medium text-red-300 hover:bg-redlog-danger/25 disabled:cursor-default">
-      <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-redlog-danger" />
-      {t('activity.status.sourceAlert', { count: failing.length, names: failing.map((s) => s.label ?? s.id).join('、') })}
-      {filterable && <span aria-hidden>→</span>}
-    </button>}
-  </div>
+  return <button type="button" data-testid="activity-source-alert" disabled={!filterable}
+    onClick={() => { if (filterable) onFilter(filterable) }}
+    className="flex items-center gap-1 rounded border border-redlog-danger/80 bg-redlog-danger/15 px-2 py-0.5 text-xs font-medium text-red-300 hover:bg-redlog-danger/25 disabled:cursor-default">
+    <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-redlog-danger" />
+    {t('activity.status.sourceAlert', { count: failing.length, names: failing.map((s) => s.label ?? s.id).join('、') })}
+    {filterable && <span aria-hidden>→</span>}
+  </button>
 }
 
 const TranscriptView = lazy(() => import('./TranscriptView'))
@@ -104,17 +88,17 @@ export default function RecordingWorkspace({ active = true, onOpenInTimeline, on
   const { filter, setAgentType, knownAgentTypes } = useSharedFilter()
   const zone = useDisplayZone()
   return <div className="h-full min-h-0 min-w-0 flex flex-col" data-testid="recording-workspace">
-    <div className="px-pad pt-3 space-y-3 shrink-0">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="flex px-pad pt-3 shrink-0">
+    <div className="min-w-0 flex-1 space-y-3">
+      {/* Title and the controls that act on the whole page share one row,
+          and wrap when the pane is narrow. */}
+      <div data-testid="activity-title-row" className="flex flex-wrap items-center gap-2">
         <h1 data-testid="activity-title" className="text-base font-medium text-redlog-text">{t('activity.pageTitle')}</h1>
-        <RecordingStatus knownAgentTypes={knownAgentTypes} onFilter={(at) => { setAgentType(at); choose('activities') }} />
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-0 flex-1">
+        <div className="relative min-w-0 flex-1 basis-60">
           <Search size={16} aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-redlog-text-faint" />
           <input ref={field} type="search" data-testid="search-input" aria-label={t('search.placeholder')}
             value={query} onChange={e => setQuery(e.target.value)} placeholder={t('search.placeholder')}
-            className="h-8 w-full min-w-0 rounded-lg border border-redlog-border bg-redlog-surface pl-8 pr-3 text-sm focus:outline-none focus:border-redlog-accent" />
+            className={`h-8 w-full min-w-0 rounded-lg border border-redlog-border bg-redlog-surface pl-8 pr-3 text-sm focus:border-redlog-accent ${FIELD_FOCUS_RING}`} />
         </div>
         {searching && <select data-testid="activity-source" aria-label={t('activity.sourceLabel')} value={filter.agentType ?? ''} onChange={e => setAgentType(e.target.value || null)}
           className="h-8 rounded-lg border border-redlog-border bg-redlog-surface px-2.5 text-xs text-redlog-text-dim">
@@ -125,6 +109,7 @@ export default function RecordingWorkspace({ active = true, onOpenInTimeline, on
             the activity list, and only once it has rows; the I/O, AI and raw
             event readings print times with nothing else naming the zone. */}
         <span data-testid="activity-zone" className="text-xs text-redlog-text-dim whitespace-nowrap">{t('activity.zone', { zone: zoneLabel(zone, t) })}</span>
+        <SourceAlert knownAgentTypes={knownAgentTypes} onFilter={(at) => { setAgentType(at); choose('activities') }} />
       </div>
       <div data-testid="activity-tab-row" className="flex flex-wrap items-center gap-x-2 border-b border-redlog-border">
         <div role="tablist" aria-label={t('activity.view')} className="flex flex-wrap gap-1">
@@ -155,6 +140,9 @@ export default function RecordingWorkspace({ active = true, onOpenInTimeline, on
         </select>}
         <SourceSessionPicker kind={reading==='ai'?'agent':'shell'} provider={reading==='ai'?provider||undefined:undefined} value={sessions[reading]} onChange={session=>setSessions(prev=>({...prev,[reading]:session}))} />
       </div>}
+    </div>
+    {/* The results below keep a scrollbar gutter; this keeps the same one. */}
+    <span aria-hidden data-scroll-gutter className={HEADER_GUTTER} />
     </div>
     <div role="tabpanel" id="reading-panel-search" aria-labelledby={`reading-tab-${reading === 'events' ? 'events' : 'activities'}`}
       hidden={!searching} className={searching ? 'flex-1 min-h-0' : undefined}>

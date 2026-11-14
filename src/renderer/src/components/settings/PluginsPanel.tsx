@@ -1,7 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react'
-import { Button } from '../Button'
+import { Button, FIELD_FOCUS_RING } from '../Button'
 import { toast, toastUndo } from '../Toast'
-import { FieldGroup, type ConfigState } from './SettingsShared'
+import type { ConfigState } from './SettingsShared'
 import { confirmGraded } from '../ConfirmDialog'
 import { useCaptureHealthState } from '../../lib/useCaptureHealth'
 import type { AgentKind } from '../../../../core/agent-capture-policy'
@@ -87,7 +87,7 @@ function descriptionOf(p: PluginView, t: T): string {
   return line === key ? p.description : line
 }
 
-export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenCaptureSources }: {
+export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenCaptureSources, selectedId: heldId, onSelect }: {
   t: T
   /** Needed for the project axis; without it that axis says it cannot tell. */
   config?: ConfigState
@@ -97,6 +97,10 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
   onFocusHandled?: () => void
   /** Spec 066 FR-020: jump to the integration's Capture sources row. View only. */
   onOpenCaptureSources?: (agentKind: string) => void
+  /** The plugin whose detail is open, when the page around this one holds it:
+   *  Settings does, so its back control can go to the list from a detail. */
+  selectedId?: string | null
+  onSelect?: (id: string | null) => void
 }): JSX.Element {
   const describe = (p: PluginView): string => descriptionOf(p, t)
 
@@ -119,7 +123,9 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
   const [loadError, setLoadError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<PluginFilter>('all')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [ownId, setOwnId] = useState<string | null>(null)
+  const selectedId = heldId !== undefined ? heldId : ownId
+  const setSelectedId = onSelect ?? setOwnId
   // Every answer from main carries the whole list. Only the newest request may
   // replace what is on screen, so a slow reload cannot undo a later disable.
   const newest = useRef(0)
@@ -371,7 +377,6 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
       p={selected} vm={selectedVm} t={t} busy={busy === selected.id}
       onEnable={() => void enable(selected)} onDisable={() => void toggle(selected, false)}
       onReview={() => setConfirmGrant(selected)} onRevoke={() => void revoke(selected)}
-      onBack={() => setSelectedId(null)}
       officialAxes={officialAxes}
       onInstall={() => void mutateOfficial(selected, 'install')} onRemove={() => void removeOfficial(selected)}
       onOpenCaptureSources={onOpenCaptureSources && selected.official ? () => onOpenCaptureSources(selected.official!.agentKind) : undefined}
@@ -388,12 +393,11 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
   const list = (
     <>
       <div className="flex items-center justify-end mb-2 gap-2">
-        <button onClick={() => api.openFolder()}
-          className="px-2.5 py-1 text-xs rounded bg-redlog-elevated text-redlog-text hover:bg-redlog-elevated-hover shrink-0"
+        <Button level="quiet" size="compact" onClick={() => api.openFolder()} className="shrink-0"
           title={t('plugins.openFolderHint')}>
           {t('plugins.openFolder')}
-        </button>
-        <Button level="secondary" onClick={doReload} disabled={busy === '*'} className="shrink-0">
+        </Button>
+        <Button level="secondary" size="compact" onClick={doReload} disabled={busy === '*'} className="shrink-0">
           {busy === '*' ? '...' : t('plugins.reload')}
         </Button>
       </div>
@@ -432,7 +436,7 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
                 <input
                   type="search" data-testid="plugin-search" value={query} onChange={(e) => setQuery(e.target.value)}
                   placeholder={t('plugins.searchPlaceholder')} aria-label={t('plugins.search')}
-                  className="flex-1 min-w-[12rem] bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text focus:outline-none focus:border-red-500"
+                  className={`flex-1 min-w-[12rem] bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text focus:border-red-500 ${FIELD_FOCUS_RING}`}
                 />
                 <div role="group" aria-label={t('plugins.filter.label')} className="flex items-center gap-1 rounded border border-redlog-border bg-redlog-bg p-0.5">
                   {FILTERS.map((f) => (
@@ -468,7 +472,8 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
   )
 
   return (
-    <FieldGroup title={t('settings.plugins')}>
+    // No heading of its own: the page row above it already says 外掛.
+    <div className="space-y-2">
       <div ref={rootRef}>
         {/* Enabling and disabling are global whichever view they are pressed in. */}
         <p data-testid="plugins-global-note" className="text-xs text-redlog-text-faint mb-2">{t('plugins.globalNote', { page: t('settings.pageCaptureControl') })}</p>
@@ -543,6 +548,6 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
           </div>
         </Modal>
       )}
-    </FieldGroup>
+    </div>
   )
 }

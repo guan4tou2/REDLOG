@@ -451,7 +451,6 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'plugins.listHint',
     'plugins.allHandled',
     'plugins.noSearchResults',
-    'settings.plugins',
     'plugins.globalNote',
     'settings.pageCaptureControl',
     'plugins.capabilities',

@@ -1,4 +1,4 @@
-import { Button } from './Button'
+import { Button, FIELD_FOCUS_RING } from './Button'
 import { useState, useRef, useEffect } from 'react'
 import { Filter, X, ChevronDown } from 'lucide-react'
 import { TimeRangeFields } from './TimeRangeFields'
@@ -224,7 +224,7 @@ function FilterSelect({ label, value, onChange, options, placeholder }: {
       <select
         value={value ?? ''}
         onChange={(e) => onChange(e.target.value || null)}
-        className="min-w-0 max-w-full bg-redlog-elevated border border-redlog-border rounded px-2 py-0.5 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500/50"
+        className={`min-w-0 max-w-full bg-redlog-elevated border border-redlog-border rounded px-2 py-0.5 text-xs text-redlog-text font-mono focus:border-red-500/50 ${FIELD_FOCUS_RING}`}
       >
         <option value="">{placeholder}</option>
         {options.map((o) => (

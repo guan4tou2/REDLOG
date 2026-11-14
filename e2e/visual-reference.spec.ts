@@ -193,7 +193,8 @@ test.describe.serial('visual-reference', () => {
           if (view === 'dashboard') {
             await expect(page.getByTestId('first-run-strip')).toHaveCount(0)
           }
-          if (view === 'settings' && await page.getByTestId('settings-content').getAttribute('data-page') !== 'home') {
+          // A plugin detail is one level below its page: back until home.
+          while (view === 'settings' && await page.getByTestId('settings-content').getAttribute('data-page') !== 'home') {
             await page.getByTestId('settings-back').click()
           }
           // Lazy panes show a quiet loading line first; let them settle.
@@ -213,7 +214,8 @@ test.describe.serial('visual-reference', () => {
             await expect(captureCard).toHaveCSS('border-radius', '8px')
             await expect(captureCard).toHaveCSS('background-color', 'rgb(26, 26, 29)')
             await capture(join(dir, '14-plugin-detail.png'))
-            await page.locator('[data-testid^="plugin-back-"]').click()
+            // The one back control: to the plugin list, then to Settings.
+            await page.getByTestId('settings-back').click()
             await page.getByTestId('settings-back').click()
           }
           if (view === 'terminal') {

@@ -323,13 +323,24 @@ def _is_int(v: Any) -> bool:
     return isinstance(v, int) and not isinstance(v, bool)
 
 
+def _casts_are_the_terminals(data: Dict[str, Any]) -> bool:
+    """Spec 071 FR-012: a session_end names the built-in terminal's cast
+    digests only when RedLog wrote it (`_ingest.producer` is in-process). A
+    row written before the stamp existed has none and is read as before. The
+    app's evidence-rules.ts castsAreTheTerminals is the same rule."""
+    if "_ingest" not in data:
+        return True
+    stamp = data["_ingest"]
+    return isinstance(stamp, dict) and stamp.get("producer") == "in-process"
+
+
 def attachment_refs(agent_type: str, data: Dict[str, Any]) -> List[Dict[str, Any]]:
     """The attachment digests an event recorded when it was captured."""
     out: List[Dict[str, Any]] = []
     subtype = data.get("subtype")
     if agent_type == "screenshot" and _plain_name(data.get("filename")) and _hex64(data.get("sha256")):
         out.append({"path": "screenshots/" + data["filename"], "sha256": data["sha256"], "bytes": _size(data.get("size")), "prefix": False})
-    if agent_type == "shell" and subtype == "session_end":
+    if agent_type == "shell" and subtype == "session_end" and _casts_are_the_terminals(data):
         segments = data.get("castSegments") if isinstance(data.get("castSegments"), list) else []
         if segments:
             for s in segments:

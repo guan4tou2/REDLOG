@@ -1,4 +1,3 @@
-import { ArrowLeft } from 'lucide-react'
 import { Button } from '../Button'
 import { PluginSampleTester } from './PluginSampleTester'
 import { PluginIcon, TONE_DOT, KIND_LABEL } from './PluginRow'
@@ -80,11 +79,10 @@ function Card({ title, children, testId }: { title: string; children: React.Reac
  *  are all still here — a status chip must never be the only word on trust,
  *  and «loaded» is not a verdict on install or project — they are only
  *  arranged under those four headings. */
-export default function PluginDetailPanel({ p, vm, t, busy, onEnable, onDisable, onReview, onRevoke, onBack, officialAxes, onInstall, onRemove, onOpenCaptureSources }:
+export default function PluginDetailPanel({ p, vm, t, busy, onEnable, onDisable, onReview, onRevoke, officialAxes, onInstall, onRemove, onOpenCaptureSources }:
 {
   p: PluginView; vm: PluginViewModel; t: T; busy: boolean
   onEnable: () => void; onDisable: () => void; onReview: () => void; onRevoke: () => void
-  onBack: () => void
   /** Official integrations only: project level and capture health (Spec 066). */
   officialAxes?: { level: OfficialProjectLevel; health: OfficialHealth }
   onInstall?: () => void; onRemove?: () => void
@@ -98,12 +96,8 @@ export default function PluginDetailPanel({ p, vm, t, busy, onEnable, onDisable,
   const statusLabel = trust.applicable ? t(`plugins.status.${trust.status}`) : t(`plugins.installState.${official?.state ?? 'not-installed'}`)
   return (
     <section aria-label={p.name} data-testid={`plugin-detail-${p.id}`} className="min-w-0 space-y-3">
-      <div className="flex items-center justify-between gap-2 border-b border-redlog-border pb-2">
-        <Button level="quiet" size="compact" type="button" data-testid={`plugin-back-${p.id}`} onClick={onBack}>
-          <ArrowLeft size={14} aria-hidden className="inline mr-1" />{t('plugins.back')}
-        </Button>
-        <span className="text-xs font-mono text-redlog-text-faint break-all">{p.id}</span>
-      </div>
+      {/* The way back to the list is the Settings page's own back control. */}
+      <p className="text-xs font-mono text-redlog-text-faint break-all">{p.id}</p>
 
       <div className="rounded-lg border border-redlog-border bg-redlog-surface p-pad space-y-3">
         <div className="space-y-1.5">
@@ -116,8 +110,10 @@ export default function PluginDetailPanel({ p, vm, t, busy, onEnable, onDisable,
           </div>
           <p className="flex items-center gap-1.5 text-xs">
             <span aria-hidden className={`w-2 h-2 rounded-full ${TONE_DOT[tone]}`} />
-            <span data-testid={`plugin-status-${p.id}`}>{statusLabel}</span>
-            {official && <><span className="text-redlog-text-faint">·</span><span data-testid={`plugin-install-state-${p.id}`} className="text-redlog-text-dim">{t(`plugins.installState.${official.state}`)}</span></>}
+            {/* With no loaded plugin behind an integration, its status is its
+                install state: said once, by the install-state span. */}
+            {(trust.applicable || !official) && <span data-testid={`plugin-status-${p.id}`}>{statusLabel}</span>}
+            {official && <>{trust.applicable && <span className="text-redlog-text-faint">·</span>}<span data-testid={`plugin-install-state-${p.id}`} className="text-redlog-text-dim">{t(`plugins.installState.${official.state}`)}</span></>}
           </p>
         </div>
 

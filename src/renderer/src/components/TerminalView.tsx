@@ -12,7 +12,7 @@ import { usePersistentState } from '../lib/usePersistentState'
 import { DEFAULT_FONT_SIZE, FONT_MIN, FONT_MAX, clampFontSize } from '../lib/terminalFont'
 import { createAckBatcher, createFitScheduler } from '../lib/terminalFlow'
 import { Modal } from './Modal'
-import { Button } from './Button'
+import { Button, FIELD_FOCUS_RING } from './Button'
 import { isMac } from '../lib/platform'
 import { isComposing } from '../lib/ime'
 import { PROSE_WIDTH } from '../lib/pageLayout'
@@ -510,7 +510,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
               if (e.key === 'Escape') { e.preventDefault(); closeSearch() }
             }}
             placeholder={t('terminal.searchPlaceholder')}
-            className="flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500/40"
+            className={`flex-1 bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:border-red-500/40 ${FIELD_FOCUS_RING}`}
           />
           {searchQuery && searchResult && (
             <span data-testid="terminal-search-count" role="status" className="shrink-0 text-xs font-mono tabular-nums text-redlog-text-dim">

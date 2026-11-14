@@ -1,3 +1,4 @@
+import { SCROLL_GUTTER } from '../lib/pageLayout'
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, useId } from 'react'
 import { useI18n } from '../i18n'
 import { confirm } from './ConfirmDialog'
@@ -9,7 +10,7 @@ import { formatDateTime } from '../lib/time'
 import { EmptyState } from './EmptyState'
 import { LoadingSpinner } from './Feedback'
 import { Flag, ChevronLeft, ChevronRight } from 'lucide-react'
-import { Button } from './Button'
+import { Button, FIELD_FOCUS_RING } from './Button'
 import { runMutation } from '../lib/mutation'
 import { BOOKMARKS_CHANGED } from './EvidenceHeader'
 
@@ -186,7 +187,7 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t('bookmarks.searchPlaceholder')}
-              className="w-full bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:outline-none focus:border-red-500/40 placeholder-redlog-muted"
+              className={`w-full bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text font-mono focus:border-red-500/40 placeholder-redlog-muted ${FIELD_FOCUS_RING}`}
             />
           </div>
         )}
@@ -200,7 +201,7 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
         {loading && <LoadingSpinner label={t('common.loading')} />}
         <div ref={listRef} onScroll={() => {
           if (!detailOpen) listPosition.current = listRef.current?.scrollTop ?? 0
-        }} className="flex-1 min-h-0 overflow-auto" {...listNav.containerProps} aria-label={t('bookmarks.title', { count: paged.total })}>
+        }} className={`flex-1 min-h-0 overflow-auto ${SCROLL_GUTTER}`} {...listNav.containerProps} aria-label={t('bookmarks.title', { count: paged.total })}>
           {visibleMarks.map((m, i) => {
             const isPinned = pinned.has(m.id)
             const rowProps = listNav.itemProps(i)
@@ -251,7 +252,7 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
         </div>
       </div>}
 
-      {(marks.length > 0 || creating) && <div hidden={!detailOpen} data-testid="bookmark-detail-pane" className="min-w-0 flex-1 overflow-auto p-pad">
+      {(marks.length > 0 || creating) && <div hidden={!detailOpen} data-testid="bookmark-detail-pane" className={`min-w-0 flex-1 overflow-auto p-pad ${SCROLL_GUTTER}`}>
         {detailOpen && (
           <Button data-testid="bookmarks-back" size="compact" level="quiet" onClick={() => setDetailOpen(false)}>
             <ChevronLeft size={14} aria-hidden />{t('bookmarks.backToList')}
@@ -339,21 +340,21 @@ function BookmarkForm({ browserTab, onSave, onCancel, initial }: {
         <label htmlFor={`${formId}-title`} className="text-xs text-redlog-text-dim uppercase tracking-wider">{t('bookmarks.fieldTitle')}</label>
         <input id={`${formId}-title`} value={title} onChange={(e) => setTitle(e.target.value)}
           placeholder={t('bookmarks.fieldTitlePlaceholder')}
-          className="w-full mt-0.5 px-2 py-1.5 bg-redlog-surface border border-redlog-border rounded text-sm text-redlog-text focus:border-red-500 outline-none" />
+          className={`w-full mt-0.5 px-2 py-1.5 bg-redlog-surface border border-redlog-border rounded text-sm text-redlog-text focus:border-red-500 ${FIELD_FOCUS_RING}`} />
       </div>
 
       <div>
         <label htmlFor={`${formId}-url`} className="text-xs text-redlog-text-dim uppercase tracking-wider">{t('bookmarks.fieldUrl')}</label>
         <input id={`${formId}-url`} value={url} onChange={(e) => setUrl(e.target.value)}
           placeholder="https://..."
-          className="w-full mt-0.5 px-2 py-1.5 bg-redlog-surface border border-redlog-border rounded text-sm text-redlog-text focus:border-red-500 outline-none font-mono text-xs" />
+          className={`w-full mt-0.5 px-2 py-1.5 bg-redlog-surface border border-redlog-border rounded text-sm text-redlog-text focus:border-red-500 font-mono text-xs ${FIELD_FOCUS_RING}`} />
       </div>
 
       <div>
         <label htmlFor={`${formId}-note`} className="text-xs text-redlog-text-dim uppercase tracking-wider">{t('bookmarks.fieldNote')}</label>
         <textarea id={`${formId}-note`} value={note} onChange={(e) => setNote(e.target.value)} rows={4}
           placeholder={t('bookmarks.fieldNotePlaceholder')}
-          className="w-full mt-0.5 px-2 py-1.5 bg-redlog-surface border border-redlog-border rounded text-sm text-redlog-text outline-none resize-y" />
+          className={`w-full mt-0.5 px-2 py-1.5 bg-redlog-surface border border-redlog-border rounded text-sm text-redlog-text resize-y ${FIELD_FOCUS_RING}`} />
       </div>
 
       <div className="flex gap-2 pt-1">
