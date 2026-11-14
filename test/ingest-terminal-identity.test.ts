@@ -13,6 +13,7 @@
 // terminal` on every door, both tiers); and that its readers in core go
 // through it (behaviour, and a source check so the next reader does too).
 
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -46,9 +47,40 @@ describe('terminalIdentity (FR-011)', () => {
     expect(terminalIdentity({ terminalId: 42 })).toBe('42')
   })
 
-  it('is bounded at 128 characters (FR-002\'s bound for a source-supplied id); the characters are kept', () => {
-    expect(terminalIdentity({ terminalId: 'x'.repeat(500) })).toBe('x'.repeat(128))
+  // The normal form: kept verbatim while its stored form (the JSON string,
+  // UTF-8) is within 128 bytes; past that, a prefix cut on a character
+  // boundary, `#`, and the first 16 hex of the sha256 of the whole id's UTF-8
+  // bytes — so two long ids stay two, and the stored value stays bounded.
+  const stored = (v: string): number => Buffer.byteLength(JSON.stringify(v), 'utf8') - 2
+  const digest16 = (v: string): string => crypto.createHash('sha256').update(Buffer.from(v, 'utf8')).digest('hex').slice(0, 16)
+
+  it('an id within 128 stored bytes is kept verbatim, characters and all', () => {
     expect(terminalIdentity({ terminalId: 'ps-12 a/b' })).toBe('ps-12 a/b')
+    expect(terminalIdentity({ terminalId: 'x'.repeat(128) })).toBe('x'.repeat(128))
+  })
+
+  it('two long ids that share their first 128 characters stay two ids', () => {
+    const a = terminalIdentity({ terminalId: `${'A'.repeat(128)}-pane1` })!
+    const b = terminalIdentity({ terminalId: `${'A'.repeat(128)}-pane2` })!
+    expect(a).not.toBe(b)
+    expect(a).toBe(`${'A'.repeat(111)}#${digest16(`${'A'.repeat(128)}-pane1`)}`)
+    expect(stored(a)).toBeLessThanOrEqual(128)
+    expect(terminalIdentity({ terminalId: 'x'.repeat(129) })).toBe(`${'x'.repeat(111)}#${digest16('x'.repeat(129))}`)
+  })
+
+  it('the bound is in stored bytes: control characters and multi-byte text are counted as they are stored', () => {
+    const control = '\u0001'.repeat(128)
+    const c = terminalIdentity({ terminalId: control })!
+    expect(stored(c)).toBeLessThanOrEqual(128)
+    expect(c.endsWith(`#${digest16(control)}`)).toBe(true)
+    const wide = '运'.repeat(50) // 150 bytes
+    const w = terminalIdentity({ terminalId: wide })!
+    expect(stored(w)).toBeLessThanOrEqual(128)
+    expect(w).toBe(`${'运'.repeat(37)}#${digest16(wide)}`)
+    const astral = '😀'.repeat(40) // 160 bytes, two UTF-16 units each
+    const e = terminalIdentity({ terminalId: astral })!
+    expect(e).toBe(`${'😀'.repeat(27)}#${digest16(astral)}`)
+    expect(stored(e)).toBeLessThanOrEqual(128)
   })
 
   it('a stored row: its stamp\'s value; a row stamped without one, or written before the stamp, its data\'s', () => {
@@ -149,12 +181,31 @@ sqlite.describe('the write path stores `_ingest.terminal`, and its readers agree
     // The other field's value is another terminal: not a duplicate.
     expect(events.insertEvent('shell', { subtype: 'command_start', command: 'ls', terminal_id: 't-A' }, who)).not.toBeNull()
   })
+
+  // Review: the duplicate window's reading had no behavioural guard. These
+  // fail when it stops going through terminalIdentity / rowTerminal.
+  it('rows that carry only `terminal_id` are told apart by it, and an empty `terminalId` does not hide it', () => {
+    expect(events.insertEvent('shell', { subtype: 'command_start', command: 'id', terminal_id: 't-A' }, who)).not.toBeNull()
+    expect(events.insertEvent('shell', { subtype: 'command_start', command: 'id', terminal_id: 't-B' }, who), 'another terminal').not.toBeNull()
+    expect(events.insertEvent('shell', { subtype: 'command_start', command: 'id', terminal_id: 't-A' }, who), 'the same terminal').toBeNull()
+    expect(events.insertEvent('shell', { subtype: 'command_start', command: 'id', terminalId: '', terminal_id: 't-B' }, who), 'still t-B').toBeNull()
+  })
+
+  it('two long terminal ids sharing 128 characters are two terminals to the window and to the causal link', () => {
+    const one = `${'A'.repeat(128)}-pane1`, two = `${'A'.repeat(128)}-pane2`
+    const first = ingestMod.ingest({ agentType: 'shell', ...who, data: { subtype: 'command_start', command: 'whoami', pid: 5, terminalId: one } }).event
+    const second = ingestMod.ingest({ agentType: 'shell', ...who, data: { subtype: 'command_start', command: 'whoami', pid: 5, terminalId: two } }).event
+    expect(first).not.toBeNull()
+    expect(second, 'not a duplicate of the other pane').not.toBeNull()
+    const end = ingestMod.ingest({ agentType: 'shell', ...who, data: { subtype: 'command_end', command: 'whoami', pid: 5, terminalId: two, exit_code: 0 } }).event!
+    expect(end.data._causes).toEqual([second!.id])
+  })
 })
 
 // The next reader in core that wants a new row's terminal must not read the
 // two fields itself. These are the files FR-011 names and the write path's
-// own readers; each derives the identity through stamp.ts or not at all.
-describe('core readers of a new row\'s terminal go through stamp.ts (source check)', () => {
+// own readers; each derives the identity through ingest/terminal.ts or not at all.
+describe('core readers of a new row\'s terminal go through ingest/terminal.ts (source check)', () => {
   const SRC = path.join(__dirname, '..', 'src', 'core')
   const READERS = [path.join('causes-resolver.ts'), path.join('db', 'event-write.ts'), path.join('ingest.ts')]
   for (const rel of READERS) {
