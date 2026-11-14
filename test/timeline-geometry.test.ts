@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { bucketByPixel, tightestLaneGap, computeMaxZoom, buildClusters, filterVisibleClusters } from '../src/renderer/src/lib/timelineGeometry'
+import { bucketByPixel, tightestLaneGap, computeMaxZoom, buildClusters, filterVisibleClusters, type TimelineCluster } from '../src/renderer/src/lib/timelineGeometry'
 import type { RedLogEvent } from '../src/core/db/event-types'
 
 function evt(
@@ -157,8 +157,8 @@ describe('buildClusters', () => {
 // ── filterVisibleClusters ──────────────────────────────────────────
 
 describe('filterVisibleClusters', () => {
-  function cluster(x: number): { key: string; lane: 'shell'; li: number; x: number; y: number; events: RedLogEvent[] } {
-    return { key: `k-${x}`, lane: 'shell', li: 0, x, y: 20, events: [] }
+  function cluster(x: number): TimelineCluster {
+    return { key: `k-${x}`, lane: 'shell', li: 0, x, y: 20, w: 9, dx: 0, hitW: 27, events: [] }
   }
 
   it('returns all when trackW <= 0', () => {

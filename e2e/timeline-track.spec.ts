@@ -526,8 +526,15 @@ test.describe.serial('timeline-standard-mode: timeline standard / swim-lane mode
     expect(await timelineMode(page)).toBe('standard')
     await expect(page.getByTestId('timeline-standard-track')).toBeVisible()
     await expect(page.locator('[data-testid^="timeline-band-"]')).toHaveCount(0)
-    // The shell command AND the Evidence marker share the one track.
-    expect(await page.locator('[data-timeline-event]').count()).toBeGreaterThanOrEqual(2)
+    // The shell command AND the Evidence marker share the one track. Not a
+    // count of marks: the project-open rows, the command and the marker land
+    // within a second or two, and how many marks that makes depends on whether
+    // two count badges clear each other (they merge when they would overlap).
+    // What must hold is that the track's marks name both lanes.
+    const named = (await page.locator('[data-timeline-event]').evaluateAll(
+      (els) => els.map((el) => el.getAttribute('aria-label') ?? ''))).join(' | ')
+    expect(named, named).toMatch(/Shell|whoami/)
+    expect(named, named).toMatch(/Marker|mode-note/)
     await expect(page.getByRole('button', { name: /whoami/ }).first()).toBeVisible()
   })
 
@@ -804,6 +811,142 @@ test.describe.serial('timeline-virtualisation', () => {
     // screen either side should be in the DOM.
     const maxExpected = Math.ceil((m.viewportW * 3) / 14) + 20
     expect(m.domDots, `${m.domDots} dots in the DOM for a ${m.trackW}px track`).toBeLessThan(maxExpected)
+  })
+})
+
+// Dense, evenly spaced traffic: 300 flows in 50 minutes. Buckets were 14px
+// apart and every counted badge 16–24px wide, so each covered half of the next
+// — "10" read as "1" and the click went to the neighbour. A badge must now sit
+// clear of its neighbours, and its number must fit inside it.
+//
+// One unit family only: `offsetLeft` / `offsetWidth` (CSS px). The mark is the
+// button's first child and the button is its offsetParent, so its left on the
+// track is the sum of the two offsets. Never a bounding rect: body is zoomed.
+interface MarkBox { top: number; left: number; right: number; textLeft: number; textRight: number; hitLeft: number; hitRight: number; count: number; text: string; scroll: number; client: number; textW: number }
+const markBoxes = (p: Page): Promise<MarkBox[]> => p.evaluate(() =>
+  Array.from(document.querySelectorAll('[data-timeline-event]')).map((el) => {
+    const btn = el as HTMLElement
+    const mark = btn.querySelector('[data-timeline-mark]') as HTMLElement
+    const text = mark.textContent ?? ''
+    const span = mark.firstElementChild as HTMLElement | null
+    const n = /(\d+)/.exec(btn.getAttribute('aria-label') ?? '')
+    // The number's own box, in the same offset family: its offsetParent is
+    // the button (positioned) unless the browser makes the mark one.
+    const markLeft = btn.offsetLeft + mark.offsetLeft
+    const textLeft = span
+      ? (span.offsetParent === mark ? markLeft : btn.offsetLeft) + span.offsetLeft
+      : 0
+    return {
+      top: btn.offsetTop + mark.offsetTop,
+      left: btn.offsetLeft + mark.offsetLeft,
+      right: btn.offsetLeft + mark.offsetLeft + mark.offsetWidth,
+      textLeft,
+      textRight: textLeft + (span?.offsetWidth ?? 0),
+      hitLeft: btn.offsetLeft,
+      hitRight: btn.offsetLeft + btn.offsetWidth,
+      // A lone dot has no number; its accessible name starts with a time.
+      count: text ? Number(n?.[1] ?? NaN) : 1,
+      text,
+      scroll: mark.scrollWidth,
+      client: mark.clientWidth,
+      textW: span?.offsetWidth ?? 0
+    }
+  }))
+
+/** Problems with the marks on screen: overlaps per lane, and counts that do not fit. */
+function spacingProblems(marks: MarkBox[]): string[] {
+  const bad: string[] = []
+  const lanes = new Map<number, MarkBox[]>()
+  for (const m of marks) lanes.set(m.top, [...(lanes.get(m.top) ?? []), m])
+  // DOM order is draw order within a lane. Two badges keep clear of each other.
+  // A dot may overlap a badge's padding but never its number. Two lone dots
+  // may touch or overlap, as they always could, and only have to stay in time
+  // order. offset* round to whole pixels, so touching boxes may read 1px over.
+  for (const lane of lanes.values()) {
+    for (let i = 1; i < lane.length; i++) {
+      const prev = lane[i - 1]
+      const next = lane[i]
+      const badges = (prev.text ? 1 : 0) + (next.text ? 1 : 0)
+      if (badges === 2 && next.left < prev.right) bad.push(`badges overlap at ${prev.left}..${prev.right} / ${next.left}..${next.right}`)
+      if (badges === 1) {
+        const [badge, dot] = prev.text ? [prev, next] : [next, prev]
+        if (Math.min(badge.textRight, dot.right) - Math.max(badge.textLeft, dot.left) > 1) {
+          bad.push(`dot ${dot.left}..${dot.right} covers the number ${badge.textLeft}..${badge.textRight}`)
+        }
+      }
+      if (badges === 0 && !(next.left > prev.left)) bad.push(`dots out of order at ${prev.left} / ${next.left}`)
+      if (badges > 0 && Math.min(prev.hitRight, next.hitRight) - Math.max(prev.hitLeft, next.hitLeft) > 1) {
+        bad.push(`hit areas overlap at ${prev.hitLeft}..${prev.hitRight} / ${next.hitLeft}..${next.hitRight}`)
+      }
+    }
+  }
+  for (const m of marks) {
+    if (m.text && m.text !== String(m.count)) bad.push(`badge at ${m.left} says "${m.text}" for ${m.count} events`)
+    if (m.scroll > m.client || m.textW > m.client) bad.push(`"${m.text}" at ${m.left} clipped: ${m.textW}/${m.scroll} in ${m.client}`)
+  }
+  return bad
+}
+
+test.describe.serial('timeline-cluster-spacing: dense marks do not overlap', () => {
+  test.beforeAll(async () => {
+    test.setTimeout(180_000)
+    await resetShared()
+    await openTestProject(page, 'cluster-spacing')
+    await page.waitForTimeout(1000)
+    const base = `http://127.0.0.1:${readFileSync(join(tmpHome, '.redlog', 'api-port'), 'utf-8').trim()}`
+    const token = readFileSync(join(tmpHome, '.redlog', 'api-token'), 'utf-8').trim()
+    const now = Date.now()
+    for (let i = 0; i < 300; i++) {
+      const r = await fetch(`${base}/api/events/seed`, { method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ agent_type: 'scanner', data: {
+          subtype: 'http_response', flow_id: `cs${i}`, method: 'GET', url: `https://app.example/p/${i}`,
+          status: 200, content_length: 120, duration_ms: 30, source_timestamp: now - (300 - i) * 10_000
+        } }) })
+      expect(r.ok, `seed ${i}: ${r.status}`).toBe(true)
+    }
+    await openView(page, 'timeline')
+    await page.getByTestId('timeline-more-menu').waitFor({ state: 'visible', timeout: 10_000 })
+    if (await timelineMode(page) !== 'standard') await setTimelineMode(page, 'standard')
+  })
+
+  for (const [w, h] of [[1400, 900], [800, 500]] as const) {
+    test(`standard track at ${w}x${h}: marks sit apart and every count fits`, async () => {
+      try {
+        await resizeMainWindow(app, w, h)
+        await resetTimelineZoom(page)
+        await page.waitForTimeout(800)
+        await expect.poll(async () => (await markBoxes(page)).length).toBeGreaterThan(1)
+        const marks = await markBoxes(page)
+        console.log(`[DBG] ${w}x${h}: ${marks.length} marks, ${marks.reduce((a, m) => a + m.count, 0)} events`)
+        expect(marks.some((m) => m.count > 1), 'dense data should still cluster').toBe(true)
+        expect(spacingProblems(marks)).toEqual([])
+        // Zoomed in, the clusters split and re-merge: the rule still holds.
+        await page.getByRole('button', { name: /Zoom in|放大/ }).click()
+        await page.waitForTimeout(600)
+        expect(spacingProblems(await markBoxes(page))).toEqual([])
+      } catch (e) {
+        console.log(`[DBG] ${(e as Error).message.split('\n').slice(0, 5).join(' | ')}`)
+        throw e
+      }
+    })
+  }
+
+  test('swim lanes at 1400x900: marks in each lane sit apart', async () => {
+    try {
+      await resizeMainWindow(app, 1400, 900)
+      await setTimelineMode(page, 'lanes')
+      await resetTimelineZoom(page)
+      await page.waitForTimeout(800)
+      const marks = await markBoxes(page)
+      expect(marks.length).toBeGreaterThan(1)
+      expect(spacingProblems(marks)).toEqual([])
+    } catch (e) {
+      console.log(`[DBG] ${(e as Error).message.split('\n').slice(0, 5).join(' | ')}`)
+      throw e
+    } finally {
+      await setTimelineMode(page, 'standard')
+    }
   })
 })
 
