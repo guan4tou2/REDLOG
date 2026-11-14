@@ -295,6 +295,169 @@ it('keeps the page readable when one stored row has a non-object payload', () =>
   expect(page.totalGroups).toBe(3)
 })
 
+// Decision 2026-11-15 §2: a clean scope verdict is a source event of the
+// activity it judged (attachedCauseId), not an activity of its own. It counts
+// as a source and as a hit, but takes no part in the activity's time, anchor,
+// pairing or class, and a hit on it alone does not list the activity.
+describe('a clean scope verdict joins the activity it judged', () => {
+  const seed = (fn: () => void): void => { getDB().transaction(fn)() }
+  const verdict = (cause: string | null, distance = 'in_scope', more: Record<string, unknown> = {}) => ({
+    subtype: 'scope_violation', target: '10.20.0.5', action: 'nmap -sV 10.20.0.5', source: 'shell', distance, authority: 'fact', severity: 'info',
+    ...(cause ? { _causes: [cause] } : {}), ...more
+  })
+  const cmd = (subtype: string, more: Record<string, unknown> = {}) => ({ subtype, shell: 'zsh', terminalId: 't1', command_id: 'c1', command: 'nmap -sV 10.20.0.5', ...more })
+  const http = (subtype: string) => ({ subtype, flow_id: 'f1', source: 'mitmproxy', method: 'GET', url: 'http://10.20.0.5/', host: '10.20.0.5' })
+  const anchors = (req: ActivityRequest): string[] => queryActivityPage(req).items.map(a => a.anchor.id)
+  const deleteLogged = (id: string): void => { getDB().prepare('DELETE FROM events_logged WHERE id=?').run(id) }
+
+  it('a command and its verdict are one activity of three sources, anchored on the start', () => {
+    seed(() => {
+      add('s', 10, 'shell', cmd('command_start'))
+      add('v', 11, 'system', verdict('s'))
+      add('e', 20, 'shell', cmd('command_end', { exit_code: 0 }))
+    })
+    const page = queryActivityPage(request())
+    expect(page.totalGroups).toBe(1)
+    const a = page.items[0]
+    expect([a.anchor.id, a.kind, a.state, a.action, a.sourceCount, a.matchedCount, a.firstAt, a.lastAt]).toEqual(['s', 'command', 'paired', 'command', 3, 3, 10, 20])
+    expect(a.result).toEqual({ exitCode: 0 })
+    expect(a.sourcePreview.ids).toEqual(['s', 'v', 'e'])
+    const members = queryActivityMembers({ ...request(), ref: a, snapshot: page.snapshot })
+    expect(members.items.map(m => m.event.id)).toEqual(['s', 'v', 'e'])
+    expect(members.sourceCount).toBe(3)
+  })
+
+  it('a search for the command lists the activity once, with the verdict among its hits', () => {
+    seed(() => {
+      add('s', 10, 'shell', cmd('command_start'))
+      add('v', 11, 'system', verdict('s'))
+      add('e', 20, 'shell', cmd('command_end', { exit_code: 0 }))
+    })
+    const page = queryActivityPage(request('nmap'))
+    expect(page.items.map(a => [a.anchor.id, a.sourceCount, a.matchedCount])).toEqual([['s', 3, 3]])
+    expect([page.totalGroups, page.totalMatches]).toEqual([1, 3])
+    expect(page.items[0].matchedPreview.ids).toEqual(['s', 'v', 'e'])
+  })
+
+  it('a hit on the verdict alone does not list the activity', () => {
+    seed(() => {
+      add('s', 10, 'shell', cmd('command_start', { command: 'id' }))
+      add('v', 11, 'system', verdict('s', 'in_scope', { action: 'only-the-verdict-says-this' }))
+    })
+    expect(anchors(request('only-the-verdict-says-this'))).toEqual([])
+    expect(anchors(request('', { filter: { agentType: 'system' } }))).toEqual([])
+    expect(anchors(request('', { filter: { agentType: 'shell' } }))).toEqual(['s'])
+  })
+
+  it('an HTTP request (logged tier) keeps its chained verdict without being listed under "chain only" or source system', () => {
+    seed(() => {
+      add('req', 10, 'scanner', http('http_request_start'), { tier: 'logged' })
+      add('v', 11, 'system', verdict('req', 'in_scope', { source: 'http' }))
+      add('res', 20, 'scanner', http('http_response'), { tier: 'logged' })
+    })
+    const all = queryActivityPage(request())
+    expect(all.items.map(a => [a.anchor.id, a.kind, a.sourceCount])).toEqual([['req', 'http', 3]])
+    expect(queryActivityPage(request('', { filter: { tier: 'chained' } })).totalGroups).toBe(0)
+    expect(queryActivityPage(request('', { filter: { agentType: 'system' } })).totalGroups).toBe(0)
+  })
+
+  it('a DNS query keeps its title and time when its verdict has the same or an earlier timestamp', () => {
+    // Display order breaks a millisecond tie on rowid: q1 is the second logged
+    // row and v1 the first chained one, so v1 sorts first if it may anchor.
+    seed(() => {
+      add('q2', 200, 'dns', { subtype: 'dns_query', query: 'b.example', qtype: 'A' }, { tier: 'logged' })
+      add('q1', 100, 'dns', { subtype: 'dns_query', query: 'a.example', qtype: 'A' }, { tier: 'logged' })
+      add('v1', 100, 'system', verdict('q1', 'in_scope', { source: 'dns', target: 'a.example', action: 'a.example' }))
+      add('v2', 150, 'system', verdict('q2', 'in_scope', { source: 'dns', target: 'b.example', action: 'b.example' }))
+    })
+    const page = queryActivityPage(request())
+    expect(page.items.map(a => [a.anchor.id, a.firstAt, a.lastAt, a.sourceCount, a.action])).toEqual([
+      ['q2', 200, 200, 2, 'network'], ['q1', 100, 100, 2, 'network']
+    ])
+  })
+
+  it('a verdict at any other distance, or citing a row that is not there, is still an activity of its own', () => {
+    seed(() => {
+      add('s', 10, 'shell', cmd('command_start'))
+      add('excl', 11, 'system', verdict('s', 'excluded', { severity: 'critical' }))
+      add('adj', 12, 'system', verdict('s', 'adjacent_subnet'))
+      add('dangling', 13, 'system', verdict('gone'))
+      add('causeless', 14, 'system', verdict(null))
+      add('elsewhere', 15, 'system', verdict('s'), { project: 'other' })
+    })
+    expect(queryActivityPage(request()).items.map(a => [a.anchor.id, a.sourceCount, a.action])).toEqual([
+      ['causeless', 1, 'system'], ['dangling', 1, 'system'], ['adj', 1, 'security'], ['excl', 1, 'security'], ['s', 1, 'command']
+    ])
+    expect(queryActivityPage({ ...request(), projectId: 'other' }).items.map(a => a.anchor.id)).toEqual(['elsewhere'])
+  })
+
+  it('a verdict that cites another clean verdict stays an activity of its own, whether that one joined or not', () => {
+    // No writer produces this (a verdict is not scope-checked); the rule is
+    // one level so the answer cannot depend on the order rows are projected.
+    seed(() => {
+      add('s', 10, 'shell', cmd('command_start'))
+      add('v', 11, 'system', verdict('s'))
+      add('d', 12, 'system', verdict('gone'))
+      add('on-joined', 13, 'system', verdict('v'))
+      add('on-alone', 14, 'system', verdict('d'))
+    })
+    expect(queryActivityPage(request()).items.map(a => [a.anchor.id, a.sourceCount])).toEqual([
+      ['on-alone', 1], ['on-joined', 1], ['d', 1], ['s', 2]
+    ])
+  })
+
+  it('takes the housekeeping flag of the row it judged, so the fast path and the selection path agree', () => {
+    seed(() => {
+      add('hook', 10, 'shell', cmd('command_start', { command: 'source ~/.redlog/shell-zsh-hook.zsh', command_id: 'h' }))
+      add('vh', 11, 'system', verdict('hook'))
+      add('s', 20, 'shell', cmd('command_start'))
+      add('vs', 21, 'system', verdict('s'))
+      // a second command whose start is the hook script and whose end is not
+      add('hook2', 30, 'shell', cmd('command_start', { command: 'source ~/.redlog/shell-zsh-hook.zsh', command_id: 'h2' }))
+      add('vh2', 31, 'system', verdict('hook2'))
+      add('end2', 32, 'shell', cmd('command_end', { command: 'echo done', command_id: 'h2', exit_code: 0 }))
+    })
+    const visible = queryActivityPage(request('', { excludeHousekeeping: true }))
+    expect(visible.items.map(a => [a.anchor.id, a.matchedCount])).toEqual([['hook2', 1], ['s', 2]])
+    const selected = queryActivityPage(request('', { excludeHousekeeping: true, filter: { since: 0 } }))
+    expect(selected.items.map(a => [a.anchor.id, a.matchedCount])).toEqual([['hook2', 1], ['s', 2]])
+    expect(selected.items[0].matchedPreview.ids).toEqual(['end2'])
+  })
+
+  it('an activity filter judges the anchor, never the verdict', () => {
+    seed(() => {
+      add('s', 10, 'shell', cmd('command_start'))
+      add('v', 11, 'system', verdict('s'))
+    })
+    expect(anchors(request('', { activityFilter: { actions: ['system'] } }))).toEqual([])
+    expect(anchors(request('', { activityFilter: { actions: ['command'] } }))).toEqual(['s'])
+  })
+
+  it('after retention deletes the logged row it judged, the verdict is an activity of its own again', () => {
+    seed(() => {
+      add('q', 100, 'dns', { subtype: 'dns_query', query: 'a.example', qtype: 'A' }, { tier: 'logged' })
+      add('v', 101, 'system', verdict('q', 'in_scope', { source: 'dns' }))
+      add('q-keep', 200, 'dns', { subtype: 'dns_query', query: 'b.example', qtype: 'A' }, { tier: 'logged' })
+    })
+    expect(queryActivityPage(request()).items.map(a => [a.anchor.id, a.sourceCount])).toEqual([['q-keep', 1], ['q', 2]])
+    deleteLogged('q')
+    expect(queryActivityPage(request()).items.map(a => [a.anchor.id, a.sourceCount])).toEqual([['q-keep', 1], ['v', 1]])
+  })
+
+  it('a verdict that arrives after the page keeps the frozen page exact, and joins on refresh', () => {
+    seed(() => {
+      add('s', 10, 'shell', cmd('command_start'))
+      add('m', 5, 'marker', { title: 'older' })
+    })
+    const first = queryActivityPage(request('', { limit: 1 }))
+    seed(() => { add('v', 11, 'system', verdict('s')) })
+    const frozen = queryActivityPage(request('', { limit: 1, snapshot: first.snapshot }))
+    expect(frozen.items.map(a => [a.anchor.id, a.sourceCount])).toEqual([['s', 1]])
+    expect(queryActivityPage(request('', { limit: 1, cursor: first.nextCursor })).items.map(a => a.anchor.id)).toEqual(['m'])
+    expect(queryActivityPage(request()).items.map(a => [a.anchor.id, a.sourceCount])).toEqual([['s', 2], ['m', 1]])
+  })
+})
+
 describe('Activity command result', () => {
   const cmd = (subtype: string, more: Record<string, unknown> = {}) => ({ subtype, shell: 'zsh', terminalId: 't1', command_id: 'c1', command: 'cat nope.txt', ...more })
   it('carries the paired command_end exit code on the summary', () => {
