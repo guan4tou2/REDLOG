@@ -183,6 +183,17 @@ sqlite.describe('body index layout', () => {
     expect(idx.bodySearchCoverage().sources!.find(s => s.kind === 'body')).toMatchObject({ status: 'partial', partial: 1, indexedBytes: end + 1, sourceBytes: Buffer.byteLength(text) })
   })
 
+  it('the first kind to fill its rowids ends the read: the other kind is indexed no further', () => {
+    idx._limitDocumentsPerKind(1)
+    // Escaped words all through: a saved and a decoded stream. The saved one
+    // fills at its second document, before the decoded one has written one.
+    const text = `{"v":"${'\\u8a5e words '.repeat(100_000)}"}`
+    savedResponse('E', { response_body_ref: savedBody(dir, text) })
+    expect(searchHttpBodyEventIds('words', dir)).toEqual(['E'])
+    expect(refRow('E')).toMatchObject({ status: 'partial', reason: 'too-large', raw_docs: 1, decoded_docs: 0 })
+    expect(searchHttpBodyEventIds('詞', dir)).toEqual([])
+  })
+
   it('the bytes indexed of a body cut at the limit count the text two overlapping documents share once', () => {
     idx._limitDocumentsPerKind(2)
     const MiB = 1024 * 1024, text = `{"v":"${'filler words '.repeat(Math.ceil(2.3 * MiB / 13))}"}`

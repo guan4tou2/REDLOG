@@ -25,10 +25,15 @@ const INDEX_VERSION = 11
 // gives each stream one part per INDEX_CHUNK_BYTES of source plus a tail and
 // a final call: a body of B bytes makes at most ceil(B / 1 MiB) + 2 of each
 // kind, 12 at the default capture cap (REDLOG_MAX_BODY, 10 MiB). KIND_SPAN
-// leaves room for a raised cap or none (0 is unlimited), and for saved
-// artifacts and transcripts, which no cap bounds: about 2 GiB of one kind.
-// A body that needs more is indexed as far as that goes, `partial` with
-// reason 'too-large', never written into the next ref's rowids. MAX_REF
+// leaves room for a raised cap or none (0 is unlimited), for an artifact
+// added from the app (200 MiB by default, DEFAULT_ARTIFACT_MAX_BYTES), and
+// for a transcript or an artifact that arrives through ingest, which no cap
+// bounds: about 2 GiB of one kind. A body that needs more is indexed as far
+// as that goes, `partial` with reason 'too-large', never written into the
+// next ref's rowids. The limit is per kind, but the first kind to reach it
+// ends the whole read: the other kind's text from there on is not indexed
+// either, though its rowids have room (both streams are fed by one read
+// loop). MAX_REF
 // keeps every rowid below 2^53, so a rowid is exact as a JS number (and far
 // inside 63 bits); the table refuses a ref id at or above it.
 const KIND_SPAN = 2048, REF_SPAN = 2 * KIND_SPAN, MAX_REF = 2 ** 41

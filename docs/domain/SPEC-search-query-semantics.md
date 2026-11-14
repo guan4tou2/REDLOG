@@ -213,8 +213,11 @@ nothing. Joining a command's rows was not decided (2026-11-15).
   indexed as far as it goes and counted `partial`, not covered — when the
   body index holds it. So is a body that needs more than 2,048 index
   documents of one kind (about 2 GiB; at the default cap a body needs at
-  most 12): only with the cap raised or lifted, or for a saved artifact or
-  transcript, which no cap bounds. A body of at most 4,096 characters stays inline on
+  most 12): only with the cap raised or lifted, or for a transcript or an
+  artifact that arrives through ingest, which no cap bounds (an artifact
+  added from the app is capped at 200 MiB by default). The read stops at
+  the first kind that is full, so the other kind, saved or decoded, is
+  indexed only that far too. A body of at most 4,096 characters stays inline on
   the event, and an inline text body with no `\uXXXX` escape has no body-index
   entry: the events index searches it, and coverage does not count it. So
   with `REDLOG_MAX_BODY` at 4096 or less, a text body cut short at capture
