@@ -315,6 +315,21 @@ describe('incremental body-search backfill', () => {
     } finally { holder.close() }
   })
 
+  // A search that finds nothing new writes nothing, missing refs retried with
+  // the same outcome included: on Windows each commit is a flush.
+  it('commits nothing when nothing changed, a missing body retried included', () => {
+    seed(5)
+    insert('gone', { response_body_ref: { sha256: sha('never written'), file: `${sha('never written')}.body`, size: 13, encoding: 'text' } })
+    searchHttpBodyEventIds('alpha', dir)
+    const holder = new Database(path.join(dir, 'http-body-index.db'))
+    try {
+      const before = walCommits()
+      searchHttpBodyEventIds('alpha', dir)
+      bodySearchCoverage()
+      expect(walCommits() - before).toBe(0)
+    } finally { holder.close() }
+  })
+
   // Another connection holding the index's write lock must not fail a search
   // or leave it short: the row the watermark does not cover is read into this
   // connection's TEMP tables, and the shared index is not written.

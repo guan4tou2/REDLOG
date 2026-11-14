@@ -44,7 +44,7 @@ sqlite.describe('another connection bounded by an older snapshot', () => {
   }
 
   it('does not take from the index what main indexed after the snapshot, and cannot return it through a body', async () => {
-    for (let i = 0; i < 5; i++) savedResponse(`old-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha ${i}"}`) })
+    db.getDB().transaction(() => { for (let i = 0; i < 5; i++) savedResponse(`old-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha ${i}"}`) }) })()
     search('alpha')
     const snapshot: ExportSnapshot = readActivitySnapshot(db.getReadonlyDB())
     savedResponse('NEW', { response_body_ref: savedBody(dir, '{"n":"newword"}') })

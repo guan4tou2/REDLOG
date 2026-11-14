@@ -66,16 +66,18 @@ sqlite.describe('a read-only connection whose view is behind the shared index', 
   afterEach(async () => { await reader?.close(); reader = null; idx.closeHttpBodyIndex(); db.closeDB(); fs.rmSync(dir, { recursive: true, force: true }) })
 
   it.each(['logged', 'chained'] as const)('behind in the %s tier: answers its snapshot, and leaves the shared index and main as they were', async tier => {
-    const old = Array.from({ length: 5 }, (_, i) => { savedResponse(`old-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha old${i}"}`) }); return `old-${i}` })
+    const old = getDB().transaction(() => Array.from({ length: 5 }, (_, i) => { savedResponse(`old-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha old${i}"}`) }); return `old-${i}` }))()
     search('alpha')
     reader = await openFrozenReader(dir, 'project')
     // While the export runs, capture goes on and main searches.
     const added: Array<{ id: string; sha256: string }> = []
-    for (let i = 0; i < 20; i++) {
-      const id = `new-${i}`, text = `{"n":"alpha new${i}"}`
-      if (tier === 'chained') added.push({ id, sha256: chainedBody(id, text) })
-      else { const ref = savedBody(dir, text); savedResponse(id, { response_body_ref: ref }); added.push({ id, sha256: ref.sha256 }) }
-    }
+    getDB().transaction(() => {
+      for (let i = 0; i < 20; i++) {
+        const id = `new-${i}`, text = `{"n":"alpha new${i}"}`
+        if (tier === 'chained') added.push({ id, sha256: chainedBody(id, text) })
+        else { const ref = savedBody(dir, text); savedResponse(id, { response_body_ref: ref }); added.push({ id, sha256: ref.sha256 }) }
+      }
+    })()
     expect(search('alpha').items).toHaveLength(25)
     const before = shared()
     expect(before).toMatchObject({ refs: 25, docs: 25 })
@@ -93,10 +95,10 @@ sqlite.describe('a read-only connection whose view is behind the shared index', 
   }, 30_000)
 
   it('rows its view has and the shared index does not yet: read once, into its own tables', async () => {
-    for (let i = 0; i < 5; i++) savedResponse(`old-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha old${i}"}`) })
+    getDB().transaction(() => { for (let i = 0; i < 5; i++) savedResponse(`old-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha old${i}"}`) }) })()
     search('alpha')
     // Main has not searched since these were written.
-    for (let i = 0; i < 3; i++) savedResponse(`unindexed-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha unindexed${i}"}`) })
+    getDB().transaction(() => { for (let i = 0; i < 3; i++) savedResponse(`unindexed-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha unindexed${i}"}`) }) })()
     const before = shared()
     reader = await openFrozenReader(dir, 'project')
     const first = await reader.search('alpha'), second = await reader.search('alpha')
@@ -109,10 +111,10 @@ sqlite.describe('a read-only connection whose view is behind the shared index', 
   // Retention deletes the oldest logged rows after the reader opened: the
   // shared index no longer describes rows the reader still sees.
   it('after retention deleted rows its view still has: answers every row it sees', async () => {
-    for (let i = 0; i < 10; i++) loggedBody(`old-${i}`, 'alpha', 1000 + i)
+    getDB().transaction(() => { for (let i = 0; i < 10; i++) loggedBody(`old-${i}`, 'alpha', 1000 + i) })()
     search('alpha')
     reader = await openFrozenReader(dir, 'project')
-    for (let i = 0; i < 3; i++) loggedBody(`new-${i}`, 'alpha', 2000 + i)
+    getDB().transaction(() => { for (let i = 0; i < 3; i++) loggedBody(`new-${i}`, 'alpha', 2000 + i) })()
     retain(1005, 1000)
     expect(search('alpha').items.map(e => e.id).sort()).toEqual([...ids('old', 5, 10), ...ids('new', 0, 3)].sort())
     const before = shared()
@@ -125,28 +127,30 @@ sqlite.describe('a read-only connection whose view is behind the shared index', 
   // events_logged has no AUTOINCREMENT: once retention removed every logged
   // row, new capture starts again at rowid 1.
   it('after rowid reuse below its view: answers its own rows, not the new ones at the same rowids', async () => {
-    for (let i = 0; i < 3; i++) loggedBody(`old-${i}`, 'alpha', 1000 + i)
+    getDB().transaction(() => { for (let i = 0; i < 3; i++) loggedBody(`old-${i}`, 'alpha', 1000 + i) })()
     search('alpha')
     reader = await openFrozenReader(dir, 'project')
     retain(2000, 1000)
     for (let i = 0; i < 3; i++) dnsRow(`dns-${i}`, 3000 + i)
-    for (let i = 0; i < 5; i++) loggedBody(`new-${i}`, 'alpha', 4000 + i)
+    getDB().transaction(() => { for (let i = 0; i < 5; i++) loggedBody(`new-${i}`, 'alpha', 4000 + i) })()
     expect(search('alpha').items.map(e => e.id).sort()).toEqual(ids('new', 0, 5))
     const answer = await reader.search('alpha')
     expect(answer.ids).toEqual(ids('old', 0, 3))
     expect(answer.coverage).toMatchObject({ status: 'covered', indexed: 3 })
   }, 30_000)
 
+  // Pages of 100, as export selection pages in 1,000s: the cursor and its
+  // coverage revision are the same at any page size.
   it('pages through more than one page after retention, as a multi-page export plan does', async () => {
-    getDB().transaction(() => { for (let i = 0; i < 1100; i++) loggedBody(`old-${String(i).padStart(4, '0')}`, 'alpha', 1000 + i) })()
+    getDB().transaction(() => { for (let i = 0; i < 150; i++) loggedBody(`old-${String(i).padStart(4, '0')}`, 'alpha', 1000 + i) })()
     search('alpha')
     reader = await openFrozenReader(dir, 'project')
     getDB().transaction(() => { for (let i = 0; i < 3; i++) loggedBody(`new-${i}`, 'alpha', 9000 + i) })()
     retain(1005, 1000)
     search('alpha')
-    const paged = await reader.pages('alpha', 1000)
+    const paged = await reader.pages('alpha', 100)
     expect(paged.error).toBeUndefined()
-    expect(paged.ids).toHaveLength(1100)
+    expect(paged.ids).toHaveLength(150)
   }, 60_000)
 
   it('re-verifies what main has not: a body changed or gone since main last searched', async () => {
@@ -181,12 +185,12 @@ sqlite.describe('a read-only connection whose view is behind the shared index', 
   })
 
   it('a replaced database: the reader answers its own rows and writes nothing; main rebuilds', async () => {
-    for (let i = 0; i < 5; i++) savedResponse(`gone-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha gone${i}"}`) })
+    getDB().transaction(() => { for (let i = 0; i < 5; i++) savedResponse(`gone-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha gone${i}"}`) }) })()
     search('alpha')
     idx.closeHttpBodyIndex(); db.closeDB()
     for (const suffix of ['', '-wal', '-shm']) fs.rmSync(path.join(dir, `timeline.db${suffix}`), { force: true })
     db.initDB(dir)
-    for (let i = 0; i < 3; i++) savedResponse(`fresh-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha fresh${i}"}`) })
+    getDB().transaction(() => { for (let i = 0; i < 3; i++) savedResponse(`fresh-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha fresh${i}"}`) }) })()
     const before = shared()
     expect(before).toMatchObject({ refs: 5 })
     reader = await openFrozenReader(dir, 'project')

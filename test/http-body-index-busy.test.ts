@@ -39,7 +39,7 @@ sqlite.describe('a search while another connection holds the index', () => {
   afterEach(() => { idx.closeHttpBodyIndex(); db.closeDB(); fs.rmSync(dir, { recursive: true, force: true }) })
 
   it('returns no event outside the snapshot it was given', () => {
-    for (let i = 0; i < 3; i++) savedResponse(`old-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha old${i}"}`) })
+    db.getDB().transaction(() => { for (let i = 0; i < 3; i++) savedResponse(`old-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha old${i}"}`) }) })()
     search('alpha')
     const snapshot: ExportSnapshot = readActivitySnapshot(db.getReadonlyDB())
     // Linked at ingest, after the snapshot, before any sync reached it.
@@ -51,7 +51,7 @@ sqlite.describe('a search while another connection holds the index', () => {
   }, 30_000)
 
   it('waits at most about a second for the lock before answering', () => {
-    for (let i = 0; i < 3; i++) savedResponse(`old-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha old${i}"}`) })
+    db.getDB().transaction(() => { for (let i = 0; i < 3; i++) savedResponse(`old-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha old${i}"}`) }) })()
     search('alpha')
     savedResponse('new', { response_body_ref: savedBody(dir, '{"n":"alpha new"}') })
     const took = whileLocked(() => { const t = performance.now(); search('alpha'); return performance.now() - t })
@@ -62,7 +62,7 @@ sqlite.describe('a search while another connection holds the index', () => {
   // Each of the three TEMP clean-ups, in a sequence where it is the only one
   // between a TEMP row and a wrong answer (or unbounded TEMP).
   it('a body pruned after a locked search: its TEMP row does not answer coverage', () => {
-    for (let i = 0; i < 3; i++) savedResponse(`old-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha old${i}"}`) })
+    db.getDB().transaction(() => { for (let i = 0; i < 3; i++) savedResponse(`old-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha old${i}"}`) }) })()
     search('alpha')
     const ref = savedBody(dir, '{"n":"alpha later"}')
     savedResponse('later', { response_body_ref: ref })
@@ -93,9 +93,9 @@ sqlite.describe('a search while another connection holds the index', () => {
   }, 30_000)
 
   it('TEMP keeps only what the last call needed', () => {
-    for (let i = 0; i < 3; i++) savedResponse(`old-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha old${i}"}`) })
+    db.getDB().transaction(() => { for (let i = 0; i < 3; i++) savedResponse(`old-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha old${i}"}`) }) })()
     search('alpha')
-    for (let i = 0; i < 5; i++) savedResponse(`new-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha new${i}"}`) })
+    db.getDB().transaction(() => { for (let i = 0; i < 5; i++) savedResponse(`new-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha new${i}"}`) }) })()
     whileLocked(() => search('alpha'))
     expect(idx._extraEvents(dir)).toBe(5)
     search('alpha')

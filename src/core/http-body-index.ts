@@ -408,7 +408,13 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
       stmt(db, `INSERT INTO ${t.refs} VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(event_id,slot) DO UPDATE SET
     sha256=excluded.sha256,file=excluded.file,size=excluded.size,encoding=excluded.encoding,status=excluded.status,indexed_bytes=excluded.indexed_bytes,reason=excluded.reason,kind=excluded.kind,available_bytes=excluded.available_bytes,
     tier=coalesce(excluded.tier,${t.refs}.tier),verified_desc=excluded.verified_desc,verified_file=excluded.verified_file,verified_sig=excluded.verified_sig,
-    engagement_id=coalesce(excluded.engagement_id,${t.refs}.engagement_id),row=coalesce(excluded.row,${t.refs}.row),pos=excluded.pos,source_bytes=excluded.source_bytes`).run(event.id, ref.slot, ref.sha256, ref.file, size, String(ref.encoding ?? 'unknown'), status, bytes, reason, ref.kind,availableBytes,
+    engagement_id=coalesce(excluded.engagement_id,${t.refs}.engagement_id),row=coalesce(excluded.row,${t.refs}.row),pos=excluded.pos,source_bytes=excluded.source_bytes
+    -- A missing or failed ref retried with the same outcome changes nothing:
+    -- no write, so a search that finds nothing new commits nothing.
+    WHERE (sha256,file,size,encoding,status,indexed_bytes,reason,kind,available_bytes,verified_desc,verified_file,verified_sig,pos,source_bytes)
+      IS NOT (excluded.sha256,excluded.file,excluded.size,excluded.encoding,excluded.status,excluded.indexed_bytes,excluded.reason,excluded.kind,excluded.available_bytes,
+        excluded.verified_desc,excluded.verified_file,excluded.verified_sig,excluded.pos,excluded.source_bytes)
+      OR coalesce(excluded.tier,tier) IS NOT tier OR coalesce(excluded.row,row) IS NOT row OR coalesce(excluded.engagement_id,engagement_id) IS NOT engagement_id`).run(event.id, ref.slot, ref.sha256, ref.file, size, String(ref.encoding ?? 'unknown'), status, bytes, reason, ref.kind,availableBytes,
         tier, final ? desc : null, final && status !== 'pending' ? file : null, final && status !== 'pending' ? sig : null, source.engagementId, source.row, pos, sourceBytes)
     }
   })
@@ -539,7 +545,8 @@ function sync(projectDir: string): void {
     }
     if (full) walkAll(db, projectDir, latestIds, tiers.map(t => ({ after: 0, upTo: t.max })))
     const next: Mark = { latest: latestIds, tiers: tiers.map(({ n, max, idAtMax }) => ({ n, max, idAtMax })) }
-    stmt(db, "INSERT INTO body_index_meta VALUES('mark',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(JSON.stringify(next))
+    // Unchanged, it is not written: a commit is a flush, slow on Windows.
+    stmt(db, "INSERT INTO body_index_meta VALUES('mark',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE value IS NOT excluded.value").run(JSON.stringify(next))
   }).immediate()
 }
 function walkAll(db: Database.Database, projectDir: string, latest: string[], range: Array<{ after: number; upTo: number }>): void {

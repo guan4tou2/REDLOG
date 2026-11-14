@@ -13,7 +13,7 @@
 // `json.loads` gave. "after" is what the real addon sends now. Responses never
 // had a parsed copy; their events are written here in the shape the addon's
 // response hook sends (`_capture_body`), since the fixture runs request hooks.
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { createHash } from 'node:crypto'
 import { requires } from './helpers/requires'
 import { runAddonRequests } from './helpers/addon-request-payload'
@@ -109,20 +109,25 @@ function request(contentType: string, body: Buffer, flowId: string, url?: string
 }
 
 describeDB('searching a JSON body without params.body_json', () => {
+  const texts: Record<Which, string> = { small: SMALL, large: LARGE, plain: PLAIN }
+  const order: Which[] = ['small', 'large', 'plain']
+  // What the addon sends for these bodies does not change between cases: it
+  // is run once (a Python process per case was most of this file's time), and
+  // each case still gets a project of its own.
+  let sent: ReturnType<typeof runAddonRequests>
+  beforeAll(() => { sent = runAddonRequests(order.map(which => ({ contentType: 'application/json', body: Buffer.from(texts[which]) }))) })
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-reqbody-search-'))
     initDB(dir)
-    const texts: Record<Which, string> = { small: SMALL, large: LARGE, plain: PLAIN }
-    const order: Which[] = ['small', 'large', 'plain']
-    const { results, python } = runAddonRequests(order.map(which => ({ contentType: 'application/json', body: Buffer.from(texts[which]) })))
     ids = {} as typeof ids
-    order.forEach((which, i) => {
-      const sent = results[i]
-      if (!('data' in sent)) throw new Error(`addon (python ${python}): ${sent.error}`)
-      const after = post({ ...sent.data, flow_id: `${which}-after` })
-      const before = post({ ...sent.data, flow_id: `${which}-before`, params: { ...(sent.data.params as object | undefined), body_json: JSON.parse(texts[which]) } })
+    // One commit for the fixture: a commit per row is a flush per row on Windows.
+    getDB().transaction(() => order.forEach((which, i) => {
+      const result = sent.results[i]
+      if (!('data' in result)) throw new Error(`addon (python ${sent.python}): ${result.error}`)
+      const after = post({ ...result.data, flow_id: `${which}-after` })
+      const before = post({ ...result.data, flow_id: `${which}-before`, params: { ...(result.data.params as object | undefined), body_json: JSON.parse(texts[which]) } })
       ids[which] = { before, after }
-    })
+    }))()
   })
   afterEach(() => { closeHttpBodyIndex(); closeDB(); fs.rmSync(dir, { recursive: true, force: true }) })
 

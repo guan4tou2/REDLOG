@@ -112,10 +112,13 @@ sqlite.describe('body index lifecycle, seeded', () => {
           [{ file: ref.file, words: ['echo', `s${k}`, 'echoed'] }, { file: ref.file, words: ['echo', `s${k}`, 'echoed'] }])
       },
     }
-    for (let i = 0; i < 60; i++) add.bodiless()
-    for (let i = 0; i < 60; i++) add.saved()
-    for (let i = 0; i < 30; i++) add.inline()
-    for (let i = 0; i < 3; i++) add.same()
+    // The starting project in one commit (a commit per row is a flush per row on Windows).
+    db.getDB().transaction(() => {
+      for (let i = 0; i < 60; i++) add.bodiless()
+      for (let i = 0; i < 60; i++) add.saved()
+      for (let i = 0; i < 30; i++) add.inline()
+      for (let i = 0; i < 3; i++) add.same()
+    })()
 
     /** What a correct index answers for `text`, inside `snapshot` if given,
      *  for a view taken at step `seenAt` (default: now). */
