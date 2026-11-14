@@ -215,6 +215,43 @@ authenticate(door) → validate → stamp → dedup → settle → gate → deri
 - `postCommit` 依序：publish、scope 派送、companion 列、存活狀態更新，以及 Spec 074 落地後的 `queryService.notifyCommit(receipt)`、`topicsForCommit(rows, writes)` 與 HTTP body 索引連結（改送 074 的 `derived-op`，取代 `ingest.ts:290` 的直接寫入）。
 - 推導階段若有使用者 Processor 參與，蓋章階段寫 `_ingest.rules`／`rules_partial`（FR-005、FR-006；Spec 075 FR-059）。蓋章在推導之前，所以這兩個鍵在推導完成後、commit 之前補入同一個 `_ingest`，仍在雜湊內。
 
+### D13 深度上限：寫入原語在蓋章那一步折疊（FR-097，2026-11-14）
+
+**問題**：兩個 verifier 都遞迴走 `data` 重算雜湊。Python 的會在遞迴上限停下，把完好的列報成 CHAIN BROKEN；能送 `data` 的來源（交接檔、AI 工具輸入、代理解析出的 JSON 請求本體）自己決定有多深。
+
+**實測**（2026-11-14，本機）：
+
+| 誰 | 在 `data` 多深時失敗 | 版本 |
+|---|---|---|
+| `tools/redlog-verify.py` 重建一列（`_rebuild_shapes`），全為陣列 | 332 層（`RecursionError`） | Python 3.9.6、3.11.18 |
+| 同上 | 497 層 | Python 3.12.16、3.13、3.14、3.15.2 |
+| 同上，全為物件 | 991 層（`json.loads` 失敗，`_parsed_data` 退回原字串，讀成雜湊不符）／989 層 | 3.9／3.11；3.12 以上 |
+| 寫入端今天：FTS 的 insert trigger（`json_tree`） | 1,001 層，`SqliteError: malformed JSON`，整列不寫入 | SQLite 3.54.1（better-sqlite3） |
+| 寫入端今天：`canonicalStringify`／`JSON.stringify` | 約 2,300 層陣列／約 6,000 層，`RangeError` | Node 24.12；Electron 45.3.1（Node 24.22）的 `JSON.stringify` 到 2,000,000 層都不失敗 |
+| app 的 verifier（`canonicalStringify`） | 約 2,300 層陣列 | Node 24.12 |
+| `JSON.parse` | 2,000,000 層仍不失敗（V8 的解析不遞迴） | Node 24.12、Electron 45.3.1 |
+| `POST /api/events` | 請求本體超過 64 層（`data` 超過 63 層）在解析前就回 400（`api-request.ts`，#695） | — |
+
+所以今天會讀成 CHAIN BROKEN 的是 `data` 在 332（或 497）到 1,000 層之間、經交接目錄或行程內（AI 工具輸入）寫入的列；超過 1,000 層則整列寫不進去。
+
+**上限 64 的根據**：本 repo 的 fixture 與 golden 中最深的 `data` 是 3 層；本機 323,816 筆 Claude Code 與 Codex 工具呼叫中最深的輸入是 5 層（存成 `data.tool_input` 為 6 層）；代理解析出的 JSON 請求本體位於 `data.params.body_json`（第 3 層），所以 61 層以內的請求本體原樣保存。Python verifier 對最不利的形狀（全陣列）在 332 層失敗，是 64 的 5.2 倍；測試斷言 4 倍（256 層，再加 100 個額外的堆疊框架）仍能重建。也與 API 既有的 64 層一致。沒有找到正當超過 64 層的真實來源；會碰到的是測試者自己送的深層 JSON 請求本體，那正是折疊要無損保存的。
+
+**套用點**：`insertEvent`（`event-write.ts`）的兩個層，在加上 `_ingest` 的那一行：chained 層在 `_clock_anomaly`、`_source_time_rejected` 之後、`canonicalStringify` 之前；logged 層在 `_raw` 之後。理由：
+
+- 每一列——API、交接、行程內、`derived`、尚未遷移的 31 處直接呼叫——都經過這裡，而且只有這裡同時決定雜湊輸入與存入的值；放在 `ingest()` 會漏掉直接呼叫，放在入口會有五個副本。
+- `ingest()` 在寫入前讀的都是頂層欄位（`command`、`stdout`、`subtype`、`flow_id`、`pid`、`_causes`），遮罩 span 也只看頂層欄位；這些都不會被折疊（第 1 層不是容器的子層）。所以去重、`_causes`、目標擷取、loot、遮罩 span 看到的與今天相同。
+- `_source_time_rejected.value` 是來源的值，比 `data.source_timestamp` 深一層，所以在它加入之後才折疊。
+- AI 工具輸入的遮罩（`tailer-host.ts` `redactToolInput` → `deepRedactStrings`）在 tailer 內、進入 `ingest()` 之前完成，所以折疊寫出的文字已經是遮罩後的。匯出時的遮罩（`redact-export.ts`）以頂層欄位為單位，不受影響。
+- FTS 以 `json_tree` 取每個葉值；折疊後的字串是一個葉值，unicode61 依標點切詞，所以容器內的字與鍵名仍找得到。
+
+**否決**：
+- **verifier 對過深的列回報「此處無法檢查」**：擁有者不選；收件方仍看到一列無法驗證的證據。
+- **調高 Python 的遞迴上限**：擁有者不選；上限與 C 堆疊相依，調高會換成直譯器當掉，而且已出貨 bundle 內的 verifier 不會變。
+- **拒收或丟棄過深的項目**：違反 §12 的完整擷取（已啟用來源觀測到的內容一律保存）。
+- **截斷過深的部分**：遺失內容。
+
+**已寫入的列**不改寫、不遷移（產品未發行）。
+
 ### D9 存活通道（O7）
 
 - `hello`、`alive`、`bye` 寫入 `ingest_instances` 與記憶體中的存活表，不寫事件。
