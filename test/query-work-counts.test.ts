@@ -159,11 +159,15 @@ function readsFor(fx: ReturnType<typeof seed>): Array<[name: string, run: () => 
 const PINNED: Array<[name: string, small: Tuple, large: Tuple]> = [
   // The body index's watermark is in its database: each sync reads it, counts
   // both tiers against it (two scan-class counts more than the in-memory
-  // bookkeeping it replaced) and parses the one stored mark. 11 statements
-  // more on a warm read, the same at 10k and at 100k rows.
-  ['events:runQuery text, cold', [1038, 477, 0, 231, 1003, 200, 14], [10038, 4406, 0, 2103, 10003, 2000, 14]],
-  ['events:runQuery text, warm', [37, 480, 0, 32, 203, 0, 14], [37, 4409, 0, 104, 2003, 0, 14]],
-  ['events:runQuery coverage only', [17, 211, 0, 1, 0, 0, 8], [17, 2011, 0, 1, 0, 0, 8]],
+  // bookkeeping it replaced) and parses the one stored mark. The search then
+  // plans its read the way every connection does (#779): it counts both tiers
+  // against the mark once more and asks each tier for rows above it (four
+  // scan-class statements, empty when the mark is current), and coverage
+  // plans the same way in two statements fewer than it took before. The same
+  // at 10k and at 100k rows.
+  ['events:runQuery text, cold', [1042, 479, 0, 231, 1003, 200, 18], [10042, 4408, 0, 2103, 10003, 2000, 18]],
+  ['events:runQuery text, warm', [41, 482, 0, 32, 203, 0, 18], [41, 4411, 0, 104, 2003, 0, 18]],
+  ['events:runQuery coverage only', [15, 210, 0, 1, 0, 0, 8], [15, 2010, 0, 1, 0, 0, 8]],
   ['events:runQuery conditions only', [9, 109, 0, 100, 0, 0, 4], [9, 109, 0, 100, 0, 0, 4]],
   ['events:activityPage first page', [62, 109, 30000, 30250, 0, 0, 7], [62, 109, 300000, 300250, 0, 0, 7]],
   ['events:activityPage next page', [63, 113, 0, 251, 0, 0, 7], [63, 113, 0, 251, 0, 0, 7]],

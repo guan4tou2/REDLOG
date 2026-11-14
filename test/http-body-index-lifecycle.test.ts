@@ -4,7 +4,8 @@
 // body, one with an inline escaped body, one whose request and response are the
 // same bytes; search under a fresh snapshot and under an older one; a live
 // count and match; a search by a second module instance (its own index
-// connection, as the export worker has) bounded by an older snapshot; a saved
+// connection) bounded by an older snapshot; a real worker opened read-only with
+// one read transaction, as the export worker is, whose view falls behind; a saved
 // body that vanishes, or vanishes mid-read, and comes back.
 //
 // After every search or count:
@@ -27,6 +28,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { requires } from './helpers/requires'
 import { cost, parsed, escapeNonAscii } from './helpers/body-index-work'
+import { openFrozenReader, type FrozenReader } from './helpers/frozen-export-reader'
 import type { ExportSnapshot } from '../src/core/export-plan'
 
 const sqlite = requires('better-sqlite3')
@@ -163,6 +165,14 @@ sqlite.describe('body index lifecycle, seeded', () => {
     let compared = 0, found = 0
     let older: ExportSnapshot = readActivitySnapshot(db.getReadonlyDB())
     let other: { db: typeof db; queries: typeof queries; idx: typeof idx } | null = null
+    let frozen: FrozenReader | null = null
+    const sharedState = (): unknown => {
+      const index = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
+      try {
+        return { refs: index.prepare('SELECT count(*) AS n FROM body_event_refs').get(), docs: index.prepare('SELECT count(*) AS n FROM body_docs').get(),
+          mark: index.prepare("SELECT value FROM body_index_meta WHERE key='mark'").get() }
+      } finally { index.close() }
+    }
     try {
       checked(() => queries.executeEventQuery({ parsed: parsed('shared'), filter: {}, limit: 1 }))
       for (step = 0; step < STEPS; step++) {
@@ -190,6 +200,16 @@ sqlite.describe('body index lifecycle, seeded', () => {
             expect(count, `${where()}: count of "${text}"`).toBe(expected.length)
             expect(matched.sort(), `${where()}: match of "${text}"`).toEqual(expected.filter(id => ids.includes(id)))
           }
+        } else if (r < 0.73) {
+          // The export worker: read-only, one read transaction for its life,
+          // so its view falls behind while main goes on.
+          op = 'frozen reader'
+          if (!frozen || random() < 0.3) { await frozen?.close(); frozen = await openFrozenReader(dir, 'eng') }
+          const before = sharedState(), text = query()
+          const answer = await frozen.search(text)
+          if (answer.coverage.status === 'covered') expect(answer.ids, `${where()}: frozen reader, "${text}"`).toEqual(oracle(text, frozen.snapshot))
+          expect(answer.rows, `${where()}: source rows the frozen reader read`).toBeLessThanOrEqual(40)
+          expect(sharedState(), `${where()}: the frozen reader wrote the shared index`).toEqual(before)
         } else if (r < 0.76) {
           op = 'other instance, older snapshot'
           if (!other) {
@@ -243,6 +263,6 @@ sqlite.describe('body index lifecycle, seeded', () => {
       documentsHold()
       // Not vacuous: answers were held to the model while covered, and hits among them.
       expect({ compared: compared > 20, found: found > 10 }, `seed ${seed}: compared ${compared}, found ${found}`).toEqual({ compared: true, found: true })
-    } finally { if (other) { other.idx.closeHttpBodyIndex(); other.db.closeDB() } }
+    } finally { await frozen?.close(); if (other) { other.idx.closeHttpBodyIndex(); other.db.closeDB() } }
   }, 30_000)
 })

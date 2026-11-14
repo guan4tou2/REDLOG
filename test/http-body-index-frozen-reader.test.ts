@@ -1,0 +1,109 @@
+// The export worker opens the project read-only and holds one read
+// transaction for the whole export (export-worker.ts), so its view of the
+// source rows can fall behind what main has indexed since. Such a connection
+// must never walk, prune or move the shared index's watermark: it answers from
+// the shared index where that vouches for its view, and from its own TEMP
+// tables elsewhere. Main meanwhile keeps finding the bodies it indexed:
+// `eventIdsReferencingBody`, which /api/http-body/<sha> goes through, must not
+// lose them while an export runs.
+import { afterEach, beforeEach, expect, it } from 'vitest'
+import Database from 'better-sqlite3'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { requires } from './helpers/requires'
+import { parsed, savedBody, savedResponse } from './helpers/body-index-work'
+import { openFrozenReader, type FrozenReader } from './helpers/frozen-export-reader'
+import { getDB } from '../src/core/db/index'
+
+const sqlite = requires('better-sqlite3')
+let db: typeof import('../src/core/db')
+let queries: typeof import('../src/core/db/event-queries')
+let idx: typeof import('../src/core/http-body-index')
+if (sqlite.ok) {
+  db = await import('../src/core/db')
+  queries = await import('../src/core/db/event-queries')
+  idx = await import('../src/core/http-body-index')
+}
+let dir = '', reader: FrozenReader | null = null
+const search = (text: string) => queries.executeEventQuery({ parsed: parsed(text), filter: {}, limit: 1000 })
+
+/** What the shared index holds, read through a connection of its own. */
+function shared(): { refs: number; docs: number; mark: unknown } {
+  const index = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
+  try {
+    const n = (sql: string) => (index.prepare(sql).get() as { n: number }).n
+    const mark = index.prepare("SELECT value FROM body_index_meta WHERE key='mark'").get() as { value: string } | undefined
+    return { refs: n('SELECT count(*) AS n FROM body_event_refs'), docs: n('SELECT count(*) AS n FROM body_docs'), mark: mark && JSON.parse(mark.value).tiers }
+  } finally { index.close() }
+}
+const chainedBody = (id: string, text: string): string => {
+  const ref = savedBody(dir, text)
+  getDB().prepare(`INSERT INTO events (id,timestamp,engagement_id,session_id,operator_id,agent_type,subtype,hostname,data,created_at,hash)
+    VALUES (?,9000003,'project','capture','operator','scanner','http_response','host',?,9000003,'hash')`).run(id, JSON.stringify({ subtype: 'http_response', response_body_ref: ref }))
+  return ref.sha256
+}
+
+sqlite.describe('a read-only connection whose view is behind the shared index', () => {
+  beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-body-frozen-')); db.initDB(dir) })
+  afterEach(async () => { await reader?.close(); reader = null; idx.closeHttpBodyIndex(); db.closeDB(); fs.rmSync(dir, { recursive: true, force: true }) })
+
+  it.each(['logged', 'chained'] as const)('behind in the %s tier: answers its snapshot, and leaves the shared index and main as they were', async tier => {
+    const old = Array.from({ length: 5 }, (_, i) => { savedResponse(`old-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha old${i}"}`) }); return `old-${i}` })
+    search('alpha')
+    reader = await openFrozenReader(dir, 'project')
+    // While the export runs, capture goes on and main searches.
+    const added: Array<{ id: string; sha256: string }> = []
+    for (let i = 0; i < 20; i++) {
+      const id = `new-${i}`, text = `{"n":"alpha new${i}"}`
+      if (tier === 'chained') added.push({ id, sha256: chainedBody(id, text) })
+      else { const ref = savedBody(dir, text); savedResponse(id, { response_body_ref: ref }); added.push({ id, sha256: ref.sha256 }) }
+    }
+    expect(search('alpha').items).toHaveLength(25)
+    const before = shared()
+    expect(before).toMatchObject({ refs: 25, docs: 25 })
+
+    for (let round = 0; round < 3; round++) {
+      const answer = await reader.search('alpha')
+      expect(answer.ids).toEqual(old)
+      expect(answer.coverage).toMatchObject({ status: 'covered', indexed: 5 })
+      // Its view is vouched for by the shared index: no row of it is read again.
+      expect(answer.rows).toBe(0)
+      expect(shared()).toEqual(before)
+      for (const { id, sha256 } of added) expect(idx.eventIdsReferencingBody(sha256, dir)).toEqual([id])
+    }
+    expect(search('alpha').items).toHaveLength(25)
+  }, 30_000)
+
+  it('rows its view has and the shared index does not yet: read once, into its own tables', async () => {
+    for (let i = 0; i < 5; i++) savedResponse(`old-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha old${i}"}`) })
+    search('alpha')
+    // Main has not searched since these were written.
+    for (let i = 0; i < 3; i++) savedResponse(`unindexed-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha unindexed${i}"}`) })
+    const before = shared()
+    reader = await openFrozenReader(dir, 'project')
+    const first = await reader.search('alpha'), second = await reader.search('alpha')
+    expect(first.ids).toHaveLength(8)
+    expect(first.coverage).toMatchObject({ status: 'covered', indexed: 8 })
+    expect({ first: first.rows, second: second.rows }).toEqual({ first: 3, second: 0 })
+    expect(shared()).toEqual(before)
+  }, 30_000)
+
+  it('a replaced database: the reader answers its own rows and writes nothing; main rebuilds', async () => {
+    for (let i = 0; i < 5; i++) savedResponse(`gone-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha gone${i}"}`) })
+    search('alpha')
+    idx.closeHttpBodyIndex(); db.closeDB()
+    for (const suffix of ['', '-wal', '-shm']) fs.rmSync(path.join(dir, `timeline.db${suffix}`), { force: true })
+    db.initDB(dir)
+    for (let i = 0; i < 3; i++) savedResponse(`fresh-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha fresh${i}"}`) })
+    const before = shared()
+    expect(before).toMatchObject({ refs: 5 })
+    reader = await openFrozenReader(dir, 'project')
+    const answer = await reader.search('alpha')
+    expect(answer.ids).toEqual(['fresh-0', 'fresh-1', 'fresh-2'])
+    expect(answer.coverage).toMatchObject({ status: 'covered', indexed: 3 })
+    expect(shared()).toEqual(before)
+    expect(search('alpha').items.map(e => e.id).sort()).toEqual(['fresh-0', 'fresh-1', 'fresh-2'])
+    expect(shared()).toMatchObject({ refs: 3, docs: 3, mark: [{ n: 0 }, { n: 3 }] })
+  }, 30_000)
+})

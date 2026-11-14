@@ -315,22 +315,24 @@ describe('incremental body-search backfill', () => {
     } finally { holder.close() }
   })
 
-  // Another connection holding the index's write lock (the export worker,
-  // mid-walk) must not fail a search: it answers from the index as it stands,
-  // and coverage, which reads the project's rows, shows what is not linked.
-  it('answers from the index as it stands while another writer holds it', () => {
+  // Another connection holding the index's write lock must not fail a search
+  // or leave it short: the row the watermark does not cover is read into this
+  // connection's TEMP tables, and the shared index is not written.
+  it('answers in full, without writing the index, while another writer holds it', () => {
     seed(5)
     searchHttpBodyEventIds('alpha', dir)
     bodyEvent('w5', 'alpha work5')
     const holder = new Database(path.join(dir, 'http-body-index.db'))
     try {
       holder.prepare('BEGIN IMMEDIATE').run()
-      expect(searchHttpBodyEventIds('alpha', dir)).toHaveLength(5)
-      expect(bodySearchCoverage()).toMatchObject({ indexed: 5, pending: 1 })
+      expect(searchHttpBodyEventIds('alpha', dir)).toHaveLength(6)
+      expect(bodySearchCoverage()).toMatchObject({ indexed: 6, pending: 0 })
+      expect(eventIdsReferencingBody(sha('alpha work5'), dir)).toEqual([])
       holder.prepare('ROLLBACK').run()
     } finally { holder.close() }
     expect(searchHttpBodyEventIds('alpha', dir)).toHaveLength(6)
     expect(bodySearchCoverage()).toMatchObject({ indexed: 6, pending: 0 })
+    expect(eventIdsReferencingBody(sha('alpha work5'), dir)).toEqual(['w5'])
   }, 30_000)
 
   it('treats a row ingest already linked as a no-op at the next search', () => {

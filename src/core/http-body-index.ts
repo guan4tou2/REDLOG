@@ -21,7 +21,10 @@ function getIndex(projectDir = getProjectDir()): Database.Database {
   if (index && indexDir === projectDir)
     return index
   closeHttpBodyIndex()
-  const db = index = new Database(path.join(projectDir, 'http-body-index.db'))
+  // A search that finds the write lock held waits at most this long, on the
+  // main thread, before it answers from what is there (readPlan). Only main's
+  // own connection writes the index, so in practice nobody holds it.
+  const db = index = new Database(path.join(projectDir, 'http-body-index.db'), { timeout: 1000 })
   db.pragma('journal_mode = WAL')
   // `synchronous` stays at the WAL default (NORMAL), unlike timeline.db: an
   // OS crash loses the last commits whole, the watermark (see sync) with the
@@ -88,10 +91,9 @@ export function closeHttpBodyIndex(): void { if (index) {
 type Tier = 'events' | 'events_logged'
 const TIERS = ['events', 'events_logged'] as const
 let statements = new Map<string, Database.Statement>()
-/** Where a ref and its documents are written. The shared index holds the live
- *  project. A reader bounded by an older snapshot whose latest transcript
- *  prefix the live index no longer holds keeps that prefix in TEMP tables of
- *  its own connection (see linkExtras): never in the shared ones. */
+/** Where a ref and its documents are written: the shared index, which only
+ *  main's read-write connection writes, or this connection's TEMP tables, for
+ *  what one call reads that the shared index does not vouch for (readPlan). */
 interface Tables { refs: string; docs: string; fts: string }
 const SHARED: Tables = { refs: 'body_event_refs', docs: 'body_docs', fts: 'body_fts' }
 const EXTRA: Tables = { refs: 'body_x_refs', docs: 'body_x_docs', fts: 'body_x_fts' }
@@ -429,12 +431,12 @@ const linkRow = (row: ContentRow, projectDir: string, tier: Tier, t = SHARED): I
   linkEvent({ id: row.id, data: JSON.parse(row.data) as Record<string, unknown>, agentType: row.agent_type }, projectDir, tier, { engagementId: row.engagement_id, row: row.r }, false, t)
 
 // ── What the index describes ─────────────────────────────────────────────
-// The shared index describes the live project: every content-ref row, with
-// the latest transcript prefix of each saved file. Nothing bounded by a
-// snapshot writes to it or prunes it. A reader bounded by a snapshot filters
-// by that snapshot when it reads (each ref keeps its tier and row), so an
-// export worker's search leaves the index as main needs it, and alternating
-// live and snapshot readers is not a change of boundary.
+// The shared index describes the live project as main's read-write
+// connection last saw it: every content-ref row, with the latest transcript
+// prefix of each saved file. Only that connection writes it (see readPlan for
+// everyone else), and a snapshot is never a reason to write: a call bounded by
+// one filters by it when it reads (each ref keeps its tier and row), so
+// alternating live and snapshot calls is not a change of boundary.
 //
 // The watermark ('mark' in body_index_meta) says which rows the index
 // describes: per tier the count and highest rowid of content-ref rows and the
@@ -490,10 +492,11 @@ function sync(projectDir: string): void {
   // Persisted with the verifications it vouches for, so a directory replaced
   // while the app was closed is noticed at the next search too.
   const dirs = directorySignature(projectDir)
-  const latest = latestSnapshots(), latestIds = latest.map(l => l.id).sort(compareCodeUnits)
   // IMMEDIATE: the write lock is waited for at BEGIN (the busy timeout), not
   // refused mid-walk when another connection committed after this one read.
   db.transaction(() => {
+    // Under the lock, like the watermark it is compared with.
+    const latest = latestSnapshots(), latestIds = latest.map(l => l.id).sort(compareCodeUnits)
     const directoriesChanged = (stmt(db, "SELECT value FROM body_index_meta WHERE key='directories'").get() as { value: string } | undefined)?.value !== dirs
     if (directoriesChanged) {
       stmt(db, 'UPDATE body_event_refs SET verified_desc=NULL,verified_file=NULL,verified_sig=NULL').run()
@@ -561,26 +564,133 @@ const REF_COLUMNS = `event_id TEXT NOT NULL,slot TEXT NOT NULL,sha256 TEXT NOT N
      engagement_id TEXT,row INTEGER,pos INTEGER NOT NULL,source_bytes INTEGER NOT NULL,PRIMARY KEY(event_id,slot)`
 const hasExtraTables = (db: Database.Database): boolean =>
   stmt(db, "SELECT 1 FROM sqlite_temp_master WHERE type='table' AND name='body_x_refs'").get() !== undefined
-/** The transcript prefixes latest inside `snapshot` that the shared index
- *  does not hold, because a newer one superseded them after it: linked into
- *  this connection's TEMP tables, re-verified by signature like any ref, and
- *  returned by id. Usually none. */
-function linkExtras(projectDir: string, snapshot: ExportSnapshot): string[] {
-  const db = getIndex(projectDir)
-  const held = new Set(readMark(db)?.latest ?? latestSnapshots().map(l => l.id))
-  const extras = latestSnapshots(snapshot).filter(l => !held.has(l.id))
-  if (!extras.length) return []
+function ensureExtraTables(db: Database.Database): void {
   if (!hasExtraTables(db)) db.exec(`CREATE TEMP TABLE body_x_refs (${REF_COLUMNS});
     CREATE TEMP TABLE body_x_docs (doc INTEGER PRIMARY KEY,event_id TEXT NOT NULL,slot TEXT NOT NULL,sha256 TEXT NOT NULL);
     CREATE INDEX temp.body_x_docs_ref ON body_x_docs(event_id,slot);
+    CREATE INDEX temp.body_x_docs_sha256 ON body_x_docs(sha256);
     CREATE VIRTUAL TABLE temp.body_x_fts USING fts5(content,tokenize='${FTS_TOKENIZE}',prefix='2 3');`)
-  db.transaction(() => {
-    for (const l of extras) {
-      const row = getDB().prepare(`SELECT id,data,agent_type,rowid AS r,engagement_id FROM ${l.tier} WHERE rowid=?`).get(l.r) as ContentRow | undefined
-      if (row) linkRow(row, projectDir, l.tier, EXTRA)
+}
+/** Remove one event's refs and documents from this connection's TEMP tables. */
+function dropExtra(db: Database.Database, eventId: string): void {
+  for (const { slot } of stmt(db, 'SELECT slot FROM body_x_refs WHERE event_id=?').all(eventId) as { slot: string }[]) dropDocs(db, eventId, slot, EXTRA)
+  stmt(db, 'DELETE FROM body_x_refs WHERE event_id=?').run(eventId)
+}
+
+// ── How one call reads ───────────────────────────────────────────────────
+// Only main's read-write source connection writes the shared index: it
+// syncs, links at ingest and prunes. A connection whose source is read-only —
+// the export worker, which holds one read transaction for a whole export —
+// never writes it (beyond creating the schema of an index that is missing or
+// at an older version, which holds nothing either way): it never walks, never
+// prunes and never moves the watermark. Every call, writer or not, then reads
+// the shared index where it vouches for this connection's view of the
+// source, and reads the rest from this connection's TEMP tables, which hold
+// exactly what the last call needed:
+//
+// - rows inside the boundary the watermark does not cover (a reader whose
+//   view is ahead of main's last sync; main while the lock was held);
+// - the transcript prefixes latest inside the boundary that the shared index
+//   does not hold (a newer one superseded them there);
+// - for a reader, the refs whose file changed since they were verified, and
+//   the missing and failed ones, which main's sync retries and a reader
+//   cannot.
+interface Local { id: string; tier: Tier; r: number }
+interface ReadPlan {
+  /** Per tier: shared refs of rows at or below this are read from the shared index (-1: none). */
+  upTo: [number, number]
+  /** Events read from this connection's TEMP tables instead. */
+  local: Local[]
+  /** Events whose shared refs are not read: a transcript prefix that is not
+   *  the latest inside the boundary, and every local event. */
+  skip: string[]
+}
+/** What the shared index vouches for in this connection's view of the source:
+ *  per tier, the highest rowid it describes for this view, or null for none.
+ *
+ *  A view is *behind* the watermark in a tier when its highest content-ref
+ *  rowid is below the watermark's. Only a read-only connection is ever behind:
+ *  main's read-write connection sees every commit, so for it a lower highest
+ *  rowid means rows were deleted or the database replaced, and its sync walks
+ *  before it reads. A view behind in a tier is taken as a prefix of what the
+ *  index describes when the last ref the index holds at or below the view's
+ *  highest rowid is, in this view, the same event at the same rowid (a
+ *  replaced database has other ids there); a view at or above it, when the
+ *  watermark's prefix is intact in it. Both tiers must agree, or the shared
+ *  index vouches for nothing in this view. */
+function vouchedFor(db: Database.Database, mark: Mark | null): [number, number] | null {
+  if (!mark) return null
+  const source = getDB(), out: number[] = []
+  for (const [i, table] of TIERS.entries()) {
+    const m = mark.tiers[i]
+    const view = source.prepare(`SELECT coalesce(max(rowid),0) AS max,count(*) FILTER (WHERE rowid<=?) AS below
+      FROM ${table} INDEXED BY idx_${table}_content_refs WHERE rowid<=? AND (${BODY_SOURCE_PREDICATE})`).get(m.max, Number.MAX_SAFE_INTEGER) as { max: number; below: number }
+    const idAt = (rowid: number): string | null => rowid > 0 ? (source.prepare(`SELECT id FROM ${table} WHERE rowid=?`).get(rowid) as { id: string } | undefined)?.id ?? null : null
+    if (view.max >= m.max) {
+      if (view.below !== m.n || idAt(m.max) !== m.idAtMax) return null
+      out.push(m.max)
+    } else {
+      const last = stmt(db, 'SELECT event_id,row FROM body_event_refs WHERE tier=? AND row<=? ORDER BY row DESC LIMIT 1').get(table, view.max) as { event_id: string; row: number } | undefined
+      if (last && idAt(last.row) !== last.event_id) return null
+      out.push(view.max)
     }
+  }
+  return [out[0], out[1]]
+}
+/** Shared refs inside `upTo` whose file no longer has the signature they
+ *  were verified with, or that carry no verification (missing, failed). */
+function unverified(db: Database.Database, upTo: [number, number]): Local[] {
+  const out = new Map<string, Local>(), signatures = new Map<string, string>()
+  for (const ref of stmt(db, `SELECT event_id,tier,row,verified_desc,verified_file,verified_sig FROM body_event_refs
+      WHERE row<=CASE tier WHEN 'events' THEN ? ELSE ? END AND (verified_desc IS NULL OR verified_file IS NOT NULL)`).all(upTo[0], upTo[1]) as Array<{
+      event_id: string; tier: Tier; row: number; verified_desc: string | null; verified_file: string | null; verified_sig: string | null }>) {
+    let changed = ref.verified_desc === null
+    if (!changed && ref.verified_file) {
+      let sig = signatures.get(ref.verified_file)
+      if (sig === undefined) { sig = fileSignature(ref.verified_file); signatures.set(ref.verified_file, sig) }
+      changed = sig !== ref.verified_sig
+    }
+    if (changed) out.set(ref.event_id, { id: ref.event_id, tier: ref.tier, r: ref.row })
+  }
+  return [...out.values()]
+}
+/** The plan of one call under `snapshot` (none: live). With `link`, the
+ *  local events are linked into TEMP first, and TEMP keeps nothing else. */
+function readPlan(projectDir: string, snapshot: ExportSnapshot | undefined, link: boolean): ReadPlan {
+  const db = getIndex(projectDir), source = getDB(), bounds = boundsOf(snapshot), reader = source.readonly
+  const latest = latestSnapshots(snapshot), latestIds = latest.map(l => l.id), wanted = new Set(latestIds)
+  // One read transaction: another connection's sync lands before or after.
+  const { held, upTo, changed } = db.transaction(() => {
+    const mark = readMark(db), covered = vouchedFor(db, mark)
+    const upTo: [number, number] = covered ? [Math.min(bounds[0], covered[0]), Math.min(bounds[1], covered[1])] : [-1, -1]
+    return { held: new Set(covered ? mark!.latest : []), upTo, changed: reader && covered ? unverified(db, upTo) : [] }
   })()
-  return extras.map(l => l.id)
+  const local = new Map<string, Local>()
+  for (const l of latest) if (!held.has(l.id) && l.r <= upTo[TIERS.indexOf(l.tier)]) local.set(l.id, l)
+  for (const c of changed) local.set(c.id, c)
+  for (const [i, table] of TIERS.entries()) {
+    if (bounds[i] <= Math.max(upTo[i], 0)) continue
+    for (const row of source.prepare(`SELECT id,rowid AS r FROM ${table} INDEXED BY idx_${table}_content_refs WHERE rowid<=? AND rowid>? AND (${BODY_SOURCE_PREDICATE})
+        AND (agent_type<>'agent' OR coalesce(subtype,'')<>'transcript_snapshot' OR id IN (SELECT value FROM json_each(?)))`).all(bounds[i], Math.max(upTo[i], 0), JSON.stringify(latestIds)) as Array<{ id: string; r: number }>)
+      local.set(row.id, { id: row.id, tier: table, r: row.r })
+  }
+  if (link && (local.size || hasExtraTables(db))) {
+    ensureExtraTables(db)
+    db.transaction(() => {
+      for (const { event_id } of stmt(db, 'SELECT DISTINCT event_id FROM body_x_refs').all() as { event_id: string }[]) if (!local.has(event_id)) dropExtra(db, event_id)
+      const linked = stmt(db, 'SELECT status,verified_desc,verified_file,verified_sig FROM body_x_refs WHERE event_id=?')
+      for (const l of local.values()) {
+        // Linked by an earlier call and still verified: no source row is read.
+        const refs = linked.all(l.id) as Array<{ status: string; verified_desc: string | null; verified_file: string | null; verified_sig: string | null }>
+        if (refs.length && refs.every(r => r.verified_desc !== null && FINAL_STATUSES.has(r.status) && (r.verified_file === null || fileSignature(r.verified_file) === r.verified_sig))) continue
+        const row = source.prepare(`SELECT id,data,agent_type,rowid AS r,engagement_id FROM ${l.tier} WHERE rowid=?`).get(l.r) as ContentRow | undefined
+        if (row) linkRow(row, projectDir, l.tier, EXTRA)
+      }
+    })()
+  }
+  const skip = new Set([...held].filter(id => !wanted.has(id)))
+  for (const id of local.keys()) skip.add(id)
+  return { upTo, local: [...local.values()], skip: [...skip] }
 }
 /** The events that reference one body-store file, from the (event, sha256)
  *  link table rather than a scan of `events`. Only events the index has been
@@ -598,6 +708,8 @@ export function pruneHttpBodyIndex(sha256: string, projectDir = getProjectDir())
     for (const { doc } of docs) drop.run(doc)
     stmt(db, 'DELETE FROM body_docs WHERE sha256=?').run(sha256)
     stmt(db, 'DELETE FROM body_event_refs WHERE sha256=?').run(sha256)
+    // Nor may this connection's TEMP tables answer for the file.
+    if (hasExtraTables(db)) for (const { event_id } of stmt(db, 'SELECT DISTINCT event_id FROM body_x_refs WHERE sha256=?').all(sha256) as { event_id: string }[]) dropExtra(db, event_id)
     // A full walk after a prune puts the ref back as it now is (usually
     // 'missing'); an incremental one would not look at it.
     forgetMark(db)
@@ -611,7 +723,10 @@ export function pruneSavedFileIndex(file:string, projectDir=getProjectDir()):voi
   db.transaction(()=>{for(const ref of refs)if(path.resolve(projectDir,ref.file)===absolute){
     dropDocs(db,ref.event_id,ref.slot)
     db.prepare('DELETE FROM body_event_refs WHERE event_id=? AND slot=?').run(ref.event_id,ref.slot)
-  }forgetMark(db)})()
+  }
+  if(hasExtraTables(db))for(const ref of stmt(db,"SELECT DISTINCT event_id,file FROM body_x_refs WHERE kind<>'body'").all() as {event_id:string;file:string}[])
+    if(path.resolve(projectDir,ref.file)===absolute)dropExtra(db,ref.event_id)
+  forgetMark(db)})()
 }
 /** A raw snapshot spans its Session prefix, not individual target/time/tool rows. */
 export function rawTranscriptFiltersUnsupported(conditions: readonly {field:string}[], filter?: {
@@ -624,34 +739,34 @@ export function rawTranscriptFiltersUnsupported(conditions: readonly {field:stri
  *  prefix), the events that have a body document containing it. A term is
  *  matched within one document; different terms may sit in different
  *  documents or bodies of an event, or in the event's own data (the caller
- *  combines these with the events index per term). Each list is bounded by
- *  the events the body index holds documents for and, with `snapshot`, by the
- *  rows inside it, with the transcript prefixes that were latest there. */
+ *  combines these with the events index per term). Each list holds only
+ *  events of rows inside `snapshot` (or the whole project) as this
+ *  connection sees them, with the transcript prefix latest there, also while
+ *  another connection holds the index. */
 export function searchHttpBodyTermIds(query: string, projectDir = getProjectDir(), excludeAiRaw = false,snapshot?:ExportSnapshot): Array<{ term: string; eventIds: string[] }> {
   const terms = ftsTerms(query)
   if (!terms.length)
     return []
-  // Another writer of the index (the export worker, mid-sync) held it past
-  // the busy timeout: answer from the index as it stands. Coverage reads the
-  // rows above the watermark from the source, so a ref this left unlinked
-  // still shows as pending.
-  try { sync(projectDir) }
-  catch (error) { if (!(error instanceof Database.SqliteError && error.code.startsWith('SQLITE_BUSY'))) throw error }
-  const db = getIndex(projectDir)
-  const extras = snapshot && !excludeAiRaw ? linkExtras(projectDir, snapshot) : []
+  // Another writer held the index past the busy timeout: this call reads the
+  // rows the watermark does not cover from TEMP instead (readPlan).
+  if (!getDB().readonly) {
+    try { sync(projectDir) }
+    catch (error) { if (!(error instanceof Database.SqliteError && error.code.startsWith('SQLITE_BUSY'))) throw error }
+  }
+  const db = getIndex(projectDir), plan = readPlan(projectDir, snapshot, true)
+  const kind = excludeAiRaw ? " AND r.kind<>'ai-raw'" : ''
   // Failed references have already lost their FTS rows. Report them through
-  // coverage without withholding unrelated, verified matches. A ref linked at
-  // ingest and not reached by a sync yet has no row: the caller's own rowid
-  // bound decides it.
-  const where = [...(excludeAiRaw ? ["r.kind<>'ai-raw'"] : []),
-    ...(snapshot ? ["(r.row IS NULL OR r.row<=CASE r.tier WHEN 'events' THEN @chained ELSE @logged END)"] : [])]
+  // coverage without withholding unrelated, verified matches.
   const find = stmt(db, `SELECT DISTINCT d.event_id FROM body_fts JOIN body_docs d ON d.doc=body_fts.rowid WHERE body_fts MATCH @term
-      ${where.length ? `AND EXISTS(SELECT 1 FROM body_event_refs r WHERE r.event_id=d.event_id AND r.slot=d.slot AND ${where.join(' AND ')})` : ''}`)
-  const findExtra = extras.length ? stmt(db, `SELECT DISTINCT d.event_id FROM body_x_fts JOIN body_x_docs d ON d.doc=body_x_fts.rowid
-      WHERE body_x_fts MATCH @term AND d.event_id IN (SELECT value FROM json_each(@extras))`) : null
+      AND EXISTS(SELECT 1 FROM body_event_refs r WHERE r.event_id=d.event_id AND r.slot=d.slot AND r.row<=CASE r.tier WHEN 'events' THEN @chained ELSE @logged END${kind})
+      AND d.event_id NOT IN (SELECT value FROM json_each(@skip))`)
+  const findLocal = plan.local.length ? stmt(db, `SELECT DISTINCT d.event_id FROM body_x_fts JOIN body_x_docs d ON d.doc=body_x_fts.rowid
+      WHERE body_x_fts MATCH @term AND d.event_id IN (SELECT value FROM json_each(@local))
+      AND EXISTS(SELECT 1 FROM body_x_refs r WHERE r.event_id=d.event_id AND r.slot=d.slot${kind})`) : null
+  const skip = JSON.stringify(plan.skip), local = JSON.stringify(plan.local.map(l => l.id))
   return terms.map(term => {
-    const ids = (find.all(snapshot ? { term, chained: snapshot.chainedMaxRowId, logged: snapshot.loggedMaxRowId } : { term }) as { event_id: string }[]).map(row => row.event_id)
-    if (findExtra) ids.push(...(findExtra.all({ term, extras: JSON.stringify(extras) }) as { event_id: string }[]).map(row => row.event_id))
+    const ids = (find.all({ term, chained: plan.upTo[0], logged: plan.upTo[1], skip }) as { event_id: string }[]).map(row => row.event_id)
+    if (findLocal) ids.push(...(findLocal.all({ term, local }) as { event_id: string }[]).map(row => row.event_id))
     return { term, eventIds: [...new Set(ids)] }
   })
 }
@@ -693,54 +808,41 @@ function sourceBytesOf(ref: IndexedRef): number {
   const size = Number.isSafeInteger(ref.size) && ref.size >= 0 ? ref.size : 0
   return ref.kind === 'body' && ref.truncated && typeof ref.totalSize === 'number' && ref.totalSize > size ? ref.totalSize : size
 }
-/** Every ref coverage counts, in source order (tier, row, position).
- *
- *  Where the watermark is intact, the rows it covers are read from
- *  body_event_refs, which holds what refsOf derived for each ref, filtered to
- *  the boundary: no source row is read for them. Only the rows it does not
- *  cover are read from the source: rows added since (inside the boundary),
- *  and the transcript prefixes latest inside an older boundary that the index
- *  no longer holds. Without an intact watermark, every row is read from the
- *  source. Either way a ref's status is its index row (none: pending), and
- *  both give the same entries for the same state. */
+/** Every ref coverage counts, in source order (tier, row, position), under
+ *  the same plan a search makes (readPlan, without linking). Refs the shared
+ *  index vouches for are read from body_event_refs, local ones from this
+ *  connection's TEMP tables; neither reads a source row. A local event TEMP
+ *  does not hold is read from its source row, its refs' status looked up in
+ *  the shared index (none: pending). */
 function coverageEntries(snapshot: ExportSnapshot | undefined, projectId: string | undefined): CoverageEntry[] {
-  const db = getIndex(getProjectDir()), source = getDB(), bounds = boundsOf(snapshot)
-  const latest = latestSnapshots(snapshot), latestIds = latest.map(l => l.id)
-  const lookups = [stmt(db, 'SELECT status,indexed_bytes,reason,available_bytes FROM body_event_refs WHERE event_id=? AND slot=?'),
-    ...(hasExtraTables(db) ? [stmt(db, 'SELECT status,indexed_bytes,reason,available_bytes FROM body_x_refs WHERE event_id=? AND slot=?')] : [])]
-  const fromSource = (row: ContentRow): Array<{ row: number; pos: number; entry: CoverageEntry }> =>
+  const projectDir = getProjectDir(), db = getIndex(projectDir), source = getDB()
+  const plan = readPlan(projectDir, snapshot, false), skip = new Set(plan.skip)
+  type Keyed = { row: number; pos: number; entry: CoverageEntry }
+  type RefRow = { event_id: string; kind: IndexedRef['kind']; file: string; sha256: string; size: number; source_bytes: number; status: string; indexed_bytes: number; reason: string; available_bytes: number; row: number; pos: number; engagement_id: string | null }
+  const keyed = (r: RefRow): Keyed => ({ row: r.row, pos: r.pos, entry: { eventId: r.event_id, kind: r.kind, file: r.file, sha256: r.sha256, size: r.size,
+    sourceBytes: r.source_bytes, pending: r.kind === 'ai-raw' && r.status === 'pending', status: r.status, indexedBytes: r.indexed_bytes, reason: r.reason, availableBytes: r.available_bytes } })
+  const COLUMNS = 'event_id,kind,file,sha256,size,source_bytes,status,indexed_bytes,reason,available_bytes,row,pos,engagement_id'
+  const lookup = stmt(db, 'SELECT status,indexed_bytes,reason,available_bytes FROM body_event_refs WHERE event_id=? AND slot=?')
+  const fromSource = (row: ContentRow): Keyed[] =>
     refsOf({ agentType: row.agent_type, data: JSON.parse(row.data) as Record<string, unknown> }).map((ref, pos) => {
-      let indexed: { status: string; indexed_bytes: number; reason: string; available_bytes: number } | undefined
-      for (const lookup of lookups) if ((indexed = lookup.get(row.id, ref.slot) as typeof indexed)) break
+      const indexed = lookup.get(row.id, ref.slot) as { status: string; indexed_bytes: number; reason: string; available_bytes: number } | undefined
       return { row: row.r, pos, entry: { eventId: row.id, kind: ref.kind, file: ref.file, sha256: ref.sha256, size: Number.isSafeInteger(ref.size) ? ref.size : 0,
         sourceBytes: sourceBytesOf(ref), pending: ref.kind !== 'body' && ref.pending === true, status: indexed?.status, indexedBytes: indexed?.indexed_bytes ?? 0,
         reason: indexed?.reason ?? '', availableBytes: indexed?.available_bytes ?? 0 } }
     })
-  // One read transaction: another connection's sync lands before or after.
-  return db.transaction(() => {
-    const mark = readMark(db), state = mark ? sourceState(mark) : null
-    if (!mark || !state!.every(t => t.intact))
-      return rows(bounds, projectId, latestIds).flatMap(tier => [...tier].flatMap(row => fromSource(row).map(e => e.entry)))
-    const held = new Set(mark.latest), wanted = new Set(latestIds)
-    const indexedRows = stmt(db, `SELECT event_id,kind,file,sha256,size,source_bytes,status,indexed_bytes,reason,available_bytes,row,pos FROM body_event_refs
-      WHERE tier=@tier AND row<=@upTo AND (@project IS NULL OR engagement_id=@project) ORDER BY row,pos`)
-    const newer = rows(bounds, projectId, latestIds, mark.tiers.map(t => ({ after: t.max, upTo: Number.MAX_SAFE_INTEGER })))
-    return TIERS.flatMap((table, i) => {
-      const upTo = Math.min(bounds[i], mark.tiers[i].max)
-      // A held prefix that is not the latest inside this boundary is left out.
-      const indexed = (indexedRows.all({ tier: table, upTo, project: projectId ?? null }) as Array<{
-        event_id: string; kind: IndexedRef['kind']; file: string; sha256: string; size: number; source_bytes: number; status: string; indexed_bytes: number; reason: string; available_bytes: number; row: number; pos: number
-      }>).filter(r => !held.has(r.event_id) || wanted.has(r.event_id)).map(r => ({ row: r.row, pos: r.pos, entry: { eventId: r.event_id, kind: r.kind, file: r.file, sha256: r.sha256, size: r.size,
-        sourceBytes: r.source_bytes, pending: r.kind === 'ai-raw' && r.status === 'pending', status: r.status, indexedBytes: r.indexed_bytes, reason: r.reason, availableBytes: r.available_bytes } }))
-      // A prefix latest inside this boundary that a newer one superseded in the index.
-      const older = latest.filter(l => l.tier === table && l.r <= upTo && !held.has(l.id) && (!projectId || l.engagementId === projectId)).flatMap(l => {
-        const row = source.prepare(`SELECT id,data,agent_type,rowid AS r,engagement_id FROM ${table} WHERE rowid=?`).get(l.r) as ContentRow | undefined
-        return row ? fromSource(row) : []
-      })
-      const merged = older.length ? [...indexed, ...older].sort((a, b) => a.row - b.row || a.pos - b.pos) : indexed
-      return [...merged.map(e => e.entry), ...[...newer[i]].flatMap(row => fromSource(row).map(e => e.entry))]
+  const fromTemp = plan.local.length && hasExtraTables(db) ? stmt(db, `SELECT ${COLUMNS} FROM body_x_refs WHERE event_id=? ORDER BY pos`) : null
+  const indexedRows = stmt(db, `SELECT ${COLUMNS} FROM body_event_refs WHERE tier=@tier AND row<=@upTo AND (@project IS NULL OR engagement_id=@project) ORDER BY row,pos`)
+  return db.transaction(() => TIERS.flatMap((table, i) => {
+    const shared = (indexedRows.all({ tier: table, upTo: plan.upTo[i], project: projectId ?? null }) as RefRow[]).filter(r => !skip.has(r.event_id)).map(keyed)
+    const local = plan.local.filter(l => l.tier === table).flatMap(l => {
+      const temp = fromTemp ? fromTemp.all(l.id) as RefRow[] : []
+      if (temp.length) return temp.filter(r => !projectId || r.engagement_id === projectId).map(r => keyed({ ...r, row: l.r }))
+      const row = source.prepare(`SELECT id,data,agent_type,rowid AS r,engagement_id FROM ${table} WHERE rowid=?`).get(l.r) as ContentRow | undefined
+      return row && (!projectId || row.engagement_id === projectId) ? fromSource(row) : []
     })
-  })()
+    const merged = local.length ? [...shared, ...local].sort((a, b) => a.row - b.row || a.pos - b.pos) : shared
+    return merged.map(e => e.entry)
+  }))()
 }
 /** A source-scoped manifest, not a claim that every attachment was indexed. */
 export function bodySearchCoverage(snapshot?: ExportSnapshot, projectId?: string, options?: {parsed?:ParsedQuery;filter?:EventFilter}): BodySearchCoverage {
