@@ -43,6 +43,7 @@ import { eventBus } from './event-bus'
 import { noteDbError } from './capture-health'
 import { LEGACY_HANDOFF } from './ingest/stamp'
 import { fieldNumber, fieldText } from './ingest/field-text'
+import { CEILING_TEXT } from './ingest/nesting-ceiling'
 
 export interface SpoolDrainIdentity { engagementId: string; operatorId: string }
 
@@ -291,7 +292,7 @@ function describeLoss(loss: SpoolLoss): string {
     : loss.reason === 'terminal-not-recording' ? 'from a terminal that was not recording'
     : loss.reason === 'kind-not-allowed' ? 'named a kind the spool may not write'
     : loss.reason === 'malformed' ? 'could not be read'
-    : loss.reason === 'nested-too-deep' ? 'nested more than 100,000 levels deep'
+    : loss.reason === 'nested-too-deep' ? `nested more than ${CEILING_TEXT} levels deep, so not parsed`
     : loss.reason === 'legacy-bad' ? 'had been set aside as unreadable by an earlier version'
     : loss.reason === 'failed' ? 'could not be written, after repeated tries'
     : `(${loss.reason})`

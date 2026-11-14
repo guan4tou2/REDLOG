@@ -37,9 +37,9 @@ import { parseVerifyReport, type HttpVerifyReport } from './http-verify'
 import { exportHar, bodyDeliverableUnderScope } from './har-export'
 import { getCaptureHealth, getCaptureError, noteDbError } from './capture-health'
 import { resolveIncomingCauses, noteStartEvent } from './causes-resolver'
-import { ingest, committedEventOf, type LootDetectorLike } from './ingest'
+import { ingest, type LootDetectorLike } from './ingest'
 import { EVENT_NESTING_CEILING, NESTED_TOO_DEEP } from './ingest/depth'
-import { noteNestingRefusal } from './ingest/nesting-ceiling'
+import { CEILING_TEXT, flushNestingRefusals, noteNestingRefusal } from './ingest/nesting-ceiling'
 import { LEGACY_API, withEntrance } from './ingest/stamp'
 import { bodyTargetId } from './ingest/body-target'
 import { isInsideDir } from './paths'
@@ -328,7 +328,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         return
       }
       const requestEngagement = engagementId
-      // No depth gate on this route (Spec 071 FR-097, owner 2026-11-14
+      // No 64-level gate on this route (Spec 071 FR-097, owner 2026-11-14
       // 「收下並摺疊」): an over-deep `data` is accepted and the writer collapses
       // it. What reads the body before insertEvent bounds it reads scalars
       // only: every field it coerces goes through ingest/field-text.ts, which
@@ -347,8 +347,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       }
       const parsed = parseJsonObjectBody(raw, { maxDepth: EVENT_NESTING_CEILING })
       if (!parsed.ok && parsed.tooDeep) {
-        noteNestingRefusal({ engagementId, operatorId: operator.id }, Buffer.byteLength(raw))
-        json(res, 413, { error: 'event is nested more than 100,000 levels deep; not recorded', reason: NESTED_TOO_DEEP })
+        noteNestingRefusal({ engagementId, operatorId: operator.id, paused: eventBus.paused }, Buffer.byteLength(raw))
+        json(res, 413, { error: `request nested more than ${CEILING_TEXT} levels deep; not parsed, not recorded`, reason: NESTED_TOO_DEEP })
         return
       }
       if (!parsed.ok) { json(res, 400, { error: parsed.error }); return }
@@ -423,20 +423,12 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       // ingest(), so a command means the same thing whether it arrives here or
       // from an in-process producer. `identity` mapper: the posted body IS the
       // envelope's {agent_type, data}.
-      let result: ReturnType<typeof ingest>
-      try {
-        result = ingest({
-          agentType, data, operatorId: operator.id, engagementId, targetId, entrance: LEGACY_API,
-          envelope: { source: 'api', mapper: { id: 'identity', version: '1' } }
-        })
-      } catch (error) {
-        // A row that committed is answered as written, whatever failed after
-        // it: a caller told otherwise resends it, and the hook spools it.
-        const committed = committedEventOf(error)
-        if (!committed) throw error
-        json(res, 201, withoutRowId(committed))
-        return
-      }
+      // A step after the commit that fails does not fail this call: ingest
+      // isolates each one and returns the written row (ingest.ts afterCommit).
+      const result = ingest({
+        agentType, data, operatorId: operator.id, engagementId, targetId, entrance: LEGACY_API,
+        envelope: { source: 'api', mapper: { id: 'identity', version: '1' } }
+      })
       if (!result.event) {
         // A deliberate pause/unrecorded interval is acknowledged so the hook
         // never spools it. Ingest still settles runtime pairs before its gate.
@@ -983,6 +975,9 @@ export function onApiProjectOpen(): void {
 
 export function onApiProjectClose(): void {
   projectOpen = false
+  // Before stopProject closes the database: refusals counted in this project
+  // are written to it (ingest/nesting-ceiling.ts).
+  try { flushNestingRefusals() } catch (e) { console.error('[api] the refusal count could not be written before close:', e) }
 }
 
 export function stopApiServer(): void {

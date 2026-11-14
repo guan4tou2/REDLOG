@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { spawnSync } from 'node:child_process'
 import { operatorPiiReplacements, scrubOperatorPii } from '../src/core/operator-pii'
 
 describe('operatorPiiReplacements', () => {
@@ -119,34 +120,84 @@ describe('operator PII at every level of JSON escaping (FR-097)', () => {
 // not scrub what is not the operator's, and the over-scrubs that remain are
 // the deliberate ones named in src/core/operator-pii.ts.
 describe('operator PII: linear time, and nothing scrubbed that is not the operator\'s', () => {
-  const MB20 = 20 * 1024 * 1024
   const HOMES: Array<[string, { home: string; user: string; host: string }]> = [
     ['Windows', { home: 'C:\\Users\\joanne', user: 'joanne', host: 'nope-host' }],
     ['UNC', { home: '\\\\srv\\share\\jo', user: 'jo', host: 'nope-host' }],
     ['a home holding a quote', { home: '/home/o"neil', user: 'oneil', host: 'nope-host' }],
     ['a home holding a backslash and a quote', { home: '/home/a\\"b', user: 'nope', host: 'nope-host' }],
-    ['POSIX', { home: '/home/alice', user: 'alice', host: 'nope-host' }]
+    ['POSIX', { home: '/home/alice', user: 'alice', host: 'nope-host' }],
+    // Identifiers that START with what a run of backslashes also matches.
+    ['starting with a quote', { home: '"abc', user: '"bcd', host: '"cde' }],
+    ['starting with a newline', { home: '\nabc', user: '\nbcd', host: '\ncde' }],
+    ['starting with a backslash', { home: '\\abc', user: '\\bcd', host: '\\cde' }]
   ]
-  const TEXTS: Array<[string, string]> = [
-    ['backslashes', '\\'.repeat(MB20)],
-    ['\\"', '\\"'.repeat(MB20 / 2)],
-    ['alternating \\ and \\"', '\\\\"'.repeat(Math.floor(MB20 / 3))]
-  ]
+  // The texts are built in the child; the patterns are sent as source + flags.
+  // A synchronous regex cannot be interrupted by vitest's timeout, so a
+  // pattern that went quadratic would hang the job: in a child it is killed
+  // after CHILD_TIMEOUT_MS and the test fails naming it.
+  const CHILD_TIMEOUT_MS = 20_000
+  const CHILD = `
+    const { patterns } = JSON.parse(require('fs').readFileSync(0, 'utf8'))
+    const MB20 = 20 * 1024 * 1024
+    const texts = [
+      ['backslashes', '\\\\'.repeat(MB20)],
+      ['\\\\"', '\\\\"'.repeat(MB20 / 2)],
+      ['alternating \\\\ and \\\\"', '\\\\\\\\"'.repeat(Math.floor(MB20 / 3))]
+    ]
+    const res = patterns.map(([source, flags]) => new RegExp(source, flags))
+    const out = []
+    for (const [name, text] of texts) {
+      const t0 = performance.now()
+      let t = text
+      for (const re of res) t = t.replace(re, 'X')
+      out.push({ name, ms: performance.now() - t0, same: t.length === text.length })
+    }
+    process.stdout.write(JSON.stringify(out))
+  `
 
   for (const [label, ids] of HOMES) {
-    it(`${label}: 20 MB of backslashes, of \\", and of both alternating, each scanned in well under a second`, () => {
-      const reps = operatorPiiReplacements(ids)
-      for (const [name, text] of TEXTS) {
-        const t0 = performance.now()
-        const out = scrubOperatorPii(text, reps)
-        const ms = performance.now() - t0
-        expect(out.length, name).toBe(text.length)
-        // Measured at ~10–60 ms each (2026-11-14); a quadratic pattern takes
+    it(`${label}: 20 MB of backslashes, of \\", and of both alternating, each scanned in well under a second (in a child, killed at ${CHILD_TIMEOUT_MS / 1000} s)`, () => {
+      const patterns = operatorPiiReplacements(ids).map(([re]) => [re.source, re.flags])
+      const run = spawnSync(process.execPath, ['-e', CHILD], { input: JSON.stringify({ patterns }), timeout: CHILD_TIMEOUT_MS, encoding: 'utf8', maxBuffer: 1 << 20 })
+      expect(run.signal, `${label}: the scan did not finish in ${CHILD_TIMEOUT_MS / 1000} s — a pattern is not linear`).toBeNull()
+      expect(run.status, run.stderr).toBe(0)
+      for (const r of JSON.parse(run.stdout) as Array<{ name: string; ms: number; same: boolean }>) {
+        expect(r.same, `${label} / ${r.name}`).toBe(true)
+        // Measured at ~10–100 ms each (2026-11-14); a quadratic pattern takes
         // minutes on a run this long.
-        expect(ms, `${label} / ${name}: ${Math.round(ms)} ms`).toBeLessThan(2_000)
+        expect(r.ms, `${label} / ${r.name}: ${Math.round(r.ms)} ms`).toBeLessThan(2_000)
       }
     })
   }
+
+  it('identifiers that start with a quote, a newline or a backslash are still found, at every level of escaping', () => {
+    for (const [label, ids] of HOMES.slice(5)) {
+      const reps = operatorPiiReplacements(ids)
+      for (const levels of [0, 1, 2]) {
+        let text = `x ${ids.home}/y ${ids.host} z`
+        for (let i = 0; i < levels; i++) text = JSON.stringify(text)
+        const out = scrubOperatorPii(text, reps)
+        expect(out, `${label} ${levels}`).toContain('<home>')
+        expect(out, `${label} ${levels}`).toContain('<host>')
+        expect(out, `${label} ${levels}`).not.toMatch(/abc|cde/)
+      }
+    }
+  })
+
+  it('a home followed directly by a word character is a different folder, and is not scrubbed (deliberate)', () => {
+    const cases: Array<[{ home: string; user: string; host: string }, string]> = [
+      [{ home: '/Users/alice', user: 'nope', host: 'nope-host' }, '/Users/alice2/x'],
+      [{ home: '/Users/alice', user: 'nope', host: 'nope-host' }, '/Users/alice_x/x'],
+      [{ home: 'C:\\Users\\Jo', user: 'jo', host: 'nope-host' }, 'C:\\Users\\Jo_x\\x'],
+      [{ home: '\\\\srv\\share\\jo', user: 'jo', host: 'nope-host' }, '\\\\srv\\share\\jo2\\x']
+    ]
+    for (const [ids, path] of cases) {
+      for (const levels of [0, 1]) {
+        const text = levels ? JSON.stringify(path) : path
+        expect(scrubOperatorPii(text, operatorPiiReplacements(ids)), path).toBe(text)
+      }
+    }
+  })
 
   it('the UNC home is still found at every level of escaping, including after a longer run of backslashes', () => {
     const reps = operatorPiiReplacements({ home: '\\\\srv\\share\\jo', user: 'jo', host: 'nope-host' })

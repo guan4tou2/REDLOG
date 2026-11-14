@@ -599,7 +599,7 @@ export function replaySpoolDirectory(
     if (jsonDepthExceeds(text, EVENT_NESTING_CEILING)) {
       const named = engagementInText(text)
       if (named && named !== active.engagementId) { result.deferred++; defer(name); continue }
-      setAside(file, name, stat.size, NESTED_TOO_DEEP, `nested more than ${EVENT_NESTING_CEILING} levels deep`, named ? 'this' : 'unknown', clock())
+      setAside(file, name, stat.size, NESTED_TOO_DEEP, `nested more than ${EVENT_NESTING_CEILING} levels deep; not parsed`, named ? 'this' : 'unknown', clock())
       continue
     }
     let payload: { agent_type?: unknown; data?: unknown; target_id?: unknown; targetId?: unknown }

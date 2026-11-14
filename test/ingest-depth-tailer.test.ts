@@ -135,3 +135,13 @@ sqlite.it('a 100,000-level tool input: no stack overflow, stored as the size cap
   expect(JSON.stringify(rows[1])).not.toContain(TOKEN)
   expect(rows[2].full).toBe('after-the-deep-one')
 })
+
+// Past jsonText's million-level guard the input has no text: it is stored in
+// the size cap's keys-only form, and the session goes on (third review).
+sqlite.it('a tool input nested past a million levels: stored keys-only and marked too deep, the next turn captured', () => {
+  const rows = tail({ payload: deep(1_000_001, []) })
+  expect(kinds(rows)).toEqual(['user_message', 'tool_call', 'user_message'])
+  expect(rows[1]).toMatchObject({ tool_input_truncated: true, tool_input_too_deep: true, tool_input: { _truncated: true, keys: ['payload'] } })
+  expect(rows[1].tool_input_length).toBeUndefined()
+  expect(rows[2].full).toBe('after-the-deep-one')
+}, 120_000)

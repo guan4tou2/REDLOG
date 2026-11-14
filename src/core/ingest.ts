@@ -31,7 +31,7 @@ import { tagCommand } from './command-tagger'
 import { redact, getRules } from './redaction'
 import { extractBodyToSidecar, extractTextToSidecar } from './http-body-store'
 import { linkHttpBodyEvent } from './http-body-index'
-import { noteDbError } from './capture-health'
+import { noteDbError, notePipelineWarning } from './capture-health'
 import { DERIVED, currentEntrance, stripReserved, withEntrance, type IngestEntrance } from './ingest/stamp'
 import { terminalIdentity } from './ingest/terminal'
 import { fieldNumber, fieldText } from './ingest/field-text'
@@ -314,7 +314,7 @@ export function ingest(input: IngestInput): IngestResult {
   const step = (name: string, run: () => void): void => {
     try { run() } catch (error) {
       console.error(`[ingest] a step after the commit failed (${name}); the row is written:`, error)
-      noteDbError('ingest-post-commit', error)
+      notePipelineWarning('ingest-post-commit', error)
     }
   }
   step('terminal lifecycle', () => {
@@ -634,9 +634,10 @@ function enrich(agentType: string, data: Record<string, unknown>, targetId: stri
   }
 
   if (agentType === 'scanner') {
-    // Read before the bodies move to their sidecars, so nothing that can still
-    // fail runs after a sidecar file is written for a row that may not be.
-    // It reads headers and `request_body_preview`, which do not move.
+    // It reads headers, `host` and `request_body_preview`, none of which the
+    // sidecar move touches, so the order does not change what it finds. It
+    // runs first anyway: what can still fail before the insert is better done
+    // before a sidecar file exists for a row that may not be written.
     if (data.subtype === 'http_request_start') plan.httpCred = detectHttpCredential(data)
     extractBodyToSidecar(data, 'request_body')
     extractBodyToSidecar(data, 'response_body')

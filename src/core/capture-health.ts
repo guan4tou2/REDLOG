@@ -170,6 +170,13 @@ export interface CaptureHealth {
    *  time so the Dashboard can render "6d old" alongside the eventId —
    *  operators can tell at a glance whether the flag is fresh or historical. */
   lastSampleBroken?: { at: number; eventId: string; reason: string; eventTimestamp?: number }
+  /** Most recent pipeline warning (notePipelineWarning): something failed
+   *  around a row that was written, or a refusal count that could not be
+   *  recorded. Not a verdict input. */
+  lastPipelineWarning?: { source: string; at: number; message: string }
+  /** How many pipeline warnings this session; absent while there are none,
+   *  so a healthy payload keeps the shape /api/status has always had. */
+  pipelineWarningTotal?: number
   managedHttpProxy?: {
     state: 'stopped' | 'starting' | 'running' | 'unavailable' | 'failed'
     url: string | null
@@ -229,6 +236,23 @@ export function noteDbError(source: string, err: unknown): void {
   if (_dbErrorFirstAt === null) _dbErrorFirstAt = now
   healthCache = null
 }
+// A failure that is not a failure to write evidence: the row it is about WAS
+// written (a step after the commit — publish, scope check, loot — threw), or a
+// count of refused events could not be put on the record. Kept in the health payload and the log (no
+// screen shows it yet), but
+// never a verdict input: `dark` says "writing evidence is broken", and these
+// say the opposite. noteDbError's TTL and noteCaptureError's per-source amber
+// are both wrong for them.
+let _lastPipelineWarning: { source: string; at: number; message: string } | null = null
+let _pipelineWarningTotal = 0
+
+export function notePipelineWarning(source: string, err: unknown): void {
+  const msg = err instanceof Error ? err.message : String(err ?? '')
+  _lastPipelineWarning = { source, at: Date.now(), message: msg.slice(0, 200) }
+  _pipelineWarningTotal++
+  healthCache = null
+}
+
 // A capture-side failure that belongs to ONE source: the screen grab came
 // back empty, the tailer's file vanished. These used
 // to go through `noteDbError`, which exists for "writing evidence is broken"
@@ -845,6 +869,7 @@ function computeCaptureHealth(now: number): CaptureHealth {
     dbErrorFirstAt: _dbErrorFirstAt,
     unattributedSpool: summarizeUnattributedSpool(pendingSpoolDirectory()),
     lastSampleBroken,
+    ...(_lastPipelineWarning ? { lastPipelineWarning: _lastPipelineWarning, pipelineWarningTotal: _pipelineWarningTotal } : {}),
     managedHttpProxy
   }
 }

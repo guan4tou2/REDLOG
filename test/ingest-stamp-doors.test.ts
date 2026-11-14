@@ -210,7 +210,9 @@ describe('every writer the API reaches is reached under the legacy-api entrance 
     committedEventOf: 'reads the row an error carries',
     // RedLog's own record of a refusal, written in-process as the spool's gap
     // rows are (test/ingest-depth-doors.test.ts checks its door).
-    noteNestingRefusal: 'writes RedLog\'s own gap row, in-process'
+    noteNestingRefusal: 'writes RedLog\'s own gap row, in-process',
+    flushNestingRefusals: 'writes RedLog\'s own gap row, in-process, before the project closes',
+    CEILING_TEXT: 'a constant'
   }
   const INJECTED = ['lootDetectorRef.scan', 'screenshotAgentRef.captureNow', 'bundleExporterRef']
 

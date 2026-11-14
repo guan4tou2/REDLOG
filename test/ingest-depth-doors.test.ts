@@ -146,9 +146,12 @@ sqlite.describe('the outside doors store an over-deep item bounded (FR-097)', ()
     expect(gap.gap_started_at).toBe(gap.gap_ended_at)
     // RedLog's own record, as the spool's gap rows are: in-process.
     expect(gap._ingest).toMatchObject({ door: 'in-process', producer: 'in-process' })
-    expect(String(gap.description)).toMatch(/1 event\(s\) refused by the API: nested more than 100,000 levels deep/)
+    expect(gap.description).toBe('1 request(s) refused by the API: nested more than 100,000 levels deep, so not parsed and not kept')
   }, SLOW)
 
+  // The rule (ingest/nesting-ceiling.ts): the first refusal is a row at once;
+  // the ones inside a minute of it are one row when the minute is up, and that
+  // opens the next minute.
   sqlite.it('POST /api/events: refusals within a minute of the first are one more gap row, written when the minute is up', async () => {
     const dir = tmp('api-ceiling-coalesce')
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
@@ -161,12 +164,71 @@ sqlite.describe('the outside doors store an over-deep item bounded (FR-097)', ()
       vi.advanceTimersByTime(54_000)
       expect(gapsOf(await storedRows(dir)).map((g) => g.skipped_units)).toEqual([1])
       vi.advanceTimersByTime(2_000)
+      // A minute with nothing in it ends the run: the next is a row at once.
+      vi.advanceTimersByTime(120_000)
+      await rt.api(text, 413)
     } finally { await rt.close(); vi.useRealTimers() }
     const gaps = gapsOf(await storedRows(dir))
-    expect(gaps.map((g) => g.skipped_units)).toEqual([1, 4])
+    expect(gaps.map((g) => g.skipped_units)).toEqual([1, 4, 1])
     expect(gaps[1].bytes).toBe(4 * Buffer.byteLength(text))
     expect(Number(gaps[1].gap_ended_at) - Number(gaps[1].gap_started_at)).toBe(3_000)
   }, SLOW)
+
+  sqlite.it('POST /api/events: one refusal a second for five minutes is one row a minute after the first, and all 300 are counted', async () => {
+    const dir = tmp('api-ceiling-steady')
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    const rt = await openRuntime(dir)
+    const text = dnsBody(EVENT_NESTING_CEILING - 1)
+    try {
+      for (let i = 0; i < 300; i++) { await rt.api(text, 413); vi.advanceTimersByTime(1_000) }
+      vi.advanceTimersByTime(60_000)
+    } finally { await rt.close(); vi.useRealTimers() }
+    const counts = gapsOf(await storedRows(dir)).map((g) => Number(g.skipped_units))
+    expect(counts).toEqual([1, 59, 60, 60, 60, 60])
+    expect(counts.reduce((a, b) => a + b, 0)).toBe(300)
+  }, SLOW)
+
+  sqlite.it('POST /api/events: the project closes inside a minute: what was counted is written to it before it closes', async () => {
+    const dir = tmp('api-ceiling-close')
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    const rt = await openRuntime(dir)
+    const text = dnsBody(EVENT_NESTING_CEILING - 1)
+    try {
+      for (let i = 0; i < 50; i++) { await rt.api(text, 413); vi.advanceTimersByTime(100) }
+    } finally { await rt.close(); vi.useRealTimers() }
+    const counts = gapsOf(await storedRows(dir)).map((g) => g.skipped_units)
+    expect(counts).toEqual([1, 49])
+  }, SLOW)
+
+  // Spool convention: what arrives while recording is paused would not have
+  // been recorded, so its gap is intentional and not counted as a loss.
+  sqlite.it('POST /api/events: a refusal while recording is paused is an intentional gap, a row apart from the ones before and after', async () => {
+    const dir = tmp('api-ceiling-paused')
+    const rt = await openRuntime(dir)
+    const { eventBus } = await import('../src/core/event-bus')
+    const text = dnsBody(EVENT_NESTING_CEILING - 1)
+    try {
+      await rt.api(text, 413)
+      eventBus.pause('test')
+      await rt.api(text, 413)
+      await rt.api(text, 413)
+      eventBus.resume('test')
+      await rt.api(text, 413)
+    } finally { eventBus.resume('test'); await rt.close() }
+    const gaps = gapsOf(await storedRows(dir))
+    expect(gaps.map((g) => [g.intentional, g.skipped_units])).toEqual([[false, 1], [true, 1], [true, 1], [false, 1]])
+    expect(String(gaps[1].description)).toContain('while recording was paused')
+    const { captureGapsFold } = await import('../src/core/export-plan')
+    const fold = captureGapsFold()
+    for (const g of gaps) fold.add({ agentType: 'system', data: g } as never)
+    expect(fold.done()).toEqual([{ reason: 'nested-too-deep', gaps: 2, skippedUnits: 2, unknownAmount: 0 }])
+  }, SLOW)
+
+  sqlite.it('the ceiling is 100,000 levels, and every text that names it says so', async () => {
+    expect(EVENT_NESTING_CEILING).toBe(100000)
+    const { CEILING_TEXT } = await import('../src/core/ingest/nesting-ceiling')
+    expect(CEILING_TEXT).toBe('100,000')
+  })
 
   sqlite.it('a spool file one level past the ceiling is set aside unparsed, and counted in the drain pass\'s gap row', async () => {
     const dir = tmp('spool-ceiling')
@@ -179,7 +241,7 @@ sqlite.describe('the outside doors store an over-deep item bounded (FR-097)', ()
     const gaps = gapsOf(rows)
     expect(gaps).toHaveLength(1)
     expect(gaps[0]).toMatchObject({ source: 'hook-spool', reason: 'nested-too-deep', intentional: false, skipped_units: 2, quarantined: 2, files: ['0000.json', '0001.json'] })
-    expect(String(gaps[0].description)).toMatch(/2 spooled event\(s\) not recorded: nested more than 100,000 levels deep; kept in/)
+    expect(String(gaps[0].description)).toMatch(/^2 spooled event\(s\) not recorded: nested more than 100,000 levels deep, so not parsed; kept in/)
   }, SLOW)
 
   sqlite.it('a resend of an over-deep command inside the 2 s window is a duplicate, through the API (409) and through a spool file', async () => {

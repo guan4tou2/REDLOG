@@ -832,10 +832,19 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
       const redInput = redactToolInput(t.toolName, t.toolInput)
       // jsonStringify, not JSON.stringify: same text, and no recursion for an
       // input nested deeper than the stack (Spec 071 FR-097).
-      const inputJson = jsonStringify(redInput) ?? ''
-      if (Buffer.byteLength(inputJson, 'utf-8') > MAX_FULL_BYTES) {
+      // An input past jsonText's million levels has no text to measure: it is
+      // over the size cap anyway (two bytes a level), and is stored as the cap
+      // stores it, keys only, saying why. Thrown, it stopped the session: the
+      // chunk was retried and every later turn went unrecorded.
+      let inputJson: string | null
+      try { inputJson = jsonStringify(redInput) ?? '' } catch (e) {
+        if (!(e instanceof RangeError)) throw e
+        inputJson = null
+      }
+      if (inputJson === null || Buffer.byteLength(inputJson, 'utf-8') > MAX_FULL_BYTES) {
         data.tool_input_truncated = true
-        data.tool_input_length = inputJson.length
+        if (inputJson === null) data.tool_input_too_deep = true
+        else data.tool_input_length = inputJson.length
         data.tool_input = { _truncated: true, keys: Object.keys(redInput) }
       } else {
         data.tool_input = redInput

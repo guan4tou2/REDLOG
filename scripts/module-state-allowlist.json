@@ -134,6 +134,18 @@
       "class": "project-legacy",
       "reason": "Last DB error of the open project (capture-health counters are project scoped)."
     },
+    "src/core/bundle-readme-rows.ts#ROW_ADDITIONS_README": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/capture-health.ts#_lastPipelineWarning": {
+      "class": "app",
+      "reason": "Last pipeline warning of the process (a step after a written row failed); diagnostic only, not a verdict input, holds no project id."
+    },
+    "src/core/capture-health.ts#_pipelineWarningTotal": {
+      "class": "app",
+      "reason": "Process-wide count of pipeline warnings; diagnostic only."
+    },
     "src/core/capture-health.ts#_dbErrorTotal": {
       "class": "project-legacy",
       "reason": "DB error count of the open project."

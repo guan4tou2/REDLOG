@@ -26,24 +26,32 @@ const SHORT_ESCAPE: Record<number, string> = { 8: 'b', 9: 't', 10: 'n', 12: 'f',
 // ways as it is long, and a pattern that starts with one is retried at every
 // backslash of the run: cubic on a run of millions. So the pieces are built per
 // run, not per character — a run of backslashes is one `\\+`, and the quote or
-// control character that follows it is folded into that same piece — and a
-// pattern that starts with a backslash may only start where a run starts.
+// control character that follows it is folded into that same piece — and the
+// backslashes a pattern starts with may only start where a run starts: an
+// identifier that begins with a backslash, a quote or a control character
+// (`\\srv\share`, `"abc`, a newline) would otherwise be tried at every
+// backslash of a long run, quadratic or worse. Every other piece follows a
+// literal character, which pins where its backslashes begin.
+const RUN_START = '(?<!\\\\)'
+
 function piecesOf(s: string): string[] {
   const out: string[] = []
   const chars = Array.from(s)
   for (let i = 0; i < chars.length;) {
     const c = chars[i]
     const code = c.charCodeAt(0)
+    // The backslashes of the first piece start a run (RUN_START).
+    const run = i === 0 ? RUN_START : ''
     if (c === '\\') {
       while (chars[i] === '\\') i++
       const next = chars[i]
-      if (next === '"') { out.push('\\\\+"'); i++ }
-      else if (next !== undefined && next.charCodeAt(0) < 0x20) { out.push(`\\\\+(?:${escapeRegExp(next)}|${escapedForm(next.charCodeAt(0))})`); i++ }
-      else out.push('\\\\+')
+      if (next === '"') { out.push(`${run}\\\\+"`); i++ }
+      else if (next !== undefined && next.charCodeAt(0) < 0x20) { out.push(`${run}\\\\+(?:${escapeRegExp(next)}|${escapedForm(next.charCodeAt(0))})`); i++ }
+      else out.push(`${run}\\\\+`)
       continue
     }
-    if (c === '"') out.push('\\\\*"')
-    else if (code < 0x20) out.push(`(?:${escapeRegExp(c)}|\\\\+${escapedForm(code)})`)
+    if (c === '"') out.push(`${run}\\\\*"`)
+    else if (code < 0x20) out.push(`(?:${escapeRegExp(c)}|${run}\\\\+${escapedForm(code)})`)
     else out.push(escapeRegExp(c))
     i++
   }
@@ -58,11 +66,7 @@ function escapedForm(code: number): string {
 
 /** A pattern that matches `s` at every level of JSON escaping. */
 function literalAtAnyEscaping(s: string): string {
-  const pieces = piecesOf(s)
-  // A leading run of backslashes (a UNC home, `\\srv\share\jo`) starts only
-  // where a run of backslashes starts: anywhere inside one it is retried for
-  // every backslash of it.
-  return (s.startsWith('\\') ? '(?<!\\\\)' : '') + pieces.join('')
+  return piecesOf(s).join('')
 }
 
 // A word boundary for the user name that also holds after an escape sequence
@@ -78,6 +82,11 @@ function literalAtAnyEscaping(s: string): string {
 const BEFORE_WORD = '(?:(?<![A-Za-z0-9_])|(?<=\\\\[bfnrt])|(?<=\\\\u[0-9a-fA-F]{4}))'
 // After the home path too: home `C:\Users\Jo` is not the start of
 // `C:\Users\Joanna` (which read `<home>anna` before this boundary was added).
+// A deliberate non-match follows from it: a home followed directly by a word
+// character is a different folder and is left as written — `/Users/alice2`,
+// `/Users/alice_x`, `C:\Users\Jo_x` and `\\srv\share\jo2` are not scrubbed
+// (they read `<home>2`, `<home>_x` before), and nor is a user name
+// inside them, which ends at the same kind of boundary.
 const AFTER_WORD = '(?![A-Za-z0-9_])'
 
 /** Build regex replacements for the running machine's identifiers. Each one

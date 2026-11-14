@@ -108,6 +108,9 @@ export async function openRuntime(dir: string): Promise<Runtime> {
       return run
     },
     async close() {
+      // In stopProject's order: the API's project close (which writes out the
+      // refusal count, ingest/nesting-ceiling.ts) while the database is open.
+      api.onApiProjectClose()
       api.stopApiServer()
       ;(await import('../../src/core/http-body-index')).closeHttpBodyIndex()
       db.closeDB()
