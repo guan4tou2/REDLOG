@@ -443,7 +443,7 @@ const linkRow = (row: ContentRow, projectDir: string, tier: Tier, t = SHARED): I
 // id at that rowid, and the latest transcript prefixes. It is written in the
 // transaction that brings the index there, so it is never ahead of the
 // index, it survives a restart, and another connection reads it. A prune,
-// a replaced directory or a rebuild removes it, and the next search walks
+// a replaced directory or a rebuild removes it, and main's next search walks
 // every row again.
 //
 // Every content-ref row is inserted with a higher rowid than every row
@@ -478,15 +478,17 @@ function dropEvent(db: Database.Database, eventId: string): void {
   stmt(db, 'DELETE FROM body_event_refs WHERE event_id=?').run(eventId)
 }
 /** Bring the index up to the live project, doing work for what changed since
- *  the watermark rather than for every ref.
+ *  the watermark rather than for every ref. Main's read-write connection only:
+ *  a read-only one never calls this (see readPlan).
  *
  *  - Prefix untouched: link the rows above the watermark (none, often), drop
  *    a transcript prefix a newer row superseded, then re-check the files
  *    behind remembered refs by lstat alone and re-link the events whose file
  *    changed, plus every missing/failed ref.
  *  - Anything else (no watermark, rows deleted, a superseding row that is not
- *    new, a replaced directory, a prune): the full walk and prune, which is
- *    still cheap per ref for every file that has not changed. */
+ *    new, a replaced directory, a prune, a missing or failed ref whose row is
+ *    gone): the full walk and prune, which is still cheap per ref for every
+ *    file that has not changed. */
 function sync(projectDir: string): void {
   const db = getIndex(projectDir)
   // Persisted with the verifications it vouches for, so a directory replaced
