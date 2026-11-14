@@ -41,19 +41,21 @@
 
 ## Phase 3 — 核心蓋章（階段 1）與單一入口
 
-- [ ] T020 [US1] 先 RED：`test/ingest-stamp.test.ts`。驗證 `_ingest` 的鍵、覆寫呼叫端給的值、移除保留鍵並記入 `stripped`、只含允許的型別、大小上限（FR-005、FR-006）；`rules` 的有界形式（至多 3 項、`+<n>`）與 `rules_partial` 在最壞情況仍不超過 512 bytes（Spec 075 FR-059 的消費者，075 T091 填值）。
+- [x] T020 [US1] 先 RED：`test/ingest-stamp.test.ts`。驗證 `_ingest` 的鍵、覆寫呼叫端給的值、移除保留鍵並記入 `stripped`、只含允許的型別、大小上限（FR-005、FR-006）；`rules` 的有界形式（至多 3 項、`+<n>`）與 `rules_partial` 在最壞情況仍不超過 512 bytes（Spec 075 FR-059 的消費者，075 T091 填值）。
 - [ ] T021 [US1] 實作 `src/core/ingest/stamp.ts`。engagement 由綁定 DB 決定，`'default'` 不再出現；沒有綁定 DB 時拋錯，對應 `retry`／`no-project`（FR-007）。
+  - 2026-11-14 對帳（PR #765）：`engagementForWrite`（`stamp.ts`）在綁定 DB 時一律用它，兩個層的寫入都走它；都沒有綁定也沒有呼叫端的名稱時拋 `no-project`（`test/ingest-stamp.test.ts` 的「nothing bound and no engagement named」）。未達成兩處：(1) 沒有綁定 DB 時，若呼叫端帶了 engagement 仍照用，而不是拋錯（同檔 `KNOWN GAP (FR-007 / T021)`，2026-11-13 決定暫時寬鬆）；(2) 專案目錄沒有 `config.yaml` 時，`readConfig` 回 `defaults()`（`src/core/config.ts:415`、`DEFAULT_CONFIG.engagement.id = 'default'`），`main/index.ts:814` 把它綁定，新列因此寫在 `default` 引擎下（`test/config-invalid-file.test.ts` 釘住「absent 回預設值」）。
 - [x] T022 [P] [US2] 暫停 property test 完整版（至少 10,000 組；SC-005，依 2026-11-13 修訂的規則：暫停期間收到的列為 0；交接檔可用來源時間落在已記錄區間內的列為 0；暫停前的交接項目在暫停結束後寫入）。
 - [ ] T023 [US1] 先 RED：`test/target-via.test.ts`（O11）。驗證 explicit、extracted、command、terminal-last、none 五種，跨重啟一致，不套用全域目前目標。
 - [ ] T024 [US1] 建立 `terminal_targets` 表，寫入路徑在 commit 交易內同步寫入；**不在本規格回填**：含 071 之前事件的專案，在 Spec 074 的回填完成前不套用 `terminal-last`、寫 `none`（FR-010），先 RED 斷言這一點；回填由 074 T052 實作。`command` 的承接改從持久資料查；移除 `ingest.ts:251-255` 的自動套用（app 內操作依 O16）。Spec 072 T043（`identity.target`）同一個 PR。
 - [ ] T025 [P] [US1] `_ingest.terminal` 單一正規值；`causes-resolver.ts:83` 與 `event-write.ts:479` 改讀同一個函式（FR-011）。
 - [ ] T026 [P] 帶 `_ingest` 的列，其存取與信任判斷改讀 `_ingest.producer`：`/api/terminal/replay`、`ipc/terminal.ts` 的 castPath（FR-012）。
 - [ ] T027 分層規則 D10（O8，FR-113）：**不在本 Phase**。它與 Spec 072 T040 是同一個 PR：先 RED，pcap-capture 與 c2 的種類由 plugin 憑證寫入時進 logged；`classifyTier` 改呼叫 072 的 `tierFor`；項目寫進 072 的 `TIER_CHANGES`。072 落地前，本規格的 Phase 3 照今天的 `classifyTier` 出貨。
-- [ ] T030 [US1] 所有入口都蓋章：api、spool、行程內、derived；`session_start` 帶 `_ingest`。重新記錄 `ingest-golden` 的摘要，commit 訊息說明「新列的證據內容改變」。
-- [ ] T031 [P] [US5] 新列的 golden 向量 `test/fixtures/provenance-vectors/`，兩個 verifier 都要接受。
+- [x] T030 [US1] 所有入口都蓋章：api、spool、行程內、derived；`session_start` 帶 `_ingest`。重新記錄 `ingest-golden` 的摘要，commit 訊息說明「新列的證據內容改變」。（本階段的 api 入口是 `legacy-api`；契約 1 的 `api`／`handoff` 在 Phase 5。）
+- [x] T031 [P] [US5] 新列的 golden 向量 `test/fixtures/provenance-vectors/`，兩個 verifier 都要接受。
 - [ ] T032 [US1] 重啟等價測試：即時、中途重啟、全部經交接，三者一致（SC-003）。
 - [ ] T033 [US1] FTS 排除 `$._ingest`。只替換 trigger、不重建；用 10 萬列的 fixture 斷言開啟時沒有重建（FR-025）。
-- [ ] T034 [P] 檢查 064 的 contract coverage 與其他依 `data` 鍵集合判斷的讀者（plan「其他讀者」），斷言隨變更一起修改。
+  - 2026-11-14 對帳（PR #765）：`db/index.ts:443-459` 只替換兩個 insert trigger，`test/fts-excludes-ingest.test.ts` 斷言以舊 trigger 建立的專案開啟時沒有重建語句、索引列數與每列 token 大小不變、新列找不到 stamp 的字。未達成：該測試只用 80 列（檔頭：10 萬列的量測留給 T091／CI），沒有 10 萬列的 fixture。
+- [x] T034 [P] 檢查 064 的 contract coverage 與其他依 `data` 鍵集合判斷的讀者（plan「其他讀者」），斷言隨變更一起修改。
 - [ ] T035 [US1] `chain-anchor.ts` 與 `redlog-verify.py` 新增來源狀態報告（已證明、自述、無法判斷；FR-022–024）；用共用向量斷言兩者一致；結束碼不變。
 - [ ] T036 [US1] 入口等價測試（FR-093）。
 - [ ] T037 遷移 31 處直接呼叫（下列分組依起草時的清單；確切位置以 T006 量得的清單為準），每個 PR 只遷移一個檔案群，T006 的基準值逐次下降；與 Spec 072 T045（型別化入口）同一批：
