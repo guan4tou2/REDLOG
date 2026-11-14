@@ -9,7 +9,8 @@ import type { ExportRequest } from '../src/core/export-plan'
 
 type Subset = NonNullable<ExportRequest['subset']>
 const SNAP = { chainedMaxRowId: 1, loggedMaxRowId: 1, chainedCount: 1, loggedCount: 1, chainedTailId: 'a', loggedTailId: null, takenAt: 1 }
-// The shared filter's default state, as `toEventFilter` sends it.
+// What an untouched view sends as its filter (`toEventFilter`): only the
+// default-on exclusion of non-work traffic.
 const DEFAULT_FILTER = { hidePersonal: true }
 
 describe('subsetNarrows: the view state each page can export from', () => {
@@ -19,7 +20,7 @@ describe('subsetNarrows: the view state each page can export from', () => {
     ({ kind: 'selection', projection: 'http', filter, http: h }) as Subset
 
   // Dashboard, Terminal, Targets, Scope, Evidence and Settings contribute no
-  // export: the dialog falls back to the shared filter.
+  // export: the dialog exports the filter the app holds.
   it('a page with no contribution, default filter: not narrowed', () => {
     expect(subsetNarrows(sel(DEFAULT_FILTER))).toBe(false)
   })

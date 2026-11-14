@@ -17,7 +17,8 @@ import { capabilitiesFor } from '../src/core/export-capabilities'
 
 type Subset = NonNullable<ExportRequest['subset']>
 const SNAP = { chainedMaxRowId: 1, loggedMaxRowId: 1, chainedCount: 1, loggedCount: 1, chainedTailId: 'a', loggedTailId: null, takenAt: 1 }
-// The shared filter's default state, as `toEventFilter` sends it.
+// What an untouched view sends as its filter (`toEventFilter`): only the
+// default-on exclusion of non-work traffic.
 const DEFAULT_FILTER = { hidePersonal: true }
 
 function View({ value }: { value: ViewExport }): null { useContributeExport(value); return null }
