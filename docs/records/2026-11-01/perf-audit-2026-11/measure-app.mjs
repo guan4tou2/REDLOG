@@ -21,7 +21,8 @@
 // SHELL/MSYSTEM removed so a Git Bash parent does not leak into the app.
 
 import { _electron as electron } from '@playwright/test'
-import { spawnSync } from 'node:child_process'
+import { execFile, spawnSync } from 'node:child_process'
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -124,6 +125,12 @@ async function openView(page, view) {
   await page.waitForSelector(`[data-testid="view-root"][data-view="${view}"]`, { timeout: 60_000 })
 }
 
+// A row is selected by one click and opened by a double click (or Enter), since
+// the picker stopped opening on a single click.
+async function openProjectRow(page, name) {
+  await page.locator('[data-testid="project-row"]', { hasText: name }).first().dblclick()
+}
+
 async function waitPicker(page) {
   await page.waitForSelector('[data-testid="project-picker"]', { timeout: 60_000 })
   await page.waitForFunction(() => !document.querySelector('[data-testid="project-list-status"][data-state="loading"]'), null, { timeout: 60_000 })
@@ -202,6 +209,28 @@ function dirBytes(p) {
   return fs.readdirSync(p).reduce((s, f) => s + dirBytes(path.join(p, f)), 0)
 }
 
+
+// Working set of a process and everything below it, in MiB. Asked of Windows in
+// a child so a busy main process cannot hold the answer back.
+function treeMiB(pid) {
+  const ps = `$all = Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId; $ids = New-Object System.Collections.Generic.HashSet[int]; [void]$ids.Add(${pid}); do { $n = $ids.Count; foreach ($p in $all) { if ($ids.Contains([int]$p.ParentProcessId)) { [void]$ids.Add([int]$p.ProcessId) } } } while ($ids.Count -ne $n); $s = 0; foreach ($i in $ids) { $pr = Get-Process -Id $i -ErrorAction SilentlyContinue; if ($pr) { $s += $pr.WorkingSet64 } }; [math]::Round($s / 1MB, 1)`
+  return new Promise((resolve) => execFile('powershell', ['-NoProfile', '-Command', ps], { encoding: 'utf8' }, (_e, out) => resolve(Number(String(out).trim()) || null)))
+}
+// Off unless PERF_TREE=1: each sample starts a PowerShell, which on a loaded
+// laptop with Defender on is enough CPU to stretch the export being timed.
+function sampleTree(pid) {
+  const samples = []
+  let stop = process.env.PERF_TREE !== '1'
+  const done = (async () => { while (!stop) { const v = await treeMiB(pid); if (v !== null) samples.push({ at: Date.now(), mib: v }); await new Promise((r) => setTimeout(r, 300)) } })()
+  return { samples, stop: async () => { stop = true; await done } }
+}
+function sha256(file) {
+  return new Promise((resolve, reject) => {
+    const h = crypto.createHash('sha256')
+    fs.createReadStream(file).on('data', (d) => h.update(d)).on('end', () => resolve(h.digest('hex'))).on('error', reject)
+  })
+}
+
 if (cmd === 'export') {
   // One fresh launch per format, so the peak counter belongs to that export.
   const [home, name, format, outDir] = rest
@@ -209,11 +238,37 @@ if (cmd === 'export') {
   const app = await electron.launch({ args: [MAIN], cwd: repo, env: env(home) })
   const page = await mainWindow(app)
   await waitPicker(page)
-  await page.locator('[data-testid="project-picker"] div.cursor-pointer', { hasText: name }).first().click()
+  await openProjectRow(page, name)
   await page.waitForSelector('[data-testid="view-root"]', { timeout: 120_000 })
   await page.waitForTimeout(8000)
   const pid = await app.evaluate(() => process.pid)
   const before = peakOf(pid)
+  const treeBefore = process.env.PERF_TREE === '1' ? await treeMiB(pid) : null
+  // Longest time the main process could not run a 20 ms timer, and the longest
+  // gap between two animation frames in the window, for the whole export.
+  await app.evaluate(() => {
+    globalThis.__lag = { max: 0, over100: 0, over1000: 0 }
+    let last = Date.now()
+    globalThis.__lagTimer = setInterval(() => {
+      const n = Date.now(); const d = n - last - 20; last = n
+      if (d > globalThis.__lag.max) globalThis.__lag.max = d
+      if (d > 100) globalThis.__lag.over100++
+      if (d > 1000) globalThis.__lag.over1000++
+    }, 20)
+  })
+  await page.evaluate(() => {
+    window.__raf = { max: 0, over100: 0, frames: 0 }
+    let last = performance.now()
+    const tick = () => {
+      const n = performance.now(); const d = n - last; last = n
+      window.__raf.frames++
+      if (d > window.__raf.max) window.__raf.max = d
+      if (d > 100) window.__raf.over100++
+      window.__rafId = requestAnimationFrame(tick)
+    }
+    tick()
+  })
+  const tree = sampleTree(pid)
   await startMainProfile(app)
   const r = await page.evaluate(async (fmt) => {
     const t0 = performance.now()
@@ -226,10 +281,24 @@ if (cmd === 'export') {
       artifactPath: done.artifactPath ?? done.path ?? done.outDir ?? null, counts: resolved.plan.counts }
   }, format)
   await stopMainProfile(app, path.join(outDir, `main-export-${format}.cpuprofile`))
+  await tree.stop()
+  const lag = await app.evaluate(() => { clearInterval(globalThis.__lagTimer); return globalThis.__lag })
+  const raf = await page.evaluate(() => { cancelAnimationFrame(window.__rafId); return window.__raf })
   const after = peakOf(pid)
   let artifactBytes = null
   try { if (r.artifactPath) artifactBytes = dirBytes(r.artifactPath) } catch { /* reported as null */ }
-  const row = { format, ...r, artifactMiB: artifactBytes === null ? null : +(artifactBytes / 1048576).toFixed(1), mainBefore: before, mainAfter: after }
+  // What was written: line count for NDJSON, and a hash of every single-file
+  // format so two runs of the same input can be compared.
+  let lines = null, digest = null
+  try {
+    if (r.artifactPath && fs.statSync(r.artifactPath).isFile()) {
+      digest = await sha256(r.artifactPath)
+      if (format === 'ndjson') { lines = 0; for await (const c of fs.createReadStream(r.artifactPath)) for (const b of c) if (b === 10) lines++ }
+    }
+  } catch { /* reported as null */ }
+  const row = { format, ...r, artifactMiB: artifactBytes === null ? null : +(artifactBytes / 1048576).toFixed(1), artifactSha256: digest, ndjsonLines: lines,
+    mainBefore: before, mainAfter: after, treeBeforeMiB: treeBefore, treePeakMiB: Math.max(0, ...tree.samples.map((x) => x.mib)), treeSamples: tree.samples.length,
+    mainLoopStallMs: lag, windowFrameGapMs: raf }
   console.log(JSON.stringify(row))
   fs.writeFileSync(path.join(outDir, `export-${format}.json`), JSON.stringify(row, null, 2))
   await app.close()
@@ -257,7 +326,7 @@ if (cmd === 'project') {
   // ── project open, by clicking it ──
   await startMainProfile(app)
   const o0 = Date.now()
-  await page.locator('[data-testid="project-picker"] div.cursor-pointer', { hasText: name }).first().click()
+  await openProjectRow(page, name)
   await page.waitForSelector('[data-testid="view-root"]', { timeout: 120_000 })
   out.clickToViewRoot = Date.now() - o0
   await page.waitForTimeout(5000)
