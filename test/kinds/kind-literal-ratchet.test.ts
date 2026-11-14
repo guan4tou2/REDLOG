@@ -50,8 +50,14 @@ const ROOT = path.join(__dirname, '..', '..')
 //   a UDF would add a JavaScript call per projected row — and there is no
 //   registry yet to ask instead. The JavaScript side reuses the classification's
 //   existing comparison and adds none.
-const AGENT_BASELINE = 276
-const SUBTYPE_BASELINE = 304
+// 2026-11-15, Spec 071 T035: receiverProvenance (evidence-rules.ts) finds a
+//   session's start by `agentType !== 'system'` and `subtype !==
+//   'session_start'`: agent +1, subtype +1. It is a verifier rule, and
+//   tools/redlog-verify.py states the same comparison in Python, where no
+//   registry can reach; the rule's other comparisons in that file
+//   (attachmentRefs) are of the same kind.
+const AGENT_BASELINE = 277
+const SUBTYPE_BASELINE = 305
 const TABLE_BASELINE = 31
 
 type Counter = 'agent' | 'subtype'

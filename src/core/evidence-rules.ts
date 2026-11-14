@@ -78,6 +78,68 @@ function castsAreTheTerminals(data: Record<string, unknown>): boolean {
   return stamp !== null && typeof stamp === 'object' && !Array.isArray(stamp) && (stamp as Record<string, unknown>).producer === 'in-process'
 }
 
+/** A row as the provenance rule reads it. `hashChecked`: the row's own hash
+ *  was recomputed and matched — false for a logged row (the tier is not
+ *  hashed row by row) and for a row the export declared transformed. */
+export interface ProvenanceRow {
+  tier: 'chained' | 'logged'
+  hashChecked: boolean
+  sessionId: unknown
+  agentType: unknown
+  /** the parsed `data` column */
+  data: unknown
+}
+/** Receiver provenance by tier (Spec 071 FR-022–024). A logged row is never
+ *  proven: its stamp has no per-row tamper protection (FR-024). `stamped`
+ *  counts the logged rows among `selfDescribed` that carry `_ingest`. */
+export interface ProvenanceCounts {
+  chained: { proven: number; selfDescribed: number; undetermined: number }
+  logged: { selfDescribed: number; stamped: number; undetermined: number }
+}
+
+const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v)
+/** The receiver's stamp: an object under `_ingest`. Anything else there is
+ *  not one the receiver wrote. */
+const hasStamp = (data: unknown): boolean => isObject(data) && Object.prototype.hasOwnProperty.call(data, '_ingest') && isObject(data._ingest)
+
+/**
+ * Spec 071 FR-022: a row's receiver provenance is proven if and only if the
+ * row carries `_ingest` and the `system` `session_start` of its `session_id`
+ * carries it too; other rows are self-described; a row whose session has no
+ * `session_start` in the bundle cannot be determined.
+ *
+ * Read conservatively where the spec is silent:
+ *  - a stamp counts only under a checked hash, on the row and on the start:
+ *    a logged row (FR-024) or a transformed row is at most self-described,
+ *    and a transformed start proves none of its session;
+ *  - only a chained `system` row is a session start (the writer never puts
+ *    one in the logged tier, event-write.ts LOGGED_TIER);
+ *  - a session with several starts is proven only when every one of them is
+ *    stamped;
+ *  - order does not matter: a start after its session's rows still decides
+ *    them.
+ * tools/redlog-verify.py `receiver_provenance` is the same rule;
+ * test/receiver-provenance.test.ts runs both over the same vectors.
+ */
+export function receiverProvenance(rows: readonly ProvenanceRow[]): ProvenanceCounts {
+  /** session id → every start of it carries a checked stamp */
+  const starts = new Map<string, boolean>()
+  for (const r of rows) {
+    if (r.tier !== 'chained' || r.agentType !== 'system' || typeof r.sessionId !== 'string' || !isObject(r.data) || r.data.subtype !== 'session_start') continue
+    starts.set(r.sessionId, (starts.get(r.sessionId) ?? true) && r.hashChecked && hasStamp(r.data))
+  }
+  const out: ProvenanceCounts = { chained: { proven: 0, selfDescribed: 0, undetermined: 0 }, logged: { selfDescribed: 0, stamped: 0, undetermined: 0 } }
+  for (const r of rows) {
+    const start = typeof r.sessionId === 'string' ? starts.get(r.sessionId) : undefined
+    const tier = r.tier === 'logged' ? out.logged : out.chained
+    if (start === undefined) tier.undetermined++
+    else if (r.tier === 'logged') { out.logged.selfDescribed++; if (hasStamp(r.data)) out.logged.stamped++ }
+    else if (start && r.hashChecked && hasStamp(r.data)) out.chained.proven++
+    else out.chained.selfDescribed++
+  }
+  return out
+}
+
 /** The attachment digests an event recorded when it was captured. */
 export function attachmentRefs(agentType: string, data: Record<string, unknown>): AttachmentRef[] {
   const out: AttachmentRef[] = []
