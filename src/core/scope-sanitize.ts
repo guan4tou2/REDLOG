@@ -339,7 +339,9 @@ const BROWSER_CONSOLE_SUBTYPES = new Set(['console_log', 'console_info', 'consol
  *  field, because the same key means something else on them (a shell row's
  *  `source` names its terminal, a note's `title` is the operator's own). */
 function forSubtypes(subtypes: ReadonlySet<string>, masker: FieldMasker): FieldMasker {
-  return (value, marker, data) => typeof data.subtype === 'string' && subtypes.has(data.subtype) ? masker(value, marker, data) : KEEP
+  // `has` on anything that is not one of the names is false, so a row whose
+  // subtype is missing or not a string keeps the field.
+  return (value, marker, data) => subtypes.has(data.subtype as string) ? masker(value, marker, data) : KEEP
 }
 
 const NAVIGATION = new Set(['navigation'])
@@ -351,7 +353,7 @@ const HTTP_SUBTYPES = new Set(['http_request_start', 'http_response', 'http_erro
  *  connector found no host. Any other row's description is RedLog's own
  *  sentence, with the URLs in it masked (`↓ curl: https://…`). */
 function maskDescription(value: unknown, marker: string, data: Record<string, unknown>): unknown {
-  if (data.subtype !== 'navigation') return maskTextUrls(value, marker)
+  if (!NAVIGATION.has(data.subtype as string)) return maskTextUrls(value, marker)
   if (typeof value !== 'string') return maskWhole(value, marker)
   if (value === `→ ${String(data.host ?? '')}`) return KEEP
   const masked = value.startsWith('→ ') ? `→ ${maskUrlText(value.slice(2), marker)}` : marker
