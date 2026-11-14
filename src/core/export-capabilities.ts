@@ -9,17 +9,19 @@ export type ExportFormat = 'json' | 'ndjson' | 'bundle' | 'har' | 'timeline'
 export interface ExportCapabilities {
   snapshot: boolean
   boundedSubset: boolean
-  scopeMasking: boolean
+  /** `optional`: the operator chooses. `always`: out-of-scope content is
+   *  masked and there is no choice to offer. */
+  scopeMasking: 'optional' | 'always'
   piiScrubbing: boolean
   attachments: boolean
 }
 
 const CAPABILITIES: Record<ExportFormat, ExportCapabilities> = {
-  json: { snapshot: true, boundedSubset: true, scopeMasking: true, piiScrubbing: true, attachments: false },
-  ndjson: { snapshot: true, boundedSubset: true, scopeMasking: true, piiScrubbing: true, attachments: false },
-  bundle: { snapshot: true, boundedSubset: true, scopeMasking: true, piiScrubbing: false, attachments: true },
-  har: { snapshot: true, boundedSubset: true, scopeMasking: false, piiScrubbing: false, attachments: false },
-  timeline: { snapshot: true, boundedSubset: true, scopeMasking: true, piiScrubbing: true, attachments: false }
+  json: { snapshot: true, boundedSubset: true, scopeMasking: 'optional', piiScrubbing: true, attachments: false },
+  ndjson: { snapshot: true, boundedSubset: true, scopeMasking: 'optional', piiScrubbing: true, attachments: false },
+  bundle: { snapshot: true, boundedSubset: true, scopeMasking: 'optional', piiScrubbing: false, attachments: true },
+  har: { snapshot: true, boundedSubset: true, scopeMasking: 'always', piiScrubbing: false, attachments: false },
+  timeline: { snapshot: true, boundedSubset: true, scopeMasking: 'optional', piiScrubbing: true, attachments: false }
 }
 
 export function isExportFormat(format: string): format is ExportFormat {

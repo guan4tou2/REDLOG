@@ -435,7 +435,9 @@ export function normalizeExportRequest(request: ExportRequest): NormalizedExport
   return Object.freeze({
     format: request.format,
     subset: Object.freeze({ ...subset }),
-    maskOutOfScope: request.maskOutOfScope !== false,
+    // A format that always masks says so in its plan, so the digest, the
+    // validation and the delivered manifest describe the masked bytes it writes.
+    maskOutOfScope: capabilitiesFor(request.format).scopeMasking === 'always' || request.maskOutOfScope !== false,
     scopeOnly: request.scopeOnly === true,
     scrubPii: request.scrubPii === true,
     excludeAttachments: Object.freeze([...new Set((request.excludeAttachments ?? []).filter(isAttachmentId))].sort()),

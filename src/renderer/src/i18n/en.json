@@ -1910,7 +1910,6 @@
   "firstRun.record.adapterRecoverable": "Remove installed hooks in Settings ▸ Commands & terminals.",
   "firstRun.record.detectFailed": "Could not detect available shells. No hook has been installed.",
   "export.rangeLabel": "Export range",
-  "export.cannotMask": "This format does not mask content using web scope.",
   "export.formatHelp.json": "Event records for inspection and further processing; attachments are not copied.",
   "export.formatHelp.ndjson": "One event per line for scripts and large datasets; attachments are not copied.",
   "export.formatHelp.bundle": "Event records, selected attachments and verification files for handoff.",

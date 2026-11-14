@@ -1910,7 +1910,6 @@
   "firstRun.record.outputPwsh": "需要輸出時，可使用 Redlog-Run 包住指令，例如 Redlog-Run Get-Process；內建終端也會保存輸出。",
   "firstRun.record.detectFailed": "無法偵測可用的 shell，尚未安裝任何 hook。",
   "export.rangeLabel": "匯出範圍",
-  "export.cannotMask": "此格式不會依網頁 scope 遮蔽內容。",
   "export.formatHelp.json": "供檢視與後續處理的事件紀錄，不複製附件。",
   "export.formatHelp.ndjson": "每行一筆事件，適合腳本與大量資料，不複製附件。",
   "export.formatHelp.bundle": "包含事件、選取附件與驗證檔案，供交付使用。",
