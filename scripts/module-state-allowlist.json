@@ -450,6 +450,18 @@
       "class": "project-legacy",
       "reason": "Prepared statements on the open index."
     },
+    "src/core/http-body-index.ts#HAS_DOCS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/http-body-index.ts#TEXT_MEDIA_TOKENS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/http-body-index.ts#inlineRefWork": {
+      "class": "test-seam",
+      "reason": "Counts inline bodies refsOf scanned and hashed, read by tests through _inlineRefWork to show a search does no per-row work for linked rows; never read by production."
+    },
     "src/core/http-body-index.ts#FINAL_STATUSES": {
       "class": "constant",
       "reason": "Lookup table filled at declaration; nothing mutates it afterwards."

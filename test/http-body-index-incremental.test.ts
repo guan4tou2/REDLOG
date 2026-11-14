@@ -54,7 +54,7 @@ function dump(): unknown {
       // The verification columns hold inode and mtime signatures, which differ
       // between two runs by construction.
       refs: db.prepare('SELECT event_id,sha256,file,size,encoding,status,indexed_bytes,reason,kind,available_bytes FROM body_event_refs ORDER BY event_id,sha256').all(),
-      fts: db.prepare('SELECT event_id,sha256,content FROM body_fts ORDER BY event_id,sha256,content').all(),
+      fts: db.prepare('SELECT d.event_id,d.sha256,f.content FROM body_fts f JOIN body_docs d ON d.doc=f.rowid ORDER BY d.event_id,d.sha256,f.content').all(),
     }
   } finally { db.close() }
 }
@@ -233,7 +233,7 @@ describe('incremental body-search backfill', () => {
     const prepare = Database.prototype.prepare
     vi.spyOn(Database.prototype, 'prepare').mockImplementation(function (this: Database.Database, sql: string) {
       const s = prepare.call(this, sql)
-      if (/^SELECT id,data,agent_type FROM/.test(sql)) {
+      if (/^SELECT id,data,agent_type[ ,]/.test(sql)) {
         const iterate = s.iterate.bind(s), get = s.get.bind(s)
         ;(s as unknown as { iterate: (...a: unknown[]) => unknown }).iterate = function* (...a: unknown[]) { for (const r of iterate(...a)) { rows++; yield r } }
         ;(s as unknown as { get: (...a: unknown[]) => unknown }).get = (...a: unknown[]) => { const r = get(...a); if (r) rows++; return r }

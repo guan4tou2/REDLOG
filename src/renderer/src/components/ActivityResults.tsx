@@ -22,7 +22,7 @@ const ROW_BOX = 'min-h-[var(--row-h)] py-1 px-3'
 export function SearchCoverage({ coverage }: { coverage?: BodySearchCoverage }): JSX.Element | null {
   const { t } = useI18n()
   if (!coverage) return null
-  const describe=(counts:Partial<BodySearchCoverage>):string[] => (['missing','limited','pending','binary','failed','unsupported'] as const)
+  const describe=(counts:Partial<BodySearchCoverage>):string[] => (['missing','limited','partial','pending','binary','failed','unsupported'] as const)
     .filter(status=>(counts[status]??0)>0).map(status=>t(`activity.coverage.${status}`,{count:counts[status]??0}))
   const issues=coverage.sources?.flatMap(source=>{
     const states=describe(source)

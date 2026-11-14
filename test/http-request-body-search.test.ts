@@ -187,7 +187,7 @@ describeDB('searching a JSON body without params.body_json', () => {
     const plainLarge = response(JSON.stringify({ pad: 'q'.repeat(6000), w: 'PLAINLARGEX' }), 'application/json', 'resp-plain-large')
     viaBody('PLAINLARGEX')
     const db = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
-    const chars = (id: string): number => (db.prepare('SELECT coalesce(sum(length(content)),0) AS n FROM body_fts WHERE event_id=?').get(id) as { n: number }).n
+    const chars = (id: string): number => (db.prepare('SELECT coalesce(sum(length(f.content)),0) AS n FROM body_fts f JOIN body_docs d ON d.doc=f.rowid WHERE d.event_id=?').get(id) as { n: number }).n
     const escaped = chars(ids.large.after), plain = chars(plainLarge), inline = chars(ids.small.after)
     db.close()
     console.log(`[index size] escaped sidecar ${LARGE.length} chars -> ${escaped}; plain sidecar ${JSON.stringify({ pad: 'q'.repeat(6000), w: 'PLAINLARGEX' }).length} -> ${plain}; escaped inline ${SMALL.length} -> ${inline}`)
@@ -242,7 +242,7 @@ describeDB('searching a JSON body without params.body_json', () => {
     expect(surface('中文詞')).toEqual(expect.arrayContaining([ids.small.after, ids.large.after]))
     closeHttpBodyIndex()
     const old = new Database(path.join(dir, 'http-body-index.db'))
-    old.exec('DELETE FROM body_fts; DELETE FROM body_event_refs;')
+    old.exec('DELETE FROM body_fts; DELETE FROM body_docs; DELETE FROM body_event_refs;')
     old.pragma('user_version=7')
     old.close()
     expect(surface('中文詞')).toEqual(expect.arrayContaining([ids.small.after, ids.large.after]))
