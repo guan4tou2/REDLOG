@@ -38,6 +38,15 @@ function rowidOf(ref: number, kind: DocKind, n: number): number {
     throw new RangeError(`No document rowid for ref ${ref}, kind ${kind}, document ${n}`)
   return ref * REF_SPAN + kind * KIND_SPAN + n
 }
+/** SQL: the document at `rowid` belongs to the ref row `r`, and is one of the
+ *  documents that row counts. rowidOf read backwards: rowid / REF_SPAN is
+ *  the ref (an integer primary key lookup), and the remainder says the kind
+ *  and the number. A document at a ref's rowids beyond its counts is not the
+ *  ref's, whatever left it there. */
+function documentOf(rowid: string, r: string): string {
+  const at = `${rowid}%${REF_SPAN}`
+  return `${r}.ref=${rowid}/${REF_SPAN} AND CASE WHEN ${at}<${KIND_SPAN} THEN ${at}<${r}.raw_docs ELSE ${at}-${KIND_SPAN}<${r}.decoded_docs END`
+}
 /** Test seams: the layout, and the rowid of one document. */
 export function _documentLayout(): { refSpan: number; kindSpan: number; maxRef: number } { return { refSpan: REF_SPAN, kindSpan: KIND_SPAN, maxRef: MAX_REF } }
 export function _documentRowid(ref: number, kind: DocKind, n: number): number { return rowidOf(ref, kind, n) }
@@ -865,13 +874,14 @@ export function searchHttpBodyTermIds(query: string, projectDir = getProjectDir(
   const kind = excludeAiRaw ? " AND r.kind<>'ai-raw'" : ''
   // Failed references have already lost their FTS rows. Report them through
   // coverage without withholding unrelated, verified matches. A document's
-  // ref is its rowid / REF_SPAN, an integer primary key lookup: shared
+  // ref is its rowid / REF_SPAN, an integer primary key lookup, and only the
+  // documents the ref counts are its (documentOf): shared
   // documents in shared refs, this connection's TEMP documents in its TEMP
   // refs, whose ids are its own.
-  const find = stmt(db, `SELECT DISTINCT r.event_id FROM body_fts JOIN body_event_refs r ON r.ref=body_fts.rowid/${REF_SPAN} WHERE body_fts MATCH @term
+  const find = stmt(db, `SELECT DISTINCT r.event_id FROM body_fts JOIN body_event_refs r ON ${documentOf('body_fts.rowid', 'r')} WHERE body_fts MATCH @term
       AND r.row<=CASE r.tier WHEN 'events' THEN @chained ELSE @logged END${kind}
       AND r.event_id NOT IN (SELECT value FROM json_each(@skip))`)
-  const findLocal = plan.local.length ? stmt(db, `SELECT DISTINCT r.event_id FROM body_x_fts JOIN body_x_refs r ON r.ref=body_x_fts.rowid/${REF_SPAN}
+  const findLocal = plan.local.length ? stmt(db, `SELECT DISTINCT r.event_id FROM body_x_fts JOIN body_x_refs r ON ${documentOf('body_x_fts.rowid', 'r')}
       WHERE body_x_fts MATCH @term AND r.event_id IN (SELECT value FROM json_each(@local))${kind}`) : null
   const skip = JSON.stringify(plan.skip), local = JSON.stringify(plan.local.map(l => l.id))
   return terms.map(term => {

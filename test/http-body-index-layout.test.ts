@@ -111,6 +111,27 @@ sqlite.describe('body index layout', () => {
     expect(searchHttpBodyEventIds('LEFTOVERWORD', dir)).toEqual([])
   })
 
+  it('a match counts only inside the documents its ref records, also once the ref has lost its text', () => {
+    const text = '{"v":"COUNTEDWORD"}', ref = savedBody(dir, text), file = path.join(dir, 'http-bodies', ref.file)
+    savedResponse('E', { response_body_ref: ref })
+    expect(searchHttpBodyEventIds('COUNTEDWORD', dir)).toEqual(['E'])
+    const indexed = refRow('E')
+    expect(indexed).toMatchObject({ status: 'indexed', raw_docs: 1, decoded_docs: 0 })
+    // Inside E's range, outside its counts: the second saved document and the
+    // first decoded one, which E does not have.
+    plant(idx._documentRowid(indexed.ref, 0, 1), 'UNCOUNTEDWORD')
+    plant(idx._documentRowid(indexed.ref, 1, 0), 'UNCOUNTEDDECODED')
+    expect(searchHttpBodyEventIds('UNCOUNTEDWORD', dir)).toEqual([])
+    expect(searchHttpBodyEventIds('UNCOUNTEDDECODED', dir)).toEqual([])
+    // The body changes: E is failed and counts nothing. Its counted document
+    // goes; search and coverage agree that nothing of E is found.
+    fs.writeFileSync(file, text.replace('COUNTEDWORD', 'CHANGEDWORDX'))
+    expect(searchHttpBodyEventIds('COUNTEDWORD', dir)).toEqual([])
+    expect(refRow('E')).toMatchObject({ status: 'failed', raw_docs: 0 })
+    expect(searchHttpBodyEventIds('UNCOUNTEDWORD', dir)).toEqual([])
+    expect(idx.bodySearchCoverage().sources!.find(s => s.kind === 'body')).toMatchObject({ status: 'failed', failed: 1, indexed: 0 })
+  })
+
   it('every document write replaces what its rowid held', () => {
     const ref = savedBody(dir, '{"v":"REALWORD"}'), file = path.join(dir, 'http-bodies', ref.file)
     fs.rmSync(file)
