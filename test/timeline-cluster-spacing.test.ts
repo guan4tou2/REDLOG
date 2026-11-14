@@ -6,7 +6,7 @@
 // dots and for counts up to four digits, at every density and track width.
 import { describe, expect, it } from 'vitest'
 import {
-  buildClusters, clusterBadgeWidth, clusterBadgeSize, MARK_GAP_PX, MARK_HIT_PX, SINGLE_DOT_PX,
+  buildClusters, clusterBadgeWidth, clusterBadgeSize, clusterDigitsWidth, MARK_GAP_PX, MARK_HIT_PX, SINGLE_DOT_PX,
   type SingleMark, type TimelineCluster
 } from '../src/renderer/src/lib/timelineGeometry'
 import { displayTs } from '../src/renderer/src/lib/timelineDomain'
@@ -36,6 +36,33 @@ function rng(seed: number): () => number {
 
 const box = (c: TimelineCluster): [number, number] => [c.x + c.dx - c.w / 2, c.x + c.dx + c.w / 2]
 const hitBox = (c: TimelineCluster): [number, number] => [c.x + c.dx - c.hitW / 2, c.x + c.dx + c.hitW / 2]
+const overlap = (a: [number, number], b: [number, number]): number => Math.min(a[1], b[1]) - Math.max(a[0], b[0])
+/** A badge's number: digits × 7px, centred, without the padding. */
+const digitBox = (c: TimelineCluster): [number, number] => {
+  const half = clusterDigitsWidth(c.events.length) / 2
+  return [c.x - half, c.x + half]
+}
+
+/** What is wrong between two neighbours in a lane, `p` left of `c`. */
+function pairProblem(p: TimelineCluster, c: TimelineCluster): string | null {
+  const EPS = 1e-9
+  const pn = p.events.length
+  const n = c.events.length
+  if (pn > 1 && n > 1) {
+    // Two badges keep the gap, so neither covers the other's number.
+    const gap = box(c)[0] - box(p)[1]
+    return gap < MARK_GAP_PX - EPS ? `badges (${pn}, ${n}): gap ${gap.toFixed(2)}` : null
+  }
+  if (pn > 1 || n > 1) {
+    // A dot may sit over a badge's padding, never over its number (either
+    // side: an indented dot can be drawn right of a later badge).
+    const [badge, dot] = pn > 1 ? [p, c] : [c, p]
+    const reach = overlap(digitBox(badge), box(dot))
+    return reach > EPS ? `dot reaches the digits of ${badge.events.length} by ${reach.toFixed(2)}` : null
+  }
+  // Two lone dots may overlap: they only have to stay in time order.
+  return c.x > p.x ? null : 'dots out of order'
+}
 
 /** Every invariant the track relies on, for one buildClusters result.
  *  Problems are collected and asserted once: thousands of `expect` calls per
@@ -62,22 +89,22 @@ function assertSound(clusters: TimelineCluster[], rows: Record<string, RedLogEve
         // The number fits: 7px a digit plus 4px each side.
         if (c.w < String(n).length * 7 + 8 || c.w !== clusterBadgeWidth(n)) bad.push(`${row}#${i}: width ${c.w} for ${n}`)
       }
-      // The click area holds the whole mark, and asks for no more than before.
+      // The click area asks for no more than before and always keeps a share
+      // around the mark's centre. It holds the whole mark unless the mark
+      // overlaps a badge beside it; then the two split at the centres.
       const [l, r] = box(c)
       const [hl, hr] = hitBox(c)
-      if (hl > l + EPS || hr < r - EPS) bad.push(`${row}#${i}: hit area smaller than the mark`)
+      const overlapsBadge = [lane[i - 1], lane[i + 1]].some((o) => o && (o.events.length > 1 || n > 1) &&
+        overlap(box(o), [l, r]) > EPS)
+      if (!(c.hitW > 0)) bad.push(`${row}#${i}: no hit area`)
+      if (!overlapsBadge && (hl > l + EPS || hr < r - EPS)) bad.push(`${row}#${i}: hit area smaller than the mark`)
       if (c.hitW > Math.max(MARK_HIT_PX, c.w + 8) + EPS) bad.push(`${row}#${i}: hit area too wide`)
       if (i > 0) {
         const p = lane[i - 1]
-        const gap = l - box(p)[1]
-        const badges = (p.events.length > 1 ? 1 : 0) + (n > 1 ? 1 : 0)
-        // Two badges keep the gap; a badge and a dot may touch, never cross.
-        // Two lone dots may overlap: they only have to stay in time order.
-        if (badges === 2 && gap < MARK_GAP_PX - EPS) bad.push(`${row}#${i - 1}/${i} badges (${p.events.length}, ${n}): gap ${gap.toFixed(2)}`)
-        if (badges === 1 && gap < -EPS) bad.push(`${row}#${i - 1}/${i} badge and dot (${p.events.length}, ${n}): overlap ${gap.toFixed(2)}`)
-        if (badges === 0 && !(c.x > p.x)) bad.push(`${row}#${i - 1}/${i}: dots out of order`)
-        // No click area reaches over a badge's, or a badge's over anything.
-        if (badges > 0 && hl < hitBox(p)[1] - EPS) bad.push(`${row}#${i - 1}/${i}: hit areas overlap`)
+        const problem = pairProblem(p, c)
+        if (problem) bad.push(`${row}#${i - 1}/${i}: ${problem}`)
+        // Beside a badge, the two click areas meet and do not overlap.
+        if ((p.events.length > 1 || n > 1) && overlap(hitBox(p), [hl, hr]) > EPS) bad.push(`${row}#${i - 1}/${i}: hit areas overlap`)
       }
     })
   })
@@ -115,9 +142,10 @@ describe('cluster marks never overlap', () => {
   it('holds for counts crossing 9 → 10 → 100 → 1000 → 9999', () => {
     const toX = (ts: number): number => ts / 10 // 10ms = 1px
     for (const n of [1, 2, 9, 10, 11, 99, 100, 101, 999, 1000, 1001, 9999]) {
-      const w = n === 1 ? SINGLE_DOT_PX : clusterBadgeWidth(n)
-      // n coincident events, then a lone dot just touching the badge, then
-      // another half a pixel inside it.
+      // The edge a dot must not cross: a dot's own edge, or a badge's digits.
+      const w = n === 1 ? SINGLE_DOT_PX : clusterDigitsWidth(n)
+      // n coincident events, then a lone dot just touching the badge's
+      // number, then another half a pixel into it.
       // At x=139, the last pixel of a 14px column, so the lone dot is in the
       // next column and only the overlap check can merge it.
       const burst = Array.from({ length: n }, (_, i) => evt(`b${n}-${i}`, 1390))
@@ -132,7 +160,7 @@ describe('cluster marks never overlap', () => {
       const rows2 = { http_flow: [...burst, close] }
       const cs2 = buildClusters(['http_flow'], rows2, toX, LANE_H, CLUSTER_PX, undefined)
       assertSound(cs2, rows2, ['http_flow'], toX, `n=${n} close`)
-      // A badge swallows a dot it covers; two dots stay two.
+      // A badge swallows a dot that reaches its number; two dots stay two.
       expect(cs2.map((c) => c.events.length)).toEqual(n === 1 ? [1, 1] : [n + 1])
     }
   })
@@ -187,11 +215,8 @@ describe('cluster marks never overlap', () => {
     // assertSound checks single dots by the default width, so check boxes here.
     expect(cs.flatMap((c) => c.events)).toEqual(rows.shell)
     for (let i = 1; i < cs.length; i++) {
-      const badges = (cs[i].events.length > 1 ? 1 : 0) + (cs[i - 1].events.length > 1 ? 1 : 0)
-      const gap = box(cs[i])[0] - box(cs[i - 1])[1]
-      if (badges === 2) expect(gap).toBeGreaterThanOrEqual(MARK_GAP_PX - 1e-9)
-      else if (badges === 1) expect(gap).toBeGreaterThanOrEqual(-1e-9)
-      else expect(cs[i].x).toBeGreaterThan(cs[i - 1].x)
+      expect(pairProblem(cs[i - 1], cs[i]), `marks ${i - 1}/${i}`).toBeNull()
+      expect(cs[i].hitW).toBeGreaterThan(0)
     }
     expect(singlesFolded(cs, toX)).toEqual([])
     for (const c of cs.filter((k) => k.events.length === 1)) {
@@ -285,6 +310,35 @@ describe('the e2e seeds keep their marks', () => {
     }
   })
 
+  // timeline-track.spec.ts:525 "opens in standard mode": openTestProject's
+  // genesis rows land in one bucket, `whoami` about 1.2s later and the
+  // `mode-note` marker just after it. The ±60s domain pad makes the span about
+  // two minutes, ~9.7px a second at 1180px, so the genesis badge sits 11–13px
+  // left of the `whoami` dot: over the badge's padding, nowhere near its number.
+  it('standard mode: whoami stays its own dot beside the genesis badge', () => {
+    let cases = 0
+    for (const lagMs of [1150, 1200, 1250, 1300, 1350]) {
+      for (let trackW = 1000; trackW <= 1400; trackW += 2) {
+        const row = [
+          evt('gen0', T, 'system', { subtype: 'session_start' }),
+          evt('gen1', T + 1, 'system', { subtype: 'session_start' }),
+          evt('whoami', T + lagMs, 'shell', { subtype: 'command_end', command: 'whoami', exit_code: 0 }),
+          evt('note', T + lagMs + 300, 'marker', { title: 'mode-note', severity: 'info' })
+        ]
+        const toX = linear(row, trackW)
+        const col = (e: RedLogEvent): number => Math.floor(toX(displayTs(e)) / CLUSTER_PX)
+        // Only the layouts main drew as genesis badge, whoami dot, note dot.
+        if (col(row[1]) !== col(row[0]) || col(row[2]) === col(row[1]) || col(row[3]) === col(row[2])) continue
+        cases++
+        const cs = buildClusters(['standard'], { standard: row }, toX, LANE_H, CLUSTER_PX, undefined)
+        expect(cs.length, `lag ${lagMs} at ${trackW}px`).toBeGreaterThanOrEqual(2)
+        expect(lone(cs, 'whoami'), `whoami, lag ${lagMs} at ${trackW}px`).toBeTruthy()
+        assertSound(cs, { standard: row }, ['standard'], toX, `525 ${lagMs} ${trackW}`)
+      }
+    }
+    expect(cases).toBeGreaterThan(100)
+  })
+
   it('a row out of display order is clustered as if it were in order', () => {
     const random = rng(99)
     const row = Array.from({ length: 1500 }, (_, i) => marker(`o${i}`, T + i, T - Math.round(random() * 3_600_000)))
@@ -315,5 +369,44 @@ describe('lone dots are never folded together', () => {
       // Each keeps its full hit area; the later one sits on top, as before.
       expect(cs.every((c) => c.hitW === Math.max(MARK_HIT_PX, c.w + 8))).toBe(true)
     }
+  })
+})
+
+describe('a badge absorbs a lone dot only when the dot reaches its number', () => {
+  it('a dot clear of the digits stays a dot, on either side, at any size and indent', () => {
+    const toX = (ts: number): number => ts / 100 // 100ms = 1px
+    let kept = 0
+    for (const n of [2, 9, 10, 99, 100, 999, 1000, 9999]) {
+      const half = clusterDigitsWidth(n) / 2
+      for (const w of [9, 11, 14]) {
+        for (const dx of [0, 12]) {
+          for (const side of [1, -1]) {
+            // The badge's events at x=700 (mid-column). The dot's centre is
+            // placed so its box is just clear of the digits; 0.25px further in
+            // must merge.
+            const clearAt = 700 + side * (half + w / 2) - dx + side * 0.01
+            for (const [cx, merges] of [[clearAt, false], [clearAt + side * 0.6, false], [clearAt - side * 0.26, true]] as const) {
+              const badge = Array.from({ length: n }, (_, i) => evt(`b${i}`, 70_000))
+              const dot = evt('dot', Math.round(cx * 100), 'marker')
+              if (Math.floor(toX(dot.timestamp) / CLUSTER_PX) === Math.floor(700 / CLUSTER_PX)) continue
+              const row = dot.timestamp < 70_000 ? [dot, ...badge] : [...badge, dot]
+              const mark = (e: RedLogEvent): SingleMark => ({ w, dx })
+              const cs = buildClusters(['r'], { r: row }, toX, LANE_H, CLUSTER_PX, undefined, mark)
+              const label = `n=${n} w=${w} dx=${dx} side=${side} at ${cx.toFixed(2)}`
+              // In time order; an indented dot can be earlier yet drawn right.
+              expect(cs.map((c) => c.events.length), label).toEqual(merges ? [n + 1] : dot.timestamp < 70_000 ? [1, n] : [n, 1])
+              if (!merges) {
+                kept++
+                const d = cs.find((c) => c.events.length === 1) as TimelineCluster
+                expect(d.x, label).toBe(toX(dot.timestamp))
+                // Both stay clickable: the dot keeps at least half the way to the badge.
+                expect(d.hitW, label).toBeGreaterThan(0)
+              }
+            }
+          }
+        }
+      }
+    }
+    expect(kept).toBeGreaterThan(50)
   })
 })

@@ -107,9 +107,14 @@ export function clusterBadgeSize(count: number): number {
   return Math.min(24, 13 + Math.round(Math.log2(count) * 3))
 }
 
+/** Width of a badge's number: the part of it a neighbour must not cover. */
+export function clusterDigitsWidth(count: number): number {
+  return String(count).length * COUNT_DIGIT_PX
+}
+
 /** A counted badge's drawn width: widened, never shrunk, so every digit fits. */
 export function clusterBadgeWidth(count: number): number {
-  return Math.max(clusterBadgeSize(count), String(count).length * COUNT_DIGIT_PX + COUNT_PAD_PX)
+  return Math.max(clusterBadgeSize(count), clusterDigitsWidth(count) + COUNT_PAD_PX)
 }
 
 /** A lone event's drawn dot: its width, and how far right of its time it sits. */
@@ -129,33 +134,39 @@ export interface TimelineCluster {
   w: number
   /** The mark is drawn centred at `x + dx` (a subagent turn's indent). */
   dx: number
-  /** Width of the clickable area, centred on the mark: `MARK_HIT_PX`, cut at
-   *  the midpoint of the space to a closer neighbour when either of the two is
-   *  a count badge, so no badge's click area covers another mark. Two lone
-   *  dots keep their full areas and the later one sits on top, as before. */
+  /** Width of the clickable area, centred on the mark: `MARK_HIT_PX`, cut
+   *  where it meets a count badge's: at the midpoint of the space between the
+   *  two, or between their centres when a dot overlaps the badge's edge, so
+   *  each keeps a share. Two lone dots keep their full areas and the later one
+   *  sits on top, as before. */
   hitW: number
   events: RedLogEvent[]
 }
 
-interface Group { from: number; to: number; sumX: number; n: number; l: number; r: number; w: number; dx: number }
+interface Group { from: number; to: number; sumX: number; n: number; l: number; r: number; w: number; dx: number; cx: number; digits: number }
 
 /**
- * Whether two neighbouring marks must become one. Only a count badge forces a
- * merge, because only a badge hides something when covered: its number. Two
- * lone dots never merge — they stay the marks their 14px buckets made, since a
- * dot's shape (severity, scope) is information and a badge would hide it; a
- * dot or two of overlap between them is drawn, later on top, as it always was.
- * A badge and a dot merge only when their drawn boxes intersect; two badges
- * also keep `MARK_GAP_PX` apart, so their numbers read as separate.
+ * Whether two neighbouring marks (`a` left of `b`) must become one. What the
+ * fix protects is a badge's number. Two badges keep `MARK_GAP_PX` between
+ * their boxes, so neither covers the other's digits. A dot and a badge merge
+ * only when the dot would reach the badge's digits — the number's own width,
+ * centred, without the badge's padding; a dot over the padding hides nothing
+ * and is drawn on top. Two lone dots never merge: they stay the marks their
+ * 14px buckets made, since a dot's shape (severity, scope) is information a
+ * badge would hide, and may overlap, later on top, as they always could.
  */
 function mustMerge(a: Group, b: Group): boolean {
   if (a.n === 1 && b.n === 1) return false
-  return a.r + (a.n > 1 && b.n > 1 ? MARK_GAP_PX : 0) > b.l
+  if (a.n > 1 && b.n > 1) return a.r + MARK_GAP_PX > b.l
+  // Either side: a subagent turn's indent can draw a dot right of a badge
+  // whose events are later than it.
+  const [badge, dot] = a.n > 1 ? [a, b] : [b, a]
+  return dot.r > badge.cx - badge.digits / 2 && dot.l < badge.cx + badge.digits / 2
 }
 
 /**
- * Cluster one lane's events into marks where no count badge overlaps a
- * neighbour.
+ * Cluster one lane's events into marks where nothing covers a count badge's
+ * number.
  *
  * Bucketing by `clusterPx` alone did not guarantee that: two buckets 14px apart
  * each drew a 16–24px badge, so every badge covered half of the next. After
@@ -193,15 +204,17 @@ function laneClusters(
     } else {
       g.w = clusterBadgeWidth(g.n); g.dx = 0
     }
-    const cx = g.sumX / g.n + g.dx
-    g.l = cx - g.w / 2
-    g.r = cx + g.w / 2
+    g.digits = g.n > 1 ? clusterDigitsWidth(g.n) : 0
+    g.cx = g.sumX / g.n + g.dx
+    g.l = g.cx - g.w / 2
+    g.r = g.cx + g.w / 2
     return g
   }
+  const blank = { l: 0, r: 0, w: 0, dx: 0, cx: 0, digits: 0 }
   const of = (i: number): Group =>
-    shape({ from: i, to: i, sumX: buckets[i].reduce((a, e) => a + toX(displayTs(e)), 0), n: buckets[i].length, l: 0, r: 0, w: 0, dx: 0 })
+    shape({ from: i, to: i, sumX: buckets[i].reduce((a, e) => a + toX(displayTs(e)), 0), n: buckets[i].length, ...blank })
   const join = (a: Group, b: Group): Group =>
-    shape({ from: a.from, to: b.to, sumX: a.sumX + b.sumX, n: a.n + b.n, l: 0, r: 0, w: 0, dx: 0 })
+    shape({ from: a.from, to: b.to, sumX: a.sumX + b.sumX, n: a.n + b.n, ...blank })
   const stack: Group[] = []
   let i = 0
   while (i < buckets.length) {
@@ -211,7 +224,7 @@ function laneClusters(
       if (i < buckets.length) {
         const next = of(i)
         // Only a pair that would have to merge anyway: never two lone dots,
-        // nor a dot with a badge it does not touch.
+        // nor a dot with a badge whose number it does not reach.
         if (mustMerge(g, next)) {
           const right = join(g, next)
           if (!mustMerge(top, right)) { g = right; i++; continue }
@@ -222,6 +235,14 @@ function laneClusters(
     stack.push(g)
   }
   return { groups: stack, buckets }
+}
+
+/** How far from `g`'s centre its hit area may reach toward neighbour `o`: to
+ *  the middle of the gap between them, or between their centres when they
+ *  overlap, so the two areas meet and neither is covered. */
+function hitReach(g: Group, o: Group): number {
+  const [l, r] = g.cx <= o.cx ? [g, o] : [o, g]
+  return Math.abs((l.r <= r.l ? (l.r + r.l) / 2 : (l.cx + r.cx) / 2) - g.cx)
 }
 
 export function buildClusters(
@@ -240,14 +261,12 @@ export function buildClusters(
     const { groups, buckets } = laneClusters(evs, toX, clusterPx, singleMark)
     groups.forEach((g, gi) => {
       const events = g.from === g.to ? buckets[g.from] : buckets.slice(g.from, g.to + 1).flat()
-      const cx = g.sumX / g.n + g.dx
       let half = Math.max(MARK_HIT_PX, g.w + 8) / 2
       const prev = groups[gi - 1]
       const next = groups[gi + 1]
-      // Only beside a badge: two lone dots may overlap, and cutting there
-      // could leave a dot with less hit area than its own size.
-      if (prev && (prev.n > 1 || g.n > 1)) half = Math.min(half, cx - (prev.r + g.l) / 2)
-      if (next && (next.n > 1 || g.n > 1)) half = Math.min(half, (g.r + next.l) / 2 - cx)
+      // Only beside a badge: two lone dots may overlap and keep full areas.
+      if (prev && (prev.n > 1 || g.n > 1)) half = Math.min(half, hitReach(g, prev))
+      if (next && (next.n > 1 || g.n > 1)) half = Math.min(half, hitReach(g, next))
       const colorLane = toLane(events[0].agentType, events[0].data?.subtype as string | undefined, pluginTypes)
       out.push({
         key: `${rowKey}-${events[0].id}`, lane: colorLane, li,

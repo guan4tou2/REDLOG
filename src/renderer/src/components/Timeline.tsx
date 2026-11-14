@@ -2502,7 +2502,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
                   // keeps its own size (`dot`); this is only the transparent
                   // hit area around it, so a small dot is still easy to click.
                   // Beside a count badge its width (c.hitW) stops halfway to
-                  // the neighbour, so no badge's hit area covers another mark.
+                  // the neighbour, so the two share the space between them.
                   // Two lone dots may still overlap: the later (or the
                   // selected, z 10) wins, as before.
                   const hit = Math.max(MARK_HIT_PX, dot + 8)
@@ -2578,7 +2578,9 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
                         top: c.y - hit / 2,
                         width: hitW,
                         height: hit,
-                        zIndex: sel ? 10 : 2,
+                        // A dot may sit over a badge's padding (never its
+                        // number) and is drawn above it, shape intact.
+                        zIndex: sel ? 10 : single ? 3 : 2,
                         opacity: dimmed ? 0.15 : 1,
                         // v0.11.4 (AUDIT V10): a filtered-out dot was still
                         // clickable — it only lost opacity, keeping its full

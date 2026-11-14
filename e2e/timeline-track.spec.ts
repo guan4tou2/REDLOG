@@ -815,7 +815,7 @@ test.describe.serial('timeline-virtualisation', () => {
 // One unit family only: `offsetLeft` / `offsetWidth` (CSS px). The mark is the
 // button's first child and the button is its offsetParent, so its left on the
 // track is the sum of the two offsets. Never a bounding rect: body is zoomed.
-interface MarkBox { top: number; left: number; right: number; hitLeft: number; hitRight: number; count: number; text: string; scroll: number; client: number; textW: number }
+interface MarkBox { top: number; left: number; right: number; textLeft: number; textRight: number; hitLeft: number; hitRight: number; count: number; text: string; scroll: number; client: number; textW: number }
 const markBoxes = (p: Page): Promise<MarkBox[]> => p.evaluate(() =>
   Array.from(document.querySelectorAll('[data-timeline-event]')).map((el) => {
     const btn = el as HTMLElement
@@ -823,10 +823,18 @@ const markBoxes = (p: Page): Promise<MarkBox[]> => p.evaluate(() =>
     const text = mark.textContent ?? ''
     const span = mark.firstElementChild as HTMLElement | null
     const n = /(\d+)/.exec(btn.getAttribute('aria-label') ?? '')
+    // The number's own box, in the same offset family: its offsetParent is
+    // the button (positioned) unless the browser makes the mark one.
+    const markLeft = btn.offsetLeft + mark.offsetLeft
+    const textLeft = span
+      ? (span.offsetParent === mark ? markLeft : btn.offsetLeft) + span.offsetLeft
+      : 0
     return {
       top: btn.offsetTop + mark.offsetTop,
       left: btn.offsetLeft + mark.offsetLeft,
       right: btn.offsetLeft + mark.offsetLeft + mark.offsetWidth,
+      textLeft,
+      textRight: textLeft + (span?.offsetWidth ?? 0),
       hitLeft: btn.offsetLeft,
       hitRight: btn.offsetLeft + btn.offsetWidth,
       // A lone dot has no number; its accessible name starts with a time.
@@ -843,19 +851,26 @@ function spacingProblems(marks: MarkBox[]): string[] {
   const bad: string[] = []
   const lanes = new Map<number, MarkBox[]>()
   for (const m of marks) lanes.set(m.top, [...(lanes.get(m.top) ?? []), m])
-  // DOM order is draw order within a lane. A badge (a mark with a number)
-  // keeps clear of anything; two lone dots may touch or overlap, as they always
-  // could, and only have to stay in time order. offset* round to whole pixels,
-  // so a badge and a dot that touch, or touching hit areas, may read 1px over.
+  // DOM order is draw order within a lane. Two badges keep clear of each other.
+  // A dot may overlap a badge's padding but never its number. Two lone dots
+  // may touch or overlap, as they always could, and only have to stay in time
+  // order. offset* round to whole pixels, so touching boxes may read 1px over.
   for (const lane of lanes.values()) {
     for (let i = 1; i < lane.length; i++) {
       const prev = lane[i - 1]
       const next = lane[i]
       const badges = (prev.text ? 1 : 0) + (next.text ? 1 : 0)
       if (badges === 2 && next.left < prev.right) bad.push(`badges overlap at ${prev.left}..${prev.right} / ${next.left}..${next.right}`)
-      if (badges === 1 && next.left < prev.right - 1) bad.push(`badge and dot overlap at ${prev.left}..${prev.right} / ${next.left}..${next.right}`)
+      if (badges === 1) {
+        const [badge, dot] = prev.text ? [prev, next] : [next, prev]
+        if (Math.min(badge.textRight, dot.right) - Math.max(badge.textLeft, dot.left) > 1) {
+          bad.push(`dot ${dot.left}..${dot.right} covers the number ${badge.textLeft}..${badge.textRight}`)
+        }
+      }
       if (badges === 0 && !(next.left > prev.left)) bad.push(`dots out of order at ${prev.left} / ${next.left}`)
-      if (badges > 0 && next.hitLeft < prev.hitRight - 1) bad.push(`hit areas overlap at ${prev.hitRight} / ${next.hitLeft}`)
+      if (badges > 0 && Math.min(prev.hitRight, next.hitRight) - Math.max(prev.hitLeft, next.hitLeft) > 1) {
+        bad.push(`hit areas overlap at ${prev.hitLeft}..${prev.hitRight} / ${next.hitLeft}..${next.hitRight}`)
+      }
     }
   }
   for (const m of marks) {
