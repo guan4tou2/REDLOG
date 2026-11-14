@@ -10,7 +10,9 @@ import { launchWithTempHome, openTestProject, openView, resizeMainWindow, resetT
 //   2. at 800x500 and 1280x800 the first and last ruler labels lie wholly
 //      inside the timeline pane;
 //   3. on Targets, with enough rows to scroll, the header's right edge is the
-//      cards' right edge.
+//      cards' right edge;
+//   4. on HTTP, with the detail pane open and the list scrolled under its
+//      sticky header, no part of a row shows above or through that header.
 //
 // Geometry: every comparison is getBoundingClientRect() against
 // getBoundingClientRect(), one family on both sides (CLAUDE.md). Nothing here
@@ -127,6 +129,69 @@ test('layout leftovers: activity rows at 800x500, ruler end labels, targets head
     expect(edges.overflows, 'the targets body must overflow for this check to mean anything').toBe(true)
     expect(Math.abs(edges.header - edges.card), `header right ${edges.header} vs cards right ${edges.card}`).toBeLessThanOrEqual(1)
     expect(Math.abs(edges.tabs - edges.card), `tab underline right ${edges.tabs} vs cards right ${edges.card}`).toBeLessThanOrEqual(1)
+  } catch (e) {
+    console.log(`[DBG] ${(e as Error).message.split('\n').slice(0, 5).join(' | ')}`)
+    throw e
+  } finally {
+    await app.close()
+  }
+})
+
+/** What lies between the top of the HTTP list's scroller and the bottom of its
+ *  sticky header, sampled down the band at three x positions. */
+async function stickyHeaderBand(page: Page): Promise<{ scrollTop: number; scrollerTop: number; headTop: number; headBottom: number; alpha: number; strays: string[] }> {
+  return page.evaluate(() => {
+    const scroller = document.querySelector('[data-testid="http-table-scroll"]') as HTMLElement
+    const head = scroller.querySelector('thead') as HTMLElement
+    const s = scroller.getBoundingClientRect()
+    const h = head.getBoundingClientRect()
+    const bg = getComputedStyle(head).backgroundColor
+    const alpha = /rgba?\(([^)]+)\)/.exec(bg)?.[1].split(/[ ,/]+/).filter(Boolean)[3]
+    const strays: string[] = []
+    for (const fx of [0.15, 0.5, 0.85]) {
+      const x = s.left + s.width * fx
+      for (let y = s.top + 0.5; y < h.bottom - 0.5; y += 1) {
+        const hit = document.elementFromPoint(x, y)
+        if (!hit || !hit.closest('thead')) strays.push(`${Math.round(x)},${y.toFixed(1)}: ${hit ? hit.tagName + (hit.closest('tr')?.getAttribute('role') ?? '') : 'nothing'}`)
+      }
+    }
+    return { scrollTop: scroller.scrollTop, scrollerTop: s.top, headTop: h.top, headBottom: h.bottom, alpha: alpha === undefined ? 1 : Number(alpha), strays }
+  })
+}
+
+test('layout leftovers: HTTP rows never show above or through the sticky header', async () => {
+  test.setTimeout(180_000)
+  const { app, page, tmpHome } = await launchWithTempHome()
+  try {
+    await page.evaluate(() => localStorage.setItem('redlog-locale', 'zh-TW'))
+    await page.reload()
+    await openTestProject(page, 'layout-http-sticky')
+    await page.waitForTimeout(1200)
+    for (let i = 0; i < 60; i++) {
+      const flow_id = `sticky-${i}`
+      const url = `https://app.acme.test/item-${i}`
+      await post(tmpHome, 'scanner', { subtype: 'http_request_start', flow_id, method: 'GET', host: 'app.acme.test', url })
+      await post(tmpHome, 'scanner', { subtype: 'http_response', flow_id, status: 200, host: 'app.acme.test', url, response_headers: { 'content-type': 'text/plain' }, response_preview: 'ok' })
+    }
+    // The window the acceptance walk used: the default size, detail pane open.
+    await resizeMainWindow(app, 1400, 900)
+    await openView(page, 'http_history')
+    const rows = page.locator('tbody tr[role="option"]')
+    await expect.poll(() => rows.count()).toBeGreaterThan(10)
+    await rows.first().click()
+    await expect(page.getByTestId('http-detail-panel')).toBeVisible()
+    await expect(page.getByTestId('http-workspace-split')).toHaveAttribute('data-layout', 'right')
+    // Whole-row and part-row offsets: a gap under a sticky header shows only
+    // when a row edge is not on a pixel boundary.
+    for (const top of [42 * 3, 42 * 5 + 17, 42 * 9 + 29.5]) {
+      await page.getByTestId('http-table-scroll').evaluate((el, y) => { el.scrollTop = y }, top)
+      await page.evaluate(() => new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r()))))
+      const band = await stickyHeaderBand(page)
+      expect(band.scrollTop, 'the list must be scrolled for this check to mean anything').toBeGreaterThan(0)
+      expect(Math.abs(band.headTop - band.scrollerTop), `scrollTop ${band.scrollTop}: header top ${band.headTop} vs scroller top ${band.scrollerTop}`).toBeLessThanOrEqual(0.5)
+      expect(band.alpha, 'the sticky header must be opaque, or the rows under it show through').toBe(1)
+      expect(band.strays, `scrollTop ${band.scrollTop}: points between scroller top ${band.scrollerTop} and header bottom ${band.headBottom} that are not the header`).toEqual([])
+    }
   } catch (e) {
     console.log(`[DBG] ${(e as Error).message.split('\n').slice(0, 5).join(' | ')}`)
     throw e
