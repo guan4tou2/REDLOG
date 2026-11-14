@@ -74,18 +74,18 @@
       },
       {
         "id": "00000000-0000-4000-8000-000000000035",
-        "hash": "f38d5a7fda7863f524843e11c1d80870d78c4fe4bf87efddabdc618a8281b8bb",
-        "sha256": "4f96c29c99c04a9fb190e893ac54bb7ea91c11b570515f6c0a9c9173db80a13d"
+        "hash": "168215781b761fd8b898f56e39ef78cea79a839e0311ee90fb12dea4aa959601",
+        "sha256": "ba93a7061aee8d95490c4fce7b11f1360a8bf5c4a838f7cda3d86e8b0fd4000e"
       },
       {
         "id": "00000000-0000-4000-8000-000000000037",
-        "hash": "3bdb1991549583659dea4c54b81b08fc226c2ff9b6e43a7728d889b0af5b0d1a",
-        "sha256": "64eb55de8b01df9f703c808a988943a171a80de604e42d49f81201090a21cc2b"
+        "hash": "28ec285065c4b8bed0450739a0be624e262cc5e6ec48ae5e1b24ae96fc1511af",
+        "sha256": "a08e067d9c52b0010fc56714d1f97646ce56c5498b69e8b7f976971fb6a7fd91"
       },
       {
         "id": "00000000-0000-4000-8000-000000000040",
-        "hash": "94164b43d50e6ed8405411c5bfb8786d0ab4f209874d91e4bef25b606155b7a9",
-        "sha256": "51215944c8dfad47cfff132e393b283540d003c8b12e8080084f83a922bc4365"
+        "hash": "6db2c5f6b166b53c2bfbb361e65ed2ccc673e8233fa07c8c83fc9037dd3fb76e",
+        "sha256": "d7e0817318fe48436cd711097e86fc64e0d0a0f7ecf6d485d9b662a3ddd2aaa6"
       }
     ],
     "events_logged": [
@@ -96,7 +96,7 @@
       }
     ]
   },
-  "rowsSha256": "3686583d0c97e8d3b92029e4589a69785f3c7872703d2aa0551d6ba576b004a1",
+  "rowsSha256": "9eb07a939a87d293275741463ed3d09809744d2d76fe9c0a21ee221a2a12a49c",
   "stamps": {
     "events": [
       {
@@ -321,7 +321,7 @@
     "walked": 17,
     "brokenAtEventId": null,
     "brokenReason": null,
-    "currentHead": "7949d0969373b6ca3e628f3cc46328a30d9e4754b7f62de58164285d72620995",
+    "currentHead": "118ccc9793cddf3ba3e7a871c8060cde9f74e792c47dec45252d12f5e6c1b2a1",
     "anchorMatchesWalkedHead": false,
     "clockAnomalies": [],
     "signedCount": 17,
