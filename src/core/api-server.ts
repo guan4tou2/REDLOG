@@ -38,6 +38,8 @@ import { exportHar, bodyDeliverableUnderScope } from './har-export'
 import { getCaptureHealth, getCaptureError, noteDbError } from './capture-health'
 import { resolveIncomingCauses, noteStartEvent } from './causes-resolver'
 import { ingest, type LootDetectorLike } from './ingest'
+import { EVENT_NESTING_CEILING, NESTED_TOO_DEEP } from './ingest/depth'
+import { CEILING_TEXT, flushNestingRefusals, noteNestingRefusal } from './ingest/nesting-ceiling'
 import { LEGACY_API, withEntrance } from './ingest/stamp'
 import { bodyTargetId } from './ingest/body-target'
 import { isInsideDir } from './paths'
@@ -219,7 +221,8 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 }
 
 /** The body of a JSON route as a plain object, or null after answering 400.
- *  One gate for every route that reads a body (api-request.ts). */
+ *  One gate for every route that reads a body (api-request.ts); the
+ *  event-ingest route reads its own (see its call). */
 async function readJsonObject(req: http.IncomingMessage, res: http.ServerResponse): Promise<Record<string, unknown> | null> {
   const parsed = parseJsonObjectBody(await readBody(req))
   if (!parsed.ok) { json(res, 400, { error: parsed.error }); return null }
@@ -325,28 +328,54 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         return
       }
       const requestEngagement = engagementId
-      const body = await readJsonObject(req, res)
-      if (!body) return
+      // No 64-level gate on this route (Spec 071 FR-097, owner 2026-11-14
+      // 「收下並摺疊」): an over-deep `data` is accepted and the writer collapses
+      // it. What reads the body before insertEvent bounds it reads scalars
+      // only: every field it coerces goes through ingest/field-text.ts, which
+      // answers a container with nothing instead of stringifying it level by
+      // level. The 201 echoes the stored, bounded row. The 20 MiB body cap
+      // stays.
+      // Past EVENT_NESTING_CEILING levels it is refused before the parse, and
+      // the refusal is a capture gap (ingest/nesting-ceiling.ts; owner
+      // 2026-11-14). `reason` names it for the sender.
+      const raw = await readBody(req)
       // Reading a streamed body yields to project switching. Recheck at the
       // write boundary, not only when the authenticated headers arrived.
       if (!projectOpen || requestEngagement !== engagementId || (pinnedEngagement != null && pinnedEngagement !== engagementId)) {
         json(res, 409, { error: 'engagement changed; session capture refused' })
         return
       }
+      const parsed = parseJsonObjectBody(raw, { maxDepth: EVENT_NESTING_CEILING })
+      if (!parsed.ok && parsed.tooDeep) {
+        noteNestingRefusal({ engagementId, operatorId: operator.id, paused: eventBus.paused }, Buffer.byteLength(raw))
+        json(res, 413, { error: `request nested more than ${CEILING_TEXT} levels deep; not parsed, not recorded`, reason: NESTED_TOO_DEEP })
+        return
+      }
+      if (!parsed.ok) { json(res, 400, { error: parsed.error }); return }
+      const body = parsed.body
       const capturedIdentity = body._identity as { engagementId?: unknown } | undefined
       if (capturedIdentity?.engagementId != null && capturedIdentity.engagementId !== engagementId) {
         json(res, 409, { error: 'engagement changed; captured event refused' })
         return
       }
-      const agentType = String(body.agent_type || body.agentType || 'external')
+      // A type is a string. String() of a nested array recursed once per level
+      // (ingest/field-text.ts), and a spool file without one is set aside.
+      const rawType: unknown = body.agent_type || body.agentType || 'external'
+      if (typeof rawType !== 'string') {
+        json(res, 400, { error: 'agent_type must be a string' })
+        return
+      }
+      const agentType = rawType
       // Which types an outside tool may report lives in external-event-policy.ts;
       // `system` is refused except for the producer heartbeat capture-health reads.
       if (!e2eSeed && !isExternalEventAllowed(agentType, body.data)) {
         // A 403 an integration ignores is capture silently stopping, which is
         // the one failure §1 does not allow. Record it so a tool posting a
         // blocked type shows up as a capture problem rather than as nothing.
-        noteDbError('api-external-rejected', new Error(`agent_type "${agentType}" rejected`))
-        json(res, 403, { error: `agent_type "${agentType}" is not allowed via external API` })
+        // Named, not echoed whole: the type is the sender's text, up to 20 MiB.
+        const named = agentType.length > 64 ? `${agentType.slice(0, 64)}…` : agentType
+        noteDbError('api-external-rejected', new Error(`agent_type "${named}" rejected`))
+        json(res, 403, { error: `agent_type "${named}" is not allowed via external API` })
         return
       }
       // `data` holds everything the readers index on — subtype, command,
@@ -394,6 +423,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       // ingest(), so a command means the same thing whether it arrives here or
       // from an in-process producer. `identity` mapper: the posted body IS the
       // envelope's {agent_type, data}.
+      // A step after the commit that fails does not fail this call: ingest
+      // isolates each one and returns the written row (ingest.ts afterCommit).
       const result = ingest({
         agentType, data, operatorId: operator.id, engagementId, targetId, entrance: LEGACY_API,
         envelope: { source: 'api', mapper: { id: 'identity', version: '1' } }
@@ -944,6 +975,9 @@ export function onApiProjectOpen(): void {
 
 export function onApiProjectClose(): void {
   projectOpen = false
+  // Before stopProject closes the database: refusals counted in this project
+  // are written to it (ingest/nesting-ceiling.ts).
+  try { flushNestingRefusals() } catch (e) { console.error('[api] the refusal count could not be written before close:', e) }
 }
 
 export function stopApiServer(): void {

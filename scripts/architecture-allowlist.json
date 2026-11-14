@@ -5,5 +5,6 @@
   "src/core/db/operators.ts#deleteOperator": "Kept by decision in #143 (see slugifyOperatorId).",
   "src/core/raw-store.ts#readRaw": "Reserved for POST /api/ingest (docs/design/DESIGN-plugin-kernel.md §3): the raw store's read side and format contract. Decided 2026-09-24 to keep the store and build the reader with ingest; remove both if ingest is dropped.",
   "src/core/raw-store.ts#isRawRef": "Reserved for POST /api/ingest (see readRaw).",
-  "src/core/terminal-enrollment.ts#captureDecision": "Spec 052 T017. What the adapter asks before each command; its caller is the preexec routing in T020. Here now because the policy is RedLog's, not the shell's (research.md D7) — one classifier, read by every adapter."
+  "src/core/terminal-enrollment.ts#captureDecision": "Spec 052 T017. What the adapter asks before each command; its caller is the preexec routing in T020. Here now because the policy is RedLog's, not the shell's (research.md D7) — one classifier, read by every adapter.",
+  "src/core/ingest/depth.ts#restoreDataDepth": "Spec 071 FR-097: the inverse of the writer's depth bound, from a stored row alone. Its readers are the reader's JSON view and exports that show the original value (the UI follow-up named in FR-097); until one lands, the round-trip tests are its only callers."
 }

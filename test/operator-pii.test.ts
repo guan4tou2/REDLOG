@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { spawnSync } from 'node:child_process'
 import { operatorPiiReplacements, scrubOperatorPii } from '../src/core/operator-pii'
 
 describe('operatorPiiReplacements', () => {
@@ -53,5 +54,190 @@ describe('scrubOperatorPii convenience wrapper', () => {
     const reps = operatorPiiReplacements({ home: '/home/ops', user: 'ops', host: 'srv' })
     const text = 'nothing sensitive here at all'
     expect(scrubOperatorPii(text, reps)).toBe(text)
+  })
+})
+
+// Spec 071 FR-097 put whole containers inside strings (the `_collapsed`
+// wrapper), so a home path can now sit one escaping level deeper than any
+// field held it before: `C:\Users\Jo` reads `C:\\\\Users\\\\Jo` in the
+// exported text, and a body holding JSON text inside that, deeper still. The
+// scrub matches every escaping level.
+import { boundDataDepth } from '../src/core/ingest/depth'
+
+describe('operator PII at every level of JSON escaping (FR-097)', () => {
+  const nest = (levels: number, leaf: unknown): unknown => { let v = leaf; for (let i = 0; i < levels; i++) v = [v]; return v }
+  /** The exported text of a row whose `data.deep` holds `leaf` under `levels` arrays. */
+  const exported = (levels: number, leaf: unknown): string => JSON.stringify(boundDataDepth({ subtype: 'x', deep: nest(levels, leaf) }).data)
+  const WIN = { home: 'C:\\Users\\Jo', user: 'jo', host: 'nope-host' }
+  const winPath = 'C:\\Users\\Jo\\Desktop\\client-x\\notes.txt'
+
+  it('a Windows home under 60 levels (one escaping) and under 70 (inside a wrapper, two) is scrubbed, its separators kept', () => {
+    const reps = operatorPiiReplacements(WIN)
+    const shallow = scrubOperatorPii(exported(60, { p: winPath }), reps)
+    expect(shallow).not.toMatch(/Users/)
+    expect(shallow).toMatch(/<home>\\{2}Desktop\\{2}client-x/)
+    const deep = exported(70, { p: winPath })
+    expect(deep).toContain('C:\\\\\\\\Users\\\\\\\\Jo')
+    const scrubbed = scrubOperatorPii(deep, reps)
+    expect(scrubbed).not.toMatch(/Users/)
+    expect(scrubbed).toMatch(/<home>\\{4}Desktop\\{4}client-x/)
+  })
+
+  it('three levels: a string holding JSON text inside a wrapper', () => {
+    const text = exported(70, { body: JSON.stringify({ p: winPath }) })
+    expect(text).toContain('C:\\\\\\\\\\\\\\\\Users')
+    const scrubbed = scrubOperatorPii(text, operatorPiiReplacements(WIN))
+    expect(scrubbed).not.toMatch(/Users/)
+    expect(scrubbed).toMatch(/<home>\\{8}Desktop/)
+  })
+
+  it('a POSIX home inside a wrapper, and one holding a quote', () => {
+    const reps = operatorPiiReplacements({ home: '/home/alice', user: 'alice', host: 'nope-host' })
+    expect(scrubOperatorPii(exported(70, ['/home/alice/notes', 'alice ran it']), reps)).not.toMatch(/alice/)
+    const quoted = operatorPiiReplacements({ home: '/home/we"ird', user: 'nope', host: 'nope-host' })
+    for (const levels of [0, 60, 70]) {
+      const text = scrubOperatorPii(exported(levels, ['/home/we"ird/x']), quoted)
+      expect(text, String(levels)).not.toMatch(/we\\*"ird/)
+      expect(text, String(levels)).toContain('<home>/x')
+    }
+  })
+
+  it('a home folder named apart from the user (`jsmith.CORP`), and the user name after an escape sequence', () => {
+    const reps = operatorPiiReplacements({ home: 'C:\\Users\\jsmith.CORP', user: 'jsmith', host: 'nope-host' })
+    const text = scrubOperatorPii(exported(70, ['C:\\Users\\jsmith.CORP\\a', 'whoami\njsmith', 'by jsmith.']), reps)
+    expect(text).not.toMatch(/jsmith/)
+    expect(text).toMatch(/<home>\\{4}a/)
+  })
+
+  it('a user name shorter than 3 characters is still not scrubbed on its own; the home that holds it is', () => {
+    const text = scrubOperatorPii(exported(70, [winPath, 'jo said']), operatorPiiReplacements(WIN))
+    expect(text).not.toMatch(/Users/)
+    expect(text).toContain('jo said')
+  })
+})
+
+// Third review of FR-097: the patterns above are linear on any text, they do
+// not scrub what is not the operator's, and the over-scrubs that remain are
+// the deliberate ones named in src/core/operator-pii.ts.
+describe('operator PII: linear time, and nothing scrubbed that is not the operator\'s', () => {
+  const HOMES: Array<[string, { home: string; user: string; host: string }]> = [
+    ['Windows', { home: 'C:\\Users\\joanne', user: 'joanne', host: 'nope-host' }],
+    ['UNC', { home: '\\\\srv\\share\\jo', user: 'jo', host: 'nope-host' }],
+    ['a home holding a quote', { home: '/home/o"neil', user: 'oneil', host: 'nope-host' }],
+    ['a home holding a backslash and a quote', { home: '/home/a\\"b', user: 'nope', host: 'nope-host' }],
+    ['POSIX', { home: '/home/alice', user: 'alice', host: 'nope-host' }],
+    // Identifiers that START with what a run of backslashes also matches.
+    ['starting with a quote', { home: '"abc', user: '"bcd', host: '"cde' }],
+    ['starting with a newline', { home: '\nabc', user: '\nbcd', host: '\ncde' }],
+    ['starting with a backslash', { home: '\\abc', user: '\\bcd', host: '\\cde' }]
+  ]
+  // The texts are built in the child; the patterns are sent as source + flags.
+  // A synchronous regex cannot be interrupted by vitest's timeout, so a
+  // pattern that went quadratic would hang the job: in a child it is killed
+  // after CHILD_TIMEOUT_MS and the test fails naming it.
+  const CHILD_TIMEOUT_MS = 20_000
+  const CHILD = `
+    const { patterns } = JSON.parse(require('fs').readFileSync(0, 'utf8'))
+    const MB20 = 20 * 1024 * 1024
+    const texts = [
+      ['backslashes', '\\\\'.repeat(MB20)],
+      ['\\\\"', '\\\\"'.repeat(MB20 / 2)],
+      ['alternating \\\\ and \\\\"', '\\\\\\\\"'.repeat(Math.floor(MB20 / 3))]
+    ]
+    const res = patterns.map(([source, flags]) => new RegExp(source, flags))
+    const out = []
+    for (const [name, text] of texts) {
+      const t0 = performance.now()
+      let t = text
+      for (const re of res) t = t.replace(re, 'X')
+      out.push({ name, ms: performance.now() - t0, same: t.length === text.length })
+    }
+    process.stdout.write(JSON.stringify(out))
+  `
+
+  for (const [label, ids] of HOMES) {
+    it(`${label}: 20 MB of backslashes, of \\", and of both alternating, each scanned in well under a second (in a child, killed at ${CHILD_TIMEOUT_MS / 1000} s)`, () => {
+      const patterns = operatorPiiReplacements(ids).map(([re]) => [re.source, re.flags])
+      const run = spawnSync(process.execPath, ['-e', CHILD], { input: JSON.stringify({ patterns }), timeout: CHILD_TIMEOUT_MS, encoding: 'utf8', maxBuffer: 1 << 20 })
+      expect(run.signal, `${label}: the scan did not finish in ${CHILD_TIMEOUT_MS / 1000} s — a pattern is not linear`).toBeNull()
+      expect(run.status, run.stderr).toBe(0)
+      for (const r of JSON.parse(run.stdout) as Array<{ name: string; ms: number; same: boolean }>) {
+        expect(r.same, `${label} / ${r.name}`).toBe(true)
+        // Measured at ~10–100 ms each (2026-11-14); a quadratic pattern takes
+        // minutes on a run this long.
+        expect(r.ms, `${label} / ${r.name}: ${Math.round(r.ms)} ms`).toBeLessThan(2_000)
+      }
+    })
+  }
+
+  it('identifiers that start with a quote, a newline or a backslash are still found, at every level of escaping', () => {
+    for (const [label, ids] of HOMES.slice(5)) {
+      const reps = operatorPiiReplacements(ids)
+      for (const levels of [0, 1, 2]) {
+        let text = `x ${ids.home}/y ${ids.host} z`
+        for (let i = 0; i < levels; i++) text = JSON.stringify(text)
+        const out = scrubOperatorPii(text, reps)
+        expect(out, `${label} ${levels}`).toContain('<home>')
+        expect(out, `${label} ${levels}`).toContain('<host>')
+        expect(out, `${label} ${levels}`).not.toMatch(/abc|cde/)
+      }
+    }
+  })
+
+  it('a home followed directly by a word character is a different folder, and is not scrubbed (deliberate)', () => {
+    const cases: Array<[{ home: string; user: string; host: string }, string]> = [
+      [{ home: '/Users/alice', user: 'nope', host: 'nope-host' }, '/Users/alice2/x'],
+      [{ home: '/Users/alice', user: 'nope', host: 'nope-host' }, '/Users/alice_x/x'],
+      [{ home: 'C:\\Users\\Jo', user: 'jo', host: 'nope-host' }, 'C:\\Users\\Jo_x\\x'],
+      [{ home: '\\\\srv\\share\\jo', user: 'jo', host: 'nope-host' }, '\\\\srv\\share\\jo2\\x']
+    ]
+    for (const [ids, path] of cases) {
+      for (const levels of [0, 1]) {
+        const text = levels ? JSON.stringify(path) : path
+        expect(scrubOperatorPii(text, operatorPiiReplacements(ids)), path).toBe(text)
+      }
+    }
+  })
+
+  it('the UNC home is still found at every level of escaping, including after a longer run of backslashes', () => {
+    const reps = operatorPiiReplacements({ home: '\\\\srv\\share\\jo', user: 'jo', host: 'nope-host' })
+    for (const levels of [0, 1, 2, 3]) {
+      let text = '\\\\srv\\share\\jo\\notes'
+      for (let i = 0; i < levels; i++) text = JSON.stringify(text)
+      expect(scrubOperatorPii(text, reps), String(levels)).not.toMatch(/srv/)
+    }
+  })
+
+  it('the home path ends where a path segment ends: `C:\\Users\\Jo` is not the start of `C:\\Users\\Joanna`', () => {
+    const reps = operatorPiiReplacements({ home: 'C:\\Users\\Jo', user: 'jo', host: 'nope-host' })
+    for (const levels of [0, 1, 2]) {
+      let text = 'C:\\Users\\Joanna\\x and C:\\Users\\Jo\\y and C:\\Users\\Jo'
+      for (let i = 0; i < levels; i++) text = JSON.stringify(text)
+      const out = scrubOperatorPii(text, reps)
+      expect(out, String(levels)).toContain('Joanna')
+      expect(out, String(levels)).not.toContain('<home>anna')
+      expect(out.match(/<home>/g), String(levels)).toHaveLength(2)
+    }
+  })
+
+  it('a user name is not scrubbed inside a longer word, at any level, and text beside it is kept', () => {
+    const reps = operatorPiiReplacements({ home: '/nope', user: 'alice', host: 'nope-host' })
+    for (const levels of [0, 1, 2]) {
+      let text = 'malice aliceb alice_x xalice "alice" alice\\nbob'
+      for (let i = 0; i < levels; i++) text = JSON.stringify(text)
+      const out = scrubOperatorPii(text, reps)
+      for (const kept of ['malice', 'aliceb', 'alice_x', 'xalice']) expect(out, `${levels} ${kept}`).toContain(kept)
+      expect(out.match(/<user>/g), String(levels)).toHaveLength(2)
+      // A lazy any-character run between the pieces would swallow the text
+      // between two mentions; nothing of it goes.
+      expect(out.replace(/<user>/g, 'alice'), String(levels)).toBe(text)
+    }
+  })
+
+  it('the deliberate over-scrubs: an escape letter before the name, and a name inside a run of CJK', () => {
+    const reps = operatorPiiReplacements({ home: '/nope', user: 'alice', host: 'nope-host' })
+    expect(scrubOperatorPii(JSON.stringify('C:\\nalice'), reps)).toBe(JSON.stringify('C:\\n').slice(0, -1) + '<user>"')
+    const cjk = operatorPiiReplacements({ home: '/nope', user: '王小明', host: 'nope-host' })
+    expect(scrubOperatorPii('他說王小明天要來', cjk)).toBe('他說<user>天要來')
   })
 })

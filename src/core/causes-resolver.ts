@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { compareCodeUnits } from './code-unit-order'
 import { terminalIdentity } from './ingest/terminal'
+import { fieldText } from './ingest/field-text'
 
 // v0.6.89 P0-A: `_causes` upstream-event lookup for events that arrive via
 // /api/events (or any other post-hoc insertion path). Each event pair follows
@@ -86,8 +87,8 @@ function shellKey(data: Record<string, unknown>): string | null {
   // written by, not by this module's own reading of the two fields (it used to
   // take `terminal_id` first, the duplicate window `terminalId` first).
   const tid = terminalIdentity(data) ?? ''
-  const pid = data.pid != null ? String(data.pid) : ''
-  const cmd = data.command != null ? String(data.command) : ''
+  const pid = fieldText(data.pid) ?? ''
+  const cmd = fieldText(data.command) ?? ''
   if (!cmd) return null
   // (tid,pid) uniquely identifies a live command within a terminal. If both
   // are absent (external agents), fall back to command text alone — coarser

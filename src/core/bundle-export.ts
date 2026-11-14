@@ -18,6 +18,7 @@ import { BUNDLE_VERSION, SEAL_SUBTYPE, SEAL_VERSION, attachmentRefs, sealedManif
 import { verifyBundleDir } from './bundle-verify'
 import { findBundleVerifier } from './bundle-verifier-path'
 import { compareCodeUnits } from './code-unit-order'
+import { ROW_ADDITIONS_README } from './bundle-readme-rows'
 
 interface ManifestFile {
   path: string
@@ -720,6 +721,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
       'The verifier below walks `events.jsonl` only; the logged tier is present',
       'for completeness but is not part of the audit-verified chain.',
       '',
+      ...ROW_ADDITIONS_README,
       '`manifest.evidence` declares complete-chain versus projection, and lists',
       'the transformed IDs. A projection omits records or transforms delivery',
       'fields; its original hashes are retained, not recomputed into an invented',

@@ -174,7 +174,12 @@ export function extractBodyToSidecar(
     content_type?: string
   } | undefined
 
-  if (!body || (field !== 'output_body' && !shouldExternalize(body))) return
+  // Only a body whose bytes are a string is one. `Buffer.from` of anything
+  // else reads it as an array of numbers: a nested array is converted level
+  // by level, and `{"length": 1e9}` allocates a gigabyte. Left in place, it is
+  // stored as the producer sent it and bounded like any other field.
+  if (!body || typeof body !== 'object' || typeof body.data !== 'string') return
+  if (field !== 'output_body' && !shouldExternalize(body)) return
 
   const ref = storeBody(body)
   if (!ref) return
