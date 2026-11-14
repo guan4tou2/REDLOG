@@ -254,3 +254,23 @@ it('folds clean scope verdicts in search results, keeps an observation as a row,
   fireEvent.click(fold)
   expect(screen.getAllByTestId('activity-row')).toHaveLength(5)
 })
+
+it('names a joined scope verdict\'s tab by what it says, and locates its own mark on the Timeline', async () => {
+  // Decision 2026-11-15 §2: a clean verdict is a source event of the command it
+  // judged, so the Reader shows it as a tab of that command.
+  const start = ev('a')
+  const verdict = ev('v', { agentType: 'system', timestamp: 1001, data: { subtype: 'scope_violation', target: '10.20.0.5', action: 'a', distance: 'in_scope', authority: 'fact', _causes: ['a'] } })
+  mount([summary('a', start)])
+  api.activityMembers.mockImplementation(() => Promise.resolve({
+    items: [{ event: start, matched: true }, { event: verdict, matched: true }], hasMore: false, nextCursor: null, sourceCount: 2, matchedCount: 2, snapshot: {}
+  }))
+  await open()
+  const tabs = await screen.findAllByTestId('reader-source-tab')
+  const tab = tabs.find((b) => b.getAttribute('data-event-id') === 'v')!
+  expect(tab.textContent).toContain('eventTitle.scopeInScope {"target":"10.20.0.5"}')
+  expect(tab.textContent).not.toContain('scope_violation')
+  fireEvent.click(tab)
+  await waitFor(() => expect(tab.getAttribute('aria-selected')).toBe('true'))
+  fireEvent.click(screen.getByTestId('reader-locate'))
+  expect(onOpen).toHaveBeenCalledWith('v', 1001)
+})

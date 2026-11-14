@@ -24,6 +24,14 @@ binding 是 [C6](capture-boundaries.md) 的歸屬邊界；若來源缺少它，�
 - 缺少配對鍵的孤立事件維持 Event-backed 定位。日後取得可靠關聯可附屬於已知操作，但原 Event 深連結仍定位原事件；不得因重新分組使原連結失效或憑空生成第二次執行。
 - 真正重送須同時核對來源鍵及內容識別；已保存的多筆 Event 仍保留參照。相同鍵卻不同內容，呈現衝突／原始版本，不採最後寫入覆蓋。
 - AI Tool 與獨立 Shell／HTTP 觀測保留各自身分。只有可驗證的 execution／trace 關聯才能連為相關證據；相同文字與時間不構成此證明。建立關聯不重寫原操作 ID。
+- 乾淨的範圍判定併入它判定的那個 Activity（[決定 2026-11-15 §2](../../../docs/records/2026-11-15/DECISIONS.md)）。一列在以下條件全部成立時，是被判定列所屬 Activity 的來源事件，不自成 Activity：`agent_type` 為 `system`、`subtype` 為 `scope_violation`、`distance` 為 `in_scope`、`_causes[0]` 是字串，且那個 id 的列在同一專案、同一資料邊界內，本身不是這種判定。併入時：
+  - 計入該 Activity 的來源數與命中數，列在來源事件中（Reader 的來源分頁）；
+  - 沿用被判定列的 housekeeping 判斷，排除 housekeeping 時兩者一起隱藏或一起保留；
+  - 不參與 Activity 的時間（first／last／start）、排序鍵、錨點、配對狀態與分類；
+  - 只命中判定不列出該 Activity：查詢或事件層篩選至少要命中一筆它自己的列。選「系統」來源不會冒出 Shell 指令；「只看上鏈」不會因為判定上鏈而列出未上鏈的 HTTP／DNS 請求；
+  - 其他判定（`excluded`、`adjacent_*`、`unrelated`、`scope_cleared`、重算寫入的列），以及被判定的列不在資料中的乾淨判定（舊列沒有 `_causes`；HTTP／DNS 的列被保留期刪除），照舊自成 Activity。範圍未設定時 `authority: 'unknown'` 的判定一樣併入。
+
+  這是投影層對列上事實的計算：`activityKey` 不變，不寫入、不改任何已存的列，鍵與游標版本不變；判定的 Event 深連結仍定位到判定本身。匯出此 Activity／此 Session 時一併交付併入的判定。規則只有一份：`attachedCauseId`（`src/core/activity-projection.ts`）與它的 SQL 對應 `ATTACHED_CAUSE_SQL`，`test/kinds/attached-cause-consistency.test.ts` 要求兩者答案相同。
 
 ## 3. 查詢、排序及定位
 

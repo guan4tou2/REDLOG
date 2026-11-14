@@ -139,6 +139,37 @@ it('exports only the anchored source Session within the capture namespace', asyn
  expect(lines.map(e=>e.id).sort()).toEqual(['begin','chunk','end','same-session'])
  expect((await resolve({format:'json',subset:{kind:'session',...selected,projectId:'different'}})).ok).toBe(false)
 })
+// Decision 2026-11-15 §2: a clean scope verdict is a source event of the
+// activity it judged, so exporting that activity, or its source session,
+// delivers it. A verdict at any other distance stays an activity of its own.
+function verdictFixture() {
+ const verdict=(id:string,ts:number,cause:string,distance:string)=>insertFixture('events',id,ts,{agentType:'system',subtype:'scope_violation',targetId:'a.test',
+  data:{target:'a.test',action:'unique-op',source:'shell',distance,authority:'fact',severity:distance==='in_scope'?'info':'critical',_causes:[cause]}})
+ getDB().transaction(()=>{
+  verdict('clean',11,'begin','in_scope')
+  verdict('excluded',12,'begin','excluded')
+  verdict('clean-other',31,'same-session','in_scope')
+  verdict('clean-elsewhere',41,'other-session','in_scope')
+ })()
+ return activityFixture()
+}
+it('exports an Activity with the clean scope verdict it judged, and not an excluded one', async () =>{
+ const selected=verdictFixture()
+ const r=await resolve({format:'json',maskOutOfScope:false,subset:{kind:'activity',...selected}})
+ expect(r.ok).toBe(true)
+ expect([r.plan.counts.examined,r.plan.counts.included]).toEqual([4,4])
+ const out=(await execute(r.plan.id)); expect(out.ok).toBe(true)
+ expect(JSON.parse(fs.readFileSync(out.artifactPath,'utf8')).events.map((e:any)=>e.id).sort()).toEqual(['begin','chunk','clean','end'])
+})
+it('exports a source Session with the clean verdicts of its rows', async () =>{
+ const selected=verdictFixture()
+ const r=await resolve({format:'ndjson',maskOutOfScope:false,subset:{kind:'session',...selected}})
+ expect(r.ok).toBe(true)
+ expect([r.plan.counts.examined,r.plan.counts.included]).toEqual([6,6])
+ const out=(await execute(r.plan.id)); expect(out.ok).toBe(true)
+ const lines=fs.readFileSync(out.artifactPath,'utf8').trim().split('\n').map(line=>JSON.parse(line))
+ expect(lines.map(e=>e.id).sort()).toEqual(['begin','chunk','clean','clean-other','end','same-session'])
+})
 it('does not silently add cross-target casts or unrelated screenshots to a bounded bundle', async () =>{
  const selected=activityFixture()
  fs.mkdirSync(path.join(dir,'casts'));fs.mkdirSync(path.join(dir,'screenshots'),{recursive:true})

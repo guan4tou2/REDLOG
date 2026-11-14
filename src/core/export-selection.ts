@@ -1,4 +1,4 @@
-import { activityKey } from './activity-projection'
+import { activityKey, attachedCauseId } from './activity-projection'
 import { sourceSessionKey } from './operation-pair-key'
 import { getReadonlyDB } from './db/index'
 import { executeEventQuery, queryEventsPage, queryHttpFlowPage, iterateCommandOutput, type EventFilter, type RedLogEvent } from './db/events'
@@ -25,10 +25,22 @@ export function* iterateExportSelection(request: NormalizedExportRequest, snapsh
       if (event.engagementId === subset.projectId && event.id === subset.anchorEventId) { anchor = event; break }
     }
     if(!anchor) throw new Error('Operation source unavailable')
-    const key=subset.kind==='activity' ? activityKey(anchor) : sourceSessionKey(anchor)
+    const keyOf=(event: RedLogEvent): string | null => subset.kind==='activity' ? activityKey(event) : sourceSessionKey(event)
+    const key=keyOf(anchor)
     if(!key) throw new Error('Session identity is unavailable')
+    // A clean scope verdict is a source event of the row it judged (decision
+    // 2026-11-15 §2; the Activity projection's attachVerdicts), so it goes with
+    // that row — and a verdict can be stamped before the row it judged, so the
+    // members are known before anything is yielded. A row that itself names a
+    // cause is never one a verdict joins, as in the projection.
+    const members = new Set<string>()
     for (const event of iterateSnapshotEvents(subset.snapshot)) {
-      if (event.engagementId === subset.projectId && (subset.kind === 'activity' ? activityKey(event) : sourceSessionKey(event)) === key) yield event
+      if (event.engagementId === subset.projectId && keyOf(event) === key && attachedCauseId(event) === null) members.add(event.id)
+    }
+    for (const event of iterateSnapshotEvents(subset.snapshot)) {
+      if (event.engagementId !== subset.projectId) continue
+      const cause = attachedCauseId(event)
+      if (keyOf(event) === key || (cause !== null && members.has(cause))) yield event
     }
     return
   }

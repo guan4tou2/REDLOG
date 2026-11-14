@@ -7,6 +7,7 @@ import { useReadState } from '../lib/readState'
 import { readSelectedEventId, writeSelectedEventId } from '../lib/selectedEvent'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { eventTitle } from '../lib/eventTitle'
+import { SCOPE_VIOLATION_SUBTYPE } from '../../../core/scope-vocabulary'
 import { agentTypeLabel } from '../lib/timelineDomain'
 import { formatDateTime, formatTime } from '../lib/time'
 import { Button } from './Button'
@@ -23,13 +24,16 @@ export function sourceName(item: ActivitySummary, t: T): string {
   return item.provider ?? agentTypeLabel(item.anchor.agentType, t)
 }
 
-/** The label a source-event tab carries: what the event is, and when. */
+/** The label a source-event tab carries: what the event is, and when. A
+ *  scope verdict is a source of the command or request it judged (decision
+ *  2026-11-15 §2); its title says the verdict and the target. */
 function sourceLabel(event: RedLogEvent, t: T): string {
   const subtype = String(event.data.subtype ?? event.agentType)
   const what = subtype === 'command_start' ? t('content.field.command')
     : subtype === 'command_end' ? t('activity.commandResult')
       : subtype === 'tool_call' ? t('content.field.tool_input')
-        : subtype === 'tool_result' ? t('content.field.output') : subtype
+        : subtype === 'tool_result' ? t('content.field.output')
+          : subtype === SCOPE_VIOLATION_SUBTYPE ? eventTitle(event, t) : subtype
   return `${what} · ${formatTime(event.timestamp, { seconds: true })}`
 }
 

@@ -136,6 +136,7 @@
 3. 讀取優先：佇列有請求時，片與片之間先處理請求。
 4. `retention_pruned_logged` 是 chained 層的一列，依序處理到它時呼叫各投影的 `onLoggedPruned(newestPrunedAt)`。
 5. 開啟時背景檢查（spec FR-037）：游標所在列的 id 是否仍在、兩層列數是否等於投影記下的數目（一次 B-tree count，不是 rowid 範圍走訪）。
+6. 跨層的併入（064 C1 §2）：乾淨範圍判定在 chained 層，它判定的 HTTP／DNS 列在 logged 層，被判定的列先 commit。同一個快照的新列，先處理 logged 層再處理 chained 層；或者，被判定的列在本次推進範圍內卻尚未投影時，延後該判定到那一列投影之後。只有被判定的列不在資料中，判定才自成 Activity。今天的 TEMP 投影在兩層都插入後才做一次併入（`attachVerdicts`，`src/core/db/activity-queries.ts`），沒有切片，因此兩種做法都不需要。
 
 `rebuild` 與增量推進是同一個函式從游標 0 開始，等價測試因此只需比較兩次執行的結果，不需要第二份實作。
 
