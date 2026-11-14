@@ -109,7 +109,8 @@ describe('B. each fact said once', () => {
     draw(); open(); await ready()
     expect((screen.getByLabelText('Export format') as HTMLSelectElement).value).toBe('bundle')
     expect(screen.queryByLabelText(/scrub operator pii/i)).toBeNull()
-    expect(screen.queryByText('This format cannot scrub PII')).toBeNull()
+    // The deleted sentence, by its meaning rather than its words.
+    expect(screen.getByRole('dialog').textContent).not.toMatch(/cannot scrub/i)
     format('json'); await ready()
     expect(screen.getByLabelText(/scrub operator pii/i)).toBeTruthy()
   })
