@@ -418,13 +418,15 @@ function latestSnapshots(snapshot?: ExportSnapshot): Latest[] {
     SELECT id,engagement_id,r,tier FROM ranked WHERE n=1`).all(chained, logged) as Array<{ id: string; engagement_id: string | null; r: number; tier: number }>)
     .map(row => ({ id: row.id, tier: row.tier === 1 ? 'events' : 'events_logged', r: row.r, engagementId: row.engagement_id }))
 }
+/** A transcript snapshot row counts only when its id is in the bound JSON list of latest prefixes. */
+const ONLY_LATEST_PREFIX = "(agent_type<>'agent' OR coalesce(subtype,'')<>'transcript_snapshot' OR id IN (SELECT value FROM json_each(?)))"
 interface ContentRow { id: string; data: string; agent_type: string; r: number; engagement_id: string | null }
 /** Content-ref rows of both tiers inside `bounds`, transcript snapshots only
  *  when in `latest`. `range` narrows each tier to `after < rowid <= upTo`. */
 function rows(bounds: Bounds, projectId: string | undefined, latest: string[], range?: Array<{ after: number; upTo: number }>): IterableIterator<ContentRow>[] {
   const source = getDB()
   return TIERS.map((table, i) => source.prepare(`SELECT id,data,agent_type,rowid AS r,engagement_id FROM ${table} INDEXED BY idx_${table}_content_refs WHERE rowid<=? ${range ? 'AND rowid>?' : ''} ${projectId ? 'AND engagement_id=?' : ''} AND (${BODY_SOURCE_PREDICATE})
-      AND (agent_type<>'agent' OR coalesce(subtype,'')<>'transcript_snapshot' OR id IN (SELECT value FROM json_each(?))) ORDER BY rowid`)
+      AND ${ONLY_LATEST_PREFIX} ORDER BY rowid`)
     .iterate(range ? Math.min(range[i].upTo, bounds[i]) : bounds[i], ...(range ? [range[i].after] : []), ...(projectId ? [projectId] : []), JSON.stringify(latest)) as IterableIterator<ContentRow>)
 }
 const linkRow = (row: ContentRow, projectDir: string, tier: Tier, t = SHARED): IndexedRef[] =>
@@ -673,7 +675,7 @@ function readPlan(projectDir: string, snapshot: ExportSnapshot | undefined, link
   for (const [i, table] of TIERS.entries()) {
     if (bounds[i] <= Math.max(upTo[i], 0)) continue
     for (const row of source.prepare(`SELECT id,rowid AS r FROM ${table} INDEXED BY idx_${table}_content_refs WHERE rowid<=? AND rowid>? AND (${BODY_SOURCE_PREDICATE})
-        AND (agent_type<>'agent' OR coalesce(subtype,'')<>'transcript_snapshot' OR id IN (SELECT value FROM json_each(?)))`).all(bounds[i], Math.max(upTo[i], 0), JSON.stringify(latestIds)) as Array<{ id: string; r: number }>)
+        AND ${ONLY_LATEST_PREFIX}`).all(bounds[i], Math.max(upTo[i], 0), JSON.stringify(latestIds)) as Array<{ id: string; r: number }>)
       local.set(row.id, { id: row.id, tier: table, r: row.r })
   }
   if (link && (local.size || hasExtraTables(db))) {
