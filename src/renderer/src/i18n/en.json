@@ -1874,7 +1874,6 @@
   "export.scopeSetFirst": "Set a scope first",
   "export.commandsMasked": "Command text is kept; output is replaced with a marker when the target is out of scope or not detected.",
   "export.commandsMaskedExcludedOnly": "Command text is kept; output is replaced with a marker when the target is excluded.",
-  "export.commandsUnmasked": "Command output is not masked by scope.",
   "settings.scopeRulesHint": "A plain domain matches only that name; write *.example.com to include its subdomains. An exclusion wins over an inclusion.",
   "settings.scopeTest.title": "Test a URL",
   "settings.scopeTest.label": "URL, host or IP",

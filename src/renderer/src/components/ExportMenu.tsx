@@ -26,9 +26,11 @@ function planScopeSet(plan: { scopeSnapshot?: { targets?: string[]; excludeTarge
 
 /** What masking does to command output for this plan (scope-sanitize.ts):
  *  out-of-scope targets lose their output; with scope targets, so does a
- *  command that names no target; command text is never masked. */
-function commandsNote(plan: Pick<ResolvedExportPlan, 'request' | 'scopeSnapshot'>, t: (key: string) => string): string {
-  if (!plan.request.maskOutOfScope || !planScopeSet(plan)) return t('export.commandsUnmasked')
+ *  command that names no target; command text is never masked. Nothing is
+ *  said when masking is off or no scope is set: the Policy row already says
+ *  so, and the copy rules do not describe the off state (§25.5.2). */
+function commandsNote(plan: Pick<ResolvedExportPlan, 'request' | 'scopeSnapshot'>, t: (key: string) => string): string | null {
+  if (!plan.request.maskOutOfScope || !planScopeSet(plan)) return null
   return (plan.scopeSnapshot?.targets ?? []).length > 0 ? t('export.commandsMasked') : t('export.commandsMaskedExcludedOnly')
 }
 

@@ -113,12 +113,12 @@ describe('the export preview shows only what the plan measured', () => {
       expect(note()).toBe('Command text is kept; output is replaced with a marker when the target is excluded.')
     })
 
-    it('masking off, or no scope: nothing is masked by scope, and no more is claimed', async () => {
+    it('masking off, or no scope: no note — the Policy row says it, and the off state is not described', async () => {
       await draw(plan({ request: { format: 'json', subset: { kind: 'all' }, maskOutOfScope: false, scopeOnly: false, scrubPii: false } }))
-      expect(note()).toBe('Command output is not masked by scope.')
+      expect(screen.queryByTestId('export-commands-note')).toBeNull()
       cleanup()
       await draw(plan({ scopeSnapshot: noScope }))
-      expect(note()).toBe('Command output is not masked by scope.')
+      expect(screen.queryByTestId('export-commands-note')).toBeNull()
     })
 
     it('is not shown for HAR, which carries no commands', async () => {
