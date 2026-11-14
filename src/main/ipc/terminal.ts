@@ -12,6 +12,7 @@ import {
   discoverShells, cachedShells, ackTerminal
 } from '../terminal-manager'
 import { resolveContainedFile } from '../../core/contained-file'
+import { isBuiltinTerminalRecording } from '../../core/ingest/builtin-terminal'
 
 /** A recording named by event data or a search hit, as a real file inside the
  *  open project's casts/ — never a link out of it (contained-file.ts). */
@@ -70,7 +71,7 @@ export function registerTerminalIpc(ipcMain: IpcMain, ctx: IpcContext): void {
       const td = target.data as Record<string, unknown>
       const tid = td.terminalId as string | undefined
       const subtype = td.subtype
-      if (target.agentType !== 'shell' || (subtype !== 'session_start' && subtype !== 'session_end') || td.source !== 'builtin-terminal' || !tid) {
+      if (target.agentType !== 'shell' || (subtype !== 'session_start' && subtype !== 'session_end') || !isBuiltinTerminalRecording(td) || !tid) {
         return { ok: false, error: 'not a builtin-terminal session event' }
       }
       const castPath = typeof td.castPath === 'string' ? td.castPath : undefined

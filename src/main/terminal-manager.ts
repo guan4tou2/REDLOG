@@ -12,6 +12,7 @@ import { getDB } from '../core/db/index'
 import { eventBus } from '../core/event-bus'
 import { noteDbError, configureBuiltinTerminalHealth } from '../core/capture-health'
 import { getProjectDir } from '../core/db/index'
+import { builtinTerminalRecordingSql } from '../core/ingest/builtin-terminal'
 import { shellAdapterFilename, shellFlavour } from '../core/shell-flavour'
 import { ensurePtyHelperExecutable } from '../core/pty-helper'
 import { buildShellCatalog, isHookable, type ShellOption } from '../core/shell-catalog'
@@ -504,7 +505,7 @@ export function recoverOrphanSessions(): number {
       FROM events s
       WHERE s.agent_type = 'shell'
         AND s.subtype = 'session_start'
-        AND json_extract(s.data,'$.source') = 'builtin-terminal'
+        AND ${builtinTerminalRecordingSql('s.data')}
         AND json_extract(s.data,'$.terminalId') IS NOT NULL
         AND NOT EXISTS (
           SELECT 1 FROM events e
