@@ -250,14 +250,14 @@ authenticate(door) → validate → stamp → dedup → settle → gate → deri
 - `src/core/ingest/field-text.ts` 的 `fieldText`／`fieldNumber`：字串是自己；數字、布林、bigint 是 `String`／`Number` 的結果（與先前逐位元組相同）；物件、陣列、null 等視為沒有這個欄位（`fieldNumber` 給 NaN）。界限之前把來源欄位變成文字、鍵或數字的每一處都改用它（呼叫點清單見下表）。
 - `agent_type` 不是字串時 API 回 400（交接檔原本就以 `malformed` 隔離），不再退成 `external`；403 與交接檔隔離說明中的 `agent_type` 只引用前 64 字元。
 - HTTP 本體的位元組（`*_body.data`）不是字串時不移入 sidecar：`Buffer.from` 會把它當數字陣列讀（巢狀陣列逐層轉換，`{"length": 1e9}` 配置 1 GB）。原樣留在列上並受界限。
-- 偵測 HTTP 憑證（`detectHttpCredential`）移到本體移入 sidecar 之前：先跑所有可能失敗的步驟，再寫 sidecar，失敗時不會留下沒有列的 sidecar 檔。
-- 寫入之後的步驟（終端機狀態、延遲輸出的記帳、發佈、因果連結、scope 判定、loot）各自以 `step()` 隔離：失敗記在 log 與 capture-health（`ingest-post-commit`），其餘步驟照跑，`ingest()` 回傳已寫入的列。API 另外接住帶有 `committedEvent` 的錯誤並回 201。
+- 偵測 HTTP 憑證（`detectHttpCredential`）在本體移入 sidecar 之前執行。它讀的標頭、`host`、`request_body_preview` 都不會被 sidecar 搬動，所以先後不影響它的結果；放在前面只是讓會失敗的步驟早於 sidecar 檔的產生（無獨立測試，順序不是本變更的保證）。
+- 寫入之後的步驟（終端機狀態、延遲輸出的記帳、發佈、因果連結、scope 判定、loot）各自以 `step()` 隔離：失敗記在 log 與 capture health 的 **pipeline 警告**（`notePipelineWarning('ingest-post-commit')`，新增；不是判定的輸入——列已寫入，`noteDbError` 會讓判定 `dark` 60 秒，正是 `capture-health.ts` 對 `noteCaptureError` 的註解所警告的），其餘步驟照跑，`ingest()` 回傳已寫入的列，API 照常回 201。第三次審查時 API 另外接住帶有 `committedEvent` 的錯誤；步驟隔離之後那個分支到不了，已移除。`test/ingest-post-commit.test.ts` 以會拋錯的 scope 判定驗證：201、列已存、其後的 pivot 伴隨列照寫、警告已記、判定不變（拿掉 `step()` 的 try/catch → 500；改回 `noteDbError` → 判定 `dark`）。
 
 | 呼叫點 | 原本 | 現在 |
 |---|---|---|
 | `api-server.ts` 事件路由 `agent_type` | `String(body.agent_type \|\| body.agentType \|\| 'external')` | 非字串回 400 |
 | `api-server.ts` 403 訊息 | 引用整個 `agent_type` | 前 64 字元 |
-| `api-server.ts` `ingest()` 呼叫 | 寫入後的錯誤回 500 | `committedEventOf` → 201 |
+| `api-server.ts` `ingest()` 呼叫 | 寫入後的錯誤回 500 | 寫入後的步驟由 `ingest()` 隔離，照常 201 |
 | `ingest/body-target.ts` `bodyTargetId` | 取 `target_id`／`targetId` 的值，型別未檢查 | `fieldText` |
 | `ingest.ts` `delayedCapture` | `String(data.subtype)` | `fieldText` |
 | `ingest.ts` shell 的 enrich | `data.command as string`（陣列進 `tagCommand` 等偵測器時拋 TypeError） | `fieldText(data.command)`，非純量時不 enrich |
@@ -282,12 +282,15 @@ authenticate(door) → validate → stamp → dedup → settle → gate → deri
 **十萬層的上限**（擁有者 2026-11-14：被問「事件 API 超過十萬層就拒絕並記缺口，可以嗎？」，答「可以」；以下是實作者的解讀）：
 
 - `EVENT_NESTING_CEILING = 100,000`（`ingest/depth.ts`），數整個請求本體或交接檔（根為第 1 層），在解析前以 `jsonDepthExceeds` 線性掃描；恰好 100,000 層照常收下。
-- API：`413`，`{"error": "event is nested more than 100,000 levels deep; not recorded", "reason": "nested-too-deep"}`。在重新確認專案未切換之後才判斷，缺口列寫進收到本體時開著的專案。
-- API 的缺口列（`ingest/nesting-ceiling.ts`）：`system`／`capture_gap`，`source: "api"`、`door: "legacy-api"`、`reason: "nested-too-deep"`、`intentional: false`、`skipped_units`（被拒的項目數）、`bytes`（其本體位元組總數）、`max_nesting: 100000`、`gap_started_at`、`gap_ended_at`、`description`；`occurredAt` 為第一次拒絕的時間。不含被拒項目的任何內容。
-- 合併：以開著的專案的 DB handle 為鍵（`WeakMap`，handle 關閉即消失）。第一次拒絕立刻寫一列；其後 60 秒內的拒絕累加，視窗結束時由 `unref` 的計時器寫成一列；視窗結束後的下一次拒絕先寫出累加的，再當作第一次。視窗結束前專案已關閉時，累加的數目不寫入任何專案，只記 log 與 capture-health（`api-nesting-gap`）——已知限制。
+- API：`413`，`{"error": "request nested more than 100,000 levels deep; not parsed, not recorded", "reason": "nested-too-deep"}`。在重新確認專案未切換之後才判斷，缺口列寫進收到本體時開著的專案。數字由 `EVENT_NESTING_CEILING` 產生（`CEILING_TEXT`），測試另以字面值 100000 斷言常數。
+- API 的缺口列（`ingest/nesting-ceiling.ts`）：`system`／`capture_gap`，`source: "api"`、`door: "legacy-api"`、`reason: "nested-too-deep"`、`intentional`（錄製暫停時為 `true`，見下）、`skipped_units`（被拒的請求數）、`bytes`（其本體位元組總數）、`max_nesting: 100000`、`gap_started_at`、`gap_ended_at`、`description`（例：`1 request(s) refused by the API: nested more than 100,000 levels deep, so not parsed and not kept`）；`occurredAt` 為第一次拒絕的時間；以 in-process 入口寫入，與交接檔的缺口列相同。不含被拒請求的任何內容；沒有解析，所以不說它是不是合法的 JSON——超過十萬個 `[` 的非 JSON 本體也是 413 與這一列。
+- 合併（第四次審查改為與文字一致）：以開著的專案的 DB handle 為鍵（`WeakMap`）。第一次拒絕立刻寫一列，並開一個 60 秒的視窗；視窗內的拒絕累加，視窗結束時（`unref` 的計時器，或計時器之前到達的下一次拒絕）寫成一列，**並開下一個視窗**；一個沒有任何拒絕的視窗什麼都不寫、結束這一串。所以持續的來源是開頭一列、其後每分鐘一列（每秒一次、五分鐘：`[1, 59, 60, 60, 60, 60]`，300 個都計入；先前是每分鐘兩列，共 10 列）。暫停與未暫停的拒絕不併入同一列。
+- 專案關閉、切換或程式結束時（`stopProject` → `onApiProjectClose` → `flushNestingRefusals`，在 `closeDB` 之前；結束時 `will-quit` 也經過 `stopProject`），開著的視窗先寫進該專案。殘留情形只有一種：行程沒有經過 `stopProject` 就結束（被殺、當掉），開著的視窗的計數遺失。寫不進去時記為 pipeline 警告，不改變判定。
+- 暫停：API 在暫停時不記錄事件（`ingest()` 回 `skipped: 'paused'`，200），交接檔把暫停時觀察到的項目記為 `intentional`。依交接檔的慣例，暫停時被拒的請求寫 `intentional: true` 的缺口列，`description` 註明「while recording was paused」；匯出的 Known Gaps（`captureGapsFold`）原本只相信 `source: hook-spool` 的 `intentional`，現在也相信 `source: api`（外部來源除 heartbeat 外不能寫 `system` 列，`external-event-policy.ts`）。例外：標記（marker）在暫停時照常記錄，而未解析的本體看不出種類，所以暫停時被拒的標記也記成 intentional。
+- 本體所屬的專案：交接檔以 `engagementInText` 讀出專案，但它取文字中第一個 `"engagementId":"…"`，`data` 裡的鍵就能冒充。API 不採用：API 的 token 已決定專案，冒充只會讓拒絕不被記錄，沒有任何已出貨的來源會送出這種本體。
 - 交接檔：同一上限，不解析；`engagementInText` 讀出的專案是別的專案時留給它；否則移入隔離區（`nested-too-deep`），計入該次排空每個原因一列的缺口列（`source: "hook-spool"`，既有欄位，`description` 為「nested more than 100,000 levels deep」）。
 - 量測（本機 Node 24.12，各一次）：100,001 層的本體在 0.8 ms 內判定拒絕；20 MiB 全為 `[` 的本體在 3.1 ms 內判定（第 100,001 個 `[` 即停；掃到底 80 ms）；恰好 100,000 層的本體 `JSON.parse` 11 ms、折疊 13 ms、尖峰 RSS +27 MB（先前記的 17 ms、約 +19 MB 為另一次量測）。
-- 測試：`test/ingest-depth-doors.test.ts`（100,000 層收下、100,001 層 413 與缺口列、60 秒合併成 `[1, 4]`、交接檔隔離與缺口列）；以 HEAD 的 `api-server.ts`、`spool-replay.ts`、`api-request.ts` 執行時三者皆失敗（201／全部寫入）；把視窗改為 0 時合併測試失敗（`[1,1,1,1,1]`）。
+- 測試：`test/ingest-depth-doors.test.ts`（100,000 層收下、100,001 層 413 與缺口列、60 秒合併成 `[1, 4, 1]`、每秒一次五分鐘成 `[1, 59, 60, 60, 60, 60]`、視窗內關閉專案成 `[1, 49]`、暫停時 intentional 且匯出不計為遺失、常數為 100000、交接檔隔離與缺口列）。以第三輪的 `api-server.ts`、`nesting-ceiling.ts`、`spool-drain.ts`、`export-plan.ts` 執行時，後四者失敗（`[1,59,1,59,…]`、`[1]`、沒有暫停列、`CEILING_TEXT` 不存在）。
 
 **放大（已知限制）**：被包起來的最小容器是 `[[]]`，在請求本體中 5 bytes（含逗號），存成 `{"_collapsed":"[[]]"}` 加逗號 22 bytes。20 MiB 的請求本體約可含 419 萬個；審查的量測：4,193,904 個包裝、存入的列 88 MiB、DB 增加 101 MiB、寫入 14.3 s（不折疊的同大小本體 7.5 s）。不另設上限：折疊不遺失內容，而列的大小仍與送來的本體同級（約 4.4 倍以內）。
 
