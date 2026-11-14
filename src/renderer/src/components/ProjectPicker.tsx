@@ -281,10 +281,11 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
 
         <div data-testid="project-picker-footer" className="mt-4 pt-4 border-t border-redlog-border-subtle flex flex-wrap items-center justify-between gap-2 font-mono text-xs text-redlog-text-faint">
           <span className="min-w-0 truncate" title={root ?? undefined}>{root && <>{t('project.storageDir')}<span title={root} className="text-redlog-text-dim">{root}</span></>}</span>
-          <span className="flex items-center gap-3 whitespace-nowrap">
+          {/* Only with a row to move to and open. */}
+          {hasRecent && <span className="flex items-center gap-3 whitespace-nowrap">
             <span>{t('project.keyPress')} <Kbd>↑</Kbd><Kbd>↓</Kbd> {t('project.keyBrowse')}</span>
             <span>{t('project.keyPress')} <Kbd>Enter</Kbd> {t('project.keyOpen')}</span>
-          </span>
+          </span>}
         </div>
       </div>
       </div>
