@@ -171,28 +171,26 @@ sqlite.describe('door equivalence (FR-093)', () => {
     expect([viaIn, viaApi, viaSpool].map((rows) => rows.map((r) => [r.kind, r.target_id]))).toEqual([want, want, want])
   }, SLOW)
 
-  // FR-097: a container nested past the writer's bound is collapsed to its
-  // JSON text by the writer, so FR-093 holds for an over-deep item with the
-  // divergences the handoff door always has, and the collapsed text and its
-  // count are not among them. KNOWN DIVERGENCE: the API door does not get that
-  // far — it refuses a body nested more than 64 levels with 400 before parsing
-  // (api-request.ts MAX_JSON_DEPTH), so the same item is not recorded at all
-  // there (test/ingest-depth-doors.test.ts pins it; the owner decides).
-  it('an over-deep item is the same row in-process and through a spool file: the collapsed text and its count do not differ', async () => {
+  // FR-097: a container nested past the writer's bound is collapsed by the
+  // writer, at every door alike — the API door included since the owner's
+  // 2026-11-14 decision 「收下並摺疊」 (it used to answer 400). So FR-093 holds
+  // for an over-deep item with exactly the divergences above, and the
+  // collapsed text and its count are not among them.
+  it('an over-deep item is the same row at every door: the collapsed text and its count do not differ', async () => {
     let deep: unknown = 'leaf'
     for (let i = 0; i < 90; i++) deep = i % 2 === 0 ? [deep] : { k: deep }
     const items = ITEMS.map((item) => ({ ...item, data: { ...item.data, deep } }))
     const viaIn = await through('in-process', items)
+    const viaApi = await through('legacy-api', items)
     const viaSpool = await through('legacy-handoff', items)
-    for (const rows of [viaIn, viaSpool]) {
+    for (const rows of [viaIn, viaApi, viaSpool]) {
       const primary = rows.filter((r) => (r.data as { deep?: unknown }).deep !== undefined)
       expect(primary).toHaveLength(6)
       for (const r of primary) expect((r.data as { _ingest: Record<string, unknown> })._ingest.collapsed, String(r.kind)).toBe(1)
     }
     const primary = ['events:shell.command_start', 'events:shell.command_end', 'events:shell.command_start',
       'events_logged:scanner.http_request_start', 'events_logged:scanner.http_response', 'events_logged:dns.dns_query']
-    const d = divergence(viaIn, viaSpool)
-    expect(Object.keys(d).filter((p) => FR093.includes(p)).sort()).toEqual(['data._ingest.auth', 'data._ingest.door'])
-    expect(beyondFr093(d)).toEqual({ 'data._ingest.producer': primary, 'data.recovered_from_spool': primary, mapper: primary, source: ALL })
+    expect(beyondFr093(divergence(viaIn, viaApi))).toEqual({ 'data._ingest.producer': primary, mapper: primary, source: ALL })
+    expect(beyondFr093(divergence(viaApi, viaSpool))).toEqual({ 'data._ingest.producer': primary, 'data.recovered_from_spool': primary, source: ALL })
   }, SLOW)
 })

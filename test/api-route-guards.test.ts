@@ -122,13 +122,23 @@ describe('a JSON body must be an object', () => {
       expect(listBookmarks().length).toBe(marks)
     })
 
-  it('a body nested 10 000 levels deep is a 400 on every route', async () => {
+  // Every route but the event-ingest one walks its body recursively and keeps
+  // the gate. POST /api/events is evidence capture: the owner decided
+  // (2026-11-14, 「收下並摺疊」) that an over-deep item is accepted and the
+  // writer collapses it (Spec 071 FR-097); nothing on that route recurses
+  // before the bound (test/ingest-depth-doors.test.ts).
+  it('a body nested 10 000 levels deep is a 400 on every route but the event route, which stores it', async () => {
     const deep = '{"data":' + '{"a":'.repeat(10_000) + '1' + '}'.repeat(10_000) + '}'
-    for (const route of ROUTES) {
+    for (const route of ROUTES.filter((r) => r !== '/api/events')) {
       const r = await call('POST', route, deep)
       expect(r.status, route).toBe(400)
       expect(r.body).not.toContain('call stack')
     }
+    const before = getEventCount()
+    const r = await call('POST', '/api/events', '{"agent_type":"external","data":{"subtype":"note","deep":' + '{"a":'.repeat(10_000) + '1' + '}'.repeat(10_000) + '}}')
+    expect(r.status).toBe(201)
+    expect(r.body).not.toContain('call stack')
+    expect(getEventCount()).toBe(before + 1)
   })
 })
 

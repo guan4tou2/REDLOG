@@ -40,8 +40,13 @@ export const BODY_NOT_OBJECT = 'JSON body must be an object'
 /** The body of a JSON route: a plain object, or a reason for a 400. `null`,
  *  arrays, strings and numbers are valid JSON and were taken for an event, a
  *  marker or a bookmark — or threw a TypeError that went back as a 500. */
-export function parseJsonObjectBody(raw: string): BodyResult {
-  if (jsonDepthExceeds(raw)) return { ok: false, error: BODY_TOO_DEEP }
+export function parseJsonObjectBody(raw: string, opts: { depthGate?: boolean } = {}): BodyResult {
+  // `depthGate: false` is for the event-ingest route only (api-server.ts): an
+  // event's `data` is evidence, kept whole and bounded by the writer
+  // (Spec 071 FR-097, owner 2026-11-14 「收下並摺疊」), and nothing on that
+  // route walks the body recursively before the bound. Every other route
+  // walks its body and keeps the gate.
+  if (opts.depthGate !== false && jsonDepthExceeds(raw)) return { ok: false, error: BODY_TOO_DEEP }
   let parsed: unknown
   try { parsed = JSON.parse(raw) } catch { return { ok: false, error: BODY_INVALID } }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return { ok: false, error: BODY_NOT_OBJECT }

@@ -38,6 +38,17 @@ describe('JSON route bodies', () => {
     expect(parseJsonObjectBody(deepArray)).toEqual({ ok: false, error: BODY_TOO_DEEP })
   })
 
+  // Only the event route asks for this (Spec 071 FR-097): the gate is on by
+  // default, and an explicit `true` is the default.
+  it('`depthGate: false` parses a 10 000-level object; the default and `true` refuse it', () => {
+    const deep = '{"data":' + '{"a":'.repeat(10_000) + '1' + '}'.repeat(10_000) + '}'
+    const r = parseJsonObjectBody(deep, { depthGate: false })
+    expect(r.ok).toBe(true)
+    expect(parseJsonObjectBody(deep, { depthGate: true })).toEqual({ ok: false, error: BODY_TOO_DEEP })
+    expect(parseJsonObjectBody(deep, {})).toEqual({ ok: false, error: BODY_TOO_DEEP })
+    expect(parseJsonObjectBody('null', { depthGate: false })).toEqual({ ok: false, error: BODY_NOT_OBJECT })
+  })
+
   it('counts depth structurally, not brackets inside strings', () => {
     const nested = (n: number): string => '{"a":'.repeat(n - 1) + '{}' + '}'.repeat(n - 1)
     expect(jsonDepthExceeds(nested(MAX_JSON_DEPTH))).toBe(false)

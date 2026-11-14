@@ -1,11 +1,12 @@
 // Spec 071 FR-097 at the two outside doors: POST /api/events (the real
 // handler, no port bound) and a handoff spool file drained as main drains it
-// (test/helpers/ingest-delivery.ts). The handoff door stores an over-deep
-// item bounded, with `_ingest.collapsed`, in both tiers, a 100,000-level file
-// too (JSON.parse takes it; JSON.stringify could not write it in Node), and
-// keeps a redelivered over-deep command once. The API door refuses such a
-// body before the writer sees it (pinned below). Door equivalence for an
-// over-deep item is in test/ingest-door-equivalence.test.ts.
+// (test/helpers/ingest-delivery.ts). Both store an over-deep item bounded —
+// the container at depth 64 replaced by `{"_collapsed": <its JSON text>}` and
+// `_ingest.collapsed` set — in both tiers, up to 100,000 levels (JSON.parse
+// takes it; JSON.stringify could not write it in Node). The API door used to
+// answer such a body 400 and record nothing; the owner decided (2026-11-14)
+// 「收下並摺疊」. A body over the 20 MiB cap is still refused. Door equivalence
+// for an over-deep item is in test/ingest-door-equivalence.test.ts.
 
 import fs from 'node:fs'
 import os from 'node:os'
@@ -13,7 +14,7 @@ import path from 'node:path'
 import { afterAll, afterEach, beforeEach, expect } from 'vitest'
 import { requires } from './helpers/requires'
 import { ENG, OP, interceptHttp, openRuntime, storedRows, type Item, type StoredRow } from './helpers/ingest-delivery'
-import { MAX_DATA_DEPTH } from '../src/core/ingest/depth'
+import { COLLAPSED_KEY, MAX_DATA_DEPTH, restoreDataDepth } from '../src/core/ingest/depth'
 
 const sqlite = requires('better-sqlite3')
 const SLOW = 60_000
@@ -40,17 +41,22 @@ const ITEMS: Item[] = [
   { agent_type: 'shell', data: { subtype: 'command_start', command: 'id', terminalId: 't1', pid: 1, deep: nested(90, 'marmotleaf') } },
   { agent_type: 'dns', data: { subtype: 'dns_query', qname: 'deep.test', deep: nested(90, 'marmotleaf') } }
 ]
-const N = 100_000
-const huge = (agentType: string, data: string, spool = false): string =>
-  `{"agent_type":"${agentType}","data":{${data},"deep":${'['.repeat(N)}${']'.repeat(N)}}${spool ? `,"_identity":{"engagementId":"${ENG}","operatorId":"${OP}"}` : ''}}`
-const HUGE_SHELL = (spool = false): string => huge('shell', '"subtype":"command_start","command":"id","terminalId":"t9","pid":9', spool)
-const HUGE_DNS = (spool = false): string => huge('dns', '"subtype":"dns_query","qname":"huge.test"', spool)
+/** A body whose `data.deep` holds `levels` arrays, written as text (JSON.stringify overflows past a few thousand in Node). */
+const bodyText = (agentType: string, data: string, levels: number, spool = false): string =>
+  `{"agent_type":"${agentType}","data":{${data},"deep":${'['.repeat(levels)}"leaf"${']'.repeat(levels)}}${spool ? `,"_identity":{"engagementId":"${ENG}","operatorId":"${OP}"}` : ''}}`
+const shellBody = (levels: number, spool = false): string => bodyText('shell', `"subtype":"command_start","command":"id","terminalId":"t${levels}","pid":${levels}`, levels, spool)
+const dnsBody = (levels: number, spool = false): string => bodyText('dns', `"subtype":"dns_query","qname":"q${levels}.test"`, levels, spool)
 
-function expectBounded(rows: StoredRow[], door: string): void {
-  expect(rows.map((r) => `${r.table}:${String(r.row.agent_type)}`)).toEqual(['events:shell', 'events_logged:dns'])
+/** Each row bounded at 64; wrapped exactly when `data` reaches past 64. */
+function expectBounded(rows: StoredRow[], door: string, wrapped: boolean): void {
   for (const r of rows) {
-    expect(depthOf(r.data), `${door} ${r.table}`).toBe(MAX_DATA_DEPTH)
-    expect(r.data._ingest, `${door} ${r.table}`).toMatchObject({ door, collapsed: 1 })
+    const label = `${door} ${r.table} ${String(r.data.terminalId ?? r.data.qname)}`
+    expect(depthOf(r.data), label).toBeLessThanOrEqual(MAX_DATA_DEPTH)
+    if (!wrapped) { expect('collapsed' in (r.data._ingest as object), label).toBe(false); continue }
+    expect(r.data._ingest, label).toMatchObject({ door, collapsed: 1 })
+    let holder: unknown = r.data.deep
+    for (let d = 2; d < MAX_DATA_DEPTH; d++) holder = (holder as unknown[])[0]
+    expect(Object.keys(holder as object), label).toEqual([COLLAPSED_KEY])
   }
 }
 
@@ -60,45 +66,72 @@ sqlite.describe('the outside doors store an over-deep item bounded (FR-097)', ()
   beforeEach(() => { interceptHttp() })
   afterEach(() => { for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true }) })
 
-  // KNOWN DIVERGENCE (FR-097, open question for the owner): POST /api/events
-  // refuses, before parsing, a body nested more than 64 levels
-  // (api-request.ts MAX_JSON_DEPTH, #695), which is `data` deeper than 63. So
-  // nothing over the writer's bound reaches the writer by this door: the item
-  // is answered 400 and not recorded, where the handoff door and in-process
-  // writers keep it collapsed. Pinned here so the answer is a visible change.
-  sqlite.it('POST /api/events: `data` at 63 levels is stored as sent; one level more is refused with 400 and not recorded', async () => {
-    const dir = tmp('api')
+  // `data.deep` holds L arrays, so `data` is L + 1 deep. 62 and 63 stay as
+  // sent (the container at 64 holds only a string); 64 and beyond are wrapped.
+  sqlite.it('POST /api/events: `data` 63 and 64 deep stays; 65, 1,000 and 100,000 deep is stored, wrapped, in both tiers', async () => {
+    for (const [levels, wrapped] of [[62, false], [63, false], [64, true], [999, true], [99_999, true]] as const) {
+      const dir = tmp(`api-${levels}`)
+      const rt = await openRuntime(dir)
+      try {
+        await rt.api(shellBody(levels), 201)
+        await rt.api(dnsBody(levels), 201)
+      } finally { await rt.close() }
+      const rows = await storedRows(dir)
+      expect(rows.map((r) => r.table), String(levels)).toEqual(['events', 'events_logged'])
+      expectBounded(rows, 'legacy-api', wrapped)
+      for (const r of rows) expect(depthOf(restoreDataDepth(r.data)), String(levels)).toBe(levels + 1)
+    }
+  }, SLOW)
+
+  sqlite.it('POST /api/events: an HTTP request whose parsed JSON body is nested 5,000 levels (`params.body_json`, as the proxy sends it) is stored', async () => {
+    const dir = tmp('api-mitm')
     const rt = await openRuntime(dir)
     try {
-      // body (1) → data (2) → deep: 62 arrays (64).
-      await rt.api({ agent_type: 'shell', data: { subtype: 'command_start', command: 'id', terminalId: 't1', pid: 1, deep: nested(62, 'x') } }, 201)
-      await rt.api({ agent_type: 'shell', data: { subtype: 'command_start', command: 'id', terminalId: 't2', pid: 2, deep: nested(63, 'x') } }, 400)
-      for (const item of ITEMS) await rt.api(item, 400)
-      await rt.api(HUGE_SHELL(), 400)
+      await rt.api(`{"agent_type":"scanner","data":{"subtype":"http_request_start","flow_id":"f-deep","method":"POST","url":"http://10.0.0.5/api","host":"10.0.0.5",` +
+        `"params":{"body_json":{"a":${'['.repeat(5_000)}"quokka"${']'.repeat(5_000)}}}}}`, 201)
     } finally { await rt.close() }
     const rows = await storedRows(dir)
-    expect(rows.map((r) => `${r.table}:${String(r.data.terminalId)}`)).toEqual(['events:t1'])
-    expect(depthOf(rows[0].data)).toBe(MAX_DATA_DEPTH - 1)
-    expect('collapsed' in (rows[0].data._ingest as object)).toBe(false)
+    expect(rows.map((r) => `${r.table}:${String(r.data.subtype)}`)).toEqual(['events_logged:http_request_start'])
+    expect(rows[0].data._ingest).toMatchObject({ door: 'legacy-api', collapsed: 1 })
+    expect(depthOf(rows[0].data)).toBe(MAX_DATA_DEPTH)
+    expect(depthOf(restoreDataDepth(rows[0].data))).toBe(5_003)
+  }, SLOW)
+
+  sqlite.it('POST /api/events: a body over the 20 MiB cap is still refused, and nothing is stored', async () => {
+    const dir = tmp('api-cap')
+    const rt = await openRuntime(dir)
+    try {
+      const filler = 'x'.repeat(20 * 1024 * 1024)
+      await rt.api(`{"agent_type":"external","data":{"subtype":"note","text":"${filler}"}}`, 500)
+    } finally { await rt.close() }
+    expect(await storedRows(dir)).toEqual([])
   }, SLOW)
 
   sqlite.it('a handoff spool file: both tiers, and a 100,000-level file', async () => {
     const dir = tmp('spool')
     const rt = await openRuntime(dir)
     try { rt.spool(ITEMS, tmp('spool-files')) } finally { await rt.close() }
-    expectBounded(await storedRows(dir), 'legacy-handoff')
+    expectBounded(await storedRows(dir), 'legacy-handoff', true)
 
     const dir2 = tmp('spool-huge')
     const rt2 = await openRuntime(dir2)
-    try { rt2.spool([HUGE_SHELL(true), HUGE_DNS(true)], tmp('spool-files-huge')) } finally { await rt2.close() }
-    expectBounded(await storedRows(dir2), 'legacy-handoff')
+    try { rt2.spool([shellBody(99_999, true), dnsBody(99_999, true)], tmp('spool-files-huge')) } finally { await rt2.close() }
+    expectBounded(await storedRows(dir2), 'legacy-handoff', true)
   }, SLOW)
 
-  sqlite.it('a handoff spool holding the same over-deep command twice keeps it once: the second is a duplicate', async () => {
-    const dir = tmp('spool-dup')
+  sqlite.it('a resend of an over-deep command inside the 2 s window is a duplicate, through the API (409) and through a spool file', async () => {
+    const dir = tmp('api-dup')
     const rt = await openRuntime(dir)
-    try { rt.spool([ITEMS[0], ITEMS[0]], tmp('spool-files-dup')) } finally { await rt.close() }
-    const rows = (await storedRows(dir)).filter((r) => r.table === 'events')
+    try {
+      await rt.api(ITEMS[0], 201)
+      await rt.api(ITEMS[0], 409)
+    } finally { await rt.close() }
+    expect((await storedRows(dir)).filter((r) => r.table === 'events')).toHaveLength(1)
+
+    const dir2 = tmp('spool-dup')
+    const rt2 = await openRuntime(dir2)
+    try { rt2.spool([ITEMS[0], ITEMS[0]], tmp('spool-files-dup')) } finally { await rt2.close() }
+    const rows = (await storedRows(dir2)).filter((r) => r.table === 'events')
     expect(rows).toHaveLength(1)
     expect(rows[0].data._ingest).toMatchObject({ door: 'legacy-handoff', collapsed: 1 })
   }, SLOW)

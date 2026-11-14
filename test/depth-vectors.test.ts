@@ -16,7 +16,7 @@ import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { requires } from './helpers/requires'
 import { VERIFIER, pythonBin, runPythonVerifier, sha256, unpackTo } from './fixtures/golden-pre071-generate'
 import { AWKWARD, BUNDLE, clockMockDepth, generateDepthVectors, type DepthExpected } from './fixtures/depth-vectors-generate'
-import { MAX_DATA_DEPTH } from '../src/core/ingest/depth'
+import { COLLAPSED_KEY, MAX_DATA_DEPTH, restoreDataDepth } from '../src/core/ingest/depth'
 import { canonicalStringify } from '../src/core/db/event-write'
 
 const sqlite = requires('better-sqlite3')
@@ -73,22 +73,40 @@ it('the bundle holds collapsed rows in both tiers, a row at the limit, and nothi
   const logged = lines(path.join(dir, 'events_logged.jsonl')).map(dataOf)
   for (const d of [...chained, ...logged]) expect(depthOf(d), String(d.subtype)).toBeLessThanOrEqual(MAX_DATA_DEPTH)
   const count = (rows: Array<Record<string, unknown>>): number[] => rows.map((d) => (d._ingest as { collapsed?: number }).collapsed ?? 0).filter((n) => n > 0)
-  expect(count(chained).sort()).toEqual([1, 3])
+  expect(count(chained)).toEqual([1, 1, 1])
   expect(count(logged)).toEqual([1])
   expect(chained.filter((d) => d.command === 'echo limit').map(depthOf)).toEqual([MAX_DATA_DEPTH])
   expect(expected.collapsed).toEqual({
     'events:command_start:curl -d @deep.json http://10.0.0.5/api': 1,
-    'events:command_start:ls /deep': 3,
+    'events:command_start:echo markers': 1,
+    'events:command_start:ls /deep': 1,
     'events_logged:http_request_start:': 1
   })
+})
+
+it('each row restores from itself alone: the sender\'s marker-shaped object at 63 stays, the one at 64 comes back from its wrapper', () => {
+  const rows = lines(path.join(committed(), 'events.jsonl')).map(dataOf)
+  const markers = rows.find((d) => d.command === 'echo markers')!
+  const back = restoreDataDepth(markers)
+  let a: unknown = back.at63, b: unknown = back.at64
+  for (let d = 2; d < MAX_DATA_DEPTH - 1; d++) a = (a as unknown[])[0]
+  for (let d = 2; d < MAX_DATA_DEPTH; d++) b = (b as unknown[])[0]
+  expect(a).toEqual({ [COLLAPSED_KEY]: '[1]' })
+  expect(b).toEqual({ [COLLAPSED_KEY]: 'not json' })
+  const api = rows.find((d) => String(d.command).startsWith('curl'))!
+  let c: unknown = restoreDataDepth(api).deep
+  for (let d = 2; d <= MAX_DATA_DEPTH; d++) c = (c as unknown[])[0]
+  // As JSON: AWKWARD holds -0, which JSON writes 0.
+  expect(JSON.stringify(c)).toBe(JSON.stringify(AWKWARD))
 })
 
 it('the numbers and characters the two languages write differently are, inside the collapsed text, one JSON string', () => {
   const api = lines(path.join(committed(), 'events.jsonl')).map(dataOf).find((d) => String(d.command).startsWith('curl'))!
   let holder: unknown = api.deep
   for (let d = 2; d < MAX_DATA_DEPTH; d++) holder = (holder as unknown[])[0]
-  const text = (holder as unknown[])[0] as string
-  expect(text).toBe(JSON.stringify(AWKWARD))
+  const text = (holder as Record<string, string>)[COLLAPSED_KEY]
+  expect(Object.keys(holder as object)).toEqual([COLLAPSED_KEY])
+  expect(text).toBe(JSON.stringify([AWKWARD]))
   for (const s of ['0.00001', '1e+21', '1.5e-7', '123456789012345680000', '\\ud800', '\u{1F600}']) expect(text, s).toContain(s)
 })
 

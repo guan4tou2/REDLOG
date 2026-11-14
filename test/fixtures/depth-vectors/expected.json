@@ -9,58 +9,64 @@
       },
       {
         "id": "00000000-0000-4000-8000-000000000006",
-        "hash": "d312843883802a8019a4e820ce8f3f1f2d0f86bcdc61ca3a1c8120f0a6c5ed52",
-        "sha256": "7c48e8f6ddbe8a6ddc19169661b37461cb016420f736917a704f3b8fe6ac5fd1"
+        "hash": "66bf846cf8955316ce0bbb2b44260379f6f92277094cf97a87e5471775a60c9e",
+        "sha256": "4078db15336810f281f5328e970af41babbe413b354a72a18d8706807fab9f04"
       },
       {
         "id": "00000000-0000-4000-8000-000000000008",
-        "hash": "dbfa79d9a2e122d8d6a3b5f57de85cc81f98943250cee0a92edbe2ac4d73c645",
-        "sha256": "3a91c14fc7e09f2cfa2352a088cf50b227ece0de166a3e3dbe938f313dbf8674"
+        "hash": "aa1d0fcf26b1f00636bdc12e6d4c82889efba2939fed1e91f785ee1f4097c8c4",
+        "sha256": "cbbe1a6db9b25b6ff30d920e4cf847c8eb3411c3d6b97d194f4b1f968669724e"
       },
       {
         "id": "00000000-0000-4000-8000-000000000012",
-        "hash": "49697815fc4340f4860c48ee15392330d1205819de0b8db1e9c0622c06936634",
-        "sha256": "8f5137e11ea2ce3bb95b4eaa111ba20502c8cff050ddbf3665c5a7a7cdd07edc"
+        "hash": "50365dcb51a829efff41ef0ac1ca36539ca42576d52b92789c98c530c0d17f19",
+        "sha256": "74096089430925db13538f5bda84d764dfea27938bc5413149a3c3ac0b4cc294"
       },
       {
         "id": "00000000-0000-4000-8000-000000000014",
-        "hash": "b835cfe51d4714f11d3547cc7d2e79d379094f9a275ccb594a26fc1ec73a74c9",
-        "sha256": "a40aea9e974712fd9ad6a7f8925eff582ce6a7860628b8b528798e15aca7142c"
+        "hash": "d94c4316bcabe0dbac00fc2ca9d0614fc95a0b8468686668786e5793026ce70e",
+        "sha256": "35b67b56254dcba0bb06aaf156578beb37b0113c5124ff1c08c4f9638e32abc5"
       },
       {
         "id": "00000000-0000-4000-8000-000000000016",
-        "hash": "be35177ba3b8428f99b7f677f1ea6c848cee7eae816fd8bdf6f9afb6a599e879",
-        "sha256": "f32b02960d6916cba3e3931465e0d43cad5886c199c9ae33692bf18ef2deeb79"
+        "hash": "127712005251dc263c80c20248cab95f2ff847610235da7ffab67474d415745f",
+        "sha256": "79769a3391e2b152929ce396ebe3650b1fca9c6e3cdfc8247566e36accc0abb2"
       },
       {
-        "id": "00000000-0000-4000-8000-000000000019",
-        "hash": "0dc59f3ecfe973a249269bf937a1e45b40ecb1ad8221196665e0273bf8149e69",
-        "sha256": "ae440a828e8c91565bc13336342c878f03361eae220301c477747677507a4ebf"
+        "id": "00000000-0000-4000-8000-000000000018",
+        "hash": "126197d4cf36480db2f650fb85b44889bac8e39bd01819af9059efaee0bb89f3",
+        "sha256": "b8377652723a8f73f87c73575e3ea7bb2fa9efade753e6ef015ed1c610ecbb29"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000021",
+        "hash": "f9fc94b5f3869102ae6792465a4264562e6b3d68e1cc8e41bd6e975bd7fced2d",
+        "sha256": "27ff66f4736211c19341ee6b9b96026b602cfd44ed5d1b5d2e1117ee8d17f808"
       }
     ],
     "events_logged": [
       {
         "id": "00000000-0000-4000-8000-000000000009",
         "hash": null,
-        "sha256": "a54f769c4829257a470bf3f5a9261203f997da4fdc5741fb18391a0a359c2ca4"
+        "sha256": "7641e5dfa85cdb2dcae7298db294910fbd2f3c26a1b7ff1308f2cd598253e52c"
       }
     ]
   },
-  "rowsSha256": "2536a6166736d47d11a9754b893e78dc483144fd8f0ecc6a2791a6dc6aaadab1",
+  "rowsSha256": "529da87b2b44dfa596b2a7b94e76ee3e54c371d2c86d4426a17754f38d768b92",
   "collapsed": {
     "events:command_start:curl -d @deep.json http://10.0.0.5/api": 1,
-    "events:command_start:ls /deep": 3,
+    "events:command_start:echo markers": 1,
+    "events:command_start:ls /deep": 1,
     "events_logged:http_request_start:": 1
   },
   "appVerify": {
     "ok": true,
-    "walked": 7,
+    "walked": 8,
     "brokenAtEventId": null,
     "brokenReason": null,
-    "currentHead": "5df61d8ebb0191b036fe06cfc5fc9d436ab398f03005678101247e8b25e58fa2",
+    "currentHead": "3656089f9eb92638c7cb921698099e59249a136b442804167d13a0d87a92867f",
     "anchorMatchesWalkedHead": false,
     "clockAnomalies": [],
-    "signedCount": 7,
+    "signedCount": 8,
     "unsignedCount": 0,
     "noPubKeyCount": 0,
     "authentication": "verified",
@@ -85,7 +91,7 @@
   },
   "pythonVerify": {
     "status": 0,
-    "stdout": "\nRedLog bundle verification report\n========================================\nBundle dir       : <bundle>\nBundle version   : 4\nEngagement ID    : eng-depth-vectors\nEvents walked    : 7\nManifest checksum: matches (not an authenticated source identity)\nChain            : INTACT\nChain-head match : yes (recomputed matches manifest.chainHead)\nSeal             : SEALED (export 00000000-0000-4000-8000-000000000017; it follows the delivered chain directly)\n                   rows before it and the manifest are as exported\nSignatures       : 7 verified\nSigner           : op-depth  sha256:5df840e88a41a05b32c8c076086ae442d696f8556d8e3452d2738f96722e8e0d\n  compare these fingerprints with the operator out of band;\n  a key taken from this bundle only proves the bundle agrees with itself\nLogged tier      : 1 rows present in events_logged.jsonl\n                   (not chained or signed; digest matches; bytes sealed by the export)\nAttachments      : 0 match the digest recorded at capture\nManifest files   : 5 verified (sha256 matches)\n",
+    "stdout": "\nRedLog bundle verification report\n========================================\nBundle dir       : <bundle>\nBundle version   : 4\nEngagement ID    : eng-depth-vectors\nEvents walked    : 8\nManifest checksum: matches (not an authenticated source identity)\nChain            : INTACT\nChain-head match : yes (recomputed matches manifest.chainHead)\nSeal             : SEALED (export 00000000-0000-4000-8000-000000000019; it follows the delivered chain directly)\n                   rows before it and the manifest are as exported\nSignatures       : 8 verified\nSigner           : op-depth  sha256:5df840e88a41a05b32c8c076086ae442d696f8556d8e3452d2738f96722e8e0d\n  compare these fingerprints with the operator out of band;\n  a key taken from this bundle only proves the bundle agrees with itself\nLogged tier      : 1 rows present in events_logged.jsonl\n                   (not chained or signed; digest matches; bytes sealed by the export)\nAttachments      : 0 match the digest recorded at capture\nManifest files   : 5 verified (sha256 matches)\n",
     "stderr": ""
   },
   "verifierSha256": "f49a7d4acd941b9df0acbeab592a7ac7f8a2a6cdf5ac239271700ac39e2359af"

@@ -219,9 +219,10 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 }
 
 /** The body of a JSON route as a plain object, or null after answering 400.
- *  One gate for every route that reads a body (api-request.ts). */
-async function readJsonObject(req: http.IncomingMessage, res: http.ServerResponse): Promise<Record<string, unknown> | null> {
-  const parsed = parseJsonObjectBody(await readBody(req))
+ *  One gate for every route that reads a body (api-request.ts); only the
+ *  event-ingest route passes `depthGate: false` (see its call). */
+async function readJsonObject(req: http.IncomingMessage, res: http.ServerResponse, opts: { depthGate?: boolean } = {}): Promise<Record<string, unknown> | null> {
+  const parsed = parseJsonObjectBody(await readBody(req), opts)
   if (!parsed.ok) { json(res, 400, { error: parsed.error }); return null }
   return parsed.body
 }
@@ -325,7 +326,13 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         return
       }
       const requestEngagement = engagementId
-      const body = await readJsonObject(req, res)
+      // No depth gate on this route (Spec 071 FR-097, owner 2026-11-14
+      // 「收下並摺疊」): an over-deep `data` is accepted and the writer collapses
+      // it. Nothing below walks the body per level before insertEvent bounds
+      // it — JSON.parse is iterative in V8; the policy check, the body's
+      // target, the forged-operator strip and ingest() read top-level keys;
+      // the 201 echoes the stored, bounded row. The 20 MiB body cap stays.
+      const body = await readJsonObject(req, res, { depthGate: false })
       if (!body) return
       // Reading a streamed body yields to project switching. Recheck at the
       // write boundary, not only when the authenticated headers arrived.

@@ -55,3 +55,62 @@ describe('scrubOperatorPii convenience wrapper', () => {
     expect(scrubOperatorPii(text, reps)).toBe(text)
   })
 })
+
+// Spec 071 FR-097 put whole containers inside strings (the `_collapsed`
+// wrapper), so a home path can now sit one escaping level deeper than any
+// field held it before: `C:\Users\Jo` reads `C:\\\\Users\\\\Jo` in the
+// exported text, and a body holding JSON text inside that, deeper still. The
+// scrub matches every escaping level.
+import { boundDataDepth } from '../src/core/ingest/depth'
+
+describe('operator PII at every level of JSON escaping (FR-097)', () => {
+  const nest = (levels: number, leaf: unknown): unknown => { let v = leaf; for (let i = 0; i < levels; i++) v = [v]; return v }
+  /** The exported text of a row whose `data.deep` holds `leaf` under `levels` arrays. */
+  const exported = (levels: number, leaf: unknown): string => JSON.stringify(boundDataDepth({ subtype: 'x', deep: nest(levels, leaf) }).data)
+  const WIN = { home: 'C:\\Users\\Jo', user: 'jo', host: 'nope-host' }
+  const winPath = 'C:\\Users\\Jo\\Desktop\\client-x\\notes.txt'
+
+  it('a Windows home under 60 levels (one escaping) and under 70 (inside a wrapper, two) is scrubbed, its separators kept', () => {
+    const reps = operatorPiiReplacements(WIN)
+    const shallow = scrubOperatorPii(exported(60, { p: winPath }), reps)
+    expect(shallow).not.toMatch(/Users/)
+    expect(shallow).toMatch(/<home>\\{2}Desktop\\{2}client-x/)
+    const deep = exported(70, { p: winPath })
+    expect(deep).toContain('C:\\\\\\\\Users\\\\\\\\Jo')
+    const scrubbed = scrubOperatorPii(deep, reps)
+    expect(scrubbed).not.toMatch(/Users/)
+    expect(scrubbed).toMatch(/<home>\\{4}Desktop\\{4}client-x/)
+  })
+
+  it('three levels: a string holding JSON text inside a wrapper', () => {
+    const text = exported(70, { body: JSON.stringify({ p: winPath }) })
+    expect(text).toContain('C:\\\\\\\\\\\\\\\\Users')
+    const scrubbed = scrubOperatorPii(text, operatorPiiReplacements(WIN))
+    expect(scrubbed).not.toMatch(/Users/)
+    expect(scrubbed).toMatch(/<home>\\{8}Desktop/)
+  })
+
+  it('a POSIX home inside a wrapper, and one holding a quote', () => {
+    const reps = operatorPiiReplacements({ home: '/home/alice', user: 'alice', host: 'nope-host' })
+    expect(scrubOperatorPii(exported(70, ['/home/alice/notes', 'alice ran it']), reps)).not.toMatch(/alice/)
+    const quoted = operatorPiiReplacements({ home: '/home/we"ird', user: 'nope', host: 'nope-host' })
+    for (const levels of [0, 60, 70]) {
+      const text = scrubOperatorPii(exported(levels, ['/home/we"ird/x']), quoted)
+      expect(text, String(levels)).not.toMatch(/we\\*"ird/)
+      expect(text, String(levels)).toContain('<home>/x')
+    }
+  })
+
+  it('a home folder named apart from the user (`jsmith.CORP`), and the user name after an escape sequence', () => {
+    const reps = operatorPiiReplacements({ home: 'C:\\Users\\jsmith.CORP', user: 'jsmith', host: 'nope-host' })
+    const text = scrubOperatorPii(exported(70, ['C:\\Users\\jsmith.CORP\\a', 'whoami\njsmith', 'by jsmith.']), reps)
+    expect(text).not.toMatch(/jsmith/)
+    expect(text).toMatch(/<home>\\{4}a/)
+  })
+
+  it('a user name shorter than 3 characters is still not scrubbed on its own; the home that holds it is', () => {
+    const text = scrubOperatorPii(exported(70, [winPath, 'jo said']), operatorPiiReplacements(WIN))
+    expect(text).not.toMatch(/Users/)
+    expect(text).toContain('jo said')
+  })
+})

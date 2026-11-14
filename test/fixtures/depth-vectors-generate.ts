@@ -12,15 +12,20 @@
 // provenance-vectors-generate.ts is (faked wall clock, counted ids, fixed host
 // name, a key from a public seed).
 //
-// The rows:
-//   - an API row (chained) whose collapsed container holds keys and strings
+// The rows. "API" rows are written by ingest() with the entrance POST
+// /api/events passes, as provenance-vectors-generate.ts writes them; the
+// handler itself, which since 2026-11-14 accepts an over-deep body (owner:
+// 「收下並摺疊」), is exercised in test/ingest-depth-doors.test.ts.
+//   - an API row (chained) whose wrapped container holds keys and strings
 //     outside the BMP, a lone surrogate, and numbers JavaScript and Python
 //     write differently (0.00001, 1e21): inside the JSON text they are one
 //     string, the same bytes for both verifiers;
 //   - an API row (logged) shaped like the proxy's parsed JSON request body;
-//   - a handoff spool file whose `data` holds several over-deep siblings;
+//   - a handoff spool file whose container at 64 holds several containers;
 //   - an in-process row exactly at the limit, all arrays: the deepest shape a
-//     row can now have, and the costliest for the Python verifier's recursion.
+//     row can now have, and the costliest for the Python verifier's recursion;
+//   - an in-process row with a sender's marker-shaped object at 63 (kept)
+//     and at 64 (wrapped).
 
 import crypto from 'node:crypto'
 import fs from 'node:fs'
@@ -103,7 +108,8 @@ export async function generateDepthVectors(out: string): Promise<DepthExpected> 
 
     step()
     events.insertEvent('system', { subtype: 'session_start' }, who)
-    // data (1) → deep, the outermost of 63 arrays (2 … 64) → AWKWARD at 65.
+    // data (1) → deep, the outermost of 63 arrays (2 … 64) → AWKWARD at 65,
+    // so the array at 64 is wrapped.
     api('shell', { subtype: 'command_start', command: 'curl -d @deep.json http://10.0.0.5/api', terminalId: 't-api', pid: 5001, deep: nest(MAX_DATA_DEPTH - 1, AWKWARD) })
     // The proxy puts a parsed JSON body at data.params.body_json (depth 3).
     api('scanner', { subtype: 'http_request_start', flow_id: 'f-deep', method: 'POST', url: 'http://10.0.0.5/api',
@@ -111,7 +117,11 @@ export async function generateDepthVectors(out: string): Promise<DepthExpected> 
     // In-process, exactly at the limit, all arrays.
     step()
     ingestMod.ingestEvent('shell', { subtype: 'command_start', command: 'echo limit', terminalId: 't-in', pid: 5002, deep: nest(MAX_DATA_DEPTH - 1, 'at-limit') }, who)
-    // A spool file: the list at 64 holds three containers, each at 65.
+    // A sender's marker-shaped objects at 63 and at 64.
+    step()
+    ingestMod.ingestEvent('shell', { subtype: 'command_start', command: 'echo markers', terminalId: 't-in', pid: 5004,
+      at63: nest(MAX_DATA_DEPTH - 3, { _collapsed: '[1]' }), at64: nest(MAX_DATA_DEPTH - 2, { _collapsed: 'not json' }) }, who)
+    // A spool file: the list at 64 holds three containers, so it is wrapped.
     fs.mkdirSync(spoolDir)
     fs.writeFileSync(path.join(spoolDir, '0001.json'), JSON.stringify({
       agent_type: 'shell',
