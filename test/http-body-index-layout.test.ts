@@ -205,4 +205,19 @@ sqlite.describe('body index layout', () => {
       expect({ a: documentHolds(index, ofB, 'alphaword'), b: documentHolds(index, ofB, 'betaword') }).toEqual({ a: false, b: true })
     })
   })
+
+  it('a TEMP document is joined to TEMP refs and a shared one to shared refs, though their ids are the same numbers', () => {
+    savedResponse('A', { response_body_ref: savedBody(dir, '{"v":"SHAREDWORD"}') })
+    expect(searchHttpBodyEventIds('SHAREDWORD', dir)).toEqual(['A'])
+    expect(refRow('A').ref).toBe(1)
+    // B arrives while another connection holds the index: this connection
+    // reads it into its own TEMP tables, where the first ref id is 1 too.
+    savedResponse('B', { response_body_ref: savedBody(dir, '{"v":"TEMPWORD"}') })
+    const holder = new Database(indexFile())
+    holder.prepare('BEGIN IMMEDIATE').run()
+    let found
+    try { found = idx.searchHttpBodyTermIds('SHAREDWORD TEMPWORD', dir) } finally { holder.prepare('ROLLBACK').run(); holder.close() }
+    expect(idx._extraEvents(dir)).toBe(1)
+    expect(found).toEqual([{ term: '"SHAREDWORD"', eventIds: ['A'] }, { term: '"TEMPWORD"*', eventIds: ['B'] }])
+  }, 30_000)
 })
