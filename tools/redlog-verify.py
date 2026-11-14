@@ -18,6 +18,12 @@ Reads `manifest.json`, `events.jsonl`, `events_logged.jsonl` and
      events.jsonl entry). A version 4 bundle without its seal FAILS. Earlier
      versions predate seals; they are reported "not sealed" and otherwise
      verify as they always did.
+  5. Receiver provenance, counted and reported, never part of the verdict or
+     the exit code: a row is proven when it and the system.session_start of
+     its session carry the receiver's `_ingest` stamp under checked hashes,
+     self-described otherwise, and cannot be determined when the bundle holds
+     no session_start of its session. A row of events_logged.jsonl is never
+     proven: that tier is not hashed row by row.
 
 The rules are those of src/core/evidence-rules.ts and src/core/bundle-verify.ts
 in the RedLog source; test/evidence-vectors.test.ts runs both over the same
@@ -338,6 +344,47 @@ def _casts_are_the_terminals(data: Dict[str, Any]) -> bool:
         return True
     stamp = data["_ingest"]
     return isinstance(stamp, dict) and stamp.get("producer") == "in-process"
+
+
+def _has_stamp(data: Any) -> bool:
+    """The receiver's stamp: an object under `_ingest`."""
+    return isinstance(data, dict) and isinstance(data.get("_ingest"), dict)
+
+
+def receiver_provenance(rows: List[Dict[str, Any]]) -> Dict[str, Dict[str, int]]:
+    """Spec 071 FR-022-024, the rule of evidence-rules.ts receiverProvenance.
+
+    A row is proven when it carries `_ingest` and every system session_start
+    of its session_id carries it too, each under a checked hash; otherwise
+    self-described; with no session_start of its session in the bundle,
+    cannot be determined. A logged row is never proven: its stamp has no
+    per-row tamper protection. Each row: tier, hash_checked, session_id,
+    agent_type, data (parsed)."""
+    starts: Dict[str, bool] = {}
+    for r in rows:
+        d = r["data"]
+        sid = r["session_id"]
+        if (r["tier"] != "chained" or r["agent_type"] != "system" or not isinstance(sid, str)
+                or not isinstance(d, dict) or d.get("subtype") != "session_start"):
+            continue
+        starts[sid] = starts.get(sid, True) and bool(r["hash_checked"]) and _has_stamp(d)
+    chained = {"proven": 0, "selfDescribed": 0, "undetermined": 0}
+    logged = {"selfDescribed": 0, "stamped": 0, "undetermined": 0}
+    for r in rows:
+        sid = r["session_id"]
+        start = starts.get(sid) if isinstance(sid, str) else None
+        tier = logged if r["tier"] == "logged" else chained
+        if start is None:
+            tier["undetermined"] += 1
+        elif r["tier"] == "logged":
+            logged["selfDescribed"] += 1
+            if _has_stamp(r["data"]):
+                logged["stamped"] += 1
+        elif start and r["hash_checked"] and _has_stamp(r["data"]):
+            chained["proven"] += 1
+        else:
+            chained["selfDescribed"] += 1
+    return {"chained": chained, "logged": logged}
 
 
 def attachment_refs(agent_type: str, data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -1007,6 +1054,29 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False, hash_only: bool = Fal
         print(f"Logged tier      : {logged_rows} rows present in events_logged.jsonl")
         print(f"                   (not chained or signed; digest {logged_digest_state}"
               + ("; bytes sealed by the export)" if seal_ok else ")"))
+
+    # Receiver provenance (FR-022-024): counted, never part of the verdict.
+    prov = receiver_provenance(
+        [{"tier": "chained", "hash_checked": True, "session_id": r.get("session_id"), "agent_type": r.get("agent_type"), "data": d}
+         for r, d in verified_rows]
+        + [{"tier": "chained", "hash_checked": False, "session_id": r.get("session_id"), "agent_type": r.get("agent_type"), "data": d}
+           for r, d in unverified_rows]
+        + [{"tier": "logged", "hash_checked": False, "session_id": r.get("session_id"), "agent_type": r.get("agent_type"), "data": d}
+           for r, d in logged_list])
+    pc, pl = prov["chained"], prov["logged"]
+    print(f"Receiver stamp   : events.jsonl: {pc['proven']} proven, {pc['selfDescribed']} self-described, "
+          f"{pc['undetermined']} cannot be determined")
+    if logged_rows is not None:
+        print(f"                   events_logged.jsonl: {pl['selfDescribed']} self-described"
+              + (f" ({pl['stamped']} stamped, not protected row by row)" if pl["stamped"] else "")
+              + f", {pl['undetermined']} cannot be determined")
+    print("                   proven: the row and its session's session_start both carry _ingest, under checked hashes")
+    if pc["selfDescribed"] or pl["selfDescribed"]:
+        print("                   self-described: no stamp, a session_start without one, or a row not hashed one by one")
+    if pc["undetermined"] or pl["undetermined"]:
+        print("                   cannot be determined: the bundle holds no session_start of that session"
+              " (an export of selected rows can leave it out)")
+    print("                   these counts do not change the verdict or the exit code")
 
     def show(label: str, items: List[str]) -> None:
         for rel in items[:20]:

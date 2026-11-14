@@ -12,7 +12,11 @@
 //   - opening the project with current code and writing new rows through every
 //     door issues no UPDATE to an old row (counted by triggers added to a copy);
 //   - the app's chain walk, the app's bundle verifier and redlog-verify.py say
-//     what they said;
+//     what they said: the same verdict and exit code, and since Spec 071 T035
+//     one addition, the receiver-provenance counts (FR-022–024) — every old
+//     row self-described, none proven. In expected.json that is the
+//     `provenance` field of each bundle verdict and five added lines of
+//     redlog-verify.py's report; nothing else in the record moved;
 //   - a bundle exported now carries the old rows' events.jsonl and
 //     events_logged.jsonl lines byte for byte as the old export did.
 // The fixture is the pre-071 record and is never regenerated. Until Spec 071
@@ -30,6 +34,7 @@ import { requires } from './helpers/requires'
 import {
   ENG, OP, T_START, BUNDLES, dumpRows, digestRows, appVerifyView, runPythonVerifier, unpackTo, type GoldenExpected
 } from './fixtures/golden-pre071-generate'
+import { pythonProvenance } from './helpers/provenance-report'
 
 const sqlite = requires('better-sqlite3')
 const python = requires('python-cryptography')
@@ -228,6 +233,19 @@ sqlite.describe('rows written before Spec 071', () => {
   python.it('tools/redlog-verify.py says what it said about both committed bundles', () => {
     for (const name of BUNDLES) {
       expect(runPythonVerifier(committedBundle(name)), name).toEqual(expected.pythonVerify[name])
+    }
+  })
+
+  // FR-022: a row written before the stamp is self-described; its session's
+  // start is in both bundles, so none of them is "cannot be determined".
+  python.it('both verifiers count every old row self-described, and agree', async () => {
+    const { verifyBundleDir } = await import('../src/core/bundle-verify')
+    for (const name of BUNDLES) {
+      const dir = committedBundle(name)
+      const ts = verifyBundleDir(dir)
+      const chained = (fs.readFileSync(path.join(dir, 'events.jsonl'), 'utf8').match(/\n/g) ?? []).length
+      expect(ts.provenance, name).toEqual({ chained: { proven: 0, selfDescribed: chained, undetermined: 0 }, logged: { selfDescribed: 3, stamped: 0, undetermined: 0 } })
+      expect(pythonProvenance(runPythonVerifier(dir).stdout), name).toEqual(ts.provenance)
     }
   })
 })

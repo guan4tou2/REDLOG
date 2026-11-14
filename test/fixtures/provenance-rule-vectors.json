@@ -1,0 +1,151 @@
+{
+  "$comment": "Spec 071 FR-022-024: the receiver-provenance rule, one case per combination. Read by test/receiver-provenance.test.ts, which runs every case through evidence-rules.ts receiverProvenance and through tools/redlog-verify.py receiver_provenance and requires both to give `expected`. A row: tier (chained | logged), hashChecked (its own hash was recomputed and matched: false for a logged row and for a row the export declared transformed), session_id, agent_type, data (the parsed data column).",
+  "cases": [
+    {
+      "name": "a session whose start carries _ingest: its stamped rows are proven, the start too",
+      "rows": [
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "system", "data": { "subtype": "session_start", "_ingest": { "v": 1, "door": "in-process" } } },
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "shell", "data": { "subtype": "command_start", "_ingest": { "v": 1, "door": "legacy-api" } } },
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "shell", "data": { "subtype": "command_end", "_ingest": { "v": 1, "door": "legacy-api" } } }
+      ],
+      "expected": { "chained": { "proven": 3, "selfDescribed": 0, "undetermined": 0 }, "logged": { "selfDescribed": 0, "stamped": 0, "undetermined": 0 } }
+    },
+    {
+      "name": "a session whose start lacks _ingest: its stamped rows are self-described",
+      "rows": [
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "system", "data": { "subtype": "session_start" } },
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "shell", "data": { "subtype": "command_start", "_ingest": { "v": 1, "door": "in-process" } } }
+      ],
+      "expected": { "chained": { "proven": 0, "selfDescribed": 2, "undetermined": 0 }, "logged": { "selfDescribed": 0, "stamped": 0, "undetermined": 0 } }
+    },
+    {
+      "name": "rows whose session start is not in the bundle cannot be determined, stamped or not",
+      "rows": [
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "shell", "data": { "subtype": "command_start", "_ingest": { "v": 1 } } },
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "shell", "data": { "subtype": "command_start" } },
+        { "tier": "logged", "hashChecked": false, "session_id": "s1", "agent_type": "scanner", "data": { "subtype": "http_request_start", "_ingest": { "v": 1 } } }
+      ],
+      "expected": { "chained": { "proven": 0, "selfDescribed": 0, "undetermined": 2 }, "logged": { "selfDescribed": 0, "stamped": 0, "undetermined": 1 } }
+    },
+    {
+      "name": "a logged row with _ingest, its session start stamped, is self-described and counted as stamped, never proven",
+      "rows": [
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "system", "data": { "subtype": "session_start", "_ingest": { "v": 1 } } },
+        { "tier": "logged", "hashChecked": false, "session_id": "s1", "agent_type": "scanner", "data": { "subtype": "http_request_start", "_ingest": { "v": 1 } } },
+        { "tier": "logged", "hashChecked": false, "session_id": "s1", "agent_type": "dns", "data": { "subtype": "dns_query" } }
+      ],
+      "expected": { "chained": { "proven": 1, "selfDescribed": 0, "undetermined": 0 }, "logged": { "selfDescribed": 2, "stamped": 1, "undetermined": 0 } }
+    },
+    {
+      "name": "a row written before the stamp, in a session written before it: self-described",
+      "rows": [
+        { "tier": "chained", "hashChecked": true, "session_id": "old", "agent_type": "system", "data": { "subtype": "session_start" } },
+        { "tier": "chained", "hashChecked": true, "session_id": "old", "agent_type": "shell", "data": { "subtype": "command_start", "command": "id" } },
+        { "tier": "logged", "hashChecked": false, "session_id": "old", "agent_type": "dns", "data": { "subtype": "dns_query" } }
+      ],
+      "expected": { "chained": { "proven": 0, "selfDescribed": 2, "undetermined": 0 }, "logged": { "selfDescribed": 1, "stamped": 0, "undetermined": 0 } }
+    },
+    {
+      "name": "an unstamped row in a stamped session is self-described",
+      "rows": [
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "system", "data": { "subtype": "session_start", "_ingest": { "v": 1 } } },
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "shell", "data": { "subtype": "command_start" } }
+      ],
+      "expected": { "chained": { "proven": 1, "selfDescribed": 1, "undetermined": 0 }, "logged": { "selfDescribed": 0, "stamped": 0, "undetermined": 0 } }
+    },
+    {
+      "name": "two sessions in one bundle are judged each by its own start",
+      "rows": [
+        { "tier": "chained", "hashChecked": true, "session_id": "old", "agent_type": "system", "data": { "subtype": "session_start" } },
+        { "tier": "chained", "hashChecked": true, "session_id": "old", "agent_type": "shell", "data": { "subtype": "command_start", "_ingest": { "v": 1 } } },
+        { "tier": "chained", "hashChecked": true, "session_id": "new", "agent_type": "system", "data": { "subtype": "session_start", "_ingest": { "v": 1 } } },
+        { "tier": "chained", "hashChecked": true, "session_id": "new", "agent_type": "shell", "data": { "subtype": "command_start", "_ingest": { "v": 1 } } },
+        { "tier": "chained", "hashChecked": true, "session_id": "gone", "agent_type": "shell", "data": { "subtype": "command_start", "_ingest": { "v": 1 } } }
+      ],
+      "expected": { "chained": { "proven": 2, "selfDescribed": 2, "undetermined": 1 }, "logged": { "selfDescribed": 0, "stamped": 0, "undetermined": 0 } }
+    },
+    {
+      "name": "a session_start that appears after rows of its session still decides them",
+      "rows": [
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "shell", "data": { "subtype": "command_start", "_ingest": { "v": 1 } } },
+        { "tier": "logged", "hashChecked": false, "session_id": "s1", "agent_type": "dns", "data": { "subtype": "dns_query", "_ingest": { "v": 1 } } },
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "system", "data": { "subtype": "session_start", "_ingest": { "v": 1 } } }
+      ],
+      "expected": { "chained": { "proven": 2, "selfDescribed": 0, "undetermined": 0 }, "logged": { "selfDescribed": 1, "stamped": 1, "undetermined": 0 } }
+    },
+    {
+      "name": "an _ingest that is not an object is not a stamp, on a row or on its session start",
+      "rows": [
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "system", "data": { "subtype": "session_start", "_ingest": { "v": 1 } } },
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "shell", "data": { "subtype": "command_start", "_ingest": "in-process" } },
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "shell", "data": { "subtype": "command_start", "_ingest": [{ "v": 1 }] } },
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "shell", "data": { "subtype": "command_start", "_ingest": null } },
+        { "tier": "chained", "hashChecked": true, "session_id": "s2", "agent_type": "system", "data": { "subtype": "session_start", "_ingest": true } },
+        { "tier": "chained", "hashChecked": true, "session_id": "s2", "agent_type": "shell", "data": { "subtype": "command_start", "_ingest": { "v": 1 } } },
+        { "tier": "logged", "hashChecked": false, "session_id": "s1", "agent_type": "dns", "data": { "subtype": "dns_query", "_ingest": 1 } }
+      ],
+      "expected": { "chained": { "proven": 1, "selfDescribed": 5, "undetermined": 0 }, "logged": { "selfDescribed": 1, "stamped": 0, "undetermined": 0 } }
+    },
+    {
+      "name": "a data column that is not an object carries no stamp and names no session start",
+      "rows": [
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "system", "data": { "subtype": "session_start", "_ingest": { "v": 1 } } },
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "shell", "data": "{not json" },
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "shell", "data": [{ "_ingest": { "v": 1 } }] },
+        { "tier": "chained", "hashChecked": true, "session_id": "s3", "agent_type": "system", "data": "session_start" }
+      ],
+      "expected": { "chained": { "proven": 1, "selfDescribed": 2, "undetermined": 1 }, "logged": { "selfDescribed": 0, "stamped": 0, "undetermined": 0 } }
+    },
+    {
+      "name": "a session_start in the logged tier is no session start: the writer never puts one there",
+      "rows": [
+        { "tier": "logged", "hashChecked": false, "session_id": "s1", "agent_type": "system", "data": { "subtype": "session_start", "_ingest": { "v": 1 } } },
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "shell", "data": { "subtype": "command_start", "_ingest": { "v": 1 } } }
+      ],
+      "expected": { "chained": { "proven": 0, "selfDescribed": 0, "undetermined": 1 }, "logged": { "selfDescribed": 0, "stamped": 0, "undetermined": 1 } }
+    },
+    {
+      "name": "a row the export transformed is self-described; a transformed session start proves none of its session",
+      "rows": [
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "system", "data": { "subtype": "session_start", "_ingest": { "v": 1 } } },
+        { "tier": "chained", "hashChecked": false, "session_id": "s1", "agent_type": "shell", "data": { "subtype": "command_start", "_ingest": { "v": 1 } } },
+        { "tier": "chained", "hashChecked": false, "session_id": "s2", "agent_type": "system", "data": { "subtype": "session_start", "_ingest": { "v": 1 } } },
+        { "tier": "chained", "hashChecked": true, "session_id": "s2", "agent_type": "shell", "data": { "subtype": "command_start", "_ingest": { "v": 1 } } }
+      ],
+      "expected": { "chained": { "proven": 1, "selfDescribed": 3, "undetermined": 0 }, "logged": { "selfDescribed": 0, "stamped": 0, "undetermined": 0 } }
+    },
+    {
+      "name": "a session with two starts is proven only when every one of them carries _ingest",
+      "rows": [
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "system", "data": { "subtype": "session_start" } },
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "system", "data": { "subtype": "session_start", "_ingest": { "v": 1 } } },
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "shell", "data": { "subtype": "command_start", "_ingest": { "v": 1 } } },
+        { "tier": "chained", "hashChecked": true, "session_id": "s2", "agent_type": "system", "data": { "subtype": "session_start", "_ingest": { "v": 1 } } },
+        { "tier": "chained", "hashChecked": true, "session_id": "s2", "agent_type": "system", "data": { "subtype": "session_start", "_ingest": { "v": 1 } } }
+      ],
+      "expected": { "chained": { "proven": 2, "selfDescribed": 3, "undetermined": 0 }, "logged": { "selfDescribed": 0, "stamped": 0, "undetermined": 0 } }
+    },
+    {
+      "name": "a row with no string session_id cannot be determined",
+      "rows": [
+        { "tier": "chained", "hashChecked": true, "session_id": null, "agent_type": "system", "data": { "subtype": "session_start", "_ingest": { "v": 1 } } },
+        { "tier": "chained", "hashChecked": true, "session_id": null, "agent_type": "shell", "data": { "subtype": "command_start", "_ingest": { "v": 1 } } },
+        { "tier": "chained", "hashChecked": true, "session_id": 7, "agent_type": "shell", "data": { "subtype": "command_start", "_ingest": { "v": 1 } } }
+      ],
+      "expected": { "chained": { "proven": 0, "selfDescribed": 0, "undetermined": 3 }, "logged": { "selfDescribed": 0, "stamped": 0, "undetermined": 0 } }
+    },
+    {
+      "name": "only a system row is a session start: a shell session_start is a row like any other",
+      "rows": [
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "shell", "data": { "subtype": "session_start", "_ingest": { "v": 1 } } },
+        { "tier": "chained", "hashChecked": true, "session_id": "s1", "agent_type": "shell", "data": { "subtype": "command_start", "_ingest": { "v": 1 } } }
+      ],
+      "expected": { "chained": { "proven": 0, "selfDescribed": 0, "undetermined": 2 }, "logged": { "selfDescribed": 0, "stamped": 0, "undetermined": 0 } }
+    },
+    {
+      "name": "no rows",
+      "rows": [],
+      "expected": { "chained": { "proven": 0, "selfDescribed": 0, "undetermined": 0 }, "logged": { "selfDescribed": 0, "stamped": 0, "undetermined": 0 } }
+    }
+  ]
+}

@@ -1,10 +1,15 @@
-// The bundle README tells a recipient how to read a row nested past 64 levels
+// The bundle README tells a recipient how to read a row nested past 64 levels,
+// and what the verifier's receiver-provenance counts mean
 // (src/core/bundle-readme-rows.ts). They have only the README, so what it says
 // must be what the writer does: its worked examples are produced by the code,
 // and its reading rule, followed literally, gives what restoreDataDepth gives.
 
+import fs from 'node:fs'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { ROW_ADDITIONS_README } from '../src/core/bundle-readme-rows'
+import { receiverProvenance, type ProvenanceCounts } from '../src/core/evidence-rules'
+import { VERIFIER } from './fixtures/golden-pre071-generate'
 import { COLLAPSED_KEY, boundDataDepth, restoreDataDepth } from '../src/core/ingest/depth'
 
 const README = ROW_ADDITIONS_README.join('\n')
@@ -83,5 +88,52 @@ describe('the bundle README on rows nested past 64 levels (FR-097)', () => {
     expect(prose).toContain('An object of that shape at any other level is the sender\'s own')
     expect(prose).toContain('at level 64 the rule has no exceptions')
     expect(prose).not.toMatch(/byte for byte/)
+  })
+})
+
+// The README's three receiver-provenance states (FR-022–024), followed
+// literally, give what receiverProvenance gives on every shared rule vector,
+// and use the labels tools/redlog-verify.py prints.
+describe('the bundle README on receiver provenance', () => {
+  interface VectorRow { tier: 'chained' | 'logged'; hashChecked: boolean; session_id: unknown; agent_type: unknown; data: unknown }
+  const { cases } = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'provenance-rule-vectors.json'), 'utf8')) as
+    { cases: Array<{ name: string; rows: VectorRow[] }> }
+  const prose = README.replace(/\s+/g, ' ')
+
+  /** The README's three bullets, read literally. "carries `_ingest`": an
+   *  object there, the stamp the README describes above. */
+  function countAsReadmeSays(rows: VectorRow[]): ProvenanceCounts {
+    const obj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v)
+    const carries = (r: VectorRow): boolean => obj(r.data) && obj(r.data._ingest)
+    const isStart = (r: VectorRow): boolean => r.tier === 'chained' && r.agent_type === 'system' && obj(r.data) && r.data.subtype === 'session_start'
+    const out: ProvenanceCounts = { chained: { proven: 0, selfDescribed: 0, undetermined: 0 }, logged: { selfDescribed: 0, stamped: 0, undetermined: 0 } }
+    for (const r of rows) {
+      const starts = rows.filter((s) => isStart(s) && typeof r.session_id === 'string' && s.session_id === r.session_id)
+      if (starts.length === 0) { (r.tier === 'logged' ? out.logged : out.chained).undetermined++; continue }
+      if (r.tier === 'logged') { out.logged.selfDescribed++; if (carries(r)) out.logged.stamped++; continue }
+      const proven = carries(r) && r.hashChecked && starts.every((s) => carries(s) && s.hashChecked)
+      if (proven) out.chained.proven++
+      else out.chained.selfDescribed++
+    }
+    return out
+  }
+
+  it('its three states, followed literally, count what the verifiers count on every rule vector', () => {
+    expect(cases.length).toBeGreaterThan(0)
+    for (const c of cases) {
+      const rows = c.rows.map((r) => ({ tier: r.tier, hashChecked: r.hashChecked, sessionId: r.session_id, agentType: r.agent_type, data: r.data }))
+      expect(countAsReadmeSays(c.rows), c.name).toEqual(receiverProvenance(rows))
+    }
+  })
+
+  it('states each condition the rule has, with the labels the verifier prints', () => {
+    for (const label of ['**proven**', '**self-described**', '**cannot be determined**']) expect(prose).toContain(label)
+    expect(prose).toContain('session_start` rows in `events.jsonl` all carry it too, and the export transformed none of them')
+    expect(prose).toContain('every row of `events_logged.jsonl`, whose stamp is not protected row by row')
+    expect(prose).toContain('a row the export transformed')
+    expect(prose).toContain('`events.jsonl` holds no `session_start` of the row\'s `session_id`')
+    expect(prose).toContain('The counts do not change the verdict or the exit code.')
+    const py = fs.readFileSync(VERIFIER, 'utf8')
+    for (const label of ['proven', 'self-described', 'cannot be determined']) expect(py).toContain(`${label}:`)
   })
 })
