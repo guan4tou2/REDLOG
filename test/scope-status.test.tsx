@@ -8,7 +8,7 @@ import { ScopeStatus } from '../src/renderer/src/components/ScopeStatus'
 // the newest records the read model returns (queryScopeObservationRows), while
 // the status bar counts every standing violation in the chain. The page must
 // not claim anything only the whole chain can know from the window alone: a
-// total, or "all commands within scope" (TESTING.md G-S3).
+// total, or "no out-of-scope observations" (TESTING.md G-S3).
 
 interface Row {
   id: string
@@ -24,7 +24,10 @@ const row = (id: string, over: Partial<Row> = {}): Row => ({
   distance: 'excluded', judged: 'live', cleared: false, ...over
 })
 
-function installBridge(page: { rows: Row[]; truncated: boolean }, standing: number): void {
+const SCOPE = { targets: ['app.acme.test', '10.20.0.0/24'], excludeTargets: [] as string[] }
+const seen = (target: string) => ({ target, eventCount: 4, firstSeen: 1, lastSeen: 2 })
+
+function installBridge(page: { rows: Row[]; truncated: boolean }, standing: number, targets: string[] = []): void {
   ;(window as unknown as { redlog: unknown }).redlog = {
     scope: {
       getObservations: async () => page,
@@ -32,8 +35,9 @@ function installBridge(page: { rows: Row[]; truncated: boolean }, standing: numb
       isConfigured: async () => true,
       getLastRecompute: async () => null
     },
+    config: { get: async () => ({ scope: SCOPE }) },
     chain: { length: async () => 0 },
-    events: { onNewBatch: () => () => {} }
+    events: { onNewBatch: () => () => {}, aggregateTargets: async () => targets.map(seen) }
   }
 }
 
@@ -73,12 +77,12 @@ describe('Scope & Evidence page', () => {
     vi.spyOn(window.redlog.scope, method).mockRejectedValueOnce(new Error('read refused'))
     render(<I18nProvider><ScopeStatus /></I18nProvider>)
     expect((await screen.findByRole('alert')).textContent).toContain('read refused')
-    expect(screen.queryByText('All commands within scope')).toBeNull()
+    expect(screen.queryByText('No out-of-scope observations')).toBeNull()
     expect(screen.queryByRole('status')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }))
     await screen.findByText('Out-of-scope observations')
     expect(screen.queryByRole('alert')).toBeNull()
-    expect(screen.getByText('All commands within scope')).toBeTruthy()
+    expect(screen.getByText('No out-of-scope observations')).toBeTruthy()
   })
 
   it('counts the violations the status bar counts, not the ones in the window', async () => {
@@ -95,16 +99,37 @@ describe('Scope & Evidence page', () => {
     expect(screen.queryByTestId('scope-truncated')).not.toBeNull()
   })
 
-  it('never says all commands are within scope while a violation stands', async () => {
+  it('says no observation was recorded while a violation stands, never', async () => {
     installBridge({ rows: [], truncated: false }, 1)
     await open()
-    expect(screen.queryByText('All commands within scope')).toBeNull()
+    expect(screen.queryByText('No out-of-scope observations')).toBeNull()
   })
 
   it('says it when nothing stands and nothing was recorded', async () => {
     installBridge({ rows: [], truncated: false }, 0)
     await open()
-    expect(screen.queryByText('All commands within scope')).not.toBeNull()
+    expect(screen.queryByText('No out-of-scope observations')).not.toBeNull()
+  })
+
+  // The default alert floor reports excluded and adjacent hosts only, so a host
+  // unrelated to the scope is out of scope on the Targets tab and produces no
+  // observation here. "Nothing was recorded" is true; "every command was in
+  // scope" is not, and the two tabs of one page must not contradict each other.
+  it('claims no more than "nothing recorded", and counts the out-of-scope targets that produced no observation', async () => {
+    installBridge({ rows: [], truncated: false }, 0, ['app.acme.test', 'cdn.thirdparty.test', '10.20.0.5', 'other.example'])
+    await open()
+    expect(screen.getByText('No out-of-scope observations')).toBeTruthy()
+    expect(screen.queryByText(/All commands/)).toBeNull()
+    const label = await screen.findByText('out-of-scope targets produced no observation')
+    expect(label.previousElementSibling?.textContent).toBe('2')
+  })
+
+  it('adds no count when every recorded target is in scope', async () => {
+    installBridge({ rows: [], truncated: false }, 0, ['app.acme.test', '10.20.0.5'])
+    await open()
+    expect(screen.getByText('No out-of-scope observations')).toBeTruthy()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(screen.queryByText('out-of-scope targets produced no observation')).toBeNull()
   })
   it('points an unconfigured scope at the settings page that owns the rules', async () => {
     installBridge({ rows: [], truncated: false }, 0)
@@ -113,7 +138,7 @@ describe('Scope & Evidence page', () => {
     render(<I18nProvider><ScopeStatus onOpenSettings={onOpenSettings} /></I18nProvider>)
     fireEvent.click(await screen.findByRole('button', { name: /Settings ▸/ }))
     expect(onOpenSettings).toHaveBeenCalledOnce()
-    expect(screen.queryByText('All commands within scope')).toBeNull()
+    expect(screen.queryByText('No out-of-scope observations')).toBeNull()
   })
 
 

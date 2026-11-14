@@ -22,6 +22,18 @@ export function hostInScope(
   return d.status === 'in-scope' || d.status === 'no-scope'
 }
 
+/** A recorded target against the project's rules: unknown (`null`) while no
+ *  target is allowed. The Targets list and the Scope page's count of targets
+ *  that produced no observation both read this, so the two tabs of one page
+ *  cannot disagree about which targets are out of scope. */
+export function targetInScope(
+  target: string,
+  rules: { targets?: readonly string[] | null; excludeTargets?: readonly string[] | null } | null | undefined
+): boolean | null {
+  if (!scopeConfigured(rules)) return null
+  return hostInScope(target, [...(rules?.targets ?? [])], [...(rules?.excludeTargets ?? [])])
+}
+
 
 /** Display classification is deliberately richer than the capture/filter boolean. */
 export function httpScopeState(url: string, policy: { targets: string[]; excludeTargets: string[] } | null): 'in-scope' | 'out-of-scope' | 'no-scope' | 'unknown' {
