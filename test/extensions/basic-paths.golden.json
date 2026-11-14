@@ -585,7 +585,7 @@
     "sealVersion": 1,
     "exportId": "00000000-0000-4000-8000-000000000043",
     "bundleVersion": 4,
-    "manifestSha256": "73e01e4182e3fc65e376ed246504c332be2657e5b1f53f2cf2fe8e74a4d96929",
+    "manifestSha256": "055eb6bceba3fc75aaef4fcfbc8e9176ca6bf176ea957e8e1d7460abdd31b4e6",
     "events": {
      "count": 18,
      "bytes": 19933,
@@ -979,8 +979,8 @@
    },
    "bundleEvents": {
     "bytes": 21246,
-    "sha256": "39ad0edeb3116dc0730d54ec5770126ac62995209294e09ca08342f448eed137",
-    "normalizedSha256": "c76d6ed08b56ae1c2713c2b6b9ea633aa10989c8f5398afe0de5e1ad027fa20e",
+    "sha256": "df8ea19d18ad105ed4397810303c41128abe0110cb2986f65566e7d658fed8fd",
+    "normalizedSha256": "5b2629361298406c5833fe8e5d3000267a4870f279a00fbcc7c1569f5e1501b0",
     "rows": 19
    },
    "bundleLogged": {
@@ -1002,16 +1002,16 @@
     "verify.cmd",
     "verify.sh"
    ],
-   "bundleVerifierSha256": "c884e286a5f090c200c915cc3f0a827ac4478945f385066a26d82a6218fb2180"
+   "bundleVerifierSha256": "40e4f056760161697797acf89a9c079d2b70c4945cc43c1daa73d1ae218f7c92"
   },
   "final": {
    "json": {
     "rows": 28,
-    "normalizedSha256": "9f3f95785fdf44b002624d80fda706a04be5739f422331c6a2eb605736570dd3"
+    "normalizedSha256": "3c4b7c2d456a153a9e3920565c524049d908ce43606db54f5a5c28c1b7eebb39"
    },
    "ndjson": {
     "rows": 28,
-    "normalizedSha256": "9f3f95785fdf44b002624d80fda706a04be5739f422331c6a2eb605736570dd3"
+    "normalizedSha256": "3c4b7c2d456a153a9e3920565c524049d908ce43606db54f5a5c28c1b7eebb39"
    }
   }
  }

@@ -1067,7 +1067,24 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False, hash_only: bool = Fal
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+def _console_cannot_fail() -> None:
+    """The report quotes what the bundle says: operator ids, file names, the
+    bundle's own path. A console whose code page lacks one of those
+    characters (cp1252, cp950, cp932 on Windows) raised UnicodeEncodeError
+    mid-report, a traceback instead of a verdict on an intact bundle. Keep
+    each stream's own encoding, so a cp950 console still shows Chinese, and
+    write only what it cannot show as a backslash escape."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(errors="backslashreplace")
+            except Exception:
+                pass
+
+
 def main(argv: Optional[List[str]] = None) -> int:
+    _console_cannot_fail()
     p = argparse.ArgumentParser(
         prog="redlog-verify",
         description="Verify a RedLog evidence bundle (hash chain + optional Ed25519 signatures).",

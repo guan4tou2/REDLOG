@@ -180,13 +180,14 @@ describe('a bundle whose rows carry them', () => {
 
 python.it('signers are listed in code-unit order whatever type the row gave operator_id', () => {
   const script = [
-    'import importlib.util, sys',
+    'import importlib.util, json, sys',
     'spec = importlib.util.spec_from_file_location("redlog_verify", sys.argv[1])',
     'rv = importlib.util.module_from_spec(spec); spec.loader.exec_module(rv)',
     'items = {"b": "1", 7: "2", "\\U0001F600": "3", "\\uff5e": "4"}.items()',
-    'print([k for k, _ in sorted(items, key=rv._signer_order)])'
+    // json.dumps escapes to ASCII: a Windows pipe is cp1252 and cannot print the keys.
+    'print(json.dumps([k for k, _ in sorted(items, key=rv._signer_order)]))'
   ].join('\n')
   const r = spawnSync(pythonBin, ['-I', '-c', script, VERIFIER], { encoding: 'utf8' })
   expect(r.stderr).toBe('')
-  expect(r.stdout.trim()).toBe(`[7, 'b', '\u{1F600}', '～']`)
+  expect(JSON.parse(r.stdout)).toEqual([7, 'b', '\u{1F600}', '\uFF5E'])
 })
