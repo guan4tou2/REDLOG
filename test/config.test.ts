@@ -15,9 +15,9 @@ afterEach(() => {
 })
 
 describe('loadConfig', () => {
-  it('returns defaults when no config file exists', () => {
+  it('returns defaults when no config file exists, with the project directory\'s name as engagement (Spec 071 FR-007)', () => {
     const config = loadConfig(tmpDir)
-    expect(config.engagement.id).toBe('default')
+    expect(config.engagement.id).toBe(path.basename(tmpDir))
     expect(config.network.whitelist).toEqual([])
     expect(config.network.blacklist).toEqual([])
     expect(config.network.checkInterval).toBe(60)
@@ -82,8 +82,8 @@ describe('loadConfig hands each caller its own defaults', () => {
   afterEach(() => { for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true }) })
 
   // The documented defaults (docs/TESTING.md Part 2) for what the cases touch.
-  const expectDefaults = (config: RedLogConfig): void => {
-    expect(config.engagement.id).toBe('default')
+  const expectDefaults = (config: RedLogConfig, dir: string): void => {
+    expect(config.engagement.id).toBe(path.basename(dir))
     expect(config.engagement.activeTarget).toBeNull()
     expect(config.network.whitelist).toEqual([])
     expect(config.scope.targets).toEqual([])
@@ -96,10 +96,12 @@ describe('loadConfig hands each caller its own defaults', () => {
     first.scope.targets.push('10.10.11.0/24')
     first.engagement.activeTarget = '10.10.11.24'
     first.engagement.id = 'project-a'
-    expectDefaults(load(newDir()))
-    const partial = load(newDir('operator:\n  id: op-b\n'))
+    const fresh = newDir()
+    expectDefaults(load(fresh), fresh)
+    const partialDir = newDir('operator:\n  id: op-b\n')
+    const partial = load(partialDir)
     expect(partial.operator.id).toBe('op-b')
-    expectDefaults(partial)
+    expectDefaults(partial, partialDir)
   })
 
   it('a change to a section the file left unset reaches no later load', async () => {
@@ -107,8 +109,10 @@ describe('loadConfig hands each caller its own defaults', () => {
     const first = load(newDir('operator:\n  id: op-a\n'))
     first.network.whitelist.push('198.51.100.7')
     first.engagement.activeTarget = '10.10.11.24'
-    expectDefaults(load(newDir()))
-    expectDefaults(load(newDir('operator:\n  id: op-b\n')))
+    const fresh = newDir()
+    expectDefaults(load(fresh), fresh)
+    const partialDir = newDir('operator:\n  id: op-b\n')
+    expectDefaults(load(partialDir), partialDir)
   })
 })
 

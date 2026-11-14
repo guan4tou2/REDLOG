@@ -374,14 +374,33 @@ export function mergeInitialConfig(config: RedLogConfig, projectId: string, init
  *  every later load in the process. */
 const defaults = (): RedLogConfig => structuredClone(DEFAULT_CONFIG)
 
+/** The engagement every project shared before it had one of its own: the
+ *  defaults' id, written into projects created before 2026-09-06 and into any
+ *  project opened once with no config.yaml. It is never a new row's
+ *  engagement (Spec 071 FR-007); rows already stored under it keep it. */
+export const SHARED_DEFAULT_ENGAGEMENT = 'default'
+
+/** A config that names no engagement of its own — none, an empty one, or the
+ *  shared `default` — is the project's: its directory's name, which is the
+ *  project id (project-manager.ts createProject). Two such projects used to
+ *  be one engagement, and the handoff spool attributes files by it. */
+function withProjectEngagement(config: RedLogConfig, projectDir: string): RedLogConfig {
+  const id = config.engagement?.id as unknown
+  if (id == null || id === '' || id === SHARED_DEFAULT_ENGAGEMENT) {
+    config.engagement = { ...config.engagement, id: path.basename(path.resolve(projectDir)) }
+  }
+  return config
+}
+
 /** What is on disk, in the three cases a caller has to tell apart.
  *
  *  `absent` is a project that has never been opened: the defaults ARE its
  *  config. `invalid` is a file that is there and cannot be used — a typo, a
  *  merge marker, a list or a scalar at the top, an empty file, something that
- *  is not a file. Its defaults would be a different engagement (`engagement.id`
- *  `default`, operator `operator-1`, no scope, offline off), so nothing may be
- *  read from it, and above all nothing may be written over it. */
+ *  is not a file. Its defaults are not its settings (operator `operator-1`, no
+ *  scope, offline off, and possibly another engagement than the file names),
+ *  so nothing may be read from it, and above all nothing may be written over
+ *  it. */
 export type ConfigRead =
   | { kind: 'absent'; config: RedLogConfig }
   | { kind: 'ok'; config: RedLogConfig }
@@ -412,7 +431,7 @@ export function readConfig(projectDir: string): ConfigRead {
     raw = fs.readFileSync(file, 'utf-8')
   } catch (e) {
     const code = (e as NodeJS.ErrnoException)?.code
-    if (code === 'ENOENT') return { kind: 'absent', config: defaults() }
+    if (code === 'ENOENT') return { kind: 'absent', config: withProjectEngagement(defaults(), projectDir) }
     return { kind: 'invalid', file, reason: `cannot be read (${code ?? 'unknown error'})` }
   }
   let parsed: unknown
@@ -423,7 +442,8 @@ export function readConfig(projectDir: string): ConfigRead {
   if (typeof parsed !== 'object' || Array.isArray(parsed)) {
     return { kind: 'invalid', file, reason: `not a mapping (a ${Array.isArray(parsed) ? 'list' : typeof parsed})` }
   }
-  return { kind: 'ok', config: deepMerge(defaults() as unknown as Record<string, unknown>, parsed as Record<string, unknown>) as unknown as RedLogConfig }
+  const merged = deepMerge(defaults() as unknown as Record<string, unknown>, parsed as Record<string, unknown>) as unknown as RedLogConfig
+  return { kind: 'ok', config: withProjectEngagement(merged, projectDir) }
 }
 
 /** The config, or the defaults when there is no file. Throws
