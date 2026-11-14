@@ -54,6 +54,32 @@ export function httpExchangeSql(a: string): { eligible: string; key: string; par
   }
 }
 
+/** A scope verdict ChainEmitter or a recompute wrote, at any distance. */
+function isScopeVerdict(event: Pick<RedLogEvent, 'agentType' | 'data'>): boolean {
+  return event.agentType === 'system' && event.data.subtype === SCOPE_VIOLATION_SUBTYPE
+}
+
+/** The row a clean scope verdict judged, when this row is one (decision
+ *  2026-11-15 §2). Such a verdict is a source event of that row's Activity
+ *  instead of an Activity of its own — but only when the cited row is in the
+ *  same project and dataset and is not itself one of these; the caller checks
+ *  that. Every other verdict (excluded, adjacent, unrelated, scope_cleared, a
+ *  recompute's rows, which are never in_scope) answers null and keeps its own
+ *  Activity. A pure function of the row; `activityKey` does not consult it. */
+export function attachedCauseId(event: Pick<RedLogEvent, 'agentType' | 'data'>): string | null {
+  if (!isScopeVerdict(event) || event.data.distance !== 'in_scope') return null
+  const causes = event.data._causes
+  return Array.isArray(causes) && typeof causes[0] === 'string' ? causes[0] : null
+}
+
+/** `attachedCauseId` over a row of `events` / `events_logged`: the cited id,
+ *  or NULL. Plain SQL, not a function call back into JavaScript, so the
+ *  projection pays no UDF call per row for it. The outer CASE keeps
+ *  `json_extract` off every row that is not a scope verdict.
+ *  test/kinds/attached-cause-consistency.test.ts holds the two to one answer. */
+export const ATTACHED_CAUSE_SQL = `(CASE WHEN agent_type='system' AND subtype='${SCOPE_VIOLATION_SUBTYPE}' THEN
+  CASE WHEN json_extract(data,'$.distance')='in_scope' AND json_type(data,'$._causes[0]')='text' THEN json_extract(data,'$._causes[0]') END END)`
+
 export function activityId(key: string): string {
   return 'act1:' + createHash('sha256').update(key, 'utf8').digest('hex')
 }
@@ -88,9 +114,10 @@ export function activityClassification(event: Pick<RedLogEvent, 'agentType' | 'd
       // written (report 10, A.5); the external API refuses all five. A scope
       // violation is written as agent_type `system`, subtype `scope_violation`,
       // and is the one row that belongs to `security`. In-scope verdicts are
-      // written under the same subtype as an adherence tally
-      // (scope-recompute-run.ts); they are not violations and stay `system`.
-      : event.agentType === 'system' && d.subtype === SCOPE_VIOLATION_SUBTYPE && d.distance !== 'in_scope' ? 'security'
+      // written under the same subtype as an adherence tally (ChainEmitter,
+      // alert/surface.ts; a recompute never writes one); they are not
+      // violations and stay `system`.
+      : isScopeVerdict(event) && d.distance !== 'in_scope' ? 'security'
       : ['scanner', 'dns', 'browser', 'pcap'].includes(event.agentType) ? 'network'
         : ['screenshot', 'marker', 'loot'].includes(event.agentType) ? 'evidence'
           : ['system', 'process', 'cleanup'].includes(event.agentType) ? 'system' : 'other'

@@ -183,7 +183,11 @@ const PINNED: Array<[name: string, small: Tuple, large: Tuple]> = [
   // term, by rowid and id, never by reading the tier.
   ['events:runQuery two terms across an exchange', [42, 511, 0, 61, 203, 0, 18], [42, 4411, 0, 104, 2003, 0, 18]],
   ['events:count two terms across an exchange', [23, 240, 0, 2, 203, 0, 9], [23, 2297, 0, 2, 2003, 0, 9]],
-  ['events:activityPage first page', [62, 109, 30000, 30250, 0, 0, 7], [62, 109, 300000, 300250, 0, 0, 7]],
+  // The first page projects every row, then joins clean scope verdicts to the
+  // Activity they judged in one more statement (attachVerdicts: a primary-key
+  // range and an id lookup, plain SQL, so no UDF call and no scan). The next
+  // page projects nothing new and skips it.
+  ['events:activityPage first page', [63, 109, 30000, 30250, 0, 0, 7], [63, 109, 300000, 300250, 0, 0, 7]],
   ['events:activityPage next page', [63, 113, 0, 251, 0, 0, 7], [63, 113, 0, 251, 0, 0, 7]],
   ['events:sourceSessions', [5, 5, 600, 601, 0, 0, 2], [5, 5, 6000, 6001, 0, 0, 2]],
   ['events:aggregateTargets', [1, 90, 0, 0, 0, 0, 1], [1, 900, 0, 0, 0, 0, 1]],

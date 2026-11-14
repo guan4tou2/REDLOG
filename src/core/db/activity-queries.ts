@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 import { getReadonlyDB } from './index'
 import { rowToEvent, type RedLogEvent } from './event-types'
 import { compileEventSelection, HOUSEKEEPING_SQL } from './event-queries'
-import { activityKey, activityId, activityClassification } from '../activity-projection'
+import { activityKey, activityId, activityClassification, ATTACHED_CAUSE_SQL } from '../activity-projection'
 import { QUERY_FIELDS, type ParsedQuery } from '../query/contract'
 import { EVENT_TIER_RANK, eventOrderAfter, eventOrderBy, type EventOrderColumns } from '../event-order'
 import type { ActivityRequest, ActivityPage, ActivityMembersRequest, ActivityMembersPage, ActivitySnapshot, ActivitySummary } from '../activity-contract'
@@ -56,10 +56,14 @@ function register(): ReturnType<typeof getReadonlyDB> {
     // it. A page now reads this table, and recomputes from the projection only
     // the groups that gained rows after the request's snapshot, so a frozen
     // cursor page still sees exactly the rows of its snapshot.
+    //
+    // `cause`: the row a clean scope verdict judged (ATTACHED_CAUSE_SQL), NULL
+    // on every other row. When that row is projected in the same project the
+    // verdict takes its `ak` and `hk` and the role `attached` (attachVerdicts).
     db.exec(`CREATE TEMP TABLE activity_projection_v1 (
       tier TEXT NOT NULL, _row INTEGER NOT NULL, id TEXT NOT NULL, engagement_id TEXT NOT NULL,
       timestamp INTEGER NOT NULL, ak TEXT NOT NULL, role TEXT NOT NULL, digest TEXT NOT NULL,
-      classification TEXT NOT NULL, hk INTEGER NOT NULL, tier_rank INTEGER NOT NULL, PRIMARY KEY(tier,_row)
+      classification TEXT NOT NULL, hk INTEGER NOT NULL, tier_rank INTEGER NOT NULL, cause TEXT, PRIMARY KEY(tier,_row)
     ); CREATE INDEX activity_projection_key_v1 ON activity_projection_v1(ak,timestamp,_row,tier_rank); CREATE INDEX activity_projection_id_v1 ON activity_projection_v1(id);
     CREATE TEMP TABLE activity_groups_v1 (
       engagement_id TEXT NOT NULL, ak TEXT NOT NULL, source_count INTEGER NOT NULL, hk_count INTEGER NOT NULL,
@@ -132,14 +136,18 @@ const order = (alias: string): EventOrderColumns =>
   ({ timestamp: `${alias}.timestamp`, row: `${alias}._row`, tierRank: `${alias}.tier_rank` })
 /** Every aggregate an Activity row shows, over the projected rows `where`
  *  admits, grouped per project and key. The anchor is the earliest Call (or
- *  the earliest row when there is no Call), first in display order on a tie. */
+ *  the earliest row when there is no Call), first in display order on a tie.
+ *  An attached verdict is counted as a source and nothing else: it has no
+ *  say in the time, the anchor, the pairing or (through the anchor) the
+ *  class — a verdict in the same millisecond as its DNS query would
+ *  otherwise take the query's title. */
 function groupStatsSql(where: string): string {
   return `SELECT s.*,COALESCE(s.start_at,s.first_at) AS sort_at,
     (SELECT a.id FROM ${PROJECTION} a WHERE a.ak=s.ak AND a.engagement_id=s.engagement_id
-      AND a.timestamp=COALESCE(s.start_at,s.first_at) AND (s.has_begin=0 OR a.role='begin') AND ${within('a')}
+      AND a.timestamp=COALESCE(s.start_at,s.first_at) AND (s.has_begin=0 OR a.role='begin') AND a.role<>'attached' AND ${within('a')}
       ORDER BY ${eventOrderBy('ASC', order('a'))} LIMIT 1) AS anchor_id
     FROM (SELECT p.engagement_id,p.ak,COUNT(*) AS source_count,SUM(p.hk) AS hk_count,
-      MIN(p.timestamp) AS first_at,MAX(p.timestamp) AS last_at,
+      MIN(CASE WHEN p.role<>'attached' THEN p.timestamp END) AS first_at,MAX(CASE WHEN p.role<>'attached' THEN p.timestamp END) AS last_at,
       MIN(CASE WHEN p.role='begin' THEN p.timestamp END) AS start_at,
       MAX(p.role='begin') AS has_begin,MAX(p.role='result') AS has_result,MAX(p.role='interrupted') AS has_interrupted,
       CASE WHEN MIN(CASE WHEN p.role='begin' THEN p.digest END)<>MAX(CASE WHEN p.role='begin' THEN p.digest END)
@@ -171,22 +179,42 @@ function syncProjection(db: ReturnType<typeof getReadonlyDB>): void {
     grew = true
     db.prepare(`WITH keyed AS MATERIALIZED (
       SELECT e.*,redlog_activity_key_v1(id,engagement_id,session_id,agent_type,data) AS ak,e.rowid AS _row,
-        CASE WHEN ${HOUSEKEEPING_SQL} THEN 0 ELSE 1 END AS hk
+        CASE WHEN ${HOUSEKEEPING_SQL} THEN 0 ELSE 1 END AS hk,${ATTACHED_CAUSE_SQL} AS cause
       FROM ${table} e WHERE rowid>? AND rowid<=?
-    ) INSERT INTO ${PROJECTION}
+    ) INSERT INTO ${PROJECTION} (tier,_row,id,engagement_id,timestamp,ak,role,digest,classification,hk,tier_rank,cause)
       SELECT ?,_row,id,engagement_id,timestamp,ak,
         CASE WHEN substr(ak,1,6)='event:' THEN 'member'
           WHEN subtype IN ('command_start','tool_call','http_request_start') THEN 'begin'
           WHEN subtype IN ('command_end','tool_result','http_response','http_error') THEN 'result'
           WHEN subtype='tool_interrupted' THEN 'interrupted' ELSE 'member' END,
-        redlog_activity_digest_v1(data),redlog_activity_class_v1(agent_type,data),hk,? FROM keyed`).run(oldMax, max, tier, EVENT_TIER_RANK[tier])
+        redlog_activity_digest_v1(data),redlog_activity_class_v1(agent_type,data),hk,?,cause FROM keyed`).run(oldMax, max, tier, EVENT_TIER_RANK[tier])
   }
+  if (grew) attachVerdicts(db, oldChained, oldLogged)
   // Re-aggregate only the Activities that gained a row: the work is the new
   // rows and their groups, not the project.
   if (grew) db.prepare(`INSERT OR REPLACE INTO temp.activity_groups_v1 (${GROUP_COLUMNS})
     SELECT ${GROUP_COLUMNS} FROM (${groupStatsSql(`p.ak IN (SELECT ak FROM ${PROJECTION} WHERE (tier='chained' AND _row>@oc) OR (tier='logged' AND _row>@ol))`)})`)
     .run({ oc: oldChained, ol: oldLogged, bc: boundary.chainedMaxRowId, bl: boundary.loggedMaxRowId })
   indexed.set(db, boundary)
+}
+/** Decision 2026-11-15 §2: a clean scope verdict projected in this pass joins
+ *  the Activity of the row it judged, when that row is projected in the same
+ *  project and is not one of these verdicts itself. It takes that row's key
+ *  and housekeeping flag (so `excludeHousekeeping` hides or keeps the two
+ *  together); nothing stored changes, and `activityKey` does not know.
+ *
+ *  Run once per pass, after BOTH tiers' new rows are in: an HTTP or DNS
+ *  verdict is chained and its cause logged, and the cause is committed before
+ *  its verdict is dispatched (ingest.ts step 7, tailer-host.ts), so a snapshot
+ *  that holds the verdict holds the cause. A verdict whose cause is not
+ *  projected keeps its own Activity; when retention later deletes a cause, the
+ *  rebuild (syncProjection's catch) projects its verdict alone again. The
+ *  new rows are a primary-key range; each cause is one `id` index lookup. */
+function attachVerdicts(db: ReturnType<typeof getReadonlyDB>, oldChained: number, oldLogged: number): void {
+  db.prepare(`UPDATE ${PROJECTION} AS v SET ak=c.ak,hk=c.hk,role='attached'
+    FROM ${PROJECTION} AS c
+    WHERE ((v.tier='chained' AND v._row>@oc) OR (v.tier='logged' AND v._row>@ol)) AND v.cause IS NOT NULL
+      AND c.id=v.cause AND c.engagement_id=v.engagement_id AND c.cause IS NULL`).run({ oc: oldChained, ol: oldLogged })
 }
 function clearProjection(db: ReturnType<typeof getReadonlyDB>): void {
   indexed.delete(db)
@@ -218,8 +246,12 @@ function matchMode(req: ActivityRequest, s: ReturnType<typeof setup>): MatchMode
     && !f.targetId && !f.agentType && f.since == null && f.before == null && !f.tier && !f.inScopeOnly && !f.hidePersonal
   return !plain ? 'query' : req.excludeHousekeeping ? 'visible' : 'all'
 }
-function matchedRow(mode: MatchMode, alias: string): string {
-  return mode === 'all' ? '1' : mode === 'visible' ? `(${alias}.hk=0)` : `(${alias}.id IN (SELECT id FROM hit_ids))`
+/** Under `excludeHousekeeping` an attached verdict is housekeeping when the
+ *  row it judged is (its `hk`), which the selection cannot see: it judges the
+ *  verdict row itself. */
+function matchedRow(mode: MatchMode, alias: string, excludeHousekeeping?: boolean): string {
+  return mode === 'all' ? '1' : mode === 'visible' ? `(${alias}.hk=0)`
+    : `(${alias}.id IN (SELECT id FROM hit_ids)${excludeHousekeeping ? ` AND (${alias}.role<>'attached' OR ${alias}.hk=0)` : ''})`
 }
 interface Built { sql: string; params: unknown[]; named: Record<string, unknown>; mode: MatchMode }
 function ctes(req: ActivityRequest, s: ReturnType<typeof setup>, only?: string): Built {
@@ -233,7 +265,8 @@ function ctes(req: ActivityRequest, s: ReturnType<typeof setup>, only?: string):
       : 'SELECT g.*,h.n AS matched_count FROM gstats g JOIN hits h ON h.ak=g.ak'
   const sql = `WITH ${mode === 'query' ? `hit_ids AS MATERIALIZED (${s.sql}),
   hits AS MATERIALIZED (SELECT p.ak,COUNT(*) AS n FROM hit_ids h JOIN ${PROJECTION} p ON p.id=h.id
-    WHERE p.engagement_id=@eng AND ${within('p')}${onlyRow} GROUP BY p.ak),` : ''}
+    WHERE p.engagement_id=@eng AND ${within('p')}${onlyRow}${req.excludeHousekeeping ? " AND (p.role<>'attached' OR p.hk=0)" : ''}
+    GROUP BY p.ak HAVING MAX(p.role<>'attached')=1),` : ''}
   dirty AS MATERIALIZED (SELECT DISTINCT ak FROM ${PROJECTION} WHERE (tier='chained' AND _row>@bc) OR (tier='logged' AND _row>@bl)),
   gstats AS (
     SELECT ${GROUP_COLUMNS} FROM temp.activity_groups_v1 WHERE engagement_id=@eng${onlyGroup} AND ak NOT IN (SELECT ak FROM dirty)
@@ -287,7 +320,7 @@ export function queryActivityPage(request: ActivityRequest): ActivityPage {
       ,paged AS (SELECT * FROM counted ${past} ORDER BY sort_at DESC,ak DESC LIMIT @lim)
       SELECT paged.*,anchor.*,
       (SELECT json_group_array(id) FROM (SELECT p.id FROM ${PROJECTION} p WHERE p.ak=paged.ak AND p.engagement_id=@eng AND ${within('p')} ORDER BY ${eventOrderBy('ASC', order('p'))} LIMIT ${PREVIEW})) AS source_ids,
-      (SELECT json_group_array(id) FROM (SELECT m.id FROM ${PROJECTION} m WHERE m.ak=paged.ak AND m.engagement_id=@eng AND ${within('m')} AND ${matchedRow(c.mode, 'm')} ORDER BY ${eventOrderBy('ASC', order('m'))} LIMIT ${PREVIEW})) AS matched_ids,
+      (SELECT json_group_array(id) FROM (SELECT m.id FROM ${PROJECTION} m WHERE m.ak=paged.ak AND m.engagement_id=@eng AND ${within('m')} AND ${matchedRow(c.mode, 'm', request.excludeHousekeeping)} ORDER BY ${eventOrderBy('ASC', order('m'))} LIMIT ${PREVIEW})) AS matched_ids,
       (SELECT r.id FROM ${PROJECTION} r WHERE r.ak=paged.ak AND r.engagement_id=@eng AND ${within('r')} AND r.role='result' ORDER BY ${eventOrderBy('DESC', order('r'))} LIMIT 1) AS result_id
       FROM paged JOIN ${PROJECTION} anchor ON anchor.id=paged.anchor_id AND anchor.engagement_id=@eng AND ${within('anchor')} ORDER BY paged.sort_at DESC,paged.ak DESC`)
       .all(...c.params, { ...c.named, lim: limit + 1, ...(s.cursor ? { cts: s.cursor.ts, ckey: s.cursor.key } : {}) }) as Array<Record<string, unknown>>
@@ -322,7 +355,7 @@ export function queryActivityMembers(request: ActivityMembersRequest): ActivityM
     const after = eventOrderAfter('ASC', order('p'), { timestamp: '@cts', row: '@crow', tierRank: '@crank' })
     const past = s.cursor ? byMatch ? `AND (p.matched<@cm OR (p.matched=@cm AND ${after}))` : `AND ${after}` : ''
     const rows = db.prepare(`${c.sql} SELECT p.*,f.source_count,f.matched_count
-      FROM (SELECT q.*,${matchedRow(c.mode, 'q')} AS matched FROM ${PROJECTION} q WHERE q.ak=@only AND q.engagement_id=@eng AND ${within('q')}) p
+      FROM (SELECT q.*,${matchedRow(c.mode, 'q', request.excludeHousekeeping)} AS matched FROM ${PROJECTION} q WHERE q.ak=@only AND q.engagement_id=@eng AND ${within('q')}) p
       JOIN filtered f ON f.ak=p.ak
       WHERE 1=1 ${past} ORDER BY ${byMatch ? 'p.matched DESC,' : ''}${eventOrderBy('ASC', order('p'))} LIMIT @lim`)
       .all(...c.params, { ...c.named, lim: limit + 1, ...(s.cursor ? { cts: s.cursor.ts, crow: s.cursor.row, crank: EVENT_TIER_RANK[s.cursor.tier!], ...(byMatch ? { cm: s.cursor.matched } : {}) } : {}) }) as Array<Record<string, unknown>>

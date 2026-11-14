@@ -19,11 +19,14 @@ const systemData = (item: ActivitySummary): Record<string, unknown> | undefined 
 
 /** A clean scope verdict: every in-scope action writes one, the positive
  *  record that scope was observed (`ScopePolicy` always emits `in_scope`). It
- *  stays in the chain and in every count; here it is RedLog's own bookkeeping
- *  beside the action it judged, and its `action` repeats that action's text,
- *  so a search for the command matched it too (decision 2026-11-15 §1 item 6).
- *  With no scope configured the same row says 範圍未判定 (`authority:
- *  'unknown'`). Any other distance is an observation and never folds. */
+ *  stays in the chain and in every count. A verdict whose judged row is in the
+ *  record is a source event of that row's activity (decision 2026-11-15 §2,
+ *  `attachedCauseId`) and never reaches this list as a row of its own. What
+ *  this fold still sees is a clean verdict whose cause is not there: an old
+ *  row written without `_causes`, or one whose HTTP/DNS row retention has
+ *  deleted (§1 item 6 still applies to those). With no scope configured the
+ *  same row says 範圍未判定 (`authority: 'unknown'`). Any other distance is an
+ *  observation and never folds. */
 function isScopeAdherence(item: ActivitySummary): boolean {
   const d = systemData(item)
   return d?.subtype === SCOPE_VIOLATION_SUBTYPE && d.distance === 'in_scope'

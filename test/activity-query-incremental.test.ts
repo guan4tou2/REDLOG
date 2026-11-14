@@ -41,16 +41,36 @@ let n = 0
 // first case timed out at 15 s on 2026-11-15 while the same case ran in
 // 0.45 s on main the same hour).
 function seed(count: number, base = 0): void { getDB().transaction(() => seedRows(count, base))() }
+/** A scope verdict citing `cause` (decision 2026-11-15 §2: a clean one joins
+ *  the cited row's Activity when that row is projected). Each cites a row
+ *  inserted before it, as production does: the cause commits before its
+ *  verdict is dispatched. */
+const verdict = (id: string, ts: number, cause: string, distance = 'in_scope'): void =>
+  add(id, ts, 'system', { subtype: 'scope_violation', target: '10.0.0.5', action: 'id', source: 'shell', distance, _causes: [cause] })
 function seedRows(count: number, base: number): void {
   for (let i = 0; i < count; i++) {
-    const k = (base + i) % 7, ts = 1000 + base + i
+    const j = base + i, k = j % 7, ts = 1000 + j
     if (k === 0) add(`s${base + i}`, ts, 'shell', { subtype: 'command_start', terminalId: 't1', command_id: `c${(base + i) >> 1}`, command: 'id' })
     else if (k === 1) add(`e${base + i}`, ts, 'shell', { subtype: 'command_end', terminalId: 't1', command_id: `c${(base + i - 1) >> 1}`, command: 'id', exit_code: 0 })
-    else if (k === 2) add(`q${base + i}`, ts, 'scanner', { subtype: 'http_request_start', flow_id: `f${(base + i) % 5}` }, { tier: 'logged' })
-    else if (k === 3) add(`r${base + i}`, ts, 'scanner', { subtype: 'http_response', flow_id: `f${(base + i) % 5}`, status: (base + i) % 3 }, { tier: 'logged' })
-    else if (k === 4) add(`h${base + i}`, ts, 'shell', { subtype: 'session_start', terminalId: 't1' }) // housekeeping
-    else if (k === 5) add(`t${base + i}`, ts, 'agent', { subtype: 'tool_result', agent: 'claude-code', session_id: 'conv', tool_use_id: `u${(base + i) % 4}`, output: String(base + i) })
-    else add(`m${base + i}`, ts, 'marker', { title: `m${n++}` }, { project: (base + i) % 2 ? 'eng' : 'other' })
+    else if (k === 2) {
+      add(`q${base + i}`, ts, 'scanner', { subtype: 'http_request_start', flow_id: `f${(base + i) % 5}` }, { tier: 'logged' })
+      // chained verdict, logged cause, stamped a millisecond before the request
+      verdict(`v${j}`, ts - 1, `q${j}`)
+    } else if (k === 3) {
+      add(`r${base + i}`, ts, 'scanner', { subtype: 'http_response', flow_id: `f${(base + i) % 5}`, status: (base + i) % 3 }, { tier: 'logged' })
+      verdict(`x${j}`, ts, `q${j - 1}`, 'excluded') // not clean: its own Activity
+    } else if (k === 4) {
+      add(`h${base + i}`, ts, 'shell', { subtype: 'session_start', terminalId: 't1' }) // housekeeping
+      if (j % 14 === 4) verdict(`w${j}`, ts, `h${j}`) // housekeeping with the row it judged
+    } else if (k === 5) {
+      add(`t${base + i}`, ts, 'agent', { subtype: 'tool_result', agent: 'claude-code', session_id: 'conv', tool_use_id: `u${(base + i) % 4}`, output: String(base + i) })
+      // two blocks back: in the late seed this verdict joins an Activity
+      // whose rows all predate the frozen snapshot
+      if (j >= 19) verdict(`v${j}`, ts, `s${j - 19}`)
+    } else {
+      add(`m${base + i}`, ts, 'marker', { title: `m${n++}` }, { project: (base + i) % 2 ? 'eng' : 'other' })
+      if (j % 14 === 6) verdict(`d${j}`, ts, `missing-${j}`) // cites nothing: its own Activity
+    }
   }
 }
 /** Everything a page says except the cursor, whose request fingerprint
@@ -75,6 +95,11 @@ describe('Activity grouping kept per Activity', () => {
       const general = pages(request({ excludeHousekeeping, filter: EVERY_ROW }))
       expect(fast.length).toBeGreaterThan(3)
       expect(fast.map(shape)).toEqual(general.map(shape))
+      // clean verdicts joined the Activities they judged; the others did not
+      const items = fast.flatMap(p => p.items)
+      expect(items.some(a => a.anchor.id.startsWith('q') && a.sourcePreview.ids.some(id => id.startsWith('v')))).toBe(true)
+      expect(items.filter(a => /^[vw]/.test(a.anchor.id))).toEqual([])
+      expect(items.filter(a => /^[xd]/.test(a.anchor.id)).length).toBeGreaterThan(0)
       // The fixture's session_start rows are housekeeping: excluding them must
       // drop their Activities, or this case compares nothing new.
       if (excludeHousekeeping) expect(fast[0].totalGroups).toBeLessThan(queryActivityPage(request()).totalGroups)
@@ -100,6 +125,11 @@ describe('Activity grouping kept per Activity', () => {
       }
       expect(frozen.length).toBeGreaterThan(3)
       expect(frozen.map(shape)).toEqual(before.map(shape))
+      // a late verdict joined an Activity from before the snapshot: it shows
+      // on refresh, and the frozen pages above did not see it
+      const fresh = pages(request({ filter })).flatMap(p => p.items)
+      expect(fresh.find(a => a.anchor.id === 's63')?.sourcePreview.ids).toContain('v82')
+      expect(before.flatMap(p => p.items).find(a => a.anchor.id === 's63')?.sourcePreview.ids).not.toContain('v82')
     })
   }
 
@@ -123,13 +153,17 @@ describe('Activity grouping kept per Activity', () => {
     const projected = (): number => (getReadonlyDB().prepare('SELECT COUNT(*) AS n FROM temp.activity_projection_v1').get() as { n: number }).n
     const held = projected()
     expect(held).toBeGreaterThan(0)
+    const stored = (): number => (getDB().prepare('SELECT (SELECT COUNT(*) FROM events)+(SELECT COUNT(*) FROM events_logged) AS n').get() as { n: number }).n
+    expect(held).toBe(stored())
     seed(5, 30)
+    const added = stored() - held
     expect(() => queryActivityPage(request({ limit: 5, cursor: 'not-a-cursor' }))).toThrow(/cursor/)
     expect(projected()).toBe(held)
     // The rows the failed read projected were rolled back with it; the next
     // read projects them again rather than skipping them.
     const next = queryActivityPage(request({ limit: 5 }))
-    expect(projected()).toBe(held + 5)
+    expect(added).toBeGreaterThanOrEqual(5)
+    expect(projected()).toBe(held + added)
     expect(next.totalGroups).toBeGreaterThan(page.totalGroups)
   })
 
