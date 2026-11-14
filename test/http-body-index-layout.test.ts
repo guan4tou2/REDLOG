@@ -1,5 +1,7 @@
 // How the body index stores and addresses its documents (decision 2026-11-14
-// §6). Each ref has an id of its own that is never reused.
+// §6). Each ref has an id of its own that is never reused; document n of kind
+// k of ref r is rowid r*refSpan + k*kindSpan + n, written with INSERT OR
+// REPLACE, removed by rowid from the counts the ref row records.
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import Database from 'better-sqlite3'
 import { createHash } from 'node:crypto'
@@ -9,6 +11,7 @@ import path from 'node:path'
 import { requires } from './helpers/requires'
 import { savedBody, savedResponse } from './helpers/body-index-work'
 import { searchHttpBodyEventIds } from './helpers/body-search'
+import { documentRowids, documentHolds } from './helpers/body-index-layout'
 
 const sqlite = requires('better-sqlite3')
 let db: typeof import('../src/core/db')
@@ -37,6 +40,18 @@ const V10 = `CREATE VIRTUAL TABLE body_fts USING fts5(content,tokenize='unicode6
   CREATE INDEX body_event_refs_order ON body_event_refs(tier,row,pos);
   CREATE TABLE body_index_meta (key TEXT PRIMARY KEY,value TEXT NOT NULL);`
 const link = (id: string, text: string): void => idx.linkHttpBodyEvent({ id, data: { subtype: 'http_response', response_body: inline(text) } }, dir)
+const readIndex = <T>(run: (index: Database.Database) => T): T => {
+  const index = new Database(indexFile(), { readonly: true })
+  try { return run(index) } finally { index.close() }
+}
+/** A document no ref accounts for, written straight into the shared index: what
+ *  a fault, or a future write path, could leave at a rowid. */
+const plant = (rowid: number, text: string): void => {
+  const index = new Database(indexFile())
+  try { index.prepare('INSERT INTO body_fts(rowid,content) VALUES(?,?)').run(rowid, text) } finally { index.close() }
+}
+const refRow = (id: string) => readIndex(index => index.prepare('SELECT ref,status,reason,raw_docs,decoded_docs FROM body_event_refs WHERE event_id=?').get(id) as
+  { ref: number; status: string; reason: string; raw_docs: number; decoded_docs: number })
 function refs(): Array<{ ref: number; event_id: string; sha256: string }> {
   const index = new Database(indexFile(), { readonly: true })
   try { return index.prepare('SELECT ref,event_id,sha256 FROM body_event_refs ORDER BY ref').all() as Array<{ ref: number; event_id: string; sha256: string }> } finally { index.close() }
@@ -44,7 +59,7 @@ function refs(): Array<{ ref: number; event_id: string; sha256: string }> {
 
 sqlite.describe('body index layout', () => {
   beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-body-layout-')); db.initDB(dir) })
-  afterEach(() => { vi.restoreAllMocks(); idx.closeHttpBodyIndex(); db.closeDB(); fs.rmSync(dir, { recursive: true, force: true }) })
+  afterEach(() => { vi.restoreAllMocks(); idx._limitDocumentsPerKind(); idx.closeHttpBodyIndex(); db.closeDB(); fs.rmSync(dir, { recursive: true, force: true }) })
 
   it('a ref id is never reused once its row is deleted', () => {
     link('A', 'first body')
@@ -77,6 +92,114 @@ sqlite.describe('body index layout', () => {
     try {
       expect(index.pragma('user_version', { simple: true })).toBe(11)
       expect(index.prepare('SELECT ref,event_id FROM body_event_refs').all()).toEqual([{ ref: 1, event_id: 'E' }])
+      expect(index.prepare("SELECT name FROM sqlite_master WHERE name LIKE 'body_docs%'").all()).toEqual([])
     } finally { index.close() }
+  })
+
+  it('a document left at the rowids of a dead ref is not inherited by the ref that comes next', () => {
+    savedResponse('A', { response_body_ref: savedBody(dir, '{"v":"ABODYWORD"}') })
+    expect(searchHttpBodyEventIds('ABODYWORD', dir)).toEqual(['A'])
+    const before = refRow('A')
+    idx.pruneHttpBodyIndex(refs()[0].sha256, dir)
+    plant(idx._documentRowid(before.ref, 0, 0), 'LEFTOVERWORD')
+    // The next search walks (a prune forgets the watermark) and links A anew.
+    expect(searchHttpBodyEventIds('ABODYWORD', dir)).toEqual(['A'])
+    expect(refRow('A').ref).toBeGreaterThan(before.ref)
+    expect(searchHttpBodyEventIds('LEFTOVERWORD', dir)).toEqual([])
+  })
+
+  it('every document write replaces what its rowid held', () => {
+    const ref = savedBody(dir, '{"v":"REALWORD"}'), file = path.join(dir, 'http-bodies', ref.file)
+    fs.rmSync(file)
+    savedResponse('E', { response_body_ref: ref })
+    expect(searchHttpBodyEventIds('REALWORD', dir)).toEqual([])
+    const missing = refRow('E')
+    expect(missing).toMatchObject({ status: 'missing', raw_docs: 0 })
+    // Something left at the rowid E's first document will take.
+    const first = idx._documentRowid(missing.ref, 0, 0)
+    plant(first, 'STALEWORD')
+    fs.writeFileSync(file, '{"v":"REALWORD"}')
+    expect(searchHttpBodyEventIds('REALWORD', dir)).toEqual(['E'])
+    // A plain INSERT there is refused by a table that stores its text, and
+    // added to by a contentless one: the old words would stay searchable.
+    expect(searchHttpBodyEventIds('STALEWORD', dir)).toEqual([])
+    readIndex(index => expect({ real: documentHolds(index, first, 'REALWORD'), stale: documentHolds(index, first, 'STALEWORD') }).toEqual({ real: true, stale: false }))
+  })
+
+  it('a read that ends without text removes the documents the ref had, of both kinds', () => {
+    // Saved and decoded: one document of each kind.
+    const text = `{"v":"OLDWORD \\u65b0\\u8a5e"}`, ref = savedBody(dir, text), file = path.join(dir, 'http-bodies', ref.file)
+    savedResponse('E', { response_body_ref: ref })
+    expect(searchHttpBodyEventIds('新詞', dir)).toEqual(['E'])
+    const indexed = refRow('E')
+    expect(indexed).toMatchObject({ status: 'indexed', raw_docs: 1, decoded_docs: 1 })
+    readIndex(index => expect(documentRowids(index, 'E')).toEqual([idx._documentRowid(indexed.ref, 0, 0), idx._documentRowid(indexed.ref, 1, 0)]))
+    // The same size, other bytes: its hash no longer matches, and the next
+    // search re-reads it after its signature changed.
+    fs.writeFileSync(file, text.replace('OLDWORD', 'NEWWORD'))
+    expect(searchHttpBodyEventIds('OLDWORD', dir)).toEqual([])
+    expect(searchHttpBodyEventIds('新詞', dir)).toEqual([])
+    expect(refRow('E')).toMatchObject({ status: 'failed', raw_docs: 0, decoded_docs: 0 })
+    readIndex(index => expect(documentRowids(index, 'E')).toEqual([]))
+  })
+
+  it('a body that would need more documents than its rowids hold is indexed as far as they go, and is partial', () => {
+    idx._limitDocumentsPerKind(1)
+    const filler = 'filler words '.repeat(100_000)
+    const ref = savedBody(dir, `{"v":"HEADWORD ${filler} TAILWORD"}`)
+    savedResponse('E', { response_body_ref: ref })
+    expect(searchHttpBodyEventIds('HEADWORD', dir)).toEqual(['E'])
+    expect(searchHttpBodyEventIds('TAILWORD', dir)).toEqual([])
+    expect(refRow('E')).toMatchObject({ status: 'partial', reason: 'too-large', raw_docs: 1, decoded_docs: 0 })
+    expect(idx.bodySearchCoverage().sources!.find(s => s.kind === 'body')).toMatchObject({ status: 'partial', partial: 1 })
+  })
+
+  it('two refs never share a rowid: each has its own range, and a document beyond it is refused', () => {
+    const { refSpan, kindSpan, maxRef } = idx._documentLayout()
+    // KIND_SPAN covers a body at the default capture cap (10 MiB) many times
+    // over: at most ceil(10 MiB / 1 MiB) + 2 documents of each kind.
+    expect(kindSpan).toBeGreaterThanOrEqual(Math.ceil(10 * 1024 * 1024 / (1024 * 1024)) + 2)
+    expect(refSpan).toBe(2 * kindSpan)
+    // Generated counts and refs, the extremes included.
+    const counts = [0, 1, 2, 12, kindSpan - 1, ...Array.from({ length: 40 }, (_, i) => (i * 7919) % kindSpan)]
+    const ids = [1, 2, 3, 4097, 2 ** 32, maxRef - 2, maxRef - 1, ...Array.from({ length: 20 }, (_, i) => 1 + ((i * 2654435761) % (maxRef - 1)))]
+    for (const ref of ids) for (const kind of [0, 1] as const) for (const n of counts) {
+      const rowid = idx._documentRowid(ref, kind, n)
+      expect(Number.isSafeInteger(rowid)).toBe(true)
+      // The ref, kind and number come back out, so no two (ref, kind, n) share it.
+      expect([Math.floor(rowid / refSpan), Math.floor((rowid % refSpan) / kindSpan), rowid % kindSpan]).toEqual([ref, kind, n])
+    }
+    expect(idx._documentRowid(maxRef - 1, 1, kindSpan - 1)).toBe(Number.MAX_SAFE_INTEGER)
+    expect(() => idx._documentRowid(1, 0, kindSpan)).toThrow(RangeError)
+    expect(() => idx._documentRowid(1, 1, kindSpan)).toThrow(RangeError)
+    expect(() => idx._documentRowid(maxRef, 0, 0)).toThrow(RangeError)
+    expect(() => idx._documentRowid(0, 0, 0)).toThrow(RangeError)
+  })
+
+  it('the last ref id the table takes has exact rowids, and the next is refused', () => {
+    const { maxRef } = idx._documentLayout()
+    savedResponse('A', { response_body_ref: savedBody(dir, '{"v":"FIRSTWORD"}') })
+    expect(searchHttpBodyEventIds('FIRSTWORD', dir)).toEqual(['A'])
+    const index = new Database(indexFile())
+    try { index.prepare("UPDATE sqlite_sequence SET seq=? WHERE name='body_event_refs'").run(maxRef - 2) } finally { index.close() }
+    savedResponse('B', { response_body_ref: savedBody(dir, '{"v":"LASTWORD"}') })
+    expect(searchHttpBodyEventIds('LASTWORD', dir)).toEqual(['B'])
+    expect(refRow('B').ref).toBe(maxRef - 1)
+    readIndex(index => expect(documentRowids(index, 'B')).toEqual([idx._documentRowid(maxRef - 1, 0, 0)]))
+    savedResponse('C', { response_body_ref: savedBody(dir, '{"v":"OVERWORD"}') })
+    expect(() => searchHttpBodyEventIds('OVERWORD', dir)).toThrow(/CHECK constraint failed/)
+  })
+
+  it('a rowid bound beside MATCH is compared as an integer only when cast', () => {
+    savedResponse('A', { response_body_ref: savedBody(dir, '{"v":"alphaword"}') })
+    savedResponse('B', { response_body_ref: savedBody(dir, '{"v":"betaword"}') })
+    expect(searchHttpBodyEventIds('alphaword', dir)).toEqual(['A'])
+    const ofB = idx._documentRowid(refRow('B').ref, 0, 0)
+    readIndex(index => {
+      // better-sqlite3 binds a JS number as REAL, and FTS5 then ignores the
+      // rowid and returns every match: B's rowid "holds" A's word.
+      expect(index.prepare("SELECT count(*) AS n FROM body_fts WHERE body_fts MATCH 'alphaword' AND rowid=?").get(ofB)).toEqual({ n: 1 })
+      expect({ a: documentHolds(index, ofB, 'alphaword'), b: documentHolds(index, ofB, 'betaword') }).toEqual({ a: false, b: true })
+    })
   })
 })

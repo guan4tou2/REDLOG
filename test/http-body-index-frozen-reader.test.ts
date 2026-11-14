@@ -34,7 +34,7 @@ function shared(): { refs: number; docs: number; mark: unknown } {
   try {
     const n = (sql: string) => (index.prepare(sql).get() as { n: number }).n
     const mark = index.prepare("SELECT value FROM body_index_meta WHERE key='mark'").get() as { value: string } | undefined
-    return { refs: n('SELECT count(*) AS n FROM body_event_refs'), docs: n('SELECT count(*) AS n FROM body_docs'), mark: mark && JSON.parse(mark.value).tiers }
+    return { refs: n('SELECT count(*) AS n FROM body_event_refs'), docs: n('SELECT count(*) AS n FROM body_fts'), mark: mark && JSON.parse(mark.value).tiers }
   } finally { index.close() }
 }
 const chainedBody = (id: string, text: string): string => {

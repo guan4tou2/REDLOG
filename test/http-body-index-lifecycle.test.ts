@@ -19,8 +19,10 @@
 //      since its previous sync plus the refs retried every time (missing and
 //      failed), never by the project's size;
 //  (c) live coverage counts one ref per body the model has.
-// At the end, and after every step: every document has a body_docs row and
-// every body_docs row a document, and only a ref with text has documents.
+// At the end, and after every step: every document's rowid decodes to a ref
+// whose recorded counts cover it, every counted document exists (so documents
+// and counts match one to one), only a ref with text has documents, and the
+// index passes SQLite's integrity check.
 //
 // REDLOG_LIFECYCLE_SEED=<n> replays one seed.
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -32,6 +34,7 @@ import path from 'node:path'
 import { requires } from './helpers/requires'
 import { cost, parsed, escapeNonAscii } from './helpers/body-index-work'
 import { openFrozenReader, type FrozenReader } from './helpers/frozen-export-reader'
+import { layoutViolations } from './helpers/body-index-layout'
 import type { ExportSnapshot } from '../src/core/export-plan'
 
 const sqlite = requires('better-sqlite3')
@@ -183,11 +186,10 @@ sqlite.describe('body index lifecycle, seeded', () => {
     function documentsHold(): void {
       const index = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
       try {
-        expect(index.prepare('SELECT count(*) AS n FROM body_fts WHERE rowid NOT IN (SELECT doc FROM body_docs)').get(), `${where()}: documents without body_docs`).toEqual({ n: 0 })
-        expect(index.prepare('SELECT count(*) AS n FROM body_docs WHERE doc NOT IN (SELECT rowid FROM body_fts)').get(), `${where()}: body_docs without a document`).toEqual({ n: 0 })
-        const keyed = (index.prepare("SELECT name FROM pragma_table_info('body_docs')").all() as { name: string }[]).some(c => c.name === 'slot') ? 'slot' : 'sha256'
-        expect(index.prepare(`SELECT count(*) AS n FROM body_docs d WHERE NOT EXISTS(SELECT 1 FROM body_event_refs r WHERE r.event_id=d.event_id AND r.${keyed}=d.${keyed} AND r.status IN ('indexed','partial'))`).get(),
-          `${where()}: documents of a ref without text`).toEqual({ n: 0 })
+        // stray: documents no ref accounts for; missing: counted documents
+        // that are not there; textless: documents of a ref without text.
+        expect(layoutViolations(index), `${where()}: documents and the refs that count them`).toEqual({ stray: 0, missing: 0, textless: 0 })
+        expect(index.pragma('integrity_check'), `${where()}: integrity`).toEqual([{ integrity_check: 'ok' }])
       } finally { index.close() }
     }
 
@@ -198,7 +200,7 @@ sqlite.describe('body index lifecycle, seeded', () => {
     const sharedState = (): unknown => {
       const index = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
       try {
-        return { refs: index.prepare('SELECT count(*) AS n FROM body_event_refs').get(), docs: index.prepare('SELECT count(*) AS n FROM body_docs').get(),
+        return { refs: index.prepare('SELECT count(*) AS n FROM body_event_refs').get(), docs: index.prepare('SELECT count(*) AS n FROM body_fts').get(),
           mark: index.prepare("SELECT value FROM body_index_meta WHERE key='mark'").get() }
       } finally { index.close() }
     }

@@ -10,6 +10,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { requires } from './helpers/requires'
 import { parsed, savedBody, savedResponse, bodySource } from './helpers/body-index-work'
+import { documentRowids } from './helpers/body-index-layout'
 
 const sqlite = requires('better-sqlite3')
 let db: typeof import('../src/core/db')
@@ -29,7 +30,7 @@ sqlite.describe('a read that fails after it wrote documents', () => {
 
   const docs = (id: string): number => {
     const index = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
-    try { return (index.prepare('SELECT count(*) AS n FROM body_docs WHERE event_id=?').get(id) as { n: number }).n } finally { index.close() }
+    try { return documentRowids(index, id).length } finally { index.close() }
   }
   /** From the first byte read on, the body file looks `gone` (removed) or
    *  `replaced` (another file) to the check after the read. */
@@ -47,8 +48,11 @@ sqlite.describe('a read that fails after it wrote documents', () => {
     return () => { reads.mockRestore(); stats.mockRestore(); reading = false }
   }
 
-  it.each(['gone', 'replaced'] as const)('a body %s mid-read keeps no document, however often it is retried', how => {
-    const text = '{"n":"MIDREADWORD"}', ref = savedBody(dir, text), file = path.join(dir, 'http-bodies', ref.file)
+  // `documents`: what the body makes once read whole. Three is a body of three
+  // overlapping chunks, each written before the read fails.
+  it.each([['gone', 1], ['replaced', 1], ['gone', 3]] as const)('a body %s mid-read keeps none of its %i documents, however often it is retried', (how, documents) => {
+    const text = documents === 1 ? '{"n":"MIDREADWORD"}' : `{"n":"MIDREADWORD ${'filler words '.repeat(170_000)}"}`
+    const ref = savedBody(dir, text), file = path.join(dir, 'http-bodies', ref.file)
     fs.rmSync(file)
     savedResponse('E', { response_body_ref: ref })
     expect(search('MIDREADWORD').items).toEqual([])
@@ -60,7 +64,11 @@ sqlite.describe('a read that fails after it wrote documents', () => {
       expect({ items: page.items.map(e => e.id), docs: docs('E'), status: bodySource(page)?.status })
         .toEqual({ items: [], docs: 0, status: how === 'gone' ? 'unavailable' : 'failed' })
     }
-    const back = search('MIDREADWORD')
-    expect({ items: back.items.map(e => e.id), docs: docs('E'), status: bodySource(back)?.status }).toEqual({ items: ['E'], docs: 1, status: 'covered' })
+    // Once it reads whole, it has its documents once each, however many
+    // searches follow.
+    for (let i = 0; i < 3; i++) {
+      const back = search('MIDREADWORD')
+      expect({ items: back.items.map(e => e.id), docs: docs('E'), status: bodySource(back)?.status }).toEqual({ items: ['E'], docs: documents, status: 'covered' })
+    }
   })
 })

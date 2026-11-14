@@ -16,6 +16,36 @@ import { withVerifiedBody, withVerifiedSavedFile, savedFileRefs, withInlineBase6
 const INDEX_CHUNK_BYTES = 1024 * 1024
 const INDEX_OVERLAP_CHARS = 65536
 const INDEX_VERSION = 11
+// ── Where a document is ──────────────────────────────────────────────────
+// A ref's documents are found by arithmetic, not looked up: document n
+// (from 0) of kind k (0: the saved text, 1: the decoded text) of ref r is
+// rowid r*REF_SPAN + k*KIND_SPAN + n, and the ref row records how many of
+// each kind it has, so removing them is a point delete per document.
+// ftsWriter writes at most one document per part it is given, and a read
+// gives each stream one part per INDEX_CHUNK_BYTES of source plus a tail and
+// a final call: a body of B bytes makes at most ceil(B / 1 MiB) + 2 of each
+// kind, 12 at the default capture cap (REDLOG_MAX_BODY, 10 MiB). KIND_SPAN
+// leaves room for a raised cap or none (0 is unlimited), and for saved
+// artifacts and transcripts, which no cap bounds: about 2 GiB of one kind.
+// A body that needs more is indexed as far as that goes, `partial` with
+// reason 'too-large', never written into the next ref's rowids. MAX_REF
+// keeps every rowid below 2^53, so a rowid is exact as a JS number (and far
+// inside 63 bits); the table refuses a ref id at or above it.
+const KIND_SPAN = 2048, REF_SPAN = 2 * KIND_SPAN, MAX_REF = 2 ** 41
+type DocKind = 0 | 1
+function rowidOf(ref: number, kind: DocKind, n: number): number {
+  if (!Number.isSafeInteger(ref) || ref < 1 || ref >= MAX_REF || (kind !== 0 && kind !== 1) || !Number.isSafeInteger(n) || n < 0 || n >= KIND_SPAN)
+    throw new RangeError(`No document rowid for ref ${ref}, kind ${kind}, document ${n}`)
+  return ref * REF_SPAN + kind * KIND_SPAN + n
+}
+/** Test seams: the layout, and the rowid of one document. */
+export function _documentLayout(): { refSpan: number; kindSpan: number; maxRef: number } { return { refSpan: REF_SPAN, kindSpan: KIND_SPAN, maxRef: MAX_REF } }
+export function _documentRowid(ref: number, kind: DocKind, n: number): number { return rowidOf(ref, kind, n) }
+/** The documents one ref may hold of each kind. KIND_SPAN; a test lowers it
+ *  to reach the limit with a small body. */
+let documentsPerKind = KIND_SPAN
+export function _limitDocumentsPerKind(n?: number): void { documentsPerKind = Math.min(n ?? KIND_SPAN, KIND_SPAN) }
+class TooManyDocuments extends Error {}
 let index: Database.Database | null = null, indexDir: string | null = null
 function getIndex(projectDir = getProjectDir()): Database.Database {
   if (index && indexDir === projectDir)
@@ -36,19 +66,17 @@ function getIndex(projectDir = getProjectDir()): Database.Database {
   // coverage reads this table instead of re-deriving every row's refs. v10
   // keys a ref by its event and the field it is in (its slot), not by its
   // hash: a request and a response with the same bytes are two refs. v11
-  // gives each ref an id of its own, never reused.
+  // gives each ref an id of its own, never reused, and derives its
+  // documents' rowids from it (see KIND_SPAN); body_docs is gone.
   // An older index is rebuilt once, from the source rows, at the next search.
   // The schema is written in one transaction, and an index already current is
   // opened without a write: each commit is a flush, slow on Windows.
   if (db.pragma('user_version', { simple: true }) !== INDEX_VERSION) db.transaction(() => {
     db.exec('DROP TABLE IF EXISTS body_fts; DROP TABLE IF EXISTS body_docs; DROP TABLE IF EXISTS body_event_refs; DROP TABLE IF EXISTS body_index_state; DROP TABLE IF EXISTS body_index_meta')
-    // FTS5 finds a row only by MATCH or rowid. body_docs maps each document to
-    // its (event, body) pair through a real index, so removing one ref's text
-    // never reads every document.
+    // FTS5 finds a row only by MATCH or rowid: a document's rowid says which
+    // ref it is (rowid / REF_SPAN), so removing one ref's text never reads
+    // every document.
     db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS body_fts USING fts5(content,tokenize='${FTS_TOKENIZE}',prefix='2 3');
-    CREATE TABLE IF NOT EXISTS body_docs (doc INTEGER PRIMARY KEY,event_id TEXT NOT NULL,slot TEXT NOT NULL,sha256 TEXT NOT NULL);
-    CREATE INDEX IF NOT EXISTS body_docs_ref ON body_docs(event_id,slot);
-    CREATE INDEX IF NOT EXISTS body_docs_sha256 ON body_docs(sha256);
     CREATE TABLE IF NOT EXISTS body_event_refs (${REF_COLUMNS});
     CREATE INDEX IF NOT EXISTS body_event_refs_sha256 ON body_event_refs(sha256);
     CREATE INDEX IF NOT EXISTS body_event_refs_order ON body_event_refs(tier,row,pos);
@@ -95,9 +123,9 @@ let statements = new Map<string, Database.Statement>()
 /** Where a ref and its documents are written: the shared index, which only
  *  main's read-write connection writes, or this connection's TEMP tables, for
  *  what one call reads that the shared index does not vouch for (readPlan). */
-interface Tables { refs: string; docs: string; fts: string }
-const SHARED: Tables = { refs: 'body_event_refs', docs: 'body_docs', fts: 'body_fts' }
-const EXTRA: Tables = { refs: 'body_x_refs', docs: 'body_x_docs', fts: 'body_x_fts' }
+interface Tables { refs: string; fts: string }
+const SHARED: Tables = { refs: 'body_event_refs', fts: 'body_fts' }
+const EXTRA: Tables = { refs: 'body_x_refs', fts: 'body_x_fts' }
 // Prepared once per index handle, lazily, so a statement is compiled the first
 // time a path needs it.
 function stmt(db: Database.Database, sql: string): Database.Statement {
@@ -108,13 +136,19 @@ function stmt(db: Database.Database, sql: string): Database.Statement {
 const FINAL_STATUSES = new Set(['indexed', 'partial', 'binary', 'limited', 'pending'])
 /** The statuses whose ref has FTS documents. */
 const HAS_DOCS = new Set(['indexed', 'partial'])
-/** Remove one ref's documents through body_docs: O(its documents). */
-function dropDocs(db: Database.Database, eventId: string, slot: string, t = SHARED): void {
-  const docs = stmt(db, `SELECT doc FROM ${t.docs} WHERE event_id=? AND slot=?`).all(eventId, slot) as { doc: number }[]
-  if (!docs.length) return
+/** A ref row's id and how many documents of each kind it holds. */
+interface RefDocs { ref: number; raw_docs: number; decoded_docs: number }
+/** Delete documents `from` to `to` (exclusive) of one kind of a ref, each by
+ *  its rowid: never a rowid range, which FTS5 answers by reading the table. */
+function dropRange(db: Database.Database, t: Tables, ref: number, kind: DocKind, from: number, to: number): void {
+  if (from >= to) return
   const drop = stmt(db, `DELETE FROM ${t.fts} WHERE rowid=?`)
-  for (const { doc } of docs) drop.run(doc)
-  stmt(db, `DELETE FROM ${t.docs} WHERE event_id=? AND slot=?`).run(eventId, slot)
+  for (let n = from; n < to; n++) drop.run(rowidOf(ref, kind, n))
+}
+/** Remove one ref's documents: O(its documents). */
+function dropDocs(db: Database.Database, row: RefDocs, t = SHARED): void {
+  dropRange(db, t, row.ref, 0, 0, row.raw_docs)
+  dropRange(db, t, row.ref, 1, 0, row.decoded_docs)
 }
 // Inline bodies whose escapes were scanned and hashed by refsOf; a test seam
 // for "a search does no per-row work for rows already linked".
@@ -294,13 +328,13 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
   const refs = refsOf(event, atIngest)
   // Inside a walk's transaction no savepoint per event: an error that escapes
   // aborts the whole walk anyway. A ref whose read ends missing or failed does
-  // not escape; it continues, and drops the documents it wrote (`wrote`).
+  // not escape; it continues, and removes the documents it wrote.
   const atomic = (run: () => void): void => { if (db.inTransaction) run(); else db.transaction(run)() }
   if (refs.length) atomic(() => {
     for (const [pos, ref] of refs.entries()) {
-      let status = 'indexed', bytes = 0, reason = '',availableBytes=0, wrote = false
-      const prior = stmt(db, `SELECT ref,status,reason,tier,row,pos,verified_desc,verified_file,verified_sig FROM ${t.refs} WHERE event_id=? AND slot=?`).get(event.id, ref.slot) as {
-        ref: number; status: string; reason: string; tier: Tier | null; row: number | null; pos: number; verified_desc: string | null; verified_file: string | null; verified_sig: string | null
+      let status = 'indexed', bytes = 0, reason = '',availableBytes=0
+      const prior = stmt(db, `SELECT ref,raw_docs,decoded_docs,status,reason,tier,row,pos,verified_desc,verified_file,verified_sig FROM ${t.refs} WHERE event_id=? AND slot=?`).get(event.id, ref.slot) as RefDocs & {
+        status: string; reason: string; tier: Tier | null; row: number | null; pos: number; verified_desc: string | null; verified_file: string | null; verified_sig: string | null
       } | undefined
       const file = refFile(ref, projectDir)
       const body = ref.kind === 'body' ? ref : null
@@ -315,7 +349,11 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
           stmt(db, `UPDATE ${t.refs} SET tier=?,row=?,pos=?,engagement_id=coalesce(?,engagement_id) WHERE event_id=? AND slot=?`).run(tier, source.row, pos, source.engagementId, event.id, ref.slot)
         continue
       }
-      const hadDocs = prior !== undefined && HAS_DOCS.has(prior.status)
+      // The ref's id: its row's, or, for a ref new to the table, one taken by
+      // inserting its row before its first document is written.
+      let id = prior?.ref
+      // Documents of each kind this ref held, and this read has written.
+      const had: [number, number] = [prior?.raw_docs ?? 0, prior?.decoded_docs ?? 0], wrote: [number, number] = [0, 0]
       // Taken before reading: a change while reading leaves a stale signature,
       // which only causes one more verification next time.
       const sig = file === null ? null : fileSignature(file)
@@ -337,9 +375,19 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
           const strict = source.format !== 'binary'
           bytes = source.bytes
           // Re-verified bytes with the same hash: the documents stand.
-          if (prior && hadDocs) { status = prior.status; reason = prior.reason; return }
-          const insertText = stmt(db, `INSERT INTO ${t.fts}(content) VALUES(?)`), insertDoc = stmt(db, `INSERT INTO ${t.docs} VALUES(?,?,?,?)`)
-          const write = (part: string): void => { if (part) { insertDoc.run(insertText.run(part).lastInsertRowid, event.id, ref.slot, ref.sha256); wrote = true } }
+          if (prior && HAS_DOCS.has(prior.status)) { status = prior.status; reason = prior.reason; wrote[0] = had[0]; wrote[1] = had[1]; return }
+          // Every document write replaces: whatever a rowid of this ref held
+          // is overwritten, never added to (a plain INSERT at a rowid FTS5
+          // already holds keeps the old words searchable beside the new).
+          const insertText = stmt(db, `INSERT OR REPLACE INTO ${t.fts}(rowid,content) VALUES(?,?)`)
+          const write = (kind: DocKind) => (part: string): void => {
+            if (!part) return
+            if (wrote[kind] >= documentsPerKind) throw new TooManyDocuments()
+            id ??= Number(stmt(db, `INSERT INTO ${t.refs}(event_id,slot,sha256,file,size,encoding,status,indexed_bytes,reason,kind,available_bytes,pos,source_bytes)
+              VALUES(?,?,?,?,0,'',?,0,'',?,0,?,0)`).run(event.id, ref.slot, ref.sha256, ref.file, 'failed', ref.kind, pos).lastInsertRowid)
+            insertText.run(rowidOf(id, kind, wrote[kind]), part)
+            wrote[kind]++
+          }
           // The saved text, unless it is inline text the events index already
           // holds; and, in the same pass, once an escape has been seen, the
           // decoded text as a second document of the same (event, body) pair,
@@ -348,11 +396,11 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
           // escape (at a token boundary): a term is one document's phrase,
           // and text further back is the saved document's, unchanged.
           const inlineText = body?.inline !== undefined && body.encoding === 'text'
-          const saved = inlineText ? null : ftsWriter(write)
+          const saved = inlineText ? null : ftsWriter(write(0))
           const escapes = body?.decode ? jsonEscapeDecoder() : null
           let decoded: ReturnType<typeof ftsWriter> | null = null, lead = '', leadCut = false
           const startDecoded = (text: string, final: boolean): void => {
-            decoded = ftsWriter(write)
+            decoded = ftsWriter(write(1))
             let start = leadCut ? lead.search(/[^\p{L}\p{N}\p{Co}\p{M}]/u) + 1 : 0
             if (start < 0) start = 0
             decoded(lead.slice(start) + text, final)
@@ -382,9 +430,10 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
               else if (escapes.changed) startDecoded(out, true)
             }
           } catch (error) {
-            if (strict || !(error instanceof TypeError || error instanceof NotText)) throw error
-            dropDocs(db, event.id, ref.slot, t)
-            bytes = 0; status = 'binary'; reason = 'binary'
+            // Indexed as far as this ref's rowids go; the rest is not searched.
+            if (error instanceof TooManyDocuments) { status = 'partial'; reason = 'too-large' }
+            else if (strict || !(error instanceof TypeError || error instanceof NotText)) throw error
+            else { bytes = 0; status = 'binary'; reason = 'binary' }
           }
           if (status === 'indexed' && body?.truncated) { status = 'partial'; reason = 'truncated' }
         })
@@ -394,11 +443,14 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
         status = error instanceof ContentAccessError && error.status === 'missing' ? 'missing' : error instanceof ContentAccessError && error.status==='unsupported'?'limited':'failed'
         reason = error instanceof ContentAccessError ? error.status : 'failed'
       }
-      // A ref whose read ends without text keeps no document: neither the ones
-      // it had nor the ones this read wrote before the file vanished or changed
-      // under it (missing and failed are retried every search, and each retry
-      // would add another copy).
-      if (!HAS_DOCS.has(status) && (hadDocs || wrote)) dropDocs(db, event.id, ref.slot, t)
+      // A ref keeps the documents this read wrote, and only if it ended with
+      // text. Everything else its rowids may hold goes now, by rowid: the
+      // documents it had, when this read ended without text, and the ones this
+      // read wrote before the file vanished or changed under it (missing and
+      // failed are retried every search: kept, they would be found while
+      // coverage says missing, and outlive the file coming back).
+      const keep: [number, number] = HAS_DOCS.has(status) ? wrote : [0, 0]
+      if (id !== undefined) for (const kind of [0, 1] as const) dropRange(db, t, id, kind, keep[kind], Math.max(had[kind], wrote[kind]))
       // pending/limited come from the event alone; indexed/binary/partial from
       // bytes whose signature is recorded. missing/failed can change with no
       // new row (a file restored or repaired), so they carry no verification
@@ -406,19 +458,20 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
       const final = FINAL_STATUSES.has(status)
       const size = Number.isSafeInteger(ref.size) ? ref.size : 0
       const sourceBytes = sourceBytesOf(ref)
-      const values = { ref: prior?.ref ?? null, event: event.id, slot: ref.slot, sha256: ref.sha256, file: ref.file, size, encoding: String(ref.encoding ?? 'unknown'), status,
+      const values = { ref: id ?? null, rawDocs: keep[0], decodedDocs: keep[1], event: event.id, slot: ref.slot, sha256: ref.sha256, file: ref.file, size, encoding: String(ref.encoding ?? 'unknown'), status,
         bytes, reason, kind: ref.kind, available: availableBytes, tier, desc: final ? desc : null, verifiedFile: final && status !== 'pending' ? file : null,
         sig: final && status !== 'pending' ? sig : null, engagement: source.engagementId, row: source.row, pos, sourceBytes }
       // An existing ref is updated by its id, never upserted: an upsert that
       // changes nothing still takes an AUTOINCREMENT id, and writes.
-      if (values.ref === null) stmt(db, `INSERT INTO ${t.refs}(event_id,slot,sha256,file,size,encoding,status,indexed_bytes,reason,kind,available_bytes,tier,verified_desc,verified_file,verified_sig,engagement_id,row,pos,source_bytes)
-    VALUES(@event,@slot,@sha256,@file,@size,@encoding,@status,@bytes,@reason,@kind,@available,@tier,@desc,@verifiedFile,@sig,@engagement,@row,@pos,@sourceBytes)`).run(values)
+      if (values.ref === null) stmt(db, `INSERT INTO ${t.refs}(event_id,slot,sha256,file,size,encoding,status,indexed_bytes,reason,kind,available_bytes,tier,verified_desc,verified_file,verified_sig,engagement_id,row,pos,source_bytes,raw_docs,decoded_docs)
+    VALUES(@event,@slot,@sha256,@file,@size,@encoding,@status,@bytes,@reason,@kind,@available,@tier,@desc,@verifiedFile,@sig,@engagement,@row,@pos,@sourceBytes,@rawDocs,@decodedDocs)`).run(values)
       // A missing or failed ref retried with the same outcome changes nothing:
       // no write, so a search that finds nothing new commits nothing.
       else stmt(db, `UPDATE ${t.refs} SET sha256=@sha256,file=@file,size=@size,encoding=@encoding,status=@status,indexed_bytes=@bytes,reason=@reason,kind=@kind,available_bytes=@available,
-    tier=coalesce(@tier,tier),verified_desc=@desc,verified_file=@verifiedFile,verified_sig=@sig,engagement_id=coalesce(@engagement,engagement_id),row=coalesce(@row,row),pos=@pos,source_bytes=@sourceBytes
-    WHERE ref=@ref AND ((sha256,file,size,encoding,status,indexed_bytes,reason,kind,available_bytes,verified_desc,verified_file,verified_sig,pos,source_bytes)
-      IS NOT (@sha256,@file,@size,@encoding,@status,@bytes,@reason,@kind,@available,@desc,@verifiedFile,@sig,@pos,@sourceBytes)
+    tier=coalesce(@tier,tier),verified_desc=@desc,verified_file=@verifiedFile,verified_sig=@sig,engagement_id=coalesce(@engagement,engagement_id),row=coalesce(@row,row),pos=@pos,source_bytes=@sourceBytes,
+    raw_docs=@rawDocs,decoded_docs=@decodedDocs
+    WHERE ref=@ref AND ((sha256,file,size,encoding,status,indexed_bytes,reason,kind,available_bytes,verified_desc,verified_file,verified_sig,pos,source_bytes,raw_docs,decoded_docs)
+      IS NOT (@sha256,@file,@size,@encoding,@status,@bytes,@reason,@kind,@available,@desc,@verifiedFile,@sig,@pos,@sourceBytes,@rawDocs,@decodedDocs)
       OR coalesce(@tier,tier) IS NOT tier OR coalesce(@row,row) IS NOT row OR coalesce(@engagement,engagement_id) IS NOT engagement_id)`).run(values)
     }
   })
@@ -501,7 +554,7 @@ function sourceState(mark: Mark | null): TierState[] {
 }
 /** Remove every ref of one event, and their documents. */
 function dropEvent(db: Database.Database, eventId: string): void {
-  for (const { slot } of stmt(db, 'SELECT slot FROM body_event_refs WHERE event_id=?').all(eventId) as { slot: string }[]) dropDocs(db, eventId, slot)
+  for (const row of stmt(db, 'SELECT ref,raw_docs,decoded_docs FROM body_event_refs WHERE event_id=?').all(eventId) as RefDocs[]) dropDocs(db, row)
   stmt(db, 'DELETE FROM body_event_refs WHERE event_id=?').run(eventId)
 }
 /** Bring the index up to the live project, doing work for what changed since
@@ -558,13 +611,12 @@ function walkAll(db: Database.Database, projectDir: string, latest: string[], ra
   const seen = stmt(db, 'INSERT OR IGNORE INTO body_seen VALUES(?,?)')
   for (const [i, tier] of rows(LIVE, undefined, latest, range).entries())
     for (const row of tier) for (const ref of linkRow(row, projectDir, TIERS[i])) seen.run(row.id, ref.slot)
-  // The verification lives in the row, so a pruned ref takes it along.
-  stmt(db, 'DELETE FROM body_event_refs WHERE NOT EXISTS(SELECT 1 FROM body_seen s WHERE s.event_id=body_event_refs.event_id AND s.slot=body_event_refs.slot)').run()
-  // Documents whose ref is gone or no longer has text: found through
-  // body_docs (a plain table), each removed by rowid.
-  const orphans = stmt(db, "SELECT doc FROM body_docs d WHERE NOT EXISTS(SELECT 1 FROM body_event_refs r WHERE r.event_id=d.event_id AND r.slot=d.slot AND r.status IN ('indexed','partial'))").all() as { doc: number }[]
-  const dropText = stmt(db, 'DELETE FROM body_fts WHERE rowid=?'), dropDoc = stmt(db, 'DELETE FROM body_docs WHERE doc=?')
-  for (const { doc } of orphans) { dropText.run(doc); dropDoc.run(doc) }
+  // Refs no row has any more: their documents, each by rowid, then the rows.
+  // The verification lives in the row, so a pruned ref takes it along. (A ref
+  // without text holds no document: its row says so, and the table checks.)
+  const unseen = 'NOT EXISTS(SELECT 1 FROM body_seen s WHERE s.event_id=body_event_refs.event_id AND s.slot=body_event_refs.slot)'
+  for (const row of stmt(db, `SELECT ref,raw_docs,decoded_docs FROM body_event_refs WHERE ${unseen}`).all() as RefDocs[]) dropDocs(db, row)
+  stmt(db, `DELETE FROM body_event_refs WHERE ${unseen}`).run()
 }
 /** Without a walk: re-link the events whose saved file no longer has the
  *  signature it was verified with, and every ref still missing or failed.
@@ -590,22 +642,25 @@ function recheck(projectDir: string): boolean {
 }
 // `ref`: the ref's own id, never reused (AUTOINCREMENT): a new ref that took
 // a dead ref's id would take any of its documents that were not removed.
+// `raw_docs`, `decoded_docs`: how many documents of each kind it holds, at
+// the rowids rowidOf gives; none unless it has text.
 const REF_COLUMNS = `ref INTEGER PRIMARY KEY AUTOINCREMENT,event_id TEXT NOT NULL,slot TEXT NOT NULL,sha256 TEXT NOT NULL,file TEXT NOT NULL,size INTEGER NOT NULL,encoding TEXT NOT NULL,
      status TEXT NOT NULL,indexed_bytes INTEGER NOT NULL,reason TEXT NOT NULL,kind TEXT NOT NULL,available_bytes INTEGER NOT NULL,
      tier TEXT,verified_desc TEXT,verified_file TEXT,verified_sig TEXT,
-     engagement_id TEXT,row INTEGER,pos INTEGER NOT NULL,source_bytes INTEGER NOT NULL,UNIQUE(event_id,slot)`
+     engagement_id TEXT,row INTEGER,pos INTEGER NOT NULL,source_bytes INTEGER NOT NULL,
+     raw_docs INTEGER NOT NULL DEFAULT 0 CHECK(raw_docs BETWEEN 0 AND ${KIND_SPAN}),decoded_docs INTEGER NOT NULL DEFAULT 0 CHECK(decoded_docs BETWEEN 0 AND ${KIND_SPAN}),
+     CHECK(ref BETWEEN 1 AND ${MAX_REF - 1}),CHECK(status IN ('indexed','partial') OR raw_docs+decoded_docs=0),UNIQUE(event_id,slot)`
 const hasExtraTables = (db: Database.Database): boolean =>
   stmt(db, "SELECT 1 FROM sqlite_temp_master WHERE type='table' AND name='body_x_refs'").get() !== undefined
 function ensureExtraTables(db: Database.Database): void {
+  // The same layout: this connection's own ref ids, never mixed with the
+  // shared table's (a TEMP match is joined to TEMP refs only).
   if (!hasExtraTables(db)) db.exec(`CREATE TEMP TABLE body_x_refs (${REF_COLUMNS});
-    CREATE TEMP TABLE body_x_docs (doc INTEGER PRIMARY KEY,event_id TEXT NOT NULL,slot TEXT NOT NULL,sha256 TEXT NOT NULL);
-    CREATE INDEX temp.body_x_docs_ref ON body_x_docs(event_id,slot);
-    CREATE INDEX temp.body_x_docs_sha256 ON body_x_docs(sha256);
     CREATE VIRTUAL TABLE temp.body_x_fts USING fts5(content,tokenize='${FTS_TOKENIZE}',prefix='2 3');`)
 }
 /** Remove one event's refs and documents from this connection's TEMP tables. */
 function dropExtra(db: Database.Database, eventId: string): void {
-  for (const { slot } of stmt(db, 'SELECT slot FROM body_x_refs WHERE event_id=?').all(eventId) as { slot: string }[]) dropDocs(db, eventId, slot, EXTRA)
+  for (const row of stmt(db, 'SELECT ref,raw_docs,decoded_docs FROM body_x_refs WHERE event_id=?').all(eventId) as RefDocs[]) dropDocs(db, row, EXTRA)
   stmt(db, 'DELETE FROM body_x_refs WHERE event_id=?').run(eventId)
 }
 
@@ -748,10 +803,7 @@ export function pruneHttpBodyIndex(sha256: string, projectDir = getProjectDir())
   if (readOnlySource()) return
   const db = getIndex(projectDir)
   db.transaction(() => {
-    const docs = stmt(db, 'SELECT doc FROM body_docs WHERE sha256=?').all(sha256) as { doc: number }[]
-    const drop = stmt(db, 'DELETE FROM body_fts WHERE rowid=?')
-    for (const { doc } of docs) drop.run(doc)
-    stmt(db, 'DELETE FROM body_docs WHERE sha256=?').run(sha256)
+    for (const row of stmt(db, 'SELECT ref,raw_docs,decoded_docs FROM body_event_refs WHERE sha256=?').all(sha256) as RefDocs[]) dropDocs(db, row)
     stmt(db, 'DELETE FROM body_event_refs WHERE sha256=?').run(sha256)
     // Nor may this connection's TEMP tables answer for the file.
     if (hasExtraTables(db)) for (const { event_id } of stmt(db, 'SELECT DISTINCT event_id FROM body_x_refs WHERE sha256=?').all(sha256) as { event_id: string }[]) dropExtra(db, event_id)
@@ -764,10 +816,10 @@ export function pruneHttpBodyIndex(sha256: string, projectDir = getProjectDir())
 export function pruneSavedFileIndex(file:string, projectDir=getProjectDir()):void {
   if(readOnlySource()||!existsSync(path.join(projectDir,'http-body-index.db')))return
   const db=getIndex(projectDir),absolute=path.resolve(file)
-  const refs=db.prepare("SELECT event_id,slot,file FROM body_event_refs WHERE kind<>'body'").all() as {event_id:string;slot:string;file:string}[]
+  const refs=db.prepare("SELECT ref,raw_docs,decoded_docs,file FROM body_event_refs WHERE kind<>'body'").all() as Array<RefDocs&{file:string}>
   db.transaction(()=>{for(const ref of refs)if(path.resolve(projectDir,ref.file)===absolute){
-    dropDocs(db,ref.event_id,ref.slot)
-    db.prepare('DELETE FROM body_event_refs WHERE event_id=? AND slot=?').run(ref.event_id,ref.slot)
+    dropDocs(db,ref)
+    db.prepare('DELETE FROM body_event_refs WHERE ref=?').run(ref.ref)
   }
   if(hasExtraTables(db))for(const ref of stmt(db,"SELECT DISTINCT event_id,file FROM body_x_refs WHERE kind<>'body'").all() as {event_id:string;file:string}[])
     if(path.resolve(projectDir,ref.file)===absolute)dropExtra(db,ref.event_id)
@@ -804,13 +856,15 @@ export function searchHttpBodyTermIds(query: string, projectDir = getProjectDir(
   const db = getIndex(projectDir), plan = readPlan(projectDir, snapshot, true)
   const kind = excludeAiRaw ? " AND r.kind<>'ai-raw'" : ''
   // Failed references have already lost their FTS rows. Report them through
-  // coverage without withholding unrelated, verified matches.
-  const find = stmt(db, `SELECT DISTINCT d.event_id FROM body_fts JOIN body_docs d ON d.doc=body_fts.rowid WHERE body_fts MATCH @term
-      AND EXISTS(SELECT 1 FROM body_event_refs r WHERE r.event_id=d.event_id AND r.slot=d.slot AND r.row<=CASE r.tier WHEN 'events' THEN @chained ELSE @logged END${kind})
-      AND d.event_id NOT IN (SELECT value FROM json_each(@skip))`)
-  const findLocal = plan.local.length ? stmt(db, `SELECT DISTINCT d.event_id FROM body_x_fts JOIN body_x_docs d ON d.doc=body_x_fts.rowid
-      WHERE body_x_fts MATCH @term AND d.event_id IN (SELECT value FROM json_each(@local))
-      AND EXISTS(SELECT 1 FROM body_x_refs r WHERE r.event_id=d.event_id AND r.slot=d.slot${kind})`) : null
+  // coverage without withholding unrelated, verified matches. A document's
+  // ref is its rowid / REF_SPAN, an integer primary key lookup: shared
+  // documents in shared refs, this connection's TEMP documents in its TEMP
+  // refs, whose ids are its own.
+  const find = stmt(db, `SELECT DISTINCT r.event_id FROM body_fts JOIN body_event_refs r ON r.ref=body_fts.rowid/${REF_SPAN} WHERE body_fts MATCH @term
+      AND r.row<=CASE r.tier WHEN 'events' THEN @chained ELSE @logged END${kind}
+      AND r.event_id NOT IN (SELECT value FROM json_each(@skip))`)
+  const findLocal = plan.local.length ? stmt(db, `SELECT DISTINCT r.event_id FROM body_x_fts JOIN body_x_refs r ON r.ref=body_x_fts.rowid/${REF_SPAN}
+      WHERE body_x_fts MATCH @term AND r.event_id IN (SELECT value FROM json_each(@local))${kind}`) : null
   const skip = JSON.stringify(plan.skip), local = JSON.stringify(plan.local.map(l => l.id))
   return terms.map(term => {
     const ids = (find.all({ term, chained: plan.upTo[0], logged: plan.upTo[1], skip }) as { event_id: string }[]).map(row => row.event_id)

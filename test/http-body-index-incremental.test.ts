@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { initDB, closeDB, getDB } from '../src/core/db/index'
 import { searchHttpBodyEventIds } from './helpers/body-search'
-import { bodySearchCoverage, closeHttpBodyIndex, linkHttpBodyEvent, pruneHttpBodyIndex, pruneSavedFileIndex, eventIdsReferencingBody } from '../src/core/http-body-index'
+import { bodySearchCoverage, closeHttpBodyIndex, linkHttpBodyEvent, pruneHttpBodyIndex, pruneSavedFileIndex, eventIdsReferencingBody, _documentLayout } from '../src/core/http-body-index'
 import type { ExportSnapshot } from '../src/core/export-plan'
 
 // #695: a text search used to re-walk every content-ref row and re-open and
@@ -55,7 +55,8 @@ function dump(): unknown {
       // The verification columns hold inode and mtime signatures, which differ
       // between two runs by construction.
       refs: db.prepare('SELECT event_id,sha256,file,size,encoding,status,indexed_bytes,reason,kind,available_bytes FROM body_event_refs ORDER BY event_id,sha256').all(),
-      fts: db.prepare('SELECT d.event_id,d.sha256,f.content FROM body_fts f JOIN body_docs d ON d.doc=f.rowid ORDER BY d.event_id,d.sha256,f.content').all(),
+      // A document's ref is its rowid / refSpan.
+      fts: db.prepare(`SELECT r.event_id,r.sha256,f.content FROM body_fts f JOIN body_event_refs r ON r.ref=f.rowid/${_documentLayout().refSpan} ORDER BY r.event_id,r.sha256,f.content`).all(),
     }
   } finally { db.close() }
 }
@@ -367,7 +368,7 @@ describe('incremental body-search backfill', () => {
     try {
       expect({
         refs: index.prepare('SELECT count(*) AS n FROM body_event_refs').get(),
-        docs: index.prepare('SELECT count(*) AS n FROM body_docs').get(),
+        docs: index.prepare('SELECT count(*) AS n FROM body_fts').get(),
         mark: index.prepare("SELECT count(*) AS n FROM body_index_meta WHERE key='mark'").get(),
       }).toEqual({ refs: { n: 0 }, docs: { n: 0 }, mark: { n: 0 } })
     } finally { index.close() }
