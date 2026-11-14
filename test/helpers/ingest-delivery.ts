@@ -44,12 +44,16 @@ export function interceptHttp(): void {
 }
 
 export interface Runtime {
-  /** POST /api/events with the project's token: door legacy-api. */
-  api(item: Item): Promise<void>
+  /** POST /api/events with the project's token: door legacy-api. A string is
+   *  the body as sent (for a body JSON.stringify cannot write). Returns the
+   *  status, which must be `status`. */
+  api(item: Item | string, status?: number): Promise<number>
   /** ingest() as an in-process producer calls it: door in-process. */
   inProcess(item: Item): void
-  /** Spool `items` as the hooks do and drain them as main does: door legacy-handoff. */
-  spool(items: Item[], dir: string): void
+  /** Spool `items` as the hooks do and drain them as main does: door
+   *  legacy-handoff. A string is the file's text as written, `_identity`
+   *  included. */
+  spool(items: Array<Item | string>, dir: string): void
   close(): Promise<void>
 }
 
@@ -75,8 +79,9 @@ export async function openRuntime(dir: string): Promise<Runtime> {
   api.onApiProjectOpen()
   const token = api.getApiToken()
   return {
-    async api(item) {
-      const req = Readable.from([Buffer.from(JSON.stringify(item))]) as unknown as http.IncomingMessage
+    async api(item, want = 201) {
+      const body = typeof item === 'string' ? item : JSON.stringify(item)
+      const req = Readable.from([Buffer.from(body)]) as unknown as http.IncomingMessage
       Object.assign(req, { method: 'POST', url: '/api/events', socket: { remoteAddress: '127.0.0.1' },
         headers: { host: '127.0.0.1:6662', authorization: `Bearer ${token}`, 'content-type': 'application/json' } })
       const status = await new Promise<number>((resolve) => {
@@ -86,7 +91,8 @@ export async function openRuntime(dir: string): Promise<Runtime> {
           end() { resolve(s) } } as unknown as http.ServerResponse
         handler!(req, res)
       })
-      expect(status, JSON.stringify(item)).toBe(201)
+      expect(status, body.slice(0, 200)).toBe(want)
+      return status
     },
     inProcess(item) {
       const r = ingest.ingest({ agentType: item.agent_type, data: item.data, engagementId: ENG, operatorId: OP, ...(item.target_id ? { targetId: item.target_id } : {}) })
@@ -95,7 +101,7 @@ export async function openRuntime(dir: string): Promise<Runtime> {
     spool(items, spoolDir) {
       fs.mkdirSync(spoolDir, { recursive: true })
       items.forEach((item, i) => fs.writeFileSync(path.join(spoolDir, `${String(i).padStart(4, '0')}.json`),
-        JSON.stringify({ ...item, _identity: { engagementId: ENG, operatorId: OP } })))
+        typeof item === 'string' ? item : JSON.stringify({ ...item, _identity: { engagementId: ENG, operatorId: OP } })))
       const run = drain.drainSpoolAsMain(spoolDir, { engagementId: ENG, operatorId: OP })
       expect(run?.replayed, JSON.stringify(run)).toBe(items.length)
     },

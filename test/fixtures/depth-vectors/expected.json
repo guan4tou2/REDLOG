@@ -1,0 +1,92 @@
+{
+  "generatedFrom": "test/fixtures/depth-vectors-generate.ts (Spec 071 FR-097)",
+  "rows": {
+    "events": [
+      {
+        "id": "00000000-0000-4000-8000-000000000004",
+        "hash": "5f847c1747ee57ffa2daec138d0115bd460040b6b97a3b4ec6bcd13a61b7a949",
+        "sha256": "e97868997dc195b3cb1c893708cd7282f1a2ae74c6cda7f01400bce7aafaa42e"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000006",
+        "hash": "d312843883802a8019a4e820ce8f3f1f2d0f86bcdc61ca3a1c8120f0a6c5ed52",
+        "sha256": "7c48e8f6ddbe8a6ddc19169661b37461cb016420f736917a704f3b8fe6ac5fd1"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000008",
+        "hash": "dbfa79d9a2e122d8d6a3b5f57de85cc81f98943250cee0a92edbe2ac4d73c645",
+        "sha256": "3a91c14fc7e09f2cfa2352a088cf50b227ece0de166a3e3dbe938f313dbf8674"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000012",
+        "hash": "49697815fc4340f4860c48ee15392330d1205819de0b8db1e9c0622c06936634",
+        "sha256": "8f5137e11ea2ce3bb95b4eaa111ba20502c8cff050ddbf3665c5a7a7cdd07edc"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000014",
+        "hash": "b835cfe51d4714f11d3547cc7d2e79d379094f9a275ccb594a26fc1ec73a74c9",
+        "sha256": "a40aea9e974712fd9ad6a7f8925eff582ce6a7860628b8b528798e15aca7142c"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000016",
+        "hash": "be35177ba3b8428f99b7f677f1ea6c848cee7eae816fd8bdf6f9afb6a599e879",
+        "sha256": "f32b02960d6916cba3e3931465e0d43cad5886c199c9ae33692bf18ef2deeb79"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000019",
+        "hash": "0dc59f3ecfe973a249269bf937a1e45b40ecb1ad8221196665e0273bf8149e69",
+        "sha256": "ae440a828e8c91565bc13336342c878f03361eae220301c477747677507a4ebf"
+      }
+    ],
+    "events_logged": [
+      {
+        "id": "00000000-0000-4000-8000-000000000009",
+        "hash": null,
+        "sha256": "a54f769c4829257a470bf3f5a9261203f997da4fdc5741fb18391a0a359c2ca4"
+      }
+    ]
+  },
+  "rowsSha256": "2536a6166736d47d11a9754b893e78dc483144fd8f0ecc6a2791a6dc6aaadab1",
+  "collapsed": {
+    "events:command_start:curl -d @deep.json http://10.0.0.5/api": 1,
+    "events:command_start:ls /deep": 3,
+    "events_logged:http_request_start:": 1
+  },
+  "appVerify": {
+    "ok": true,
+    "walked": 7,
+    "brokenAtEventId": null,
+    "brokenReason": null,
+    "currentHead": "5df61d8ebb0191b036fe06cfc5fc9d436ab398f03005678101247e8b25e58fa2",
+    "anchorMatchesWalkedHead": false,
+    "clockAnomalies": [],
+    "signedCount": 7,
+    "unsignedCount": 0,
+    "noPubKeyCount": 0,
+    "authentication": "verified",
+    "authenticationReasons": [],
+    "firstUncheckedEventId": null,
+    "badSignatureAtEventId": null
+  },
+  "bundleVerify": {
+    "exitCode": 0,
+    "category": "verified",
+    "problems": [],
+    "seal": "sealed",
+    "attachments": {
+      "bound": [],
+      "boundUnverifiedRow": [],
+      "unbound": [],
+      "mismatched": [],
+      "omittedDeclared": [],
+      "missingUndeclared": [],
+      "unlisted": []
+    }
+  },
+  "pythonVerify": {
+    "status": 0,
+    "stdout": "\nRedLog bundle verification report\n========================================\nBundle dir       : <bundle>\nBundle version   : 4\nEngagement ID    : eng-depth-vectors\nEvents walked    : 7\nManifest checksum: matches (not an authenticated source identity)\nChain            : INTACT\nChain-head match : yes (recomputed matches manifest.chainHead)\nSeal             : SEALED (export 00000000-0000-4000-8000-000000000017; it follows the delivered chain directly)\n                   rows before it and the manifest are as exported\nSignatures       : 7 verified\nSigner           : op-depth  sha256:5df840e88a41a05b32c8c076086ae442d696f8556d8e3452d2738f96722e8e0d\n  compare these fingerprints with the operator out of band;\n  a key taken from this bundle only proves the bundle agrees with itself\nLogged tier      : 1 rows present in events_logged.jsonl\n                   (not chained or signed; digest matches; bytes sealed by the export)\nAttachments      : 0 match the digest recorded at capture\nManifest files   : 5 verified (sha256 matches)\n",
+    "stderr": ""
+  },
+  "verifierSha256": "f49a7d4acd941b9df0acbeab592a7ac7f8a2a6cdf5ac239271700ac39e2359af"
+}

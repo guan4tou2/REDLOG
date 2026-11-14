@@ -13,7 +13,9 @@
 // folds in itself (`_raw`, `_clock_anomaly`, `_source_time_rejected`). A
 // caller's value for any of them is removed before the row is built, and the
 // stamp names what was removed (`stripped`). `_causes` is the one underscore
-// key a source may write (Domain Invariant 6).
+// key a source may write (Domain Invariant 6). A container nested deeper than
+// the writer keeps is replaced by its JSON text (./depth.ts), and the stamp
+// counts how many were (`collapsed`, FR-097).
 //
 // FR-006 limits the stamp to strings, integers, booleans, null and arrays of
 // strings — the types both verifiers serialise byte for byte alike — with
@@ -101,6 +103,9 @@ export interface IngestStamp {
   terminal?: string
   claimed?: { producer?: string; operator?: string }
   stripped?: string[]
+  /** How many containers of `data` were nested too deep and are stored as
+   *  their JSON text (FR-097, ./depth.ts). Omitted when none were. */
+  collapsed?: number
   rules?: string[]
   rules_partial?: true
 }
@@ -153,11 +158,12 @@ function uuidV7(now: number): string {
 }
 
 /** The stamp for one new row. `stripped` is what stripReserved removed from
- *  the caller's data; `now` is the receipt time; `terminal` is the row's
- *  terminalIdentity (./terminal.ts). */
+ *  the caller's data; `collapsed` is boundDataDepth's count (./depth.ts);
+ *  `now` is the receipt time; `terminal` is the row's terminalIdentity
+ *  (./terminal.ts). */
 export function ingestStamp(
   entrance: IngestEntrance,
-  opts: { tier: 'chained' | 'logged'; now: number; stripped?: readonly string[]; item?: StampItem; terminal?: string | null }
+  opts: { tier: 'chained' | 'logged'; now: number; stripped?: readonly string[]; collapsed?: number; item?: StampItem; terminal?: string | null }
 ): IngestStamp {
   const item = opts.item ?? {}
   const stamp: IngestStamp = {
@@ -183,6 +189,7 @@ export function ingestStamp(
   if (opts.stripped && opts.stripped.length > 0) {
     stamp.stripped = RESERVED_DATA_KEYS.filter((k) => opts.stripped!.includes(k))
   }
+  if (typeof opts.collapsed === 'number' && opts.collapsed > 0) stamp.collapsed = opts.collapsed
   if (item.rules && item.rules.length > 0) stamp.rules = boundedRules(item.rules)
   if (item.rulesPartial === true) stamp.rules_partial = true
   return stamp

@@ -10,6 +10,7 @@ import type { RedLogEvent, EnvelopeInput, StoredEnvelope } from './event-types'
 import { ENVELOPE_SCHEMA_VERSION } from './event-types'
 import { currentEntrance, engagementForWrite, ingestStamp, stripReserved, type IngestEntrance } from '../ingest/stamp'
 import { rowTerminal, terminalIdentity } from '../ingest/terminal'
+import { boundDataDepth } from '../ingest/depth'
 
 interface InsertOpts {
   engagementId?: string
@@ -627,8 +628,11 @@ function insertChainedEvent(
   let dataForChain: Record<string, unknown> = data
   if (anomaly) dataForChain = { ...dataForChain, _clock_anomaly: anomaly }
   if (sourceTimeRejected) dataForChain = { ...dataForChain, _source_time_rejected: sourceTimeRejected }
+  // FR-097: what is hashed and what is stored is bounded in depth — after the
+  // receiver's own keys, since `_source_time_rejected.value` is the producer's.
+  const bounded = boundDataDepth(dataForChain)
   // Last of the receiver's keys, and like them before the hash (FR-020).
-  dataForChain = { ...dataForChain, _ingest: ingestStamp(opts?.entrance ?? currentEntrance(), { tier: 'chained', now, stripped: opts?.stripped, terminal: terminalIdentity(data) }) }
+  dataForChain = { ...bounded.data, _ingest: ingestStamp(opts?.entrance ?? currentEntrance(), { tier: 'chained', now, stripped: opts?.stripped, collapsed: bounded.collapsed, terminal: terminalIdentity(data) }) }
 
   const event: RedLogEvent = {
     id: crypto.randomUUID(),
@@ -746,6 +750,9 @@ function insertLoggedEvent(
   // already does with provenance it cannot attest.
   const { occurredAt, sourceCandidate } = resolveOccurredAt(data, opts.envelope, opts.occurredAt, now)
   if (sourceCandidate !== null) env.tsSource = sourceCandidate
+  // FR-097, as in the chained arm: the digest over this tier (FR-024) and the
+  // search index read the stored value, so it is bounded the same way.
+  const bounded = boundDataDepth(data)
   const event: RedLogEvent = {
     id: crypto.randomUUID(),
     timestamp: occurredAt,
@@ -759,7 +766,7 @@ function insertLoggedEvent(
     targetId: opts.targetId ?? null,
     // Stamped like a chained row (FR-005). Not hashed here: this tier has no
     // per-row hash, and the export's logged digest covers it (FR-024).
-    data: { ...data, _ingest: ingestStamp(opts.entrance ?? currentEntrance(), { tier: 'logged', now, stripped: opts.stripped, terminal: terminalIdentity(data) }) },
+    data: { ...bounded.data, _ingest: ingestStamp(opts.entrance ?? currentEntrance(), { tier: 'logged', now, stripped: opts.stripped, collapsed: bounded.collapsed, terminal: terminalIdentity(data) }) },
     createdAt: now,
     // Deliberately absent — see the block above.
     hash: undefined,
