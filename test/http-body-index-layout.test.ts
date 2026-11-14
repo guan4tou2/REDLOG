@@ -93,6 +93,9 @@ sqlite.describe('body index layout', () => {
       expect(index.pragma('user_version', { simple: true })).toBe(11)
       expect(index.prepare('SELECT ref,event_id FROM body_event_refs').all()).toEqual([{ ref: 1, event_id: 'E' }])
       expect(index.prepare("SELECT name FROM sqlite_master WHERE name LIKE 'body_docs%'").all()).toEqual([])
+      // Contentless: the words are indexed, the text is not kept.
+      expect((index.prepare("SELECT sql FROM sqlite_master WHERE name='body_fts'").get() as { sql: string }).sql).toContain("content='',contentless_delete=1")
+      expect(index.prepare('SELECT rowid,content FROM body_fts').all()).toEqual([{ rowid: idx._documentRowid(1, 0, 0), content: null }])
     } finally { index.close() }
   })
 

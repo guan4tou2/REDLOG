@@ -46,6 +46,12 @@ export function _documentRowid(ref: number, kind: DocKind, n: number): number { 
 let documentsPerKind = KIND_SPAN
 export function _limitDocumentsPerKind(n?: number): void { documentsPerKind = Math.min(n ?? KIND_SPAN, KIND_SPAN) }
 class TooManyDocuments extends Error {}
+// Contentless: the index holds each document's words, not a second copy of
+// its text (the saved body is the text). Nothing reads a document back, so
+// what that gives up is unused: SELECT content is NULL, and snippet() and
+// 'rebuild' are refused. contentless_delete lets a document be deleted and
+// replaced by rowid (it rules out columnsize=0).
+const FTS_COLUMNS = `content,content='',contentless_delete=1,tokenize='${FTS_TOKENIZE}',prefix='2 3'`
 let index: Database.Database | null = null, indexDir: string | null = null
 function getIndex(projectDir = getProjectDir()): Database.Database {
   if (index && indexDir === projectDir)
@@ -67,7 +73,8 @@ function getIndex(projectDir = getProjectDir()): Database.Database {
   // keys a ref by its event and the field it is in (its slot), not by its
   // hash: a request and a response with the same bytes are two refs. v11
   // gives each ref an id of its own, never reused, and derives its
-  // documents' rowids from it (see KIND_SPAN); body_docs is gone.
+  // documents' rowids from it (see KIND_SPAN); body_docs is gone, and
+  // body_fts keeps no copy of the text (FTS_COLUMNS).
   // An older index is rebuilt once, from the source rows, at the next search.
   // The schema is written in one transaction, and an index already current is
   // opened without a write: each commit is a flush, slow on Windows.
@@ -76,7 +83,7 @@ function getIndex(projectDir = getProjectDir()): Database.Database {
     // FTS5 finds a row only by MATCH or rowid: a document's rowid says which
     // ref it is (rowid / REF_SPAN), so removing one ref's text never reads
     // every document.
-    db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS body_fts USING fts5(content,tokenize='${FTS_TOKENIZE}',prefix='2 3');
+    db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS body_fts USING fts5(${FTS_COLUMNS});
     CREATE TABLE IF NOT EXISTS body_event_refs (${REF_COLUMNS});
     CREATE INDEX IF NOT EXISTS body_event_refs_sha256 ON body_event_refs(sha256);
     CREATE INDEX IF NOT EXISTS body_event_refs_order ON body_event_refs(tier,row,pos);
@@ -377,8 +384,9 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
           // Re-verified bytes with the same hash: the documents stand.
           if (prior && HAS_DOCS.has(prior.status)) { status = prior.status; reason = prior.reason; wrote[0] = had[0]; wrote[1] = had[1]; return }
           // Every document write replaces: whatever a rowid of this ref held
-          // is overwritten, never added to (a plain INSERT at a rowid FTS5
-          // already holds keeps the old words searchable beside the new).
+          // is overwritten, never added to (a contentless table accepts a
+          // plain INSERT at a rowid it holds, and keeps the old words
+          // searchable beside the new).
           const insertText = stmt(db, `INSERT OR REPLACE INTO ${t.fts}(rowid,content) VALUES(?,?)`)
           const write = (kind: DocKind) => (part: string): void => {
             if (!part) return
@@ -656,7 +664,7 @@ function ensureExtraTables(db: Database.Database): void {
   // The same layout: this connection's own ref ids, never mixed with the
   // shared table's (a TEMP match is joined to TEMP refs only).
   if (!hasExtraTables(db)) db.exec(`CREATE TEMP TABLE body_x_refs (${REF_COLUMNS});
-    CREATE VIRTUAL TABLE temp.body_x_fts USING fts5(content,tokenize='${FTS_TOKENIZE}',prefix='2 3');`)
+    CREATE VIRTUAL TABLE temp.body_x_fts USING fts5(${FTS_COLUMNS});`)
 }
 /** Remove one event's refs and documents from this connection's TEMP tables. */
 function dropExtra(db: Database.Database, eventId: string): void {

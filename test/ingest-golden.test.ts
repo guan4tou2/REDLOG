@@ -34,8 +34,13 @@ vi.mock('../src/core/signing', async (actual) => {
 // Re-recorded 2026-11-14 for Spec 071 T025: a row with a terminal carries it
 // as `_ingest.terminal` (FR-011). With that one key held back the previous
 // digest comes out unchanged, so nothing else moved.
+// Re-recorded 2026-11-15 for the contentless body index (decision 2026-11-14
+// §6): the index no longer gives a document's text back, so each document's
+// words are hashed instead. Hashed that way, the index the previous layout
+// built (stored text, same rowids) gives this same digest, so only what is
+// hashed moved, not what is stored.
 const GOLDEN = {
-  rows: '5a3ecc37b7d6b96841587aabb9550891989c01b8f0c3f4fb8b3d3fa19c41a624',
+  rows: '53eb68cdf35dc63b0de2f7ca8d31bb542d644d3814d2df7abe401e66dce1bac9',
   head: '039143cb03fcfec4c55c0f68ca92ec8b231313ab3aa7c67b607c465403cec9d8'
 }
 
@@ -90,9 +95,11 @@ describe('ingest write path, byte for byte', () => {
     expect(counted.fts).toBeGreaterThanOrEqual(counted.refs)
     // The index's own verification columns (inode/mtime signatures) differ per run.
     for (const row of index.prepare('SELECT event_id,sha256,file,size,encoding,status,indexed_bytes,reason,kind,available_bytes FROM body_event_refs ORDER BY event_id,sha256').all()) h.update(JSON.stringify(row) + '\n')
-    // A document's ref is its rowid / refSpan.
-    const span = bodyIndex._documentLayout().refSpan
-    for (const row of index.prepare(`SELECT r.event_id,r.sha256,f.content FROM body_fts f JOIN body_event_refs r ON r.ref=f.rowid/${span} ORDER BY r.event_id,r.sha256,f.rowid`).all()) h.update(JSON.stringify(row) + '\n')
+    // A document's ref is its rowid / refSpan. The index keeps a document's
+    // words, not its text (a contentless table), so its words are hashed.
+    const span = bodyIndex._documentLayout().refSpan, { documentTerms } = await import('./helpers/body-index-layout')
+    const documents = index.prepare(`SELECT r.event_id,r.sha256,f.rowid AS id FROM body_fts f JOIN body_event_refs r ON r.ref=f.rowid/${span} ORDER BY r.event_id,r.sha256,f.rowid`).all() as Array<{ event_id: string; sha256: string; id: number }>
+    for (const { id, ...row } of documents) h.update(JSON.stringify({ ...row, terms: documentTerms(index, id).join(' ') }) + '\n')
     index.close()
     h.update(results.join(','))
     const head = (db.getDB().prepare('SELECT hash FROM events ORDER BY created_at DESC, rowid DESC LIMIT 1').get() as { hash: string }).hash

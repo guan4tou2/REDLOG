@@ -18,7 +18,7 @@ import { createHash } from 'node:crypto'
 import { requires } from './helpers/requires'
 import { runAddonRequests } from './helpers/addon-request-payload'
 import { searchHttpBodyEventIds } from './helpers/body-search'
-import { documentRowids } from './helpers/body-index-layout'
+import { documentRowids, documentTerms, termsOf } from './helpers/body-index-layout'
 import { parseQuery } from '../src/core/query/contract'
 import { decodeJsonEscapes } from '../src/core/json-escape-text'
 import Database from 'better-sqlite3'
@@ -203,14 +203,16 @@ describeDB('searching a JSON body without params.body_json', () => {
     const plainLarge = response(JSON.stringify({ pad: 'q'.repeat(6000), w: 'PLAINLARGEX' }), 'application/json', 'resp-plain-large')
     viaBody('PLAINLARGEX')
     const db = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
-    const chars = (id: string): number => documentRowids(db, id).reduce((sum, rowid) => sum + (db.prepare('SELECT length(content) AS n FROM body_fts WHERE rowid=?').get(rowid) as { n: number }).n, 0)
-    const escaped = chars(ids.large.after), plain = chars(plainLarge), inline = chars(ids.small.after)
+    // The index keeps each document's words, not its text: compare the words,
+    // document after document in rowid order (the saved text, then the decoded).
+    const words = (id: string): string[] => documentRowids(db, id).flatMap(rowid => documentTerms(db, rowid))
+    const escaped = words(ids.large.after), plain = words(plainLarge), inline = words(ids.small.after)
     db.close()
-    console.log(`[index size] escaped sidecar ${LARGE.length} chars -> ${escaped}; plain sidecar ${JSON.stringify({ pad: 'q'.repeat(6000), w: 'PLAINLARGEX' }).length} -> ${plain}; escaped inline ${SMALL.length} -> ${inline}`)
-    expect(plain).toBe(JSON.stringify({ pad: 'q'.repeat(6000), w: 'PLAINLARGEX' }).length)
-    expect(escaped).toBe(LARGE.length + (decodeJsonEscapes(LARGE) ?? '').length)
-    // SQLite's length() counts characters; the astral pair is one each.
-    expect(inline).toBe([...(decodeJsonEscapes(SMALL) ?? '')].length)
+    const plainText = JSON.stringify({ pad: 'q'.repeat(6000), w: 'PLAINLARGEX' })
+    console.log(`[index size] escaped sidecar ${LARGE.length} chars -> ${escaped.length} words; plain sidecar ${plainText.length} -> ${plain.length}; escaped inline ${SMALL.length} -> ${inline.length}`)
+    expect(plain).toEqual(termsOf(plainText))
+    expect(escaped).toEqual([...termsOf(LARGE), ...termsOf(decodeJsonEscapes(LARGE) ?? '')])
+    expect(inline).toEqual(termsOf(decodeJsonEscapes(SMALL) ?? ''))
   })
 
   it('IMPROVEMENT: response text written as \\uXXXX escapes, never found by the decoded word before (no parsed copy existed), is found now, inline and in the sidecar', () => {

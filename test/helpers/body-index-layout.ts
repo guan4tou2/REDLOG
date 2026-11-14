@@ -1,9 +1,11 @@
 // Reading the body index's documents as the tests check them. A document's
 // rowid is ref * refSpan + kind * kindSpan + n (src/core/http-body-index.ts,
 // KIND_SPAN); its ref row counts the documents of each kind. All arithmetic
-// is in SQL, on integer rowids.
-import type Database from 'better-sqlite3'
+// is in SQL, on integer rowids. The FTS table is contentless: a document's
+// text is not stored, only its words, which fts5vocab lists.
+import Database from 'better-sqlite3'
 import { _documentLayout } from '../../src/core/http-body-index'
+import { FTS_TOKENIZE } from '../../src/core/query/fts-match'
 
 const { refSpan, kindSpan } = _documentLayout()
 
@@ -32,4 +34,20 @@ export function layoutViolations(index: Database.Database): { stray: number; mis
  *  JS number it is a REAL, which FTS5 ignores beside MATCH. */
 export function documentHolds(index: Database.Database, rowid: number, term: string, fts = 'body_fts'): boolean {
   return (index.prepare(`SELECT count(*) AS n FROM ${fts} WHERE ${fts} MATCH ? AND rowid=CAST(? AS INTEGER)`).get(`"${term}"`, rowid) as { n: number }).n > 0
+}
+
+/** The words of the document at `rowid`, in order, as the tokenizer keeps
+ *  them (lower case, diacritics removed). */
+export function documentTerms(index: Database.Database, rowid: number, fts = 'body_fts'): string[] {
+  index.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS temp.${fts}_terms USING fts5vocab(main, '${fts}', 'instance')`)
+  return (index.prepare(`SELECT term FROM temp.${fts}_terms WHERE doc=CAST(? AS INTEGER) ORDER BY offset`).all(rowid) as { term: string }[]).map(r => r.term)
+}
+/** The words `text` makes under the body index's tokenizer. */
+export function termsOf(text: string): string[] {
+  const scratch = new Database(':memory:')
+  try {
+    scratch.exec(`CREATE VIRTUAL TABLE t USING fts5(content,tokenize='${FTS_TOKENIZE}'); CREATE VIRTUAL TABLE v USING fts5vocab(t, instance)`)
+    scratch.prepare('INSERT INTO t(rowid,content) VALUES(1,?)').run(text)
+    return (scratch.prepare('SELECT term FROM v ORDER BY offset').all() as { term: string }[]).map(r => r.term)
+  } finally { scratch.close() }
 }
