@@ -4,6 +4,8 @@ import { createHash } from 'node:crypto'
 import { getReadonlyDB } from './db/index'
 import { withVerifiedBody, withVerifiedSavedFile, savedFileRefs, withInlineBase64, ContentAccessError, type ByteSource } from './body-source'
 import type { BodyRef } from './http-body-store'
+import { findInSavedText, MAX_RESUME_BACK } from './content-find'
+import { ESCAPE_DECODED_BODY_FIELDS } from './content-contract'
 import type { ContentField, ContentDescriptor, ContentRef, ContentReadRequest, ContentFindRequest, ContentWindow, ContentFindResult, ContentResult } from './content-contract'
 const FIELDS: Array<{
   field: ContentField
@@ -237,18 +239,18 @@ export function findEventContent(request: ContentFindRequest): ContentResult<Con
     const needle = Buffer.from(request.needle, 'utf8'), offset = position(request.ref, request.cursor)
     if (!needle.length || needle.length > 4096 || offset > source.bytes)
       throw new ContentAccessError('failed', 'Invalid content search')
-    const query = createHash('sha256').update(needle).digest('hex')
+    // The digest names the matching too (content-find.ts), so a cursor issued
+    // when a match was the needle's bytes alone is not continued as this one.
+    const query = createHash('sha256').update('find-decoded\0').update(needle).digest('hex')
     if (request.cursor && request.cursor.query !== query)
       throw new ContentAccessError('changed', 'Content search cursor belongs to another query')
-    const through = Math.min(source.bytes, offset + SCAN)
-    for (let off = offset; off < through; off += WINDOW) {
-      const span = Math.min(WINDOW, through - off), buf = source.read(off, Math.min(source.bytes - off, span + needle.length - 1)), index = buf.indexOf(needle)
-      if (index >= 0 && index < span) {
-        const next = off + index + needle.length
-        return { match: { offset: off + index, bytes: needle.length }, searchedThrough: next, total: source.bytes, hasMore: next < source.bytes, nextCursor: next < source.bytes ? { version: request.ref.version, offset: next, query } : null }
-      }
-    }
-    return { match: null, searchedThrough: through, total: source.bytes, hasMore: through < source.bytes, nextCursor: through < source.bytes ? { version: request.ref.version, offset: through, query } : null }
+    const from = request.cursor ? request.cursor.from : offset
+    if (!Number.isSafeInteger(from) || from > offset || offset - from > MAX_RESUME_BACK)
+      throw new ContentAccessError('failed', 'Invalid content search cursor')
+    const decode = (ESCAPE_DECODED_BODY_FIELDS as readonly string[]).includes(request.ref.field)
+    const scan = findInSavedText(source.read, source.bytes, request.needle, { offset, from }, SCAN, decode, WINDOW)
+    const next = scan.next, more = next.offset < source.bytes
+    return { match: scan.match, searchedThrough: next.offset, total: source.bytes, hasMore: more, nextCursor: more ? { version: request.ref.version, offset: next.offset, from: next.from, query } : null }
   })
 }
 
