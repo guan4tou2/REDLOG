@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { PLUGIN_API_VERSION } from './types'
+import { compareCodeUnits } from '../code-unit-order'
 
 export interface AgentSourceLocation {
   defaultPath: string
@@ -90,7 +91,7 @@ function scanPackages(root: string): { valid: Package[]; invalid: OfficialAgentP
       valid.push({ manifest, code, agentKind: a.agentKind, pluginId: manifest.id, name: manifest.name, source: a.source, order: Number(a.order) || 0 })
     } catch (err) { invalid.push(invalidEntry(e.name, manifest, err)) }
   }
-  valid.sort((a, b) => a.order - b.order || a.pluginId.localeCompare(b.pluginId))
+  valid.sort((a, b) => a.order - b.order || compareCodeUnits(a.pluginId, b.pluginId))
   return { valid, invalid }
 }
 function manifestBytes(p: Package, installationId: string): string {

@@ -74,18 +74,18 @@
       },
       {
         "id": "00000000-0000-4000-8000-000000000035",
-        "hash": "e5e0b35c3f23f589711c37d573c9faa8a63daeb52eb82b7ebd0aa66b40db2479",
-        "sha256": "8bb9a80b2be84f224eb963f7f028e0715df27ecc7f49091d4037ff2369f5106d"
+        "hash": "fb2534c0eb7da0e0e07bddbcf0ed695e7d34398f99be83ea17ee484ca8e6a078",
+        "sha256": "ad384e4a508c697bbdb670160b8f0af7da8f28122db09adfadec7089fbb98f89"
       },
       {
         "id": "00000000-0000-4000-8000-000000000037",
-        "hash": "fa173ec42c982361175a006111f43f9177ff0af6937f2b1f6a2b5413ef3695d9",
-        "sha256": "32c45fec3bbb1777cfa25b44b5a151a0cf49c943745ed3275bd771d1129f5a4e"
+        "hash": "303d783f6c531fa8cdebe5f666a1eb6d08b8c313f5582a3792e75de9cfcc35c9",
+        "sha256": "2dba45a4387cf07746eb82cefdd3805781e90b67277c5a09f0d77c4d411584a6"
       },
       {
         "id": "00000000-0000-4000-8000-000000000040",
-        "hash": "dcab64b90f2618b48eab0b8d6752b2e7bfa8317d594e532fbbe4e26de8c95d0d",
-        "sha256": "a6c189781a5ed0e1d12cab0b8b0bbbe4e08b7ee9528989e1d376c901fef13045"
+        "hash": "5a93a9ea405b560b18dc3f2a346f7d28592f90700f6a36b6bb99e8e6091cd642",
+        "sha256": "7b60909aff6ecc9ce9e35e5c67cdd66bebabf260878f2954ad53e3bf44e4413a"
       }
     ],
     "events_logged": [
@@ -96,7 +96,7 @@
       }
     ]
   },
-  "rowsSha256": "33b4eb6e1773ab33fde089f7ef98ee30c2649d13a4f33842b54ed78d1d14677c",
+  "rowsSha256": "6ce9a41dea3050e11796bfd23d363a8762b931714fd5b38306c18d30a9d276ad",
   "stamps": {
     "events": [
       {
@@ -321,7 +321,7 @@
     "walked": 17,
     "brokenAtEventId": null,
     "brokenReason": null,
-    "currentHead": "4d209151a2a0ff09ed63dccf34701096bb282b9d9285ffe302106958e4917200",
+    "currentHead": "9756e71c6388f829aa49fb4e074ca47d4c8bd4c36d726b8c4dab3c004b28bf94",
     "anchorMatchesWalkedHead": false,
     "clockAnomalies": [],
     "signedCount": 17,
@@ -374,5 +374,5 @@
       "stderr": ""
     }
   },
-  "verifierSha256": "f49a7d4acd941b9df0acbeab592a7ac7f8a2a6cdf5ac239271700ac39e2359af"
+  "verifierSha256": "40e4f056760161697797acf89a9c079d2b70c4945cc43c1daa73d1ae218f7c92"
 }

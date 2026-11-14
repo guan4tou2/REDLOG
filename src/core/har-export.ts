@@ -5,6 +5,7 @@ import { eventIdsReferencingBody } from './http-body-index'
 import { redactEventForExport, redactEventsForExport, type RedactExportOpts } from './redact-export'
 import { isOutOfScope, isUnclassifiedScope, type ScopeForSanitize } from './scope-sanitize'
 import type { ExportSnapshot } from './export-plan'
+import { compareCodeUnits } from './code-unit-order'
 
 interface HarWebSocketMessage {
   eventId: string
@@ -295,7 +296,7 @@ export function createHarDocument(events: readonly RedLogEvent[]) {
     entries.push(entry)
   }
 
-  entries.sort((a, b) => a.startedDateTime.localeCompare(b.startedDateTime))
+  entries.sort((a, b) => compareCodeUnits(a.startedDateTime, b.startedDateTime))
 
   // #461: segments whose request and response were never saved. Building
   // entries from requests and responses alone dropped these, approved events
@@ -312,7 +313,7 @@ export function createHarDocument(events: readonly RedLogEvent[]) {
       ...flowSegments(streamChunks.get(flowId), webSocketMessages.get(flowId))
     })
   }
-  partialFlows.sort((a, b) => a.firstObservedAt.localeCompare(b.firstObservedAt))
+  partialFlows.sort((a, b) => compareCodeUnits(a.firstObservedAt, b.firstObservedAt))
 
   const har = {
     log: {

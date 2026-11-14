@@ -12,6 +12,7 @@ import { isOutOfScope, type ScopeForSanitize } from './scope-sanitize'
 import { capabilitiesFor, isExportFormat, type ExportCapabilities, type ExportFormat } from './export-capabilities'
 import { isAttachmentId, storedArtifactOf, type ExportAttachment } from './export-attachments'
 import { BODY_REF_FIELDS } from './http-body-store'
+import { compareCodeUnits } from './code-unit-order'
 
 /**
  * A point-in-time snapshot of both DB tiers' max rowid.
@@ -183,7 +184,7 @@ export function captureGapsFold(): EventFold<CaptureGapCount[]> {
       else row.unknownAmount++
       byReason.set(reason, row)
     },
-    done: () => [...byReason.values()].sort((a, b) => (a.reason < b.reason ? -1 : a.reason > b.reason ? 1 : 0))
+    done: () => [...byReason.values()].sort((a, b) => compareCodeUnits(a.reason, b.reason))
   }
 }
 

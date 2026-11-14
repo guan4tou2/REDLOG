@@ -98,6 +98,43 @@ describeDB('evidence bundle export', () => {
     }
   })
 
+  // APFS, ext4 and NTFS list a directory in different orders, and `files` is
+  // in the sealed manifest. The listing is code-unit order whatever the
+  // filesystem says: here it says the reverse.
+  it('lists attachments in code-unit order, not the order the filesystem returns', () => {
+    const names = ['B.jpg', 'a.jpg', 'a_b.jpg', 'a-b.jpg', 'aa0e8400.jpg', 'b0b0b0b0.jpg']
+    for (const n of names) seedFile('screenshots', n, n)
+    for (const n of ['Z.cast', 'a.cast', 'b.cast']) seedFile('casts', n, '{"version":2}\n')
+    for (const n of ['ff.body', '0a.body', 'Ab.body']) seedFile('http-bodies', n, n)
+    const prefixed = (files: Array<{ path: string }>, d: string): string[] =>
+      files.map((f) => f.path).filter((p) => p.startsWith(`${d}/`))
+    const want = {
+      screenshots: ['screenshots/B.jpg', 'screenshots/a-b.jpg', 'screenshots/a.jpg', 'screenshots/a_b.jpg', 'screenshots/aa0e8400.jpg', 'screenshots/b0b0b0b0.jpg'],
+      casts: ['casts/Z.cast', 'casts/a.cast', 'casts/b.cast'],
+      'http-bodies': ['http-bodies/0a.body', 'http-bodies/Ab.body', 'http-bodies/ff.body']
+    }
+    const natural = exportBundle('eng', {}).manifest.files
+
+    const real = fs.readdirSync.bind(fs) as (p: fs.PathLike) => string[]
+    const listed: string[] = []
+    vi.spyOn(fs, 'readdirSync').mockImplementation(((p: fs.PathLike, o?: unknown) => {
+      if (o !== undefined) return (real as (p: fs.PathLike, o: unknown) => string[])(p, o)
+      const d = path.basename(String(p))
+      if (!(d in want)) return real(p)
+      listed.push(d)
+      return real(p).sort().reverse()
+    }) as typeof fs.readdirSync)
+    const reversed = exportBundle('eng', {}).manifest.files
+    vi.restoreAllMocks()
+
+    expect(listed, 'the stand-in filesystem order was used').toEqual(expect.arrayContaining(Object.keys(want)))
+    for (const [d, order] of Object.entries(want)) {
+      expect(prefixed(reversed, d), d).toEqual(order)
+      expect(prefixed(natural, d), d).toEqual(order)
+    }
+    expect(reversed.map((f) => f.path)).toEqual(natural.map((f) => f.path))
+  })
+
   it('refuses to export, leaving nothing behind, when the verifier cannot be found', () => {
     // A packaged build that lost tools/redlog-verify.py used to skip the
     // verifier, its wrappers and the README silently. A bundle sold as
