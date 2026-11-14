@@ -52,10 +52,11 @@ export type Capability =
   | 'python-cryptography'
   | 'pty'
   | 'listen'
+  | 'electron-runtime'
 
 export const CAPABILITIES: readonly Capability[] = [
   'better-sqlite3', 'built-renderer', 'built-main', 'posix-shell', 'bash', 'zsh', 'pwsh',
-  'python-cryptography', 'pty', 'listen'
+  'python-cryptography', 'pty', 'listen', 'electron-runtime'
 ]
 
 export type Expectation = 'required' | 'absent' | 'unknown'
@@ -141,6 +142,16 @@ const PROBES: Record<Capability, () => Probe> = {
       "s.listen(0, '127.0.0.1', () => s.close(() => process.exit(0)))"
     )
     return { ok: r.ok, detail: r.ok ? '127.0.0.1:0' : r.out }
+  },
+  // The Electron binary npm installed, run as plain Node (no window): the
+  // runtime the app ships, for behaviour that differs from the Node running
+  // Vitest (its ICU, its TextDecoder).
+  'electron-runtime': () => {
+    let bin: unknown
+    try { bin = nodeRequire('electron') } catch (e) { return { ok: false, detail: `electron not installed (${(e as Error).message.split('\n')[0]})` } }
+    if (typeof bin !== 'string' || !fs.existsSync(bin)) return { ok: false, detail: 'electron binary not downloaded' }
+    const r = spawnSync(bin, ['-e', 'process.stdout.write(process.versions.electron)'], { encoding: 'utf8', timeout: 30_000, windowsHide: true, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } })
+    return r.status === 0 && r.stdout ? { ok: true, detail: `electron ${r.stdout}` } : { ok: false, detail: `${bin} did not run as Node: ${r.error?.message ?? r.stderr?.split('\n')[0] ?? `exit ${r.status}`}` }
   }
 }
 

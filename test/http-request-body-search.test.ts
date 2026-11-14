@@ -163,6 +163,14 @@ describeDB('searching a JSON body without params.body_json', () => {
   })
 
   it('a short body with nothing to decode is found by the events index alone, before and after: it adds nothing to the body index', () => {
+    // Right after ingest, before any search walks the rows.
+    expect(getIndexRows().filter(r => r.event_id === ids.plain.after || r.event_id === ids.plain.before)).toEqual([])
+    // A body with a backslash-u that is not an escape is walked (the partial
+    // index admits any backslash-u) and still gets no entry.
+    const literal = response(JSON.stringify({ path: 'C:\\users\\u4e2dx' }), 'application/json', 'literal-backslash')
+    expect(JSON.parse((getDB().prepare('SELECT data FROM events_logged WHERE id=?').get(literal) as { data: string }).data).response_body.data).toContain('\\\\u4e2dx')
+    surface('u4e2dx')
+    expect(getIndexRows().filter(r => r.event_id === literal)).toEqual([])
     const both = { events: true, body: false, surface: true }
     expect(found('PLAINWORDX', 'plain')).toEqual({ before: both, after: both })
     expect(found('plainkeyx', 'plain')).toEqual({ before: both, after: both })
@@ -266,6 +274,12 @@ describeDB('searching a JSON body without params.body_json', () => {
     const ref = row(ids.large.after).request_body_ref as { file: string; sha256: string }
     fs.unlinkSync(path.join(dir, 'http-bodies', ref.file))
     pruneHttpBodyIndex(ref.sha256, dir)
+    // At once, before any walk: no document of that body is left to match.
+    const index = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
+    try {
+      expect(index.prepare('SELECT count(*) AS n FROM body_docs WHERE sha256=?').get(ref.sha256)).toEqual({ n: 0 })
+      expect(index.prepare("SELECT count(*) AS n FROM body_fts WHERE body_fts MATCH 'TAILWORDX'").get()).toEqual({ n: 0 })
+    } finally { index.close() }
     expect(found('TAILWORDX', 'large')).toEqual({
       // `before` keeps finding it: the parsed copy outlived the file retention deleted.
       before: { events: true, body: false, surface: true },
@@ -285,8 +299,25 @@ describeDB('searching a JSON body without params.body_json', () => {
     if (!('data' in sent)) throw new Error(`addon (python ${python}): ${sent.error}`)
     const after = post({ ...sent.data, flow_id: 'cap-after' })
     const before = post({ ...sent.data, flow_id: 'cap-before', params: { body_json: JSON.parse(text) } })
-    expect(row(after).request_body_ref).toEqual(expect.objectContaining({ size: 8192, truncated: true }))
+    expect(row(after).request_body_ref).toEqual(expect.objectContaining({ size: 8192, truncated: true, totalSize: Buffer.byteLength(text) }))
     expect(surface('CAPWORDX')).toEqual([before])
+    // And search says so: the body is indexed only in part, and its source
+    // size is what the capture saw, not what was saved.
+    const capped = getIndexRows().filter(r => r.event_id === after || r.event_id === before)
+    expect(capped.map(r => r.status)).toEqual(['partial', 'partial'])
+    const body = bodySearchCoverage().sources!.find(s => s.kind === 'body')!
+    expect(body).toEqual(expect.objectContaining({ status: 'partial', partial: 2 }))
+    expect(body.sourceBytes - body.indexedBytes).toBeGreaterThanOrEqual(2 * (Buffer.byteLength(text) - 8192))
+  })
+
+  it('a response cut at the capture cap is counted partial too', () => {
+    const text = JSON.stringify({ pad: 'r'.repeat(6000), w: 'CUTRESPX' })
+    const id = post({ subtype: 'http_response', flow_id: 'cut-response', url: 'http://10.0.0.5/x', status: 200, content_type: 'application/json',
+      response_body: { data: text, encoding: 'text', size: 50_000, sha256: '', truncated: true, content_type: 'application/json' } })
+    expect(surface('CUTRESPX')).toContain(id)
+    expect(row(id).response_body_ref).toEqual(expect.objectContaining({ truncated: true, totalSize: 50_000 }))
+    expect(getIndexRows().filter(r => r.event_id === id).map(r => r.status)).toEqual(['partial'])
+    expect(bodySearchCoverage().sources!.find(s => s.kind === 'body')).toEqual(expect.objectContaining({ partial: 1, status: 'partial' }))
   })
 
   describe('a JSON body in a declared charset other than UTF-8 (saved as base64)', () => {
@@ -320,10 +351,14 @@ describeDB('searching a JSON body without params.body_json', () => {
     // Electron's runtime (Node 24.22 / ICU 78) fails on invalid Big5; Node
     // 24.12 (ICU 77) drops the bytes with no error and no U+FFFD, so there a
     // corrupt Big5 body is indexed with those bytes missing and counted indexed.
+    // The test name says which this runtime is; the shipped runtime is pinned
+    // by test/electron-big5.test.ts.
     const big5Signals = ((): boolean => { try { new TextDecoder('big5', { fatal: true }).decode(Buffer.from('80ff41', 'hex')); return false } catch { return true } })()
+    const runtime = `node ${process.versions.node}, icu ${process.versions.icu}`
+    console.log(`[big5] ${runtime}: invalid Big5 ${big5Signals ? 'rejected' : 'dropped silently'}`)
     it(big5Signals
-      ? 'leaves a body declared big5 whose bytes are not valid Big5 binary'
-      : 'KNOWN (this runtime): a body declared big5 with invalid bytes is indexed with those bytes missing — the decoder gives no signal', () => {
+      ? `leaves a body declared big5 whose bytes are not valid Big5 binary (${runtime} rejects invalid Big5)`
+      : `KNOWN (${runtime}): a body declared big5 with invalid bytes is indexed with those bytes missing — the decoder gives no signal`, () => {
       const bad = response(Buffer.concat([big5(), Buffer.from(' QZBADX '), Buffer.from('80ff', 'hex')]), 'application/json; charset=big5', 'big5-invalid')
       const body = () => bodySearchCoverage().sources!.find(s => s.kind === 'body')!
       viaBody('QZBADX')
@@ -334,6 +369,28 @@ describeDB('searching a JSON body without params.body_json', () => {
         expect(viaBody('QZBADX')).toEqual([bad])
         expect(body()).toEqual(expect.objectContaining({ binary: 0 }))
       }
+    })
+
+    it('decodes by a declared charset only for a textual media type', () => {
+      // A PNG-like body declared UTF-16 or windows-1252 stays binary.
+      const png = Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), Buffer.from('PNGWORDQ'), Buffer.from('fe', 'hex')])
+      const asImage = response(png, 'image/png; charset=utf-16le', 'png-utf16')
+      const asBytes = response(png, 'application/octet-stream; charset=windows-1252', 'png-1252')
+      // The same declaration on a textual type is read in it.
+      const utf16 = response(Buffer.from('{"w":"UTF16WORDQ"}', 'utf16le'), 'text/plain; charset=utf-16le', 'text-utf16')
+      expect(viaBody('UTF16WORDQ')).toEqual([utf16])
+      expect(viaBody('PNGWORDQ')).toEqual([])
+      expect(getIndexRows().filter(r => r.event_id === asImage || r.event_id === asBytes).map(r => r.status)).toEqual(['binary', 'binary'])
+    })
+
+    it('a body that ends mid-character is indexed up to the cut and counted partial, in its charset or in UTF-8', () => {
+      const cutBig5 = response(Buffer.concat([big5(), Buffer.from(' TAILBIG5Q '), Buffer.from('a4', 'hex')]), 'application/json; charset=big5', 'cut-big5')
+      const cutUtf8 = response(Buffer.concat([Buffer.from('{"w":"CUTUTF8Q 中'), Buffer.from('e6', 'hex')]), 'application/json', 'cut-utf8')
+      expect(viaBody('TAILBIG5Q')).toEqual([cutBig5])
+      expect(viaBody('中文詞')).toContain(cutBig5)
+      expect(viaBody('CUTUTF8Q')).toEqual([cutUtf8])
+      expect(getIndexRows().filter(r => r.event_id === cutBig5 || r.event_id === cutUtf8).map(r => r.status)).toEqual(['partial', 'partial'])
+      expect(bodySearchCoverage().sources!.find(s => s.kind === 'body')).toEqual(expect.objectContaining({ partial: 2, status: 'partial' }))
     })
 
     it('leaves alone a body with no declared charset, or one whose bytes hold a NUL, and says so in coverage', () => {
