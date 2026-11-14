@@ -156,3 +156,31 @@ it('keeps the read window when whole-content copy is refused and offers a cancel
   expect((await screen.findByRole('alert')).textContent).toBe('content.saveFailed')
   expect(screen.getByText('head',{selector:'pre'})).toBeTruthy()
 })
+
+// The main process says which saved bytes matched; an escaped run is longer
+// than the needle and is not the needle's text, so the Reader marks that range.
+function findFixture(text: string, match: { offset: number; bytes: number }): void {
+  const ref = { projectId: 'p', eventId: 'e', field: 'response_body', version: 'v' }, total = new TextEncoder().encode(text).length
+  // The window is the whole text from offset 0, wherever the match is.
+  const read = vi.fn().mockResolvedValue({ ok: true, value: { offset: 0, end: total, total, text, format: 'utf8', hasMore: false, nextCursor: null } })
+  const find = vi.fn().mockResolvedValue({ ok: true, value: { match, searchedThrough: match.offset + match.bytes, total, hasMore: false, nextCursor: null } })
+  ;(window as any).redlog = { content: { list: vi.fn().mockResolvedValue({ ok: true, value: [{ field: 'response_body', status: 'available', ref, bytes: total, format: 'utf8', capture: 'unknown' }] }), read, find } }
+}
+async function findAndMark(needle: string): Promise<string | null | undefined> {
+  render(<EventContentReader projectId="p" eventId="e"/>)
+  await screen.findByRole('searchbox')
+  fireEvent.change(screen.getByRole('searchbox'), { target: { value: needle } })
+  fireEvent.click(screen.getByRole('button', { name: 'content.find' }))
+  await waitFor(() => expect((window as any).redlog.content.find).toHaveBeenCalled())
+  return waitFor(() => { const m = document.querySelector('pre mark'); expect(m).toBeTruthy(); return m?.textContent })
+}
+it('marks the escaped run the main process matched, not a later literal occurrence', async () => {
+  const text = '{"a":"\\u738b\\u5c0f\\u660e","b":"王小明"}'
+  findFixture(text, { offset: 6, bytes: 18 })
+  expect(await findAndMark('王小明')).toBe('\\u738b\\u5c0f\\u660e')
+})
+it('marks a literal match by its byte range after multibyte text', async () => {
+  const text = '中文 head 王小明 tail'
+  findFixture(text, { offset: new TextEncoder().encode('中文 head ').length, bytes: 9 })
+  expect(await findAndMark('王小明')).toBe('王小明')
+})

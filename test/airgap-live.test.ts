@@ -142,6 +142,13 @@ sqlite.describe('network.offline switched on while a project is open (Spec 073 T
     before.engagement.id = 'eng-air'
     cfgMod.saveConfig(dir, before)
     dbMod.initDB(dir)
+    // Seven hours of faked time write about 420 rows per case (IP verdicts and
+    // anchors), each its own commit, and the database is opened with
+    // `synchronous = FULL`: a disk flush per row. On the Windows runner that
+    // has taken 3 s a case on a good day and 16 s and 31 s on two bad ones,
+    // past the 15 s timeout (2026-11-15, two branches, neither touching this).
+    // What is under test is what goes out on the network, not durability.
+    dbMod.getDB().pragma('synchronous = OFF')
     dbMod.bindDBEngagement('eng-air')
     // A chain head for the anchor loop to find.
     for (let i = 0; i < 3; i++) evMod.insertEvent('system', { subtype: `seed_${i}` }, { operatorId: 'op' })

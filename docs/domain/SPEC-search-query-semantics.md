@@ -271,6 +271,30 @@ Timeline sends no query while its text is empty.
 `event-queries.ts`, the one rule). The Timeline sets it on its page, count,
 match and nearest-match requests, and on live admission. Search does not.
 
+### Find in content
+
+The Reader's Find (`findEventContent`, `src/core/content-find.ts`) searches one
+saved field. A needle matches where the saved bytes hold it as written, or — in
+a request, response, WebSocket or TCP body, the fields whose index entry is
+decoded — where the text holds it once its `\uXXXX` escapes are read as the
+characters they name. The match is a range of the saved bytes, so 王小明 marks
+the 18 bytes `\u738b\u5c0f\u660e`; what is shown, copied and saved is unchanged.
+
+- The escapes are the body index's (Coverage), except one naming a control
+  character (below U+0020), which matches only as written. `\n`, `\t`, `\"`,
+  `\\` and `\/` are never read. Case is exact.
+- A match is all as written or all read: a needle never mixes typed escape
+  text with decoded characters. At one offset the shorter range wins.
+- Command output, AI transcripts and every other field are matched as written,
+  as their search is: `\u0041` in a shell transcript does not match `A`.
+- A body that is not valid UTF-8 is binary to the Reader, and Find is not
+  offered: search reaches its words through the declared charset, the Reader
+  does not.
+- A call scans at most 1 MiB plus the needle's longest escaped form (6 bytes a
+  character, 12 above U+FFFF). Its cursor is bound to this matching and carries
+  where the scan resumes, at most 11 bytes back, because what a backslash
+  starts depends on the whole run of backslashes before it.
+
 ## Scenarios
 
 ### 1. A time range reaches past the newest matches
@@ -379,6 +403,8 @@ For every query Q and shared-filter dataset D:
   per-source coverage, pinned text-query cursors and versioned physical cast hits.
 - 2026-11-15: a multi-word query matches across one HTTP exchange (decision
   2026-11-15 §1 item 5); before, every term had to be in one Event.
+- 2026-11-15: the Reader's Find reads `\uXXXX` escapes in bodies, as the body
+  index does, and reports the saved range it matched.
 - 2026-11-15: the body index addresses a document by a rowid derived from its
   ref and keeps no copy of the text (decision 2026-11-14 §6); a body that
   needs more documents of one kind than a ref's rowids hold is partial.

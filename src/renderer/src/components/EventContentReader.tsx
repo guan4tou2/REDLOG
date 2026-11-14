@@ -25,6 +25,8 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, initialFi
   const [needle, setNeedle] = useState(initialFind ?? '')
   const [findCursor, setFindCursor] = useState<ContentFindCursor | undefined>()
   const [notFound, setNotFound] = useState(false)
+  // The saved bytes Find matched: an escaped run is longer than the needle.
+  const [found, setFound] = useState<{ offset: number; bytes: number } | null>(null)
   const pre=useRef<HTMLPreElement>(null)
   const [selection,setSelection]=useState<{start:number;end:number}|null>(null)
   const [delivery,setDelivery]=useState<'copy'|'save'|null>(null)
@@ -104,12 +106,13 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, initialFi
         if (!alive.current || seq !== generation.current || query !== input.current) return
         if (!reply.ok) { setError(t(`content.status.${reply.status}`)); setUnavailable(reply.status); setChanged(reply.status === 'changed'); return }
         if (reply.value.match) {
+          setFound(reply.value.match)
           setFindCursor(reply.value.nextCursor ?? undefined)
           await read(reply.value.match.offset)
           return
         }
         if (!reply.value.hasMore || !reply.value.nextCursor) {
-          setNotFound(true); setFindCursor(undefined)
+          setNotFound(true); setFindCursor(undefined); setFound(null)
           if (opening) await read(initialOffset)
           return
         }
@@ -121,18 +124,25 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, initialFi
   // Opened at a hit (a loot row names the line it matched): the reader's own
   // Find takes it there and marks it, as if the operator had typed it.
   useEffect(() => { void (initialFind && descriptor.format !== 'binary' ? find(true) : read(initialOffset)) }, [descriptor.ref?.version, initialOffset])
-  const matchAt = needle ? window?.text.indexOf(needle) ?? -1 : -1
   const raw=window?new TextEncoder().encode(window.text):null
-  const fragmentStart=window&&fragment?Math.max(0,fragment.start-window.offset):0
-  const fragmentEnd=window&&fragment?Math.min(raw?.length??0,fragment.end-window.offset):0
-  const highlightAt=needle?matchAt:raw&&fragmentEnd>fragmentStart?new TextDecoder().decode(raw.subarray(0,fragmentStart)).length:-1
-  const highlightLength=needle?needle.length:raw&&fragmentEnd>fragmentStart?new TextDecoder().decode(raw.subarray(fragmentStart,fragmentEnd)).length:0
+  // A saved byte range, as characters of this window, when the two overlap.
+  const inWindow=(start:number,end:number):[number,number]|null=>{
+    if(!window||!raw)return null
+    const a=Math.max(0,start-window.offset),b=Math.min(raw.length,end-window.offset)
+    return b>a?[new TextDecoder().decode(raw.subarray(0,a)).length,new TextDecoder().decode(raw.subarray(a,b)).length]:null
+  }
+  // With a needle: the range Find matched, else (typed, not yet found, or
+  // another window) its first occurrence as written. Without: the fragment.
+  const span=needle?(found?inWindow(found.offset,found.offset+found.bytes):null):fragment?inWindow(fragment.start,fragment.end):null
+  const literalAt=needle&&!span?window?.text.indexOf(needle)??-1:-1
+  const highlightAt=span?span[0]:literalAt
+  const highlightLength=span?span[1]:literalAt>=0?needle.length:0
   const state = contentState(unavailable ? { ...descriptor, status: unavailable } : descriptor)
   if (!descriptor.ref) return <p role="status" data-content-state={state} className="text-xs text-amber-300">{t(`content.status.${descriptor.status}`)}</p>
   return <div data-content-state={state} className="min-w-0 space-y-2">
     <div className="flex flex-wrap items-center gap-2">
       <input type="search" aria-label={t('content.find')} value={needle} disabled={descriptor.format === 'binary'}
-        onChange={e => { input.current = e.target.value; setNeedle(e.target.value); setFindCursor(undefined); setNotFound(false); generation.current++; setBusy(false) }}
+        onChange={e => { input.current = e.target.value; setNeedle(e.target.value); setFindCursor(undefined); setFound(null); setNotFound(false); generation.current++; setBusy(false) }}
         onKeyDown={e => { if (e.key === 'Enter' && !busy && !isComposing(e)) void find() }}
         className="min-w-0 flex-1 rounded border border-redlog-border bg-redlog-elevated px-2 py-1 text-sm" />
       <Button disabled={busy || !needle || descriptor.format === 'binary'} onClick={() => void find()}>{t('content.find')}</Button>
