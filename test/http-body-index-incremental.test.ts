@@ -335,6 +335,30 @@ describe('incremental body-search backfill', () => {
     expect(eventIdsReferencingBody(sha('alpha work5'), dir)).toEqual(['w5'])
   }, 30_000)
 
+  // The watermark vouches for the rows written with it: a sync whose mark
+  // cannot be written leaves neither, so no later reader trusts a half.
+  it('writes the watermark in the transaction of the rows it vouches for', () => {
+    seed(5)
+    const prepare = Database.prototype.prepare
+    vi.spyOn(Database.prototype, 'prepare').mockImplementation(function (this: Database.Database, sql: string) {
+      const s = prepare.call(this, sql)
+      if (/INTO body_index_meta VALUES\('mark'/.test(sql)) (s as unknown as { run: () => never }).run = () => { throw new Error('mark write failed') }
+      return s
+    })
+    expect(() => searchHttpBodyEventIds('alpha', dir)).toThrow('mark write failed')
+    // The failing statement is cached on the handle: drop both.
+    vi.restoreAllMocks(); closeHttpBodyIndex()
+    const index = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
+    try {
+      expect({
+        refs: index.prepare('SELECT count(*) AS n FROM body_event_refs').get(),
+        docs: index.prepare('SELECT count(*) AS n FROM body_docs').get(),
+        mark: index.prepare("SELECT count(*) AS n FROM body_index_meta WHERE key='mark'").get(),
+      }).toEqual({ refs: { n: 0 }, docs: { n: 0 }, mark: { n: 0 } })
+    } finally { index.close() }
+    expect(searchHttpBodyEventIds('work3', dir)).toEqual(['w3'])
+  })
+
   it('treats a row ingest already linked as a no-op at the next search', () => {
     seed(5)
     searchHttpBodyEventIds('alpha', dir)
