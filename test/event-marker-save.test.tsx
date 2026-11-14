@@ -6,7 +6,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 
 const toast = vi.fn()
 vi.mock('../src/renderer/src/components/Toast', () => ({ toast: (...a: unknown[]) => toast(...a) }))
-vi.mock('../src/renderer/src/i18n', () => ({ useI18n: () => ({ t: (k: string) => k }) }))
+const i18nT = vi.hoisted(() => ({ fn: (k: string, _v?: Record<string, string | number>): string => k }))
+vi.mock('../src/renderer/src/i18n', () => ({ useI18n: () => ({ t: (k: string, v?: Record<string, string | number>) => i18nT.fn(k, v) }) }))
 
 import EventMarker from '../src/renderer/src/components/EventMarker'
 
@@ -25,6 +26,42 @@ afterEach(cleanup)
 const typeTitle = (text: string): void => {
   fireEvent.change(screen.getByPlaceholderText('marker.placeholder'), { target: { value: text } })
 }
+
+describe('the stored default title', () => {
+  // The title is inside the row's hash: it must not follow the display zone or
+  // the interface language, so `t` here speaks a different language each time
+  // and the zone setting changes between runs.
+  const locales: Array<[string, (k: string, v?: Record<string, string | number>) => string]> = [
+    ['en', (k, v) => (k === 'marker.defaultTitle' ? `Mark @ ${v?.time}` : k)],
+    ['zh-TW', (k, v) => (k === 'marker.defaultTitle' ? `標記 @ ${v?.time}` : k)]
+  ]
+  for (const zone of ['local', 'utc']) {
+    for (const [name, tr] of locales) {
+      it(`is exactly "Mark" with zone ${zone} and locale ${name}`, async () => {
+        localStorage.setItem('redlog-display-zone', zone)
+        i18nT.fn = tr
+        create.mockResolvedValue({ id: 'm1' })
+        capture.mockResolvedValue(null)
+        render(<EventMarker onClose={vi.fn()} />)
+        fireEvent.click(screen.getByRole('button', { name: 'marker.submit' }))
+        await waitFor(() => expect(create).toHaveBeenCalled())
+        expect(create.mock.calls[0][0].title).toBe('Mark')
+        i18nT.fn = (k) => k
+        localStorage.removeItem('redlog-display-zone')
+      })
+    }
+  }
+
+  it('keeps a title the operator typed', async () => {
+    create.mockResolvedValue({ id: 'm1' })
+    capture.mockResolvedValue(null)
+    render(<EventMarker onClose={vi.fn()} />)
+    typeTitle('  got a shell ')
+    fireEvent.click(screen.getByRole('button', { name: 'marker.submit' }))
+    await waitFor(() => expect(create).toHaveBeenCalled())
+    expect(create.mock.calls[0][0].title).toBe('got a shell')
+  })
+})
 
 describe('saving a new marker', () => {
   it('keeps the dialog and the draft when the save fails, and says so', async () => {

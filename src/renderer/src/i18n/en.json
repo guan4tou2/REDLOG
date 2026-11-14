@@ -310,7 +310,6 @@
   "marker.cancel": "Cancel",
   "marker.saving": "Saving...",
   "marker.submit": "Save marker",
-  "marker.defaultTitle": "Mark @ {{time}}",
   "statusBar.rec": "REC",
   "statusBar.paused": "PAUSED",
   "statusBar.clickToPause": "Pause capture; search, replay and export remain available",

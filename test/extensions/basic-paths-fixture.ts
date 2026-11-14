@@ -211,11 +211,6 @@ export async function runBasicPaths(opts: RunOptions = {}): Promise<BasicPathsRu
   vi.resetModules()
   vi.spyOn(crypto, 'randomUUID').mockImplementation(() => `00000000-0000-4000-8000-${String(++uuid).padStart(12, '0')}` as `${string}-${string}-${string}-${string}-${string}`)
   vi.spyOn(os, 'hostname').mockReturnValue(HOST)
-  // A bare HUD mark is titled `HUD mark ${new Date(at).toLocaleTimeString()}`
-  // (src/main/ipc/markers.ts:44), which follows the machine's time zone and
-  // locale: "6:00:07 PM" in Asia/Taipei, "10:00:07 AM" in UTC, one byte longer,
-  // inside the chained row's hash input. Held to a constant, like hostname.
-  vi.spyOn(Date.prototype, 'toLocaleTimeString').mockReturnValue('10:00:00')
   vi.useFakeTimers({ now: T_START, toFake: ['Date'] })
   clockControl.ntpOffsetMs = null
   vi.doMock('../../src/core/clock', async (importOriginal) => clockMock(await importOriginal<Record<string, unknown>>()))

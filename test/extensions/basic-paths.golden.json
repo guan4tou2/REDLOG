@@ -500,7 +500,7 @@
     "transcript_uuid": null
    },
    "data": {
-    "title": "HUD mark 10:00:00",
+    "title": "HUD mark",
     "notes": "",
     "severity": "info",
     "category": "custom",
@@ -585,12 +585,12 @@
     "sealVersion": 1,
     "exportId": "00000000-0000-4000-8000-000000000043",
     "bundleVersion": 4,
-    "manifestSha256": "ee014e40ad985cd595790bfb246698b2313a6aa92d874ed6389bf3d50aef680b",
+    "manifestSha256": "3496d6e65278a2bed5d4f01c2a9d05a0002077e5705a3d502a8f20c7558928a4",
     "events": {
      "count": 18,
-     "bytes": 19828,
-     "sha256": "99ceb412a5286c557ee701c3f739e919827df19219be2a3d8cf1893703106c49",
-     "headHash": "1041d17f715e8472c4ab43c1e507d3e38ce739107f40bdced12d6ed4e2dcd016"
+     "bytes": 19819,
+     "sha256": "a2292aa81bf5a97a67ff806e460f4114be84e5324f5d357244052f63afa70bec",
+     "headHash": "d5c4c035bd4c7bdecf01d8523a4b33391017a3a87e0422b20ef3275b34124d37"
     },
     "description": "export sealed: 18 chained row(s), 7 file(s), 0 omitted attachment(s)"
    }
@@ -966,21 +966,21 @@
  "exports": {
   "early": {
    "json": {
-    "bytes": 28428,
-    "sha256": "7ee32f7c5addd9923f386809d4e3d93c8cac9059d9bbfc768cdc07bfab6398b3",
+    "bytes": 28419,
+    "sha256": "61019a7b4bc2cc253a8d8aff48115255171d6f22dee24388b9f83877bc7a6446",
     "rows": 19,
-    "normalizedSha256": "602748c40739e070694f4a89fbad47112cb9b7a310deb494d246f1fe261387b5"
+    "normalizedSha256": "4dab61b4b5fa63d119d193fe65e61514ee7ca44888f85c3dcd71099378d88ab7"
    },
    "ndjson": {
-    "bytes": 21449,
-    "sha256": "767eac34863ac2a6b182521fa765d2568aa0c9308a8c79521a9e8761f8114886",
-    "normalizedSha256": "602748c40739e070694f4a89fbad47112cb9b7a310deb494d246f1fe261387b5",
+    "bytes": 21440,
+    "sha256": "1e9bde8abe18bcaf3146d41ede077699b3c7bb0cacbad2a099ad7801da9f81a5",
+    "normalizedSha256": "4dab61b4b5fa63d119d193fe65e61514ee7ca44888f85c3dcd71099378d88ab7",
     "rows": 19
    },
    "bundleEvents": {
-    "bytes": 21141,
-    "sha256": "f80cf76b0b2b08893e598916f66f9308009a8018c16a9f79635b5a24a14f60b5",
-    "normalizedSha256": "cf6824280d557ab030e2a4cbdb5ae858a96b482b52925086896ab8c6c63a85fc",
+    "bytes": 21132,
+    "sha256": "706c5a7a6ff0d09d26248d52740c1b72478b4dd8bfa068d1398db740622e7d4e",
+    "normalizedSha256": "1a65fb2136bf3bb6569b98ba59002a6257e905b107b07557de45a93c612f9205",
     "rows": 19
    },
    "bundleLogged": {
@@ -1007,11 +1007,11 @@
   "final": {
    "json": {
     "rows": 28,
-    "normalizedSha256": "993c5cdf70f33c7c66bacfa6b03b08722b568a8ea28369ab803974dc947a1d15"
+    "normalizedSha256": "2ce223092db5975423e5517cec58e77f824d3c5954049b94a05951612965e860"
    },
    "ndjson": {
     "rows": 28,
-    "normalizedSha256": "993c5cdf70f33c7c66bacfa6b03b08722b568a8ea28369ab803974dc947a1d15"
+    "normalizedSha256": "2ce223092db5975423e5517cec58e77f824d3c5954049b94a05951612965e860"
    }
   }
  }
