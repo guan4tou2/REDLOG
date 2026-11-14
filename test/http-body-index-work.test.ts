@@ -77,21 +77,46 @@ sqlite.describe('body search work on a captured project', () => {
 
     // Removal paths, then a full walk, prepare their statements too.
     const index = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
-    const anySha = (index.prepare('SELECT sha256 FROM body_docs LIMIT 1').get() as { sha256: string }).sha256
+    const anySha = (index.prepare('SELECT sha256 FROM body_docs LIMIT 1 -- the test picking a ref').get() as { sha256: string }).sha256
     index.close()
     idx.pruneHttpBodyIndex(anySha, dir)
     idx.pruneSavedFileIndex(path.join(dir, 'artifacts', 'none'), dir)
     search('common')
+    // A saved body that changes after it was indexed: its documents are
+    // dropped through body_docs' (event, slot) index.
+    const ref = savedBody(dir, '{"w":"CHANGINGWORD"}')
+    savedResponse('changing', { response_body_ref: ref })
+    search('CHANGINGWORD')
+    fs.writeFileSync(path.join(dir, 'http-bodies', ref.file), '{"w":"CHANGEDWORD!"}')
+    expect(search('CHANGINGWORD').items).toEqual([])
 
+    // How each statement that reads a document table finds its rows, stated
+    // positively: body_fts by MATCH or by rowid, body_docs by its key or one of
+    // its indexes. Any other access (a full or descending scan of body_fts, a
+    // rowid range, a scan of body_docs) is a read of every document. The one
+    // exception is the full walk's orphan sweep, which reads body_docs once
+    // per walk by design. TEMP extras live on the index's own connection and
+    // are not planned here.
     const plans = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
     try {
-      const scans = [...seen.sql].filter(text => /body_fts/.test(text) && !/^\s*(INSERT|CREATE|DROP)/i.test(text)).flatMap(text => {
-        const params = (text.match(/\?/g) ?? []).map(() => 'x')
-        const plan = plans.prepare(`EXPLAIN QUERY PLAN ${text}`).all(...params) as { detail: string }[]
-        return plan.filter(p => /SCAN body_fts VIRTUAL TABLE INDEX 0:$/.test(p.detail)).map(() => text)
+      const SWEEP = /^SELECT doc FROM body_docs d WHERE NOT EXISTS/
+      const reads = [...seen.sql].filter(text => /body_(fts|docs)\b/.test(text) && !/body_x_|-- the test/.test(text) && !/^\s*(INSERT|CREATE|DROP)/i.test(text))
+      const bad = reads.filter(text => !SWEEP.test(text)).flatMap(text => {
+        const named = [...new Set(text.match(/@\w+/g) ?? [])]
+        const args = named.length ? [Object.fromEntries(named.map(n => [n.slice(1), 'x']))] : (text.match(/\?/g) ?? []).map(() => 'x')
+        const plan = plans.prepare(`EXPLAIN QUERY PLAN ${text}`).all(...args) as { detail: string }[]
+        return plan.filter(p => /\bbody_(fts|docs)\b/.test(p.detail)).filter(p => !(
+          /^SCAN body_fts VIRTUAL TABLE INDEX 0:M\d*$/.test(p.detail)
+          || /^SCAN body_fts VIRTUAL TABLE INDEX 0:=$/.test(p.detail)
+          || /^SEARCH (body_docs|d) USING (INTEGER PRIMARY KEY \(rowid=\?\)|(COVERING )?INDEX body_docs_(ref|sha256) \()/.test(p.detail)
+        )).map(p => `${p.detail}  ←  ${text.replace(/\s+/g, ' ').slice(0, 120)}`)
       })
-      expect(scans).toEqual([])
-      expect([...seen.sql].some(text => /body_fts/.test(text))).toBe(true)
+      expect(bad).toEqual([])
+      // Not vacuous: the MATCH, the rowid delete and both body_docs indexes were planned.
+      const all = reads.map(text => text.replace(/\s+/g, ' '))
+      expect(all.some(t => /body_fts MATCH/.test(t)) && all.some(t => /DELETE FROM body_fts WHERE rowid=\?/.test(t))
+        && all.some(t => /FROM body_docs WHERE event_id=\? AND slot=\?/.test(t)) && all.some(t => /FROM body_docs WHERE sha256=\?/.test(t))
+        && all.some(t => SWEEP.test(t))).toBe(true)
     } finally { plans.close() }
   })
 
@@ -113,5 +138,11 @@ sqlite.describe('body search work on a captured project', () => {
     expect(fromSource.result).toEqual(fromIndex.result)
     // Two refs, one per body, on both paths.
     expect(fromSource.result.sources!.find(s => s.kind === 'body')!.indexed).toBe(escaped + 2)
+    // Live, after the next search (which asked under a snapshot): the same
+    // state, so from the index again, and the same answer.
+    search('SAMEBYTES')
+    const live = cost(() => idx.bodySearchCoverage())
+    expect(live.rows).toBe(0)
+    expect(live.result).toEqual({ ...fromIndex.result, boundary: undefined })
   })
 })

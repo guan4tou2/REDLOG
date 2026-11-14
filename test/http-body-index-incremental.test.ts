@@ -254,15 +254,21 @@ describe('incremental body-search backfill', () => {
     expect(work(() => searchHttpBodyEventIds('alpha', dir))).toEqual({ opens: 0, rows: 0 })
   })
 
-  it('after a restart with nothing changed, walks the rows but opens no file', () => {
+  // The watermark is persisted with the rows it vouches for.
+  it('after a restart with nothing changed, reads no row and opens no file', () => {
     seed(30)
     searchHttpBodyEventIds('alpha', dir)
     closeHttpBodyIndex()
-    expect(work(() => expect(searchHttpBodyEventIds('work7', dir)).toEqual(['w7']))).toEqual({ opens: 0, rows: 30 })
+    expect(work(() => expect(searchHttpBodyEventIds('work7', dir)).toEqual(['w7']))).toEqual({ opens: 0, rows: 0 })
     // A file changed while the app was closed is re-verified; nothing else is.
     fs.writeFileSync(path.join(dir, 'http-bodies', `${sha('alpha work4')}.body`), 'gamma work4 longer')
     closeHttpBodyIndex()
-    expect(work(() => expect(searchHttpBodyEventIds('work4', dir)).toEqual([]))).toEqual({ opens: 1, rows: 30 })
+    expect(work(() => expect(searchHttpBodyEventIds('work4', dir)).toEqual([]))).toEqual({ opens: 1, rows: 1 })
+    // A row added while it was closed costs that row (and w4, now failed, is
+    // retried as every failed ref is).
+    closeHttpBodyIndex()
+    bodyEvent('w30', 'alpha work30')
+    expect(work(() => expect(searchHttpBodyEventIds('work30', dir)).toEqual(['w30']))).toEqual({ opens: 2, rows: 2 })
   })
 
   it('re-verifies only the file that changed', () => {

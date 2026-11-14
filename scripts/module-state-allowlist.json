@@ -1,6 +1,6 @@
 {
   "$comment": "Module-level state in src/core and src/main (Spec 073 T002), checked by scripts/module-state.mjs from npm run verify:architecture. class: app | machine | constant | test-seam | project-legacy. project-legacy is state that belongs to a project but lives in a module; the count may only go down and projectLegacyBaseline must equal it.",
-  "projectLegacyBaseline": 141,
+  "projectLegacyBaseline": 138,
   "entries": {
     "src/core/activity-projection.ts#SHELL": {
       "class": "constant",
@@ -433,18 +433,6 @@
     "src/core/http-body-index.ts#TIERS": {
       "class": "constant",
       "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
-    },
-    "src/core/http-body-index.ts#linkedOutsideWalk": {
-      "class": "project-legacy",
-      "reason": "Body ids of the open project."
-    },
-    "src/core/http-body-index.ts#walked": {
-      "class": "project-legacy",
-      "reason": "Walk watermark of the open project."
-    },
-    "src/core/http-body-index.ts#dirty": {
-      "class": "project-legacy",
-      "reason": "Dirty flag of the open index."
     },
     "src/core/http-body-index.ts#statements": {
       "class": "project-legacy",
