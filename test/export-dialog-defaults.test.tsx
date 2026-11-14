@@ -125,3 +125,22 @@ describe('B. each fact said once', () => {
     expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'json', scrubPii: true })
   })
 })
+
+describe('C. HAR is offered on every page', () => {
+  it('offers HAR under the other formats from a page that is not the HTTP page, with the exchange count', async () => {
+    draw(); open(); await ready()
+    fireEvent.change(screen.getByLabelText('Export format'), { target: { value: 'other' } }); await ready()
+    const other = screen.getByLabelText('Other formats') as HTMLSelectElement
+    expect([...other.options].map(o => o.value)).toContain('har')
+    fireEvent.change(other, { target: { value: 'har' } }); await ready()
+    expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'har', subset: { kind: 'all' } })
+    expect(screen.getByText('HTTP exchanges: 7')).toBeTruthy()
+  })
+  it('does not offer HAR for an activity or a session, which it cannot carry', async () => {
+    draw({ label: 'Session', request: { format: 'json', subset: { kind: 'session', projectId: 'p', anchorEventId: 'e', snapshot: SNAP } } })
+    open(); await ready()
+    fireEvent.change(screen.getByLabelText('Export format'), { target: { value: 'other' } }); await ready()
+    const other = screen.getByLabelText('Other formats') as HTMLSelectElement
+    await waitFor(() => expect([...other.options].map(o => o.value)).not.toContain('har'))
+  })
+})

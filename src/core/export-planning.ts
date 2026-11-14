@@ -58,7 +58,9 @@ export function buildExportPlan(project: ProjectMeta, rawRequest: ExportRequest)
   const partialHttpFlows = request.format === 'har' ? partialHttpFlowsFold() : null
   const evidence = sequenceFingerprint()
   const httpView = request.subset.kind === 'selection' && request.subset.projection === 'http'
-  const exchangeFlowIds = httpView ? new Set<unknown>() : null
+  // Exchanges, not rows: the flows with a request or a response delivered,
+  // for the HTTP view's plan and for HAR from any selection.
+  const exchangeFlowIds = httpView || request.format === 'har' ? new Set<string>() : null
   for (const event of events) {
     examined++
     if (doNotExportIds.has(event.id)) { excludedDoNotExport++; continue }
@@ -80,7 +82,8 @@ export function buildExportPlan(project: ProjectMeta, rawRequest: ExportRequest)
     captureGaps.add(redacted)
     interrupted.add(redacted)
     partialHttpFlows?.add(redacted)
-    exchangeFlowIds?.add(redacted.data.flow_id)
+    if (exchangeFlowIds && typeof redacted.data.flow_id === 'string'
+      && (redacted.data.subtype === 'http_request_start' || redacted.data.subtype === 'http_response')) exchangeFlowIds.add(redacted.data.flow_id)
     evidence.add(redacted)
   }
   // The bundle's attachment listing still reads the selected Events more than

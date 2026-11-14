@@ -447,7 +447,11 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
   const formats: ExportFormat[] = ['bundle']
   const viewFormat = selection.current?.request?.format
   if (viewFormat === 'har') formats.push(viewFormat)
-  const otherFormats: ExportFormat[] = ['json', 'ndjson', ...(viewFormat === 'timeline' ? ['timeline' as const] : [])]
+  // HAR is planned for any selection (the exchanges among it) or the whole
+  // project; an activity or a session it cannot carry. The Timeline format is
+  // the visible slice, so it stays with the Timeline.
+  const operation = selection.current?.subset.kind === 'activity' || selection.current?.subset.kind === 'session'
+  const otherFormats: ExportFormat[] = ['json', 'ndjson', ...(viewFormat !== 'har' && !operation ? ['har' as const] : []), ...(viewFormat === 'timeline' ? ['timeline' as const] : [])]
   const capability = capabilitiesFor(draft.format)
 
   return (

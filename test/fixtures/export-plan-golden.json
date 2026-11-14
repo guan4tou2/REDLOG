@@ -404,6 +404,7 @@
  },
  "har-all": {
   "counts": {
+   "exchanges": 30,
    "examined": 98,
    "included": 76,
    "excludedDoNotExport": 2,
@@ -433,6 +434,7 @@
  },
  "har-range": {
   "counts": {
+   "exchanges": 20,
    "examined": 56,
    "included": 42,
    "excludedDoNotExport": 2,
