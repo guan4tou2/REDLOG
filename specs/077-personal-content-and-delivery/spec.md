@@ -51,6 +51,17 @@
 
 **R3 的另兩種「不記錄」一併取消**（擁有者確認，DECISIONS §12）：機器層忽略清單（FR-020 的 `action: skip`）與遵循 shell 的歷史排除（FR-082）是取消，不是暫緩（修訂 S6）。先由「只保留一套記錄流程」推得，之後單獨問過擁有者，答覆相同。
 
+### 已決議（擁有者，2026-11-14，[DECISIONS §4–§5](../../docs/records/2026-11-14/DECISIONS.md)；本規格不重開）
+
+| # | 裁定 | 落點 |
+|---|---|---|
+| R23 | **指令在交付時遮蔽**，寫入時不改指令文字：「指令只需要在輸出時遮蔽就好吧」；且不在本規格之前另做一版：「指令遮蔽要併入 Spec 077」 | F（FR-050 的指令列規則、FR-051） |
+| R24 | **擴充機密偵測，讓它認得更多形式，歸本規格**；交付時的遮蔽用同一組規則，所以一併受益。（擁有者選了實作者列出的選項；選項文字是實作者寫的，見 DECISIONS §5） | F（FR-050 的規則集） |
+
+R23、R24 沒有改變 F 段任何一條的文字：FR-050 已列出指令列的 `-p<值>`、`--password[= ]<值>`、URL userinfo，FR-051 已是交付時重掃。它們確認的是歸屬與時機。規則集要認得哪些工具的旗標，擁有者沒有被問到，留給 plan。
+
+2026-11-14 合併的範圍遮罩擴充（PR #778，DECISIONS §4「現在遮掉」）是過渡：它只在匯出時遮範圍外與未分類列的列舉欄位，Phase 1 以「範圍外預設不交付」取代（tasks 的刪除清單）。
+
 ### 五條不變條件
 
 原文依 DECISIONS §12。「完整擷取」指**已啟用**的來源在**沒有暫停**時觀測到的內容，不是監控整台電腦。
@@ -130,6 +141,16 @@
 - **在 app 外改 `config.yaml` 不在鏈上**：沒有監看設定檔的程式（`src/main`、`src/core` 中 `fs.watch`／chokidar 只用於檔案監看、PowerShell transcript、tailer）。下一次 app 內存檔以磁碟上的檔案為 `diskPrev`（`config-store.ts:47,65`），所以手改的值成為下一列的 `from`——與前一列的 `to` 不相接，但沒有任何列說明這段落差。
 - **`scope.scopeFile` 的內容不在 `config_changed` 上**：只記路徑（`config-audit.ts:36`）。有效範圍是設定清單加檔案內容（`snapshotScope`，`src/core/config.ts:501-526`）；檔案內容只以 `scope_recomputed.scope_file{path, sha256, entries}` 與（≤ 200 項時）合併後的 `targets` 出現（`scope-recompute-run.ts:252-267`），而重算只在存檔後排程（`config-apply.ts:170-178`）。磁碟上的檔案內容改了、沒有存檔，鏈上沒有痕跡。
 - **交付沒有記下範圍版本**：只有 bundle 寫 `export_sealed`（`evidence-rules.ts:17`、`bundle-export.ts:94-98`）；其他格式不在鏈上留任何紀錄。匯出計畫凍結範圍快照（`export-plan.ts:432-460`，含 `sourceHash`），但只在計畫中、不上鏈。
+
+**遮蔽與偵測的現況**（2026-11-14 於 `main@cbba85fa` 開檔確認；其中標「審查」的來自 PR #778 的獨立審查，動工前重新確認）：
+
+- **寫入時的偵測只認得兩種東西**：高熵字串（`minLength: 20`、`entropyThreshold: 4.5`，`src/core/redaction.ts:10-15,226-228`）與 denylist（含本專案 loot 的值）。短密碼（`-p Passw0rd!`）不會被認出來。
+- **寫入時只掃九個欄位**：`output`、`output_preview`、`command`、`stdout`、`stderr`、`request_body_preview`、`response_preview`、`ws_preview`、`tcp_preview`（`src/core/ingest.ts` 的 `REDACTED_FIELDS`）。`url`、標頭、cookie、`params` 不在其中。它只記下 `data.redactions` 的位置，不改內容。
+- **`sanitize.ts` 只讀 `events` 表**（`src/core/sanitize.ts:62`），所以動不到 `events_logged` 層的列；HTTP 流量在那一層。
+- **範圍遮罩是列舉式的**（`src/core/scope-sanitize.ts` 檔頭）：沒被點名的欄位原樣匯出；只處理範圍外與未分類的列，範圍內的列完全不遮；指令文字不遮。沒有強迫每個來源欄位都被分類的 ratchet。
+- **分類的缺口**（審查）：範圍內的列帶著範圍外的內容（`prev_url`、`Referer`、`Location`）時不遮；HTTP addon 以 Host 標頭決定目標；偵測不到主機的 shell 列落到目前啟用的目標；`GET /api/export/har` 與 `/api/http-body` 只以目標清單判斷範圍，`GET /api/events` 回傳未經處理的列；未分類列的截圖與 artifact 會交付，而它們的列被遮。
+
+上列每一項都落在既有的需求內（A、C、E、F、K），不新增需求；它們是 Phase 1 與 Phase 4 的 RED 測試要涵蓋的現況。
 
 ## User Scenarios & Testing *(mandatory)*
 
