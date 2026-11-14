@@ -234,11 +234,11 @@
 - **FR-032** 存放：`terminal_targets` 在 `timeline.db` 的新表（由寫入者在同一個 commit 交易內推進）；`body_coverage` 在 `http-body-index.db`；其他全部在 `derived.db`。既有的證據表（`events`、`events_logged`、`sanitized_events`、`do_not_export`、`event_notes`、`chain_anchors`、`operators`、`bookmarks`）不加欄位、不加 trigger、不被投影寫入。
 - **FR-033** 每個衍生檔與衍生表都可整個刪除而不損失證據：刪除後在背景依序重建，結果與刪除前相同。`derived.db` 不進 bundle、NDJSON、HAR 或任何匯出，也不進打包資源（測試斷言）。
 - **FR-034** `derived.db` 有一張 `projection_state(name, version, chained_cursor, chained_cursor_id, logged_cursor, logged_cursor_id, status, rebuilt_at)`。開啟時：某投影的 `version` 不符 → 只丟棄並重建該投影；檔案的 `user_version` 不符或無法開啟 → 整檔刪除重建。
-- **FR-035** 推進：寫入者每次 commit 後把 `CommitReceipt` 送給讀取服務（同一輪事件迴圈內的多個合併為一個）。`heavy` 執行緒在請求之間以有界切片推進投影：每片最多處理 2000 列或一個交易，推進與 `projection_state` 更新在同一個交易內。
+- **FR-035** 推進：寫入者每次 commit 後把 `CommitReceipt` 送給讀取服務（同一輪事件迴圈內的多個合併為一個）。`heavy` 執行緒在請求之間以有界切片推進投影：每片最多處理 2000 列或一個交易，推進與 `projection_state` 更新在同一個交易內。切片不得讓 chained 層的範圍判定在它判定的 logged 層列之前定案（plan D6 第 6 步）。
 - **FR-036** 每個投影回報 `lag = (chainedMax − chainedCursor) + (loggedMax − loggedCursor)`。讀取依賴的投影 `lag > 0` 時：尾端不超過 5000 列就就地補算，結果為精確；超過就以已物化的部分回答，完整度為 `behind(lag)`，畫面顯示「索引中，落後 N 筆」。讀取絕不為了追上而同步走訪整個專案。
-- **FR-037** retention：處理到 chained 層的 `system.retention_pruned_logged` 列時，刪除 logged 層衍生、`created_at ≤ newest_pruned_at` 的投影列並重算受影響的群組與計數。另外，每次開啟時在背景比對兩層列數與游標所在列的 id；不符（包括 logged 層 rowid 被重用、retention 在寫摘要前當掉）時，重建依賴 logged 層的投影。
+- **FR-037** retention：處理到 chained 層的 `system.retention_pruned_logged` 列時，刪除 logged 層衍生、`created_at ≤ newest_pruned_at` 的投影列並重算受影響的群組與計數。另外，每次開啟時在背景比對兩層列數與游標所在列的 id；不符（包括 logged 層 rowid 被重用、retention 在寫摘要前當掉）時，重建依賴 logged 層的投影。`activity` 中依賴 logged 層的還包括 chained 層的列：併入 logged 層被判定列的乾淨範圍判定（064 [C1 §2](../064-recording-first-workspace/contracts/activity-projection.md)；HTTP、DNS 的判定在 chained，被判定的列在 logged）。被判定的列被刪除時，這筆判定改回自成 Activity——重新取鍵並重算兩邊的群組，不是刪除。
 - **FR-038** 損毀：`derived.db` 的任何語句回報 `SQLITE_CORRUPT` 或 `SQLITE_NOTADB` 時，讀取服務關閉該檔、刪除、重建，期間相關讀取為 `behind`。`http-body-index.db`、`cast-index.db` 同此規則。衍生檔的損毀不是證據事件，不寫入鏈；它出現在讀取服務的 `health()`。
-- **FR-039** 每個投影對每一列新事件的推進成本有上限，以工作量計數：`activity` 1 列插入加 1 次群組更新；`intervals` 至多 2 次寫入；`cause_counts` 每個 `caused` 參照 1 次 upsert（每列至多 32 個，超過的部分計入 `cause_counts_truncated`）；`kind_totals`、`target_totals` 各 1 次 upsert；`terminal_targets` 至多 1 次插入。
+- **FR-039** 每個投影對每一列新事件的推進成本有上限，以工作量計數：`activity` 1 列插入加 1 次群組更新；`intervals` 至多 2 次寫入；`cause_counts` 每個 `caused` 參照 1 次 upsert（每列至多 32 個，超過的部分計入 `cause_counts_truncated`）；`kind_totals`、`target_totals` 各 1 次 upsert；`terminal_targets` 至多 1 次插入。`activity` 另對每一筆可併入的範圍判定列（064 C1 §2）做 1 次以 id 為鍵的索引查找，找它判定的列；其他列不增加成本，推進範圍以主鍵區間讀取，不掃描任何事件表。
 - **FR-040** 衍生檔各只有一個寫入者：`derived.db`、`http-body-index.db`、`cast-index.db` 都由 `heavy` 執行緒寫。主行程不再直接寫它們：ingest 的 `linkHttpBodyEvent`、retention 的 `pruneHttpBodyIndex`／`pruneSavedFileIndex`／`pruneCast`、終端的 `indexCast` 改為送訊息給讀取服務。
 - **FR-041** Activity 的投影從連線內 TEMP 表改為 `derived.db` 中的持久表，schema 與分頁游標語意不變（`within()` 以 rowid 界定）；每頁不再對兩層執行 `COUNT(*) … WHERE rowid <= ?`，資料快照的一致性改以游標所在列的 id 與 retention 世代判斷。
 - **FR-042** 「時間 T 的狀態」由 `intervals` 回答：`stateAt(timestamps[], keys[])` 一次查詢回傳每個時間點、每個鍵（全域或某終端）的狀態值與它的來源列 id；一頁 200 列一次呼叫。
@@ -305,7 +305,7 @@
 - **FR-092** 衍生檔的單一寫入者：掃描斷言只有 `query-worker.ts` 的模組圖會開啟 `derived.db`、`http-body-index.db`、`cast-index.db` 的可寫連線。
 - **FR-093** 事件迴圈延遲探針：主行程在 e2e（`testHooks.e2e`）下以 `monitorEventLoopDelay` 取樣，並記錄每個處理程式與 API 路由超過 100 ms 的執行 `{name, ms, at}`；經測試專用路由回報。e2e 的共用 fixture 在每個 spec 結束時斷言：排除開專案後 2 秒，超過 500 ms 的停頓為 0；失敗訊息列出最慢的處理程式。p99 與最大值寫入 artifact，不作斷言。
 - **FR-094** 工作量計數：每個移入讀取服務的 `kind` 與每個投影，在 1 萬列與 10 萬列的專案上計算走訪的列數、執行的語句數、開檔數與 lstat 數；`interactive` 讀取與投影推進的每列成本不隨總列數成長（比值 < 1.5）；文字搜尋的 coverage 不隨 body 參照數成長。牆鐘比例只在 `REDLOG_PERF=1` 時執行。
-- **FR-095** 投影等價：每個登記的投影都有一個性質測試：隨機的事件腳本（含兩層交錯、同毫秒、retention 刪除、logged rowid 重用、重啟、版本升級、切片中斷）下，增量推進的內容等於從零重建的內容。登記表測試斷言每個投影都有這個測試。
+- **FR-095** 投影等價：每個登記的投影都有一個性質測試：隨機的事件腳本（含兩層交錯、同毫秒、retention 刪除、logged rowid 重用、重啟、版本升級、切片中斷）下，增量推進的內容等於從零重建的內容。登記表測試斷言每個投影都有這個測試。`activity` 的腳本含範圍判定，且判定只引用已插入的列 id：這是正式環境的不變式——被判定的列先 commit，判定才 dispatch（`ingest.ts` 的 scope dispatch 步驟、`tailer-host.ts` 的 tool call）。另含引用不存在的列、非乾淨的判定、引用判定的判定，以及刪除被引用的 logged 列的一步。
 - **FR-096** 計數語意：清單登記表列出每個呈現清單或計數的畫面、它的計數種類與單位；測試斷言每個登記的畫面都經 `formatCount`，未登記的畫面若出現成對的計數鍵即失敗。
 - **FR-097** 讀取守門（ratchet）：計算 `components/**` 中不經 `useQuery`／分頁變體的 `window.redlog.<area>.<read>(` 呼叫、讀取上的 `.catch(() => {}|null|[]|undefined)`、直接訂閱 `onNewBatch` 的元件數；三個數字只能下降。
 

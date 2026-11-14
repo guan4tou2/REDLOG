@@ -22,6 +22,15 @@ import { requires } from './helpers/requires'
 // highest rowid deleted and a new row inserted (SQLite hands the freed rowid
 // out again), and a read that fails midway (a SQL function throws).
 //
+// Scope verdicts (decision 2026-11-15 §2): a clean one joins the Activity of
+// the row it cites when that row is projected. The generator writes verdicts
+// in the chained tier only, as ChainEmitter does, and a verdict cites only an
+// id already inserted — the production invariant: the cause is committed
+// before its verdict is dispatched (ingest.ts step 7, tailer-host.ts). It
+// also writes verdicts that cite nothing there, verdicts that are not clean,
+// verdicts that cite verdicts, and a step that deletes a logged row a verdict
+// cites, after which the verdict is an Activity of its own again.
+//
 // "Slice interrupted" in the task text has no counterpart today: the Activity
 // projection catches up in one statement per tier, inside the read's
 // transaction, with no budget to run out of. The failing read above is the
@@ -77,41 +86,48 @@ function prng(seed: number): () => number {
   }
 }
 
-type Step = 'insert' | 'read' | 'retain' | 'dropMax' | 'failedRead'
+type Step = 'insert' | 'read' | 'retain' | 'dropMax' | 'failedRead' | 'dropCause'
 
-function runScript(seed: number, steps: number): { log: string[]; stepwise: unknown[]; rebuilt: unknown[] } {
+interface Script { log: string[]; stepwise: unknown[]; rebuilt: unknown[]; attached: number; causesDropped: number }
+function runScript(seed: number, steps: number): Script {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-projeq-'))
   initDB(dir)
   try { return runScriptIn(dir, seed, steps) }
   finally { closeHttpBodyIndex(); closeDB(); fs.rmSync(dir, { recursive: true, force: true }) }
 }
 
-function runScriptIn(dir: string, seed: number, steps: number): { log: string[]; stepwise: unknown[]; rebuilt: unknown[] } {
+function runScriptIn(dir: string, seed: number, steps: number): Script {
   const rand = prng(seed), int = (n: number): number => Math.floor(rand() * n)
   const log: string[] = []
   const parsed = parseQuery('')
   if (!parsed.ok) throw new Error('fixture query')
   const read = (): void => { queryActivityPage({ projectId: 'eng', parsed: parsed.parsed, limit: 5 }) }
   let id = 0
+  let causesDropped = 0
+  const cited = new Set<string>()
   const insert = (): void => {
-    const tier = rand() < 0.5 ? 'events' : 'events_logged'
+    let tier = rand() < 0.5 ? 'events' : 'events_logged'
     const ts = 1000 + int(6) // few distinct values: many rows share a millisecond
     const n = id++
-    const pick = int(6)
+    const pick = int(8)
+    // a verdict cites a row inserted before it (or, as an old row would, none there)
+    const cause = n > 0 && rand() < 0.85 ? `r${int(n)}` : `missing-${n}`
     const data: Record<string, unknown> =
       pick === 0 ? { subtype: 'command_start', terminalId: 't1', command_id: `c${int(5)}`, command: 'id' }
         : pick === 1 ? { subtype: 'command_end', terminalId: 't1', command_id: `c${int(5)}`, command: 'id', exit_code: int(2) }
           : pick === 2 ? { subtype: 'http_request_start', flow_id: `f${int(5)}` }
             : pick === 3 ? { subtype: 'http_response', flow_id: `f${int(5)}`, status: 200 }
               : pick === 4 ? { subtype: 'tool_call', agent: 'claude-code', session_id: 'conv', tool_use_id: `u${int(4)}` }
-                : { subtype: 'session_start', terminalId: 't1' } // housekeeping
-    const type = pick <= 1 || pick === 5 ? 'shell' : pick <= 3 ? 'scanner' : 'agent'
+                : pick === 5 ? { subtype: 'session_start', terminalId: 't1' } // housekeeping
+                  : { subtype: 'scope_violation', target: '10.0.0.5', action: 'id', source: 'shell', distance: pick === 6 || rand() < 0.3 ? 'in_scope' : 'excluded', _causes: [cause] }
+    const type = pick <= 1 || pick === 5 ? 'shell' : pick <= 3 ? 'scanner' : pick === 4 ? 'agent' : 'system'
+    if (type === 'system') { tier = 'events'; cited.add(cause) }
     const cols = 'id,timestamp,engagement_id,session_id,operator_id,agent_type,subtype,hostname,source_ip,target_id,data,created_at'
     const row = [`r${n}`, ts, 'eng', 'binding', 'operator', type, String(data.subtype), 'host', null, null, JSON.stringify(data), ts]
     if (tier === 'events') getDB().prepare(`INSERT INTO events (${cols},hash,prev_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'fixture-hash',NULL)`).run(...row)
     else getDB().prepare(`INSERT INTO events_logged (${cols}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(...row)
   }
-  const kinds: Step[] = ['insert', 'insert', 'insert', 'read', 'read', 'retain', 'dropMax', 'failedRead']
+  const kinds: Step[] = ['insert', 'insert', 'insert', 'read', 'read', 'retain', 'dropMax', 'failedRead', 'dropCause']
   for (let i = 0; i < steps; i++) {
     const step = i < 4 ? 'insert' : kinds[int(kinds.length)]
     log.push(step)
@@ -119,6 +135,10 @@ function runScriptIn(dir: string, seed: number, steps: number): { log: string[];
     else if (step === 'read') read()
     else if (step === 'retain') getDB().prepare('DELETE FROM events_logged WHERE rowid IN (SELECT rowid FROM events_logged ORDER BY rowid LIMIT ?)').run(1 + int(3))
     else if (step === 'dropMax') { getDB().prepare('DELETE FROM events_logged WHERE rowid = (SELECT MAX(rowid) FROM events_logged)').run(); insert() }
+    else if (step === 'dropCause') {
+      // retention reaching a logged row that a verdict cites
+      causesDropped += getDB().prepare('DELETE FROM events_logged WHERE rowid = (SELECT MIN(rowid) FROM events_logged WHERE id IN (SELECT value FROM json_each(?)))').run(JSON.stringify([...cited])).changes
+    }
     else {
       insert(); insert()
       failNext.add(rand() < 0.5 ? 'redlog_activity_class_v1' : 'redlog_activity_digest_v1')
@@ -129,11 +149,12 @@ function runScriptIn(dir: string, seed: number, steps: number): { log: string[];
   read()
   const groups = (): unknown[] => getReadonlyDB().prepare('SELECT * FROM temp.activity_groups_v1 ORDER BY engagement_id, ak').all()
   const stepwise = groups()
+  const attached = (getReadonlyDB().prepare("SELECT COUNT(*) AS n FROM temp.activity_projection_v1 WHERE role='attached'").get() as { n: number }).n
   // A fresh connection has no projection: this read builds it in one go.
   closeHttpBodyIndex(); closeDB()
   initDB(dir)
   read()
-  return { log, stepwise, rebuilt: groups() }
+  return { log, stepwise, rebuilt: groups(), attached, causesDropped }
 }
 
 const SEEDS = [1, 2, 3, 5, 8, 13, 21, 34]
@@ -159,8 +180,16 @@ describeDB('a projection advanced step by step equals one built from scratch', (
 
   it('the script reaches every step it claims to (so the groups above are not trivially equal)', () => {
     const seen = new Set<string>()
-    for (const seed of SEEDS) for (const s of runScript(seed, 40).log) seen.add(s)
-    expect([...seen].sort()).toEqual(['dropMax', 'failedRead', 'insert', 'read', 'retain'])
+    let attached = 0, causesDropped = 0
+    for (const seed of SEEDS) {
+      const script = runScript(seed, 40)
+      for (const s of script.log) seen.add(s)
+      attached += script.attached
+      causesDropped += script.causesDropped
+    }
+    expect([...seen].sort()).toEqual(['dropCause', 'dropMax', 'failedRead', 'insert', 'read', 'retain'])
+    expect(attached, 'some verdicts joined the Activity they cite').toBeGreaterThan(0)
+    expect(causesDropped, 'retention deleted a cited row at least once').toBeGreaterThan(0)
     expect(interrupted, 'at least one injected failure really interrupted a read').toBeGreaterThan(0)
   })
 })

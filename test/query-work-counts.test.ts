@@ -169,7 +169,11 @@ const PINNED: Array<[name: string, small: Tuple, large: Tuple]> = [
   ['events:runQuery text, warm', [41, 482, 0, 32, 203, 0, 18], [41, 4411, 0, 104, 2003, 0, 18]],
   ['events:runQuery coverage only', [15, 210, 0, 1, 0, 0, 8], [15, 2010, 0, 1, 0, 0, 8]],
   ['events:runQuery conditions only', [9, 109, 0, 100, 0, 0, 4], [9, 109, 0, 100, 0, 0, 4]],
-  ['events:activityPage first page', [62, 109, 30000, 30250, 0, 0, 7], [62, 109, 300000, 300250, 0, 0, 7]],
+  // The first page projects every row, then joins clean scope verdicts to the
+  // Activity they judged in one more statement (attachVerdicts: a primary-key
+  // range and an id lookup, plain SQL, so no UDF call and no scan). The next
+  // page projects nothing new and skips it.
+  ['events:activityPage first page', [63, 109, 30000, 30250, 0, 0, 7], [63, 109, 300000, 300250, 0, 0, 7]],
   ['events:activityPage next page', [63, 113, 0, 251, 0, 0, 7], [63, 113, 0, 251, 0, 0, 7]],
   ['events:sourceSessions', [5, 5, 600, 601, 0, 0, 2], [5, 5, 6000, 6001, 0, 0, 2]],
   ['events:aggregateTargets', [1, 90, 0, 0, 0, 0, 1], [1, 900, 0, 0, 0, 0, 1]],

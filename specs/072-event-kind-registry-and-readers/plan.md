@@ -235,6 +235,8 @@ interface StateDef { id: StateId; transitions: KindId[]; valueField: string; gro
 
 註記的附著：`loot:*`、`pivot:*`、`cleanup:*`、`credential_use:*`、`system:scope_violation`、`file_transfer:upload/download` → `cause`；`marker:*` → `time`（`atTimestamp`）；`marker:amended` → `event`（`markerId`）。
 
+> **2026-11-15（[DECISIONS §2](../../docs/records/2026-11-15/DECISIONS.md)；以下是實作者的解讀）**：`system:scope_violation` 的 `activity.group` 維持 `event`。Activity 把乾淨判定併入被判定列的 Activity 是**列的規則**（064 [C1 §2](../064-recording-first-workspace/contracts/activity-projection.md)：看該列的 `distance` 與 `_causes`），不是種類的分組，不寫進 `activity.group`；同一種類中只有 `in_scope` 的列併入，其他距離自成 Activity。上列的 `cause` 附著與 O2 用於 Timeline：每個判定仍是自己的一個標記，原泳道保留為完整清單。
+
 record-fact 的適用區間欄位：`system:sanitized`、`system:retention_*`、`system:body_evicted`、`system:bookmarks_pruned` 宣告 `appliesFrom`／`appliesTo` 欄位名；今天沒有來源送，全部為 `unknown`（FR-045）。
 
 `pivot` 的種類 `role` 是 annotation（推導的結論），它同時出現在一個 `state` 區間中：區間的角色描述區間，種類的角色描述列，兩者不衝突。
