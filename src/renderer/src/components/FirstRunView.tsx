@@ -374,25 +374,26 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
                   )}
                 </div>
               </section>
-              {rows.length > 0 && (
-                <div data-testid="first-run-recent">
-                  <p className="text-xs font-semibold text-redlog-accent uppercase tracking-wider mb-2">
-                    {t('firstRun.recording')}
-                  </p>
-                  <ul className="space-y-1">
-                    {rows.slice(0, 8).map((e) => (
-                      <li key={e.id} className="flex items-baseline gap-2 text-xs">
-                        <span className="text-redlog-text-faint font-mono tabular-nums shrink-0">
-                          {formatTime(e.timestamp, { seconds: true })}
-                        </span>
-                        <span className="text-redlog-text-dim truncate" title={eventTitle(e, t)}>{eventTitle(e, t)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
             </div>
             {!preparingFor('web') && <HttpCaptureStep onVerified={onHttpVerified} onPrepare={() => openPreparation('web')} paused={recordingOn === false} />}
+            {/* After both steps: in one column, rows between 01 and 02 split the setup in two. */}
+            {rows.length > 0 && (
+              <div data-testid="first-run-recent">
+                <p className="text-xs font-semibold text-redlog-accent uppercase tracking-wider mb-2">
+                  {t('firstRun.recording')}
+                </p>
+                <ul className="space-y-1">
+                  {rows.slice(0, 8).map((e) => (
+                    <li key={e.id} className="flex items-baseline gap-2 text-xs">
+                      <span className="text-redlog-text-faint font-mono tabular-nums shrink-0">
+                        {formatTime(e.timestamp, { seconds: true })}
+                      </span>
+                      <span className="text-redlog-text-dim truncate" title={eventTitle(e, t)}>{eventTitle(e, t)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </div>
         <div className="w-full space-y-2">

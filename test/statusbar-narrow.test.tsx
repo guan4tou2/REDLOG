@@ -14,14 +14,14 @@ import { _resetCaptureHealth } from '../src/renderer/src/lib/captureHealthStore'
 import { _resetIssues } from '../src/renderer/src/lib/issues'
 
 const noop = (): void => {}
-function installBridge(): void {
+function installBridge(configured = false): void {
   const named: Record<string, Record<string, unknown>> = {
     capture: { health: async () => ({ verdict: 'healthy', hasRecorded: true, sources: [], lastEventAt: Date.now(), checkedAt: Date.now(), dbErrorTotal: 0, dbErrorFirstAt: null }) },
     events: { getCount: async () => 5, onNewBatch: () => noop },
     ip: { getStatus: async () => ({ safety: 'exposed', externalIP: '203.0.113.9' }), onStatus: () => noop },
     recording: { get: async () => true, onChange: () => noop },
     overlay: { isVisible: async () => false, onVisibilityChanged: () => noop },
-    scope: { getObservationCount: async () => 0, isConfigured: async () => false, getLastRecompute: async () => null },
+    scope: { getObservationCount: async () => 0, isConfigured: async () => configured, getLastRecompute: async () => null },
     project: { active: async () => ({ createdAt: Date.now() - 60_000 }) }
   }
   const area = (name: string): unknown => new Proxy(named[name] ?? {}, {
@@ -61,4 +61,15 @@ it('shows everything at a wide width', async () => {
   await waitFor(() => expect(visibleWord('status-bar-scope-state')).toBe('SCOPE —'))
   expect(screen.getByTestId('statusbar-uptime')).toBeTruthy()
   expect(screen.getByTestId('statusbar-event-count')).toBeTruthy()
+})
+
+// With rules set and nothing observed the chip used to read "SCOPE OK", while a
+// host unrelated to the scope (which produces no observation by default) could
+// be recorded and listed as out of scope on the Targets tab. The chip says what
+// it knows: the rules are set.
+it('says the scope is set, not that it is OK, when nothing has been observed', async () => {
+  installBridge(true)
+  width(1400)
+  render(<I18nProvider><StatusBar /></I18nProvider>)
+  await waitFor(() => expect(visibleWord('status-bar-scope-state')).toBe('SCOPE SET'))
 })

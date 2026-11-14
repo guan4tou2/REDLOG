@@ -494,7 +494,8 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
               truncating. Narrower, the table drops the low-priority columns
               rather than scrolling sideways. */}
           <table className="w-full table-fixed text-xs font-mono">
-            <thead className="sticky top-0 whitespace-nowrap bg-redlog-surface/95 z-10">
+            {/* Opaque: at 95% the rows scrolled under it showed through the header. */}
+            <thead className="sticky top-0 whitespace-nowrap bg-redlog-surface z-10">
               <tr className="text-redlog-text-dim uppercase tracking-wider text-left">
                 <th className="pl-pad pr-2 py-1.5 font-medium w-24" aria-sort={ariaSort('timestamp')}>
                   <Button level="quiet" size="compact" onClick={() => toggleSort('timestamp')}>{t('httpHistory.colWhen')}{sortArrow('timestamp')}</Button>

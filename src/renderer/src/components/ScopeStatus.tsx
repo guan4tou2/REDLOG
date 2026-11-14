@@ -9,9 +9,21 @@ import { useListKeyboard } from '../lib/useListKeyboard'
 import { useInfiniteScroll } from '../lib/useInfiniteScroll'
 import { ListFooter } from './ListFooter'
 import { useReadState } from '../lib/readState'
+import { targetInScope } from '../lib/scope'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 
 const SCOPE_SUBTYPES = new Set([SCOPE_VIOLATION_SUBTYPE, 'scope_cleared', 'scope_recomputed'])
+
+/** Recorded targets the Targets tab calls out of scope. With no observation at
+ *  all, none of them produced one: the default alert floor reports excluded and
+ *  adjacent hosts, not hosts unrelated to the scope. */
+async function loadUnobservedTargets(): Promise<number> {
+  const [config, targets] = await Promise.all([
+    window.redlog.config.get() as Promise<{ scope?: { targets?: string[]; excludeTargets?: string[] } } | null>,
+    window.redlog.events.aggregateTargets()
+  ])
+  return targets.filter((row) => targetInScope(row.target, config?.scope) === false).length
+}
 
 /** What the last boundary change did to what was already recorded.
  *
@@ -81,7 +93,7 @@ interface ObservationRow {
 
 export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTimeline?: (eventId: string, ts: number) => void; onOpenSettings?: (candidate?: string) => void } = {}): JSX.Element {
   // The page is the configured state and the observations (with the standing
-  // count that decides "all in scope"). The chain length and the last
+  // count that decides "nothing recorded"). The chain length and the last
   // recompute are read on their own: either failing leaves its part out, not
   // the page.
   const loadScope = async () => {
@@ -97,6 +109,10 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
   const { configured = false, observations = [], truncated = false, standing = 0 } = read.state.value ?? {}
   const chainLen = chainRead.state.value
   const lastRecompute = recomputeRead.state.value
+  // Only the empty state needs it, and a failed read leaves the count out.
+  const nothingRecorded = read.state.value !== null && configured && standing === 0 && observations.length === 0
+  const unobservedRead = useReadState(loadUnobservedTargets, nothingRecorded, [nothingRecorded])
+  const unobserved = nothingRecorded ? unobservedRead.state.value ?? 0 : 0
 
   // Ephemeral: whether the withdrawn rows are expanded. Not persisted and not
   // navigation state — reopening the page starts from the active rows again,
@@ -161,9 +177,10 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
   useEffect(() => {
     let live = true
     let timer: ReturnType<typeof setTimeout> | null = null
+    let targetsTimer: ReturnType<typeof setTimeout> | null = null
     const refetch = (): void => {
       if (timer) clearTimeout(timer)
-      timer = setTimeout(() => { if (live) { read.retry(); recomputeRead.retry(); chainRead.retry() } }, 100)
+      timer = setTimeout(() => { if (live) { read.retry(); recomputeRead.retry(); chainRead.retry(); unobservedRead.retry() } }, 100)
     }
     const unsub = window.redlog.events.onNewBatch((events) => {
       const affectsScope = events.some(event => event.agentType === 'system'
@@ -172,9 +189,15 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
       else void window.redlog.chain.length().then(chainLen => {
         if (live) chainRead.update(() => chainLen)
       }).catch(() => { if (live) chainRead.retry() })
+      // A new target can be out of scope without producing an observation;
+      // one read per burst, as the tab header counts targets.
+      if (!affectsScope && events.some(event => event.targetId)) {
+        if (targetsTimer) clearTimeout(targetsTimer)
+        targetsTimer = setTimeout(() => { if (live) unobservedRead.retry() }, 1500)
+      }
     })
-    return () => { live = false; if (timer) clearTimeout(timer); unsub() }
-  }, [read.retry, chainRead.retry, chainRead.update, recomputeRead.retry])
+    return () => { live = false; if (timer) clearTimeout(timer); if (targetsTimer) clearTimeout(targetsTimer); unsub() }
+  }, [read.retry, chainRead.retry, chainRead.update, recomputeRead.retry, unobservedRead.retry])
 
   if (read.state.phase === 'failed') {
     return <div role="alert" className="p-pad space-y-2 text-sm text-red-400">
@@ -211,8 +234,18 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
             <span className="text-redlog-text-dim">{t('scope.observationsCountLabel')}</span>
           </div>
         )}
-        {configured && standing === 0 && observations.length === 0 && (
-          <p className="px-4 py-6 text-sm text-emerald-400">{t('scope.allInScope')}</p>
+        {nothingRecorded && (
+          // "Nothing was recorded", not "everything was in scope": a target
+          // unrelated to the scope produces no observation by default.
+          <div className="px-4 py-6 space-y-1.5 text-sm">
+            <p className="text-redlog-text-dim">{t('scope.noObservations')}</p>
+            {unobserved > 0 && (
+              <p data-testid="scope-unobserved-targets" className="flex items-baseline gap-1.5">
+                <span className="font-mono tabular-nums text-redlog-text">{unobserved}</span>
+                <span className="text-redlog-text-dim">{t('scope.unobservedTargetsLabel')}</span>
+              </p>
+            )}
+          </div>
         )}
         {!configured && (
           <p className="px-4 py-6 text-sm text-redlog-text-dim">{t('scope.hint', { page: t('settings.pageScope') })}</p>
@@ -313,12 +346,8 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
           </div>
           {chainLen !== null && <span data-testid="scope-chain-entries" className="text-redlog-text-dim text-xs font-mono tabular-nums">{t('scope.entries', { count: chainLen })}</span>}
         </div>
-        {onOpenSettings && (
-          <div className="flex flex-wrap items-center gap-2 border-t border-redlog-border px-4 py-3 text-xs text-redlog-text-dim">
-            <span>{t('scope.rulesLiveInSettings')}</span>
-            <Button level="quiet" size="compact" onClick={() => onOpenSettings()}>{t('scope.openSettingsLink', { page: t('settings.pageScope') })}</Button>
-          </div>
-        )}
+        {/* No link to Settings here: the page header's "Set scope rules" opens
+            the same page, where the rule tester also lives. */}
       </div>
     </div></div>
   )

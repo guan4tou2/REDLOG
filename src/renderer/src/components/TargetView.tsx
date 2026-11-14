@@ -9,7 +9,7 @@ import { toast, toastDeferred } from './Toast'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { EmptyState } from './EmptyState'
 import { Crosshair, ChevronRight, ChevronDown } from 'lucide-react'
-import { hostInScope, scopeConfigured } from '../lib/scope'
+import { scopeConfigured, targetInScope } from '../lib/scope'
 import { useSharedFilter } from '../lib/FilterContext'
 import { createThrottledRead, type ThrottledRead } from '../lib/throttledRead'
 import { useLivePagedQuery } from '../hooks/useLivePagedQuery'
@@ -75,10 +75,9 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
   // after the first live event. Unknown, not in scope, when the rules could not
   // be read, and also when no target is allowed (core's rule): exclusions
   // alone draw no boundary to be inside of.
-  const targets = useMemo<TargetEntry[]>(() => {
-    const noRules = scopeFailed || !scopeConfigured({ targets: scopeTargets })
-    return rows.map((r) => ({ ...r, inScope: noRules ? null : hostInScope(r.target, scopeTargets, excludeTargets) }))
-  }, [rows, scopeTargets, excludeTargets, scopeFailed])
+  const targets = useMemo<TargetEntry[]>(() => rows.map((r) => ({
+    ...r, inScope: scopeFailed ? null : targetInScope(r.target, { targets: scopeTargets, excludeTargets })
+  })), [rows, scopeTargets, excludeTargets, scopeFailed])
   // The aggregate is a whole-project scan over both tiers and a recording sends
   // batches faster than it answers: live batches share one read in flight and
   // one trailing read at most every two seconds; an older reply is dropped.
