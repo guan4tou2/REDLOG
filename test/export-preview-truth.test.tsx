@@ -18,7 +18,7 @@ const plan = (over: Partial<ResolvedExportPlan> = {}): ResolvedExportPlan => ({
   expiresAt: Date.now() + 10_000,
   snapshot: { chainedMaxRowId: 9, loggedMaxRowId: 4, takenAt: 1_700_000_000_000 },
   scopeSnapshot: SCOPE,
-  capabilities: { snapshot: true, boundedSubset: false, scopeMasking: true, piiScrubbing: true, attachments: false },
+  capabilities: { snapshot: true, boundedSubset: false, scopeMasking: 'optional', piiScrubbing: true, attachments: false },
   request: { format: 'json', subset: { kind: 'all' }, maskOutOfScope: true, scopeOnly: false, scrubPii: false },
   counts: {
     examined: 120, included: 100, excludedDoNotExport: 5, excludedPersonal: 7,
@@ -143,7 +143,7 @@ describe('the export preview shows only what the plan measured', () => {
 
   it('reports missing and unattributed attachments for a format that carries them', async () => {
     await draw(plan({
-      capabilities: { snapshot: true, boundedSubset: false, scopeMasking: true, piiScrubbing: false, attachments: true },
+      capabilities: { snapshot: true, boundedSubset: false, scopeMasking: 'optional', piiScrubbing: false, attachments: true },
       counts: { ...plan().counts, attachmentsIncluded: 4, attachmentsMissing: 2, attachmentsUnattributed: 1 }
     }))
     expect(screen.queryByTestId('export-preview-no-attachments')).toBeNull()

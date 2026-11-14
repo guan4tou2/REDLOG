@@ -39,9 +39,8 @@ export const BODY_REF_FOR: Record<string, string> = {
 
 /** The body-store pointers an out-of-scope or unclassified event must not carry
  *  out, whether or not it has a preview to mask beside them (#489). A large
- *  binary body is stored as `response_body_ref` alone: nothing in
- *  SCOPE_SANITIZED_FIELDS is present, `scopeMaskReplacements` masks nothing,
- *  and a ref left in place is how a consumer that follows it (HAR's
+ *  binary body is stored as `response_body_ref` alone: there is no body
+ *  field for `scopeMaskReplacements` to mask, and a ref left in place is how a consumer that follows it (HAR's
  *  readBody) fetches the whole out-of-scope body. Returns the ref keys present
  *  on `data`; empty when the event is in scope. */
 export function scopeBodyRefsToDrop(
