@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n'
-import { Button } from './Button'
+import { Button, FIELD_FOCUS_RING } from './Button'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { isComposing } from '../lib/ime'
 
@@ -197,7 +197,7 @@ function ConfirmDialogInner({ state, close, t }: {
                 onChange={(e) => setTyped(e.target.value)}
                 autoComplete="off"
                 spellCheck={false}
-                className="w-full px-2 py-1.5 bg-redlog-elevated border border-redlog-border rounded text-xs font-mono text-redlog-text focus:border-redlog-danger outline-none"
+                className={`w-full px-2 py-1.5 bg-redlog-elevated border border-redlog-border rounded text-xs font-mono text-redlog-text focus:border-redlog-danger ${FIELD_FOCUS_RING}`}
               />
             </div>
           )}

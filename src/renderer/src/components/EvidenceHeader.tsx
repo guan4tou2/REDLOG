@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useI18n } from '../i18n'
 import { useReadState } from '../lib/readState'
-import { PROSE_WIDTH } from '../lib/pageLayout'
+import { HEADER_GUTTER, PROSE_WIDTH } from '../lib/pageLayout'
 
 export type EvidencePage = 'screenshots' | 'loot' | 'bookmarks'
 const PAGES: EvidencePage[] = ['screenshots', 'loot', 'bookmarks']
@@ -43,7 +43,7 @@ export function EvidenceHeader({ page, onNavigate }: {
     bookmarks: marks.state.value
   }
 
-  return <div data-testid="evidence-header" className="shrink-0 space-y-2 px-pad pt-3">
+  return <div data-testid="evidence-header" className="flex shrink-0 px-pad pt-3"><div className="min-w-0 flex-1 space-y-2">
     <div className="min-w-0">
       <h1 className="text-lg font-semibold text-redlog-text">{t('sidebar.evidence')}</h1>
       {/* The one-line hint gives way when the window is short (a small window at
@@ -66,5 +66,8 @@ export function EvidenceHeader({ page, onNavigate }: {
         </button>
       })}
     </div>
+  </div>
+    {/* The page below keeps a scrollbar gutter; this keeps the same one. */}
+    <span aria-hidden data-scroll-gutter className={HEADER_GUTTER} />
   </div>
 }

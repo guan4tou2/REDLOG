@@ -1,4 +1,5 @@
 import { capturedContentIsPartial, commandOutputState, responseBodyState, type CommandOutputState } from '../../../core/content-contract'
+import { SCROLL_GUTTER } from '../lib/pageLayout'
 import { commandOutputOf, OUTPUT_NOTE_KEY } from '../lib/commandOutputNote'
 
 /** Output notes whose wording is shared with the Timeline, not transcript-only. */
@@ -7,7 +8,7 @@ import { operationPairKey } from '../../../core/operation-pair-key'
 import { compareEventOrder } from '../../../core/event-order'
 import { buildToolPairIndex } from '../lib/toolPairing'
 import type { ToolPairKey } from '../../../core/db/events'
-import { Button } from './Button'
+import { Button, FIELD_FOCUS_RING } from './Button'
 import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react'
 import { useI18n } from '../i18n/I18nContext'
 import { toast } from './Toast'
@@ -811,7 +812,7 @@ export default function TranscriptView({ onOpenInTimeline, active = true, readin
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={t('transcript.filter')}
-          className="min-w-[min(12rem,100%)] flex-1 max-w-md bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text placeholder-redlog-text-faint focus:outline-none focus:border-redlog-border"
+          className={`min-w-[min(12rem,100%)] flex-1 max-w-md bg-redlog-surface border border-redlog-border rounded px-2 py-1 text-xs text-redlog-text placeholder-redlog-text-faint focus:border-redlog-border ${FIELD_FOCUS_RING}`}
         />}
         {(!reading || (parse?.ok && parse.parsed.conditions.length > 0)) && <QueryReadout outcome={parse?.ok ? parse : null} testId="transcript-query" unparsableTitle={t('transcript.queryUnparsable')} />}
         {!reading && <div className="flex gap-1">
@@ -854,7 +855,7 @@ export default function TranscriptView({ onOpenInTimeline, active = true, readin
         </Button>
       </div>
 
-      <div ref={bodyRef} onScroll={recordPosition} data-testid="transcript-body" className="relative flex-1 min-h-0 overflow-y-auto [overflow-anchor:none] px-4 py-3 space-y-2">
+      <div ref={bodyRef} onScroll={recordPosition} data-testid="transcript-body" className={`relative flex-1 min-h-0 overflow-y-auto [overflow-anchor:none] ${SCROLL_GUTTER} px-4 py-3 space-y-2`}>
         {/* Unparsable is its own state. It is not a failure — nothing was
             asked — and it is emphatically not an empty result, which would
             invite reading a typo as proof the evidence is absent. */}

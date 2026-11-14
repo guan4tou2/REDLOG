@@ -1,9 +1,10 @@
+import { SCROLL_GUTTER } from '../lib/pageLayout'
 import { useState, useMemo, useCallback } from 'react'
 import { useLivePagedQuery } from '../hooks/useLivePagedQuery'
 import { useI18n } from '../i18n/I18nContext'
 import { LoadingSpinner } from './Feedback'
 import { Gem, ChevronDown, ChevronRight, Search } from 'lucide-react'
-import { Button } from './Button'
+import { Button, FIELD_FOCUS_RING } from './Button'
 import { EmptyState } from './EmptyState'
 import { formatDateTime } from '../lib/time'
 import { useListKeyboard } from '../lib/useListKeyboard'
@@ -166,7 +167,7 @@ export function LootPanel({ onOpenInTimeline, projectId, active = true }: {
   }
 
   return (
-    <div className="p-pad space-y-4 overflow-auto h-full">
+    <div className={`p-pad space-y-4 overflow-auto h-full ${SCROLL_GUTTER}`}>
       {/* Stitch 03: a section heading with the page's count (the Evidence tabs
           carry none for loot), and what a hit is and is not, beneath it. */}
       <section data-testid="loot-disclaimer" className="text-xs">
@@ -214,7 +215,7 @@ export function LootPanel({ onOpenInTimeline, projectId, active = true }: {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={t('loot.searchPlaceholder')}
-                className="w-56 rounded border border-redlog-border bg-redlog-bg py-1 pl-7 pr-2 text-xs text-redlog-text placeholder-redlog-muted focus:border-red-500/40 focus:outline-none"
+                className={`w-56 rounded border border-redlog-border bg-redlog-bg py-1 pl-7 pr-2 text-xs text-redlog-text placeholder-redlog-muted focus:border-red-500/40 ${FIELD_FOCUS_RING}`}
               />
             </label>
           </div>

@@ -79,3 +79,13 @@ it('offers the events around an operation in its expanded row, from the Timeline
   expect(row.textContent).toContain('later-note')
   expect(api.query.mock.calls.map(([opts]) => [opts.since, opts.before, opts.order])).toEqual([[1000 - 300_000, 1000, 'newest'], [1000, 1000 + 300_000, 'oldest']])
 })
+
+// UIUX-STANDARD §3: a list row is `--row-h` (40px, 32px tight). The rows were
+// py-2.5 around a 25.6px line, about 49px; the token is a minimum, so a row
+// that has more to show still grows instead of cutting it.
+it('sizes each activity row by the list-row token, not by its own padding', async () => {
+  mount()
+  const row = await screen.findByTestId('activity-row')
+  expect(row.className).toContain('min-h-[var(--row-h)]')
+  expect(row.className).not.toMatch(/\bpy-2(\.5)?\b/)
+})

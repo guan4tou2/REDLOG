@@ -33,7 +33,7 @@ interface PageSpec { name: string; open: (page: Page) => Promise<void>; first: s
 const settingsHome = async (p: Page): Promise<void> => {
   await openView(p, 'settings')
   await expect(p.getByTestId('settings-content')).toBeVisible()
-  if ((await p.getByTestId('settings-content').getAttribute('data-page')) !== 'home') await p.getByTestId('settings-back').click()
+  for (let i = 0; i < 3 && (await p.getByTestId('settings-content').getAttribute('data-page')) !== 'home'; i++) await p.getByTestId('settings-back').click()
 }
 
 // Fresh project: the setup view. Its heading is an h2 with no test id; the
@@ -92,6 +92,10 @@ async function checkPage(page: Page, spec: PageSpec, lefts: Record<string, numbe
       if (a.dataset.testid === 'view-root') break
       const gutter = a.offsetWidth - a.clientWidth
       if (gutter > 0 && /(auto|scroll)/.test(getComputedStyle(a).overflowY)) return gutter
+      // A fixed header above a scrolling body keeps the body's gutter in an
+      // empty box at its end (lib/pageLayout HEADER_GUTTER), one scrollbar wide.
+      const kept = Array.from(a.children).find(c => (c as HTMLElement).dataset.scrollGutter !== undefined) as HTMLElement | undefined
+      if (kept && kept.offsetWidth > 0) return kept.offsetWidth
     }
     return 0
   }, spec.body) * zoom

@@ -15,6 +15,9 @@ import { ActivityReader, sourceName } from './ActivityReader'
 import { ActivityAround } from './ActivityAround'
 
 const ROW_GRID = 'grid grid-cols-[72px_130px_minmax(0,1fr)_24px] gap-x-3 items-center'
+/** A list row is `--row-h` tall (UIUX-STANDARD §3: 40px, 32px tight), a
+ *  minimum rather than a fixed height so nothing it shows is cut. */
+const ROW_BOX = 'min-h-[var(--row-h)] py-1 px-3'
 
 export function SearchCoverage({ coverage }: { coverage?: BodySearchCoverage }): JSX.Element | null {
   const { t } = useI18n()
@@ -131,7 +134,7 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
           const row = (item: ActivitySummary, at: number, withDay: boolean): JSX.Element => <div key={item.id} className="min-w-0">
           {withDay && day(at)}
           <div className={`rounded-lg transition-colors ${expanded === item.id ? 'bg-redlog-elevated' : 'bg-redlog-surface hover:bg-redlog-elevated'}`}>
-          <button type="button" data-testid="activity-row" aria-expanded={expanded === item.id} className={`${ROW_GRID} w-full text-left py-2.5 px-3 rounded-lg focus-visible:outline focus-visible:outline-red-400`}
+          <button type="button" data-testid="activity-row" aria-expanded={expanded === item.id} className={`${ROW_GRID} ${ROW_BOX} w-full text-left rounded-lg focus-visible:outline focus-visible:outline-red-400`}
             onClick={() => setExpanded(expanded === item.id ? null : item.id)}>
             <time className="font-mono text-xs text-redlog-text-dim">{formatTime(item.firstAt, { seconds: true })}</time>
             {(() => {
@@ -140,7 +143,7 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
               return <>
                 {/* Stitch 04: the source as a badge, tinted when the command failed;
                     the kind of activity rides its tooltip. */}
-                <span className="min-w-0"><span data-testid="activity-source-badge" title={`${sourceName(item, t)} · ${kind}`}
+                <span className="flex min-w-0"><span data-testid="activity-source-badge" title={`${sourceName(item, t)} · ${kind}`}
                   className={`inline-block max-w-full truncate rounded px-1.5 py-0.5 text-xs ${r?.tone === 'fail' ? 'bg-redlog-danger/10 text-red-300' : 'bg-redlog-elevated text-redlog-text-dim'}`}>{sourceName(item, t)}</span></span>
                 <span className="flex min-w-0 items-center gap-2 pr-2">
                   <span className="min-w-0 truncate font-mono text-sm text-redlog-text" title={eventTitle(item.anchor, t)}>{eventTitle(item.anchor, t)}</span>
@@ -181,9 +184,9 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
             return <div key={`fold:${seg.key}`} className="min-w-0">
               {day(seg.at)}
               <button type="button" data-testid="activity-system-fold" aria-expanded={open} onClick={toggle}
-                className={`${ROW_GRID} w-full text-left py-2 px-3 rounded-lg bg-redlog-surface/60 hover:bg-redlog-elevated focus-visible:outline focus-visible:outline-red-400`}>
+                className={`${ROW_GRID} ${ROW_BOX} w-full text-left rounded-lg bg-redlog-surface/60 hover:bg-redlog-elevated focus-visible:outline focus-visible:outline-red-400`}>
                 <time className="font-mono text-xs text-redlog-text-faint">{formatTime(seg.items[0].firstAt, { seconds: true })}</time>
-                <span className="min-w-0"><span className="inline-block rounded px-1.5 py-0.5 text-xs bg-redlog-elevated text-redlog-text-faint">{t('timeline.system')}</span></span>
+                <span className="flex min-w-0"><span className="inline-block rounded px-1.5 py-0.5 text-xs bg-redlog-elevated text-redlog-text-faint">{t('timeline.system')}</span></span>
                 <span className="min-w-0 pr-2 text-sm text-redlog-text-dim">{t('activity.systemFold', { count: seg.items.length })}</span>
                 <span aria-hidden="true" className={`text-right text-redlog-text-dim transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
               </button>

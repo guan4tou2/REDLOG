@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useI18n } from '../i18n'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { formatTime } from '../lib/time'
-import { Button } from './Button'
+import { Button, FIELD_FOCUS_RING } from './Button'
 import { toast } from './Toast'
 import { isComposing } from '../lib/ime'
 
@@ -157,7 +157,7 @@ export default function EventMarker({ onClose, atTimestamp, heldFrame, contentAn
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !isComposing(e)) { e.stopPropagation(); if (!saving) handleSave() } }}
-          className="w-full bg-redlog-surface border border-redlog-border rounded px-3 py-2 text-sm text-redlog-text placeholder-redlog-text-faint focus:outline-none focus:border-redlog-accent"
+          className={`w-full bg-redlog-surface border border-redlog-border rounded px-3 py-2 text-sm text-redlog-text placeholder-redlog-text-faint focus:border-redlog-accent ${FIELD_FOCUS_RING}`}
         />
 
         <input
@@ -166,7 +166,7 @@ export default function EventMarker({ onClose, atTimestamp, heldFrame, contentAn
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           aria-label={t('marker.fieldUrl')}
-          className="w-full bg-redlog-surface border border-redlog-border rounded px-3 py-2 text-xs text-redlog-text font-mono placeholder-redlog-text-faint focus:outline-none focus:border-redlog-accent"
+          className={`w-full bg-redlog-surface border border-redlog-border rounded px-3 py-2 text-xs text-redlog-text font-mono placeholder-redlog-text-faint focus:border-redlog-accent ${FIELD_FOCUS_RING}`}
         />
 
         <div className="flex gap-1" role="group" aria-label={t('marker.field.severity')}>
@@ -188,7 +188,7 @@ export default function EventMarker({ onClose, atTimestamp, heldFrame, contentAn
           value={category}
           onChange={(e) => setCategory(e.target.value)}
           aria-label={t('marker.field.category')}
-          className="w-full bg-redlog-surface border border-redlog-border rounded px-3 py-1.5 text-xs text-redlog-text focus:outline-none focus:border-redlog-accent"
+          className={`w-full bg-redlog-surface border border-redlog-border rounded px-3 py-1.5 text-xs text-redlog-text focus:border-redlog-accent ${FIELD_FOCUS_RING}`}
         >
           {CATEGORIES.map((c) => (
             <option key={c} value={c}>{t(`marker.category.${c}`)}</option>
@@ -201,7 +201,7 @@ export default function EventMarker({ onClose, atTimestamp, heldFrame, contentAn
           onChange={(e) => setNotes(e.target.value)}
           rows={2}
           aria-label={t('marker.field.notes')}
-          className="w-full bg-redlog-surface border border-redlog-border rounded px-3 py-2 text-xs text-redlog-text placeholder-redlog-text-faint focus:outline-none focus:border-redlog-accent resize-none"
+          className={`w-full bg-redlog-surface border border-redlog-border rounded px-3 py-2 text-xs text-redlog-text placeholder-redlog-text-faint focus:border-redlog-accent resize-none ${FIELD_FOCUS_RING}`}
         />
 
         <p className="text-xs text-redlog-text-faint">{t('marker.immutableHint')}</p>

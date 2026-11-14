@@ -17,7 +17,7 @@ import { HttpDetail } from './HttpDetail'
 import { useContributeExport } from '../lib/exportScope'
 import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
 import { UnappliedFilterNotice, EmptyByConstructionNotice } from './FilterNotice'
-import { Button } from './Button'
+import { Button, FIELD_FOCUS_RING } from './Button'
 
 /** HTTP flows are recorded by the proxy, which publishes as `scanner`. */
 const HTTP_FLOW_AGENT_TYPE = 'scanner'
@@ -400,7 +400,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
           value={filterText}
           onChange={e => setFilterText(e.target.value)}
           placeholder={t('httpHistory.filterPlaceholder')}
-          className="text-xs font-mono bg-redlog-surface border border-redlog-border/60 rounded px-2 py-1 text-redlog-text placeholder-redlog-text-faint w-64 min-w-0 max-w-full focus:outline-none focus:border-redlog-accent/50"
+          className={`text-xs font-mono bg-redlog-surface border border-redlog-border/60 rounded px-2 py-1 text-redlog-text placeholder-redlog-text-faint w-64 min-w-0 max-w-full focus:border-redlog-accent/50 ${FIELD_FOCUS_RING}`}
         />
       </div>
 
@@ -431,7 +431,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
             <select
               value={hostFilter ?? ''}
               onChange={e => setHostFilter(e.target.value || null)}
-              className="text-xs font-mono bg-redlog-surface border border-redlog-border/60 rounded px-1.5 py-0.5 text-redlog-text-dim focus:outline-none focus:border-redlog-accent/50 max-w-[200px]"
+              className={`text-xs font-mono bg-redlog-surface border border-redlog-border/60 rounded px-1.5 py-0.5 text-redlog-text-dim focus:border-redlog-accent/50 max-w-[200px] ${FIELD_FOCUS_RING}`}
             >
               <option value="">{t('httpHistory.allHosts')}</option>
               {hostOptions.map(h => (

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { useState } from 'react'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import PluginsPanel from '../src/renderer/src/components/settings/PluginsPanel'
 import en from '../src/renderer/src/i18n/en.json'
@@ -19,6 +20,16 @@ const view = (id: string, over: Record<string, unknown> = {}) => ({
   officialAgent: false, id, name: `Plugin ${id}`, version: '1.0.0', description: over.description ?? '', author: 'me',
   source: 'user' as const, tier: 'declarative' as const, status: 'active' as const, capabilities: [], contributes: [], ...over
 })
+
+/** Settings' part: it holds the open detail and draws the one way back. At
+ *  module scope, never inside a test (CLAUDE.md, React). */
+function Held(): JSX.Element {
+  const [id, setId] = useState<string | null>(null)
+  return <div data-testid="settings-content">
+    {id !== null && <button type="button" data-testid="held-back" onClick={() => setId(null)}>back</button>}
+    <PluginsPanel t={t} selectedId={id} onSelect={setId} />
+  </div>
+}
 
 describe('plugin page — batch A', () => {
   beforeEach(() => { Object.values(api).forEach((f) => f.mockReset()); api.officialAgents.mockResolvedValue([]) })
@@ -167,12 +178,15 @@ describe('plugin page — batch A', () => {
   describe('one column at every width', () => {
     it('shows the detail instead of the list, with a way back, once a row is chosen', async () => {
       api.list.mockResolvedValue([view('alpha'), view('beta')])
-      draw()
+      ;(window as unknown as { redlog: unknown }).redlog = { plugins: api }
+      render(<Held />)
       await screen.findByText('Plugin alpha')
       fireEvent.click(screen.getByTestId('plugin-details-alpha'))
       await screen.findByTestId('plugin-detail-alpha')
       expect(screen.queryByText('Plugin beta')).toBeNull()
-      fireEvent.click(screen.getByTestId('plugin-back-alpha'))
+      // The detail has no back control of its own; the page around it does.
+      expect(screen.queryByText(en['plugins.back'])).toBeNull()
+      fireEvent.click(screen.getByTestId('held-back'))
       expect(await screen.findByText('Plugin beta')).toBeTruthy()
       expect(screen.queryByTestId('plugin-detail-alpha')).toBeNull()
     })
@@ -181,7 +195,7 @@ describe('plugin page — batch A', () => {
       api.list.mockResolvedValue([view('alpha'), view('beta')])
       api.setEnabled.mockResolvedValue([view('alpha', { status: 'disabled' }), view('beta')])
       ;(window as unknown as { redlog: unknown }).redlog = { plugins: api }
-      render(<div data-testid="settings-content"><PluginsPanel t={t} /></div>)
+      render(<Held />)
       const pane = screen.getByTestId('settings-content')
       await screen.findByText('Plugin alpha')
       pane.scrollTop = 420
@@ -193,7 +207,7 @@ describe('plugin page — batch A', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Disable' }))
       await screen.findByRole('button', { name: 'Enable' })
       // …and the way back still goes to where the list was, not to 90.
-      fireEvent.click(screen.getByTestId('plugin-back-alpha'))
+      fireEvent.click(screen.getByTestId('held-back'))
       await screen.findByText('Plugin beta')
       expect(pane.scrollTop).toBe(420)
     })

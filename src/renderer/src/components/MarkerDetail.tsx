@@ -15,7 +15,7 @@ import { useState, useRef, useEffect, type KeyboardEvent as ReactKeyboardEvent }
 import { SectionLabel } from './SectionLabel'
 import { useI18n } from '../i18n'
 import { formatTime, formatDateTime } from '../lib/time'
-import { Button } from './Button'
+import { Button, FIELD_FOCUS_RING } from './Button'
 import {
   MARKER_SEVERITIES, AMENDABLE_FIELDS, amendedFields, isMarkerAmendment,
   diffAgainst, type MarkerFold, type MarkerValues
@@ -105,7 +105,7 @@ export function MarkerDetail(props: MarkerDetailProps): JSX.Element {
             value={draft.title}
             onChange={(e) => setDraft({ ...draft, title: e.target.value })}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !isComposing(e)) { e.preventDefault(); e.stopPropagation(); commit() } }}
-            className="w-full px-2 py-1.5 bg-redlog-bg border border-redlog-border rounded text-sm text-redlog-text focus:outline-none focus:border-redlog-accent"
+            className={`w-full px-2 py-1.5 bg-redlog-bg border border-redlog-border rounded text-sm text-redlog-text focus:border-redlog-accent ${FIELD_FOCUS_RING}`}
             aria-label={t('marker.field.title')}
           />
           <div className="flex items-center gap-1.5">
@@ -131,7 +131,7 @@ export function MarkerDetail(props: MarkerDetailProps): JSX.Element {
             value={draft.notes}
             onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
             rows={3}
-            className="w-full px-2 py-1.5 bg-redlog-bg border border-redlog-border rounded text-xs text-redlog-text font-mono focus:outline-none focus:border-redlog-accent"
+            className={`w-full px-2 py-1.5 bg-redlog-bg border border-redlog-border rounded text-xs text-redlog-text font-mono focus:border-redlog-accent ${FIELD_FOCUS_RING}`}
             aria-label={t('marker.field.notes')}
           />
           <p className="text-xs text-redlog-text-dim">{t('marker.amendKeysHint')}</p>

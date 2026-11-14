@@ -1,4 +1,4 @@
-import { Button } from '../Button'
+import { Button, FIELD_FOCUS_RING } from '../Button'
 // Pieces of the Timeline that only render what they are given (UI/UX audit
 // F13). Timeline.tsx had grown to ~3000 lines in one function; these moved
 // out first because they hold no state of their own, so the move cannot change
@@ -108,7 +108,7 @@ export function HighlightInput({ value, onChange, inputRef, onFocus, onBlur, t }
         placeholder={t('timeline.search.placeholder')}
         title={t('timeline.search.hint')}
         aria-label={t('timeline.search.label')}
-        className="pl-5 pr-7 py-0.5 h-7 w-[220px] text-xs font-mono bg-redlog-surface/70 border border-dashed border-redlog-border rounded text-redlog-text placeholder:text-redlog-text-faint focus:outline-none focus:border-redlog-accent/60"
+        className={`pl-5 pr-7 py-0.5 h-7 w-[220px] text-xs font-mono bg-redlog-surface/70 border border-dashed border-redlog-border rounded text-redlog-text placeholder:text-redlog-text-faint focus:border-redlog-accent/60 ${FIELD_FOCUS_RING}`}
       />
       {value && (
         <button

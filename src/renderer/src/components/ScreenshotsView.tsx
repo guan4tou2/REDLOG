@@ -1,3 +1,4 @@
+import { SCROLL_GUTTER } from '../lib/pageLayout'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Image, LayoutList, LayoutGrid, Search } from 'lucide-react'
 import { EmptyState } from './EmptyState'
@@ -10,7 +11,7 @@ import { useI18n } from '../i18n'
 import { settingsTarget } from '../lib/navigation'
 import { captureScreenshotWithFeedback } from '../lib/captureScreenshot'
 import { Modal } from './Modal'
-import { Button } from './Button'
+import { Button, FIELD_FOCUS_RING } from './Button'
 import { useLivePagedQuery } from '../hooks/useLivePagedQuery'
 import { screenshotSrc } from '../lib/screenshotSrc'
 
@@ -285,7 +286,7 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
   const totalAll = triggerTotals.reduce((n, [, c]) => n + c, 0)
 
   return (
-    <div className="p-pad overflow-auto h-full">
+    <div className={`p-pad overflow-auto h-full ${SCROLL_GUTTER}`}>
       <div className="mb-3">
         <h2 className="text-sm font-semibold text-redlog-text">{t('screenshots.sectionTitle')}</h2>
         <p className="mt-0.5 text-xs text-redlog-text-dim">{t('screenshots.sectionHint')}</p>
@@ -325,7 +326,7 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={t('screenshots.searchPlaceholder')}
-                className="w-56 rounded border border-redlog-border bg-redlog-bg py-1 pl-7 pr-2 text-xs text-redlog-text placeholder-redlog-muted focus:border-red-500/40 focus:outline-none"
+                className={`w-56 rounded border border-redlog-border bg-redlog-bg py-1 pl-7 pr-2 text-xs text-redlog-text placeholder-redlog-muted focus:border-red-500/40 ${FIELD_FOCUS_RING}`}
               />
             </label>
             <div role="group" aria-label={t('screenshots.viewMode')} className="flex items-center rounded border border-redlog-border bg-redlog-elevated p-0.5">
