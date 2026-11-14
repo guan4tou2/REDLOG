@@ -79,6 +79,29 @@ typed text
    2026-11-14 every term had to be in one document of one index). One term is
    still matched within one document: the tokens of `10.0.0.5` must be
    adjacent in the same body or in the Event's own data.
+   **An HTTP exchange is one unit** (decision 2026-11-15 §1 item 5). Its rows
+   are the ones the Activity page shows as one row: `scanner` rows of the
+   subtypes `activityKey` groups (`http_request_start`, `http_response`,
+   `http_response_chunk`, `http_error`, `ws_message`, `websocket_end`) with
+   the same project, capture session, `data.source` and `flow_id`
+   (`httpExchangeSql` in `activity-projection.ts`, pinned to `activityKey`).
+   A row of an exchange matches when every term is found somewhere in the
+   exchange — any of its rows, or any body of them — and the row itself holds
+   at least one term. So a word in the request body and a word in the response
+   body find both rows; a row of the exchange holding no term is not returned,
+   and is context on the Activity page. Two flows of one host, one `flow_id`
+   in two capture sessions or two sources, and TCP messages (each its own
+   Activity row) are not one exchange. With one term the rule is the
+   per-Event rule. Commands, tool calls and every other Event are their own
+   unit, as before.
+   A term counts from a row of the exchange inside the query's dataset
+   (snapshot), never from one past it: a request inside the snapshot whose
+   response arrived after it matches by what is inside. Conditions and the
+   shared filter decide which rows are answered, not where a term may be
+   found: under a time range that keeps the request and cuts off its
+   response, the request still matches by a word in that response. The
+   cursor and `matchEventIds`'s `ids` restrict the rows answered the same
+   way, so a page, its count and a match over the same rows agree.
    A term in which the tokenizer finds no token (`|`, `&&`, `>`, `--`, `:`
    on their own; every index uses `unicode61 remove_diacritics 2` with no
    token characters added, and SQLite itself is asked outside ASCII) would
@@ -149,6 +172,25 @@ typed text
     holds, such as the Timeline's live rows and its filter box. Scope and
     personal traffic are decided over those rows' targets only, which gives
     the same answer for those rows.
+
+### The exchange unit, per surface
+
+| Surface | What a multi-word query returns |
+|---|---|
+| Search: Activity | The exchange once. 命中 counts its rows that hold a term; 相關 the rest. |
+| Search: raw events (原始事件), Transcript, ⌘K palette, `/api/events/search` | Each row of a matching exchange that holds a term, as its own Event; `countEvents`, `hasMore` and the cursor count the same rows. |
+| Timeline (page, `countEvents`, `matchEventIds`) | The same rows as raw events; a row is dimmed or admitted by the same rule. |
+| Export, "current results" | The same rows, under the export's snapshot. HAR of an event selection carries every flow one of them belongs to, as before. |
+| HTTP page text box | Unchanged: a substring of the flow's request URL, host or response content type. It is per flow already and is not this query language. |
+| Terminal recordings, AI raw transcripts | Unchanged: their own documents (Coverage). |
+
+Commands are not joined. A command's `command_start` and `command_end` both
+carry the command text, so `id uid=0` finds the end row whose output holds
+`uid=0`. Output that arrives as `command_output` chunks — a background job's
+late output, or output streamed while a long command runs (`output_streamed`
+on the end row, which then holds no stdout) — carries the `command_id` and not
+the command text: `nmap 22/tcp`, where `22/tcp` is only in such a chunk, finds
+nothing. Joining a command's rows was not decided (2026-11-15).
 
 ## Coverage
 
@@ -328,3 +370,5 @@ For every query Q and shared-filter dataset D:
   `countEvents` / `matchEventIds` joined the readers.
 - 2026-10-28, Spec 064 T048: verified saved text artifacts and AI prefixes,
   per-source coverage, pinned text-query cursors and versioned physical cast hits.
+- 2026-11-15: a multi-word query matches across one HTTP exchange (decision
+  2026-11-15 §1 item 5); before, every term had to be in one Event.

@@ -42,7 +42,9 @@ const ROOT = path.join(__dirname, '..', '..')
 // Counted 2026-11-13 on origin/main c27ed558: 276 agent_type comparisons in 68 files, 303 subtype
 // comparisons in 68 files. The spec's figure (about 274 in
 // 62 files) was counted by a looser pattern on 2026-11-12; this is the parser's.
-const AGENT_BASELINE = 276
+// 2026-11-15: 275, activityKey's `'scanner'` became the HTTP_AGENT constant that
+// search's exchange unit binds (activity-projection.ts httpExchangeSql).
+const AGENT_BASELINE = 275
 const SUBTYPE_BASELINE = 303
 const TABLE_BASELINE = 31
 

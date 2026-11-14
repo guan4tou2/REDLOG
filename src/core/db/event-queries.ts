@@ -20,6 +20,7 @@ import type { ParsedQuery, QueryCondition } from '../query/contract'
 import { toFtsMatch } from '../query/fts-match'
 import { compareCodeUnits } from '../code-unit-order'
 import { builtinTerminalRecordingSql } from '../ingest/builtin-terminal'
+import { httpExchangeSql } from '../activity-projection'
 
 /** Operator-selected predicates shared by investigation surfaces. Scope rules
  * are attached by trusted main-process code when `inScopeOnly` is requested. */
@@ -444,7 +445,8 @@ interface PreparedQuery {
   bodyIdsJson: string | null
   /** Each term of the text: its FTS phrase, and the events with a body
    *  document holding it (JSON). An event matches when every term is in its
-   *  own data or in one of its bodies. */
+   *  own data or in one of its bodies, or, for a row of an HTTP exchange, in
+   *  a row of that exchange or its bodies (buildTierWhere). */
   terms: Array<{ match: string; bodyIdsJson: string }>
   toolSession?: ToolSessionResolution
 }
@@ -497,12 +499,40 @@ function buildTierWhere(tier: 'chained' | 'logged', input: TierWhereInput): { wh
   const q = input.query
   if (q?.match) {
     const ftsTable = tier === 'chained' ? 'events_fts' : 'events_logged_fts'
-    // Per term, not per document: a term found in the event's own data or in
-    // any of its bodies counts, so "a body word and a URL word" matches.
-    for (const term of q.terms) {
-      parts.push(`(e.rowid IN (SELECT rowid FROM ${ftsTable} WHERE ${ftsTable} MATCH ?)
-                 OR e.id IN (SELECT value FROM json_each(?)))`)
-      params.push(term.match, term.bodyIdsJson)
+    /** The row `a` holds the term: in its own data or in one of its bodies. */
+    const holds = (a: string, term: PreparedQuery['terms'][number]): { sql: string; params: unknown[] } => ({
+      sql: `(${a}.rowid IN (SELECT rowid FROM ${ftsTable} WHERE ${ftsTable} MATCH ?) OR ${a}.id IN (SELECT value FROM json_each(?)))`,
+      params: [term.match, term.bodyIdsJson]
+    })
+    if (tier === 'logged' && q.terms.length > 1) {
+      // Decision 2026-11-15 §1 item 5: a row of an HTTP exchange (the rows
+      // the Activity page shows as one, httpExchangeSql) matches when every
+      // term is found somewhere in the exchange and the row holds one of them
+      // itself; any other row still has to hold every term. Only the rows
+      // that hold a term are read, by rowid and id, never the tier: the
+      // exchanges are found from those rows, inside the snapshot, and the
+      // cursor and `ids` restrict the rows answered, not where a term may be.
+      // One term is the same either way, so it keeps the plain form below.
+      const http = httpExchangeSql('e'), other = httpExchangeSql('x')
+      const any = q.terms.map(term => holds('e', term))
+      parts.push(`(${any.map(h => h.sql).join(' OR ')})`)
+      params.push(...any.flatMap(h => h.params))
+      const bound = input.snapshot ? ' AND x.rowid <= CAST(? AS INTEGER)' : ''
+      for (const term of q.terms) {
+        const own = holds('e', term), inExchange = holds('x', term)
+        parts.push(`(${own.sql} OR (${http.eligible} AND ${http.key} IN (
+          SELECT ${other.key} FROM events_logged x WHERE ${inExchange.sql} AND ${other.eligible}${bound})))`)
+        params.push(...own.params, ...http.params, ...inExchange.params, ...other.params,
+          ...(input.snapshot ? [input.snapshot.loggedMaxRowId] : []))
+      }
+    } else {
+      // Per term, not per document: a term found in the event's own data or
+      // in any of its bodies counts, so "a body word and a URL word" matches.
+      for (const term of q.terms) {
+        const own = holds('e', term)
+        parts.push(own.sql)
+        params.push(...own.params)
+      }
     }
   }
   if (q) appendConditions(q.conditions, parts, params, tier)

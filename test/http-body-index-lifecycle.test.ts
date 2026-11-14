@@ -6,12 +6,15 @@
 // count and match; a search by a second module instance (its own index
 // connection) bounded by an older snapshot; a real worker opened read-only with
 // one read transaction, as the export worker is, whose view falls behind; a saved
-// body that vanishes, or vanishes mid-read, and comes back.
+// body that vanishes, or vanishes mid-read, and comes back; an HTTP exchange
+// whose request holds one word and whose response body another.
 //
 // After every search or count:
 //  (a) the answer is the model's (every term in the event's fields or in a body
-//      of it that still exists; the last term a prefix), or body coverage is
-//      not `covered`;
+//      of it that still exists, the last term a prefix; for a row of an HTTP
+//      exchange, every term somewhere in the exchange's rows that the view
+//      holds and at least one in the row itself), or body coverage is not
+//      `covered`;
 //  (b) the source rows main's index read are bounded by the content rows added
 //      since its previous sync plus the refs retried every time (missing and
 //      failed), never by the project's size;
@@ -58,8 +61,9 @@ function prng(seed: number): () => number {
 }
 
 interface Body { file: string | null; words: string[] }
-/** `deleted`: the step retention deleted the row at. */
-interface Modelled { id: string; tier: 'events' | 'events_logged'; rowid: number; fields: string[]; bodies: Body[]; deleted?: number }
+/** `deleted`: the step retention deleted the row at. `flow`: the exchange it
+ *  is a row of (one capture session, one source, so the flow id is the key). */
+interface Modelled { id: string; tier: 'events' | 'events_logged'; rowid: number; fields: string[]; bodies: Body[]; deleted?: number; flow?: string }
 
 const SEEDS = process.env.REDLOG_LIFECYCLE_SEED ? [Number(process.env.REDLOG_LIFECYCLE_SEED)] : [1, 2, 3]
 const STEPS = 300
@@ -73,6 +77,7 @@ sqlite.describe('body index lifecycle, seeded', () => {
     const random = prng(seed), pick = <T>(xs: T[]): T => xs[Math.floor(random() * xs.length)]
     const model: Modelled[] = []
     const gone = new Map<string, string>() // file → content, while vanished
+    const exchanges: number[] = [] // the k of each exchange added
     let n = 0, addedSince = 0, step = 0, op = ''
     const where = (): string => `seed ${seed}, step ${step} (${op})`
 
@@ -90,8 +95,12 @@ sqlite.describe('body index lifecycle, seeded', () => {
       return { sha256, file, size: Buffer.byteLength(text), encoding: 'text' }
     }
     const post = (agentType: string, data: Record<string, unknown>, fields: string[], bodies: Body[]): void => {
-      const id = ingest({ agentType, engagementId: 'eng', operatorId: 'op', data }).event!.id
-      model.push({ id, ...rowOf(id), fields, bodies })
+      const event = ingest({ agentType, engagementId: 'eng', operatorId: 'op', data }).event!, id = event.id
+      // Ingest links a response to its request (`_causes`), and the events
+      // index tokenizes that id: its hex words are words of the row, which a
+      // prefix such as "b64" can match.
+      const causes = Array.isArray(event.data._causes) ? (event.data._causes as unknown[]).flatMap(c => String(c).toLowerCase().split(/[^0-9a-z]+/)).filter(Boolean) : []
+      model.push({ id, ...rowOf(id), fields: [...fields, ...causes], bodies, ...(typeof data.flow_id === 'string' ? { flow: data.flow_id } : {}) })
       if (bodies.length) addedSince++
     }
     const add = {
@@ -111,6 +120,14 @@ sqlite.describe('body index lifecycle, seeded', () => {
         post('scanner', { subtype: 'http_response', url: `http://h${k}.test/`, request_body_ref: ref, response_body_ref: ref }, ['http', `h${k}`, 'test'],
           [{ file: ref.file, words: ['echo', `s${k}`, 'echoed'] }, { file: ref.file, words: ['echo', `s${k}`, 'echoed'] }])
       },
+      // One exchange: a word in the request URL, another in the response body.
+      exchange: () => {
+        const k = n++, flow = `x${k}`, ref = save(`{"v":"r${k} shared words"}`)
+        exchanges.push(k)
+        post('scanner', { subtype: 'http_request_start', flow_id: flow, url: `http://h${k}.test/q${k}` }, ['http', `h${k}`, 'test', `q${k}`, flow], [])
+        post('scanner', { subtype: 'http_response', flow_id: flow, url: `http://h${k}.test/q${k}`.replace(`/q${k}`, '/'), response_body_ref: ref }, ['http', `h${k}`, 'test', flow],
+          [{ file: ref.file, words: ['v', `r${k}`, 'shared', 'words'] }])
+      },
     }
     // The starting project in one commit (a commit per row is a flush per row on Windows).
     db.getDB().transaction(() => {
@@ -118,6 +135,7 @@ sqlite.describe('body index lifecycle, seeded', () => {
       for (let i = 0; i < 60; i++) add.saved()
       for (let i = 0; i < 30; i++) add.inline()
       for (let i = 0; i < 3; i++) add.same()
+      for (let i = 0; i < 20; i++) add.exchange()
     })()
 
     /** What a correct index answers for `text`, inside `snapshot` if given,
@@ -125,15 +143,18 @@ sqlite.describe('body index lifecycle, seeded', () => {
     const oracle = (text: string, snapshot?: ExportSnapshot, seenAt = Infinity): string[] => {
       const terms = text.split(' ')
       const has = (words: string[], term: string, last: boolean) => words.some(w => last ? w.startsWith(term) : w === term)
-      return model.filter(e => e.deleted === undefined || e.deleted >= seenAt)
+      const holds = (e: Modelled, term: string, i: number): boolean => has(e.fields, term, i === terms.length - 1)
+        || e.bodies.some(b => (b.file === null || !gone.has(b.file)) && has(b.words, term, i === terms.length - 1))
+      const seen = model.filter(e => e.deleted === undefined || e.deleted >= seenAt)
         .filter(e => !snapshot || e.rowid <= (e.tier === 'events' ? snapshot.chainedMaxRowId : snapshot.loggedMaxRowId))
-        .filter(e => terms.every((term, i) => has(e.fields, term, i === terms.length - 1)
-          || e.bodies.some(b => (b.file === null || !gone.has(b.file)) && has(b.words, term, i === terms.length - 1))))
-        .map(e => e.id).sort()
+      return seen.filter(e => {
+        const unit = e.flow === undefined ? [e] : seen.filter(u => u.flow === e.flow)
+        return terms.every((term, i) => unit.some(u => holds(u, term, i))) && terms.some((term, i) => holds(e, term, i))
+      }).map(e => e.id).sort()
     }
     const query = (): string => {
-      const e = pick(model.filter(m => m.bodies.length && m.deleted === undefined)), body = e.bodies[0].words[1]
-      return pick([body, `${e.fields[1]} ${body}`, `${body} ${e.fields[1]}`, `zz${n}`, 'shared words', 'echoed'])
+      const e = pick(model.filter(m => m.bodies.length && m.deleted === undefined)), body = e.bodies[0].words[1], x = pick(exchanges)
+      return pick([body, `${e.fields[1]} ${body}`, `${body} ${e.fields[1]}`, `zz${n}`, 'shared words', 'echoed', `q${x} r${x}`, `r${x} q${x}`, `q${x} shared`])
     }
     const bodyCoverage = (snapshot?: ExportSnapshot) => idx.bodySearchCoverage(snapshot).sources!.find(s => s.kind === 'body')!
     /** Missing refs are retried by every sync, by design: the ones gone now,
@@ -189,7 +210,8 @@ sqlite.describe('body index lifecycle, seeded', () => {
         else if (r < 0.18) { op = 'saved'; add.saved() }
         else if (r < 0.24) { op = 'inline'; add.inline() }
         else if (r < 0.26) { op = 'same'; add.same() }
-        else if (r < 0.30) { op = 'older snapshot'; older = readActivitySnapshot(db.getReadonlyDB()) }
+        else if (r < 0.28) { op = 'exchange'; add.exchange() }
+        else if (r < 0.31) { op = 'older snapshot'; older = readActivitySnapshot(db.getReadonlyDB()) }
         else if (r < 0.50) {
           op = 'search'; const text = query()
           const page = checked(() => queries.executeEventQuery({ parsed: parsed(text), filter: {}, limit: 500 }))
