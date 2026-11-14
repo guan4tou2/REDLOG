@@ -310,7 +310,6 @@
   "marker.cancel": "取消",
   "marker.saving": "儲存中...",
   "marker.submit": "儲存標記",
-  "marker.defaultTitle": "標記 @ {{time}}",
   "statusBar.rec": "錄製",
   "statusBar.paused": "已暫停",
   "statusBar.clickToPause": "暫停擷取；搜尋、回放與匯出仍可使用",
