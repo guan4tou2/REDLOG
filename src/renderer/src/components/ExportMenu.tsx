@@ -505,9 +505,10 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
             {totalCount === 0 && <p className="px-3 pb-2 text-xs text-redlog-text-faint">{t('export.empty')}</p>}
             <Toggle on={draft.scrubPii} setOn={scrubPii => updateDraft({ ...draft, scrubPii })} label={t('export.scrubPii')} disabled={busy || !capability.piiScrubbing} />
             {!capability.piiScrubbing && <p className="px-3 text-xs text-redlog-text-faint">{t('export.cannotScrub')}</p>}
+            {/* A format that always masks has no toggle; the preview's Policy
+                row says whether anything is masked. */}
             {capability.scopeMasking === 'optional'
-              ? <Toggle on={draft.maskScope} setOn={maskScope => updateDraft({ ...draft, maskScope })} label={draft.maskScope ? t('export.maskScope') : t('export.maskScopeOff')} warn={!draft.maskScope} disabled={busy} />
-              : <p className="px-3 text-xs text-redlog-text-faint">{t('export.alwaysMasks')}</p>}
+              && <Toggle on={draft.maskScope} setOn={maskScope => updateDraft({ ...draft, maskScope })} label={draft.maskScope ? t('export.maskScope') : t('export.maskScopeOff')} warn={!draft.maskScope} disabled={busy} />}
             <div className="border-t border-redlog-border mt-2 pt-2" aria-busy={previewLoading}>
                 {previewLoading ? (
                   <p role="status" className="px-3 py-3 text-xs text-redlog-text-faint text-center">{t('export.preview.loading')}</p>

@@ -26,8 +26,10 @@
 //     does not parse keeps only what precedes its first `?` or `#`; a
 //     `data:` / `javascript:` / `vbscript:` URL is masked whole;
 //   - URLs found inside a `description` (file_transfer, credential_use and
-//     other derived rows), and the URL in a scope_violation's `action`;
-//   - loot `matches[].preview`; DNS answers that are not names or addresses;
+//     other derived rows), and the URL in a scope_violation's `action` —
+//     including an agent tool's, when the tool input is a URL;
+//   - loot `matches[]`: every value but `type`, `confidence` and the plugin
+//     provenance keys; DNS answers that are not names or addresses;
 //     a navigation's `title`; browser console `message`, `stack_trace`,
 //     `source`; cookie_change's value hashes; the error text of `http_error`
 //     and `tcp_end` past a known content-free class.
@@ -36,20 +38,27 @@
 //
 //   - COMMAND TEXT IS NOT MASKED in this version, on any row: `command`,
 //     `argv`, a loot row's `source`, the action of a scope_violation raised by
-//     a shell command or an agent tool. The owner has decided that commands
-//     are masked at export time (「指令只需要在輸出時遮蔽就好吧」); that is
-//     not built yet.
+//     a shell command, and an agent tool's action whose input is not a URL.
+//     The owner has decided that commands are masked at export time
+//     (「指令只需要在輸出時遮蔽就好吧」); that is not built yet.
 //   - Path segments (`/reset/<token>`), the names of headers, cookies and
 //     parameters, `content_type` and its parameters, `tls.*`, host, method,
 //     status, sizes, timing, ids.
 //   - A row derived from an out-of-scope row (scope_violation, loot,
 //     file_transfer, credential_use, pivot, cleanup) is masked only in the
 //     fields named here, and only when its own target is out of scope.
-//   - Userinfo written in a non-standard form (not after `://`) is not
-//     recognised; no producer emits such URLs today, and it is a known gap.
-//   - A field this module does not name is exported whole, whatever it holds:
-//     test/scope-mask-field-ratchet.test.ts fails when a recorded producer
-//     payload carries a key nobody has classified.
+//   - Userinfo is masked only when the string BEGINS with `scheme://`: the
+//     authority match is anchored at the first character, while the scheme
+//     check skips leading spaces and control characters and ignores a tab or
+//     newline inside the scheme. So userinfo is not recognised when it is
+//     written without `://`, nor after a `://` that is preceded by leading
+//     whitespace or a control character, has a tab or newline inside the
+//     scheme, or follows another prefix (`view-source:https://u:p@h/`). No
+//     producer emits such URLs today; it is a known gap.
+//   - A field this module does not name is exported whole, whatever it holds.
+//     Nothing yet forces a new producer field to be classified here, so a key
+//     a producer starts writing tomorrow is exported as recorded until someone
+//     adds it above. This is a known gap.
 //
 // Within a masked field the marker replaces a value rather than removing it,
 // so a reader sees that something was there and why it is not. Inside a URL
@@ -228,12 +237,49 @@ function maskUrl(value: unknown, marker: string): unknown {
 const isSchemeChar = (c: number): boolean =>
   (c >= 0x61 && c <= 0x7a) || (c >= 0x41 && c <= 0x5a) || (c >= 0x30 && c <= 0x39) || c === 0x2b || c === 0x2d || c === 0x2e
 const isAlpha = (c: number): boolean => (c >= 0x61 && c <= 0x7a) || (c >= 0x41 && c <= 0x5a)
-/** Where a URL embedded in prose ends. */
-const isUrlStop = (c: number): boolean => c <= 0x20 || c === 0x22 || c === 0x27 || c === 0x60 || c === 0x3c || c === 0x3e
+/** Brackets a URL may open and close inside itself: opener → closer. */
+const URL_BRACKETS: Readonly<Record<string, string>> = { '(': ')', '[': ']', '{': '}', '<': '>' }
+const URL_CLOSERS: Readonly<Record<string, string>> = { ')': '(', ']': '[', '}': '{', '>': '<' }
+const isQuote = (ch: string): boolean => ch === '"' || ch === "'" || ch === '`'
+/** Non-ASCII punctuation and spaces end a URL in prose: `，。；：！？）】「」『』、`,
+ *  U+00A0, U+3000. ASCII is decided by the rules in `urlEnd`. */
+const WIDE_STOP = /[\p{P}\p{Z}]/u
+/** Sentence punctuation that is not part of a URL when it is the URL's last
+ *  character: `see https://h/p.` */
+const isTrailingPunct = (c: number): boolean => c === 0x2e || c === 0x2c || c === 0x3b || c === 0x3a || c === 0x21 || c === 0x3f
 
-/** Every `scheme://…` in free text, up to whitespace or a quote, through the
- *  URL masker; the text around them stays. One forward pass: each walk back
- *  over a scheme stops at the end of the previous URL. */
+/**
+ * Where a URL that starts at `s` (its scheme) in prose ends; `from` is the
+ * first character after `://`. It ends at whitespace or a control character;
+ * at non-ASCII punctuation or space; at a closing bracket it did not open
+ * itself; and at a quote when the same quote stands right before the URL
+ * (`"https://h/p"`). A quote with no partner before the URL is kept in it, so
+ * a value such as `?q=it's` is masked rather than cut in two. Trailing
+ * sentence punctuation is then given back to the text. One forward pass and
+ * one bounded walk back.
+ */
+function urlEnd(text: string, s: number, from: number): number {
+  const opener = s > 0 ? text[s - 1] : ''
+  const depth: Record<string, number> = { '(': 0, '[': 0, '{': 0, '<': 0 }
+  let e = from
+  for (; e < text.length; e++) {
+    const c = text.charCodeAt(e)
+    if (c <= 0x20 || c === 0x7f) break
+    const ch = text[e]
+    if (c >= 0x80) { if (WIDE_STOP.test(ch)) break; continue }
+    if (isQuote(ch)) { if (ch === opener) break; continue }
+    if (ch in URL_BRACKETS) { depth[ch]++; continue }
+    const open = URL_CLOSERS[ch]
+    if (open !== undefined) { if (depth[open] === 0) break; depth[open]-- }
+  }
+  while (e > from && isTrailingPunct(text.charCodeAt(e - 1))) e--
+  return e
+}
+
+/** Every `scheme://…` in free text through the URL masker; the text around
+ *  them stays byte for byte (see `urlEnd` for where a URL stops). One forward
+ *  pass: each walk back over a scheme stops at the end of the previous URL.
+ *  Text with no URL in it is returned as it came. */
 function maskUrlsInText(text: string, marker: string): string {
   let out = ''
   let last = 0
@@ -243,8 +289,7 @@ function maskUrlsInText(text: string, marker: string): string {
     while (s > last && isSchemeChar(text.charCodeAt(s - 1))) s--
     while (s < i && !isAlpha(text.charCodeAt(s))) s++
     if (s === i) { i = text.indexOf('://', i + 3); continue }
-    let e = i + 3
-    while (e < text.length && !isUrlStop(text.charCodeAt(e))) e++
+    const e = urlEnd(text, s, i + 3)
     out += text.slice(last, s) + maskUrlText(text.slice(s, e), marker)
     last = e
     i = text.indexOf('://', e)
@@ -278,35 +323,70 @@ function maskDnsAnswers(value: unknown, marker: string): unknown {
   return changed ? out : KEEP
 }
 
-/** Loot `matches`: `type`, `confidence` and plugin provenance stay; `preview`
- *  is the captured line holding the secret. */
+/** The keys of a loot match that describe it rather than carry it
+ *  (src/core/loot-detector.ts, the `credential_detected` insert): the pattern
+ *  type, its confidence and a plugin pattern's provenance. `preview` — the
+ *  captured line holding the secret — and any other key are content. */
+const LOOT_MATCH_METADATA = new Set(['type', 'confidence', 'plugin_id', 'pattern_name'])
+
+/** Loot `matches`: per item, the keys above stay when they hold a plain
+ *  value; every other key's value is the marker (an empty string stays, as
+ *  for a body). An item that is not an object, or a `matches` that is not an
+ *  array, is masked whole. */
 function maskLootMatches(value: unknown, marker: string): unknown {
   if (!Array.isArray(value)) return maskWhole(value, marker)
   let changed = false
   const out: unknown[] = []
   for (const match of value as unknown[]) {
     if (!match || typeof match !== 'object' || Array.isArray(match)) return marker
-    const m = match as Record<string, unknown>
-    if ('preview' in m && m.preview !== '') { out.push({ ...m, preview: marker }); changed = true } else out.push(m)
+    const masked: Record<string, unknown> = {}
+    for (const [key, v] of Object.entries(match as Record<string, unknown>)) {
+      const plain = v === null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
+      const m = LOOT_MATCH_METADATA.has(key) && plain ? KEEP : maskWhole(v, marker)
+      if (m === KEEP) masked[key] = v
+      else { masked[key] = m; changed = true }
+    }
+    out.push(masked)
   }
   return changed ? out : KEEP
 }
 
-/** mitmproxy error classes that carry no server bytes. An error that is one
- *  of them stays; one that begins with one and a colon keeps the class and
- *  loses the rest (`Bad HTTP response line: b'…'`); anything else is the
- *  marker, since mitmproxy quotes what the server sent. */
-const ERROR_CLASSES = new Set(['Connection killed', 'Client disconnected', 'Server disconnected', 'Connection closed', 'unknown', 'error',
-  'Bad HTTP response line', 'Bad HTTP request line', 'Invalid header line', 'unexpected server response', 'TLS handshake failed',
-  'Certificate verify failed', 'HTTP/2 protocol error'])
+/** The start of an error message that carries no server bytes, as mitmproxy
+ *  12.3.1 (and the addon's own fallbacks, `unknown` and `error`) write it. An
+ *  error that is exactly one of these stays; one that begins with one keeps
+ *  that class — this table's string, never the input's — and the rest is the
+ *  marker, since what follows can quote what the server sent
+ *  (`HTTP/1 protocol error: …`, `unexpected server response: b'…'`). Any
+ *  other error, including one that names a class later in its text, is the
+ *  marker. Longer entries come before the shorter ones they start with. */
+const ERROR_CLASSES: readonly string[] = [
+  'unknown', 'error',
+  'Connection killed by block_global.', 'Connection killed by block_private.', 'Connection killed.', 'Connection killed:',
+  'Client disconnected.', 'Connection closed by peer.',
+  'Server TLS handshake failed.', 'Client TLS handshake failed.', 'Certificate verify failed:',
+  'HTTP/1 protocol error:', 'HTTP/2 protocol error:',
+  'Cannot parse HTTP response:', 'Bad HTTP request line:', 'Invalid header line:', 'unexpected server response:',
+  'peer closed connection without sending complete message body',
+  'Connect call failed'
+]
+/** Python's OSError form, `[Errno 61] Connect call failed (…)`: the number is
+ *  skipped, not kept, so the kept text is still only a class. */
+const ERRNO_PREFIX = /^\[Errno \d{1,5}\] /
 
 function maskErrorText(value: unknown, marker: string): unknown {
   if (typeof value !== 'string') return maskWhole(value, marker)
-  const trimmed = value.trim()
-  if (ERROR_CLASSES.has(trimmed.endsWith('.') ? trimmed.slice(0, -1) : trimmed)) return KEEP
-  const colon = trimmed.indexOf(':')
-  const head = colon > 0 ? trimmed.slice(0, colon).trim() : ''
-  return head && ERROR_CLASSES.has(head) ? `${head}: ${marker}` : marker
+  const errno = ERRNO_PREFIX.exec(value)
+  const text = errno ? value.slice(errno[0].length) : value
+  for (const cls of ERROR_CLASSES) {
+    if (!text.startsWith(cls)) continue
+    const rest = text.slice(cls.length)
+    if (rest === '' && !errno) return KEEP
+    if (rest === '') return cls
+    // A class must end where the message's word ends: `errors: …` is not `error`.
+    if (/^[A-Za-z0-9_]/.test(rest) && /[A-Za-z0-9_]$/.test(cls)) continue
+    return `${cls} ${marker}`
+  }
+  return marker
 }
 
 /** A scope_violation's `action` (alert/scope-signal.ts): `METHOD url` for

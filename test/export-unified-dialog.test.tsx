@@ -69,15 +69,32 @@ describe('one export dialog', () => {
     fireEvent.keyDown(window, { key: 'Escape' }); open(); await ready()
     expect(resolve.mock.lastCall?.[0].subset).toEqual(next.request.subset)
   })
-  it('preserves HTTP predicates and says HAR always masks out-of-scope content, with no toggle to turn it off', async () => {
+  it('preserves HTTP predicates and offers no masking toggle for HAR; the Policy row says what is masked', async () => {
     const subset: ExportSubset = { kind: 'selection', projection: 'http', filter: { targetId: 'corp.test' }, http: { method: 'POST', statusPrefix: '4', text: 'login' } }
     draw({ label: 'HTTP', request: { format: 'har', subset } }); open(); await ready()
     expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'har', subset, maskOutOfScope: true, scrubPii: false })
     expect(screen.queryByLabelText(/mask out-of-scope content using web scope/i)).toBeNull()
-    expect(screen.getByText('HAR always masks out-of-scope content.')).toBeTruthy()
+    expect(screen.queryByLabelText(/including out-of-scope content raw/i)).toBeNull()
     expect(screen.getByTestId('export-preview-policy').textContent).toContain('out-of-scope masked')
     format('json'); await ready()
     expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'json', subset, maskOutOfScope: true })
+  })
+  it('says nothing is masked in the Policy row of a HAR export when no scope is set', async () => {
+    resolve.mockImplementation(async (request: ExportRequest) => ({ ok: true, plan: { ...plan(request), scopeSnapshot: { targets: [], excludeTargets: [], personalDomains: [] } } }))
+    draw({ label: 'HTTP', request: { format: 'har', subset: { kind: 'all' } } }); open(); await ready()
+    expect(screen.getByTestId('export-preview-policy').textContent).toContain('no web scope set, nothing masked')
+  })
+  it('masks a HAR export after masking was turned off on another format, and keeps that choice for the other format', async () => {
+    // An HTTP view: the only one that offers HAR beside the other formats.
+    draw({ label: 'HTTP', request: { format: 'har', subset: { kind: 'selection', projection: 'http', filter: {}, http: {} } } }); open(); await ready()
+    format('json'); await ready()
+    fireEvent.click(screen.getByLabelText(/mask out-of-scope content using web scope/i)); await ready()
+    expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'json', maskOutOfScope: false })
+    format('har'); await ready()
+    expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'har', maskOutOfScope: true })
+    expect(screen.getByTestId('export-preview-policy').textContent).toContain('out-of-scope masked')
+    format('json'); await ready()
+    expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'json', maskOutOfScope: false })
   })
   it('retains the timeline format supplied by the view', async () => {
     draw({ label: 'Timeline', request: { format: 'timeline', subset: selection } }); open(); await ready()

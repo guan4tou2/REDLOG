@@ -646,6 +646,10 @@
       "class": "constant",
       "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
     },
+    "src/core/scope-sanitize.ts#LOOT_MATCH_METADATA": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
     "src/core/scope-sanitize.ts#COOKIE_ATTRIBUTES": {
       "class": "constant",
       "reason": "Lookup table filled at declaration; nothing mutates it afterwards."

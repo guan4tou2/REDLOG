@@ -171,6 +171,19 @@ describe('HAR export', () => {
     expect(big.request.postData).toBeUndefined()
   })
 
+  it('masks a HAR whose request turned masking off, and its plan and manifest say so', async () => {
+    const resolved = await handlers.get('data:resolveExportPlan')!({}, { format: 'har', maskOutOfScope: false })
+    expect(resolved.ok, JSON.stringify(resolved)).toBe(true)
+    expect(resolved.plan.request.maskOutOfScope).toBe(true)
+    const executed = await handlers.get('data:executeExportPlan')!({}, { planId: resolved.plan.id })
+    expect(executed.ok, JSON.stringify(executed)).toBe(true)
+    expectNoOutOfScopeSecret(fs.readFileSync(executed.artifactPath, 'utf8'))
+    expect(executed.artifactPath.endsWith('.har')).toBe(true)
+    const manifest = JSON.parse(fs.readFileSync(`${executed.artifactPath}.manifest.json`, 'utf8'))
+    expect(manifest.exportPlan.request.maskOutOfScope).toBe(true)
+    expect(manifest.exportPlan.id).toBe(resolved.plan.id)
+  })
+
   it('leaves an in-scope entry as it exports without a scope', () => {
     const scoped = JSON.parse(exportHar({ scope: { targets: ['in.test'], excludeTargets: [] } })).log.entries as Array<Record<string, any>>
     const unscoped = JSON.parse(exportHar()).log.entries as Array<Record<string, any>>

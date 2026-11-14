@@ -180,11 +180,51 @@ describe('the rest of an HTTP-family row', () => {
     expect(mask({ subtype: 'scope_violation', target: 'out.test', source: 'dns', action: 'A out.test' })).toBeNull()
   })
 
-  it('masks every loot match preview and keeps type, confidence and count', () => {
-    const s = secret('loot')
-    const out = applied({ subtype: 'credential_detected', matches: [{ type: 'jwt', confidence: 'high', preview: `token=${s}` }], count: 1 })
-    expect(out).toMatchObject({ matches: [{ type: 'jwt', confidence: 'high', preview: M }], count: 1 })
-    expect(applied({ subtype: 'credential_detected', matches: 'x' }).matches).toBe(M)
+  it('masks the URL in an agent tool\'s scope_violation action when the tool input is a URL, and nothing else', () => {
+    const s = secret('at')
+    const violation = (action: string): Record<string, unknown> => ({ subtype: 'scope_violation', target: 'out.test', source: 'agent_tool', action })
+    expect(applied(violation(`WebFetch https://out.test/p/q?k=${s}`)).action).toBe(`WebFetch https://out.test/p/q?k=${ENC}`)
+    expect(JSON.stringify(applied(violation(`WebFetch https://out.test/p/q?k=${s}`)))).not.toContain(s)
+    expect(mask(violation(`Bash curl -s out.test/?k=${s}`))).toBeNull()
+    expect(mask(violation('Bash'))).toBeNull()
+  })
+
+  it('masks a scope_violation action whose source it does not know, whole', () => {
+    const s = secret('src')
+    expect(applied({ subtype: 'scope_violation', target: 'out.test', source: 'future_source', action: `X ${s}` }).action).toBe(M)
+    expect(applied({ subtype: 'scope_violation', target: 'out.test', action: `X ${s}` }).action).toBe(M)
+  })
+
+  describe('loot matches', () => {
+    const matches = (value: unknown): unknown => applied({ subtype: 'credential_detected', matches: value, count: 1 }).matches
+
+    it('masks the preview and keeps type, confidence, plugin provenance and count', () => {
+      const s = secret('loot')
+      const item = { type: 'jwt', confidence: 'high', preview: `token=${s}`, plugin_id: 'p.one', pattern_name: 'jwt-ish' }
+      const out = applied({ subtype: 'credential_detected', matches: [item], count: 1 })
+      expect(out).toMatchObject({ matches: [{ ...item, preview: M }], count: 1 })
+    })
+
+    it('masks the value of a key it does not know, beside an empty preview or with none', () => {
+      const s = secret('lk')
+      expect(matches([{ type: 'jwt', preview: '', value: s, line: s }])).toEqual([{ type: 'jwt', preview: '', value: M, line: M }])
+      expect(matches([{ type: 'jwt', value: s }])).toEqual([{ type: 'jwt', value: M }])
+      expect(matches([{ type: 'jwt', nested: { v: s } }])).toEqual([{ type: 'jwt', nested: M }])
+      expect(matches([{ type: { v: s }, confidence: 'high' }])).toEqual([{ type: M, confidence: 'high' }])
+    })
+
+    it('leaves a match with nothing in it alone', () => {
+      expect(mask({ subtype: 'credential_detected', matches: [{ type: 'jwt', confidence: 'high', preview: '' }] })).toBeNull()
+    })
+
+    it('masks a non-object item, or a matches that is not an array, whole', () => {
+      const s = secret('ln')
+      expect(matches([{ type: 'jwt', preview: 'x' }, s])).toBe(M)
+      expect(matches([null])).toBe(M)
+      expect(matches([[s]])).toBe(M)
+      expect(matches('x')).toBe(M)
+      expect(matches({ type: 'jwt', preview: s })).toBe(M)
+    })
   })
 
   it('masks URLs inside a description and keeps the sentence around them', () => {
@@ -196,14 +236,109 @@ describe('the rest of an HTTP-family row', () => {
     expect(mask({ subtype: 'bearer_token', description: 'Bearer token → out.test' })).toBeNull()
   })
 
-  it('keeps a known mitmproxy error class and masks the server bytes it quotes', () => {
-    const s = secret('err')
-    expect(applied({ subtype: 'http_error', error: `Bad HTTP response line: b'${s}'` }).error).toBe(`Bad HTTP response line: ${M}`)
-    expect(applied({ subtype: 'http_error', error: `Invalid header line: b'X: ${s}'` }).error).toBe(`Invalid header line: ${M}`)
-    expect(applied({ subtype: 'http_error', error: `unexpected server response: b'${s}'` }).error).toBe(`unexpected server response: ${M}`)
-    expect(applied({ subtype: 'tcp_end', error: `something new: ${s}` }).error).toBe(M)
-    expect(mask({ subtype: 'http_error', error: 'Connection killed.' })).toBeNull()
-    expect(mask({ subtype: 'tcp_end', error: 'Server disconnected' })).toBeNull()
+  describe('where a URL in a description ends', () => {
+    const desc = (text: string): unknown => applied({ subtype: 'x', description: text }).description
+
+    it('at a closing bracket the URL did not open, keeping the bracket', () => {
+      const s = secret('br')
+      expect(desc(`see (https://out.test/p?tok=${s}) here`)).toBe(`see (https://out.test/p?tok=${ENC}) here`)
+      expect(desc(`[https://out.test/p?tok=${s}]`)).toBe(`[https://out.test/p?tok=${ENC}]`)
+      expect(desc(`{https://out.test/p?tok=${s}}`)).toBe(`{https://out.test/p?tok=${ENC}}`)
+      expect(desc(`<https://out.test/p?tok=${s}>`)).toBe(`<https://out.test/p?tok=${ENC}>`)
+      expect(desc(`https://out.test/wiki/A_(b)?tok=${s}) end`)).toBe(`https://out.test/wiki/A_(b)?tok=${ENC}) end`)
+      expect(desc(`http://[::1]/p?tok=${s}] end`)).toBe(`http://[::1]/p?tok=${ENC}] end`)
+    })
+
+    it('at a quote that stands before the URL, keeping it; a quote with no partner stays in the URL and is masked', () => {
+      const s = secret('qt')
+      for (const q of ['"', "'", '`']) expect(desc(`a ${q}https://out.test/?k=${s}${q} b`)).toBe(`a ${q}https://out.test/?k=${ENC}${q} b`)
+      expect(desc(`https://out.test/?q=it's-${s} b`)).toBe(`https://out.test/?q=${ENC} b`)
+    })
+
+    it('at full-width and CJK punctuation and at non-ASCII spaces, keeping the text after', () => {
+      const s = secret('cjk')
+      expect(desc(`網址 https://out.test/p?x=${s}，中文`)).toBe(`網址 https://out.test/p?x=${ENC}，中文`)
+      for (const p of ['。', '；', '：', '！', '？', '）', '】', '」', '』', '、', ' ', '　']) {
+        expect(desc(`https://out.test/p?x=${s}${p}後`)).toBe(`https://out.test/p?x=${ENC}${p}後`)
+      }
+    })
+
+    it('without the sentence punctuation that ends it', () => {
+      const s = secret('tp')
+      for (const p of ['.', ',', ';', ':', '!', '?']) expect(desc(`see https://out.test/p?x=${s}${p} then`)).toBe(`see https://out.test/p?x=${ENC}${p} then`)
+      expect(desc(`end https://out.test/p?x=${s}...`)).toBe(`end https://out.test/p?x=${ENC}...`)
+      expect(desc(`(see https://out.test/p?x=${s}).`)).toBe(`(see https://out.test/p?x=${ENC}).`)
+    })
+
+    it('at whitespace after a fragment, which is dropped', () => {
+      expect(desc(`go https://out.test/p#${secret('fr')} rest`)).toBe('go https://out.test/p rest')
+    })
+
+    it('masks two URLs in one string and keeps every byte between them', () => {
+      const s = secret('two')
+      expect(desc(`1: https://out.test/a?k=${s}, 2: (http://out.test/b?q=${s})。`))
+        .toBe(`1: https://out.test/a?k=${ENC}, 2: (http://out.test/b?q=${ENC})。`)
+    })
+
+    it('returns a string with no :// as it came', () => {
+      const text = `plain text, no scheme? ${secret('n')}`
+      expect(scopeMaskReplacements({ subtype: 'x', description: text }, 'out.test', scope)).toBeNull()
+      expect(desc(text)).toBe(text)
+    })
+  })
+
+  describe('mitmproxy error text', () => {
+    const err = (error: string, subtype = 'http_error'): unknown => applied({ subtype, error }).error
+
+    it('keeps an exact content-free message as it is', () => {
+      for (const e of ['Connection killed.', 'Client disconnected.', 'Connection closed by peer.', 'Connection killed by block_global.',
+        'Connection killed by block_private.', 'unknown', 'error']) {
+        expect(mask({ subtype: 'http_error', error: e }), e).toBeNull()
+        expect(mask({ subtype: 'tcp_end', error: e }), e).toBeNull()
+      }
+    })
+
+    it('keeps the class of a message that begins with one and replaces the rest', () => {
+      const s = secret('err')
+      const cases: Array<[string, string]> = [
+        [`Server TLS handshake failed. ${s}`, `Server TLS handshake failed. ${M}`],
+        [`Client TLS handshake failed. The client may not trust the proxy's certificate for ${s}`, `Client TLS handshake failed. ${M}`],
+        [`Certificate verify failed: ${s}`, `Certificate verify failed: ${M}`],
+        [`HTTP/1 protocol error: ${s}`, `HTTP/1 protocol error: ${M}`],
+        [`HTTP/2 protocol error: ${s}`, `HTTP/2 protocol error: ${M}`],
+        [`Connection killed: ${s}`, `Connection killed: ${M}`],
+        [`Cannot parse HTTP response: Bad HTTP response line: b'${s}'`, `Cannot parse HTTP response: ${M}`],
+        [`Bad HTTP request line: b'${s}'`, `Bad HTTP request line: ${M}`],
+        [`Invalid header line: b'X: ${s}'`, `Invalid header line: ${M}`],
+        [`unexpected server response: b'${s}'`, `unexpected server response: ${M}`],
+        [`peer closed connection without sending complete message body (received 3 bytes, expected ${s})`, `peer closed connection without sending complete message body ${M}`],
+        [`Connect call failed ('${s}', 443)`, `Connect call failed ${M}`],
+        [`[Errno 61] Connect call failed ('${s}', 443)`, `Connect call failed ${M}`]
+      ]
+      for (const [input, output] of cases) {
+        expect(err(input), input).toBe(output)
+        expect(err(input, 'tcp_end'), input).toBe(output)
+      }
+    })
+
+    it('keeps only the class when server-quoted bytes follow it, whatever they say', () => {
+      const s = secret('q')
+      expect(err(`HTTP/1 protocol error: Connection closed by peer. b'${s}'`)).toBe(`HTTP/1 protocol error: ${M}`)
+      expect(err(`Connection killed.${s}`)).toBe(`Connection killed. ${M}`)
+      expect(err(`[Errno 61] Connect call failed`)).toBe('Connect call failed')
+    })
+
+    it('masks a message that only mentions a class later in its text, or names none, whole', () => {
+      const s = secret('m')
+      expect(err(`${s} Connection killed.`)).toBe(M)
+      expect(err(`server said: HTTP/1 protocol error: ${s}`)).toBe(M)
+      expect(err(`errors: ${s}`)).toBe(M)
+      expect(err(`Connection killed by ${s}.`)).toBe(M)
+      expect(err(`[Errno 61] ${s}`)).toBe(M)
+      expect(err(`something new: ${s}`, 'tcp_end')).toBe(M)
+      expect(err('Server disconnected')).toBe(M)
+      expect(err('TLS handshake failed')).toBe(M)
+    })
   })
 
   it('masks a cookie_change row\'s value hashes', () => {
