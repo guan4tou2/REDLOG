@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3'
 import { BODY_SOURCE_PREDICATE } from '../content-contract'
+import { FTS_TOKENIZE } from '../query/fts-match'
 import path from 'path'
 import fs from 'fs'
 import { mkdirPrivate, ensurePrivateFile, restrictFile } from '../private-fs'
@@ -475,7 +476,7 @@ function applySchema(): void {
         const fts = `${table}_fts`
         const ftsSql = `CREATE VIRTUAL TABLE ${fts} USING fts5(
           data, target_id, agent_type, content='', contentless_delete=1,
-          tokenize='unicode61 remove_diacritics 2', prefix='2 3')`
+          tokenize='${FTS_TOKENIZE}', prefix='2 3')`
         const insertTrigger = (text: (data: string) => string): string => `CREATE TRIGGER ${fts}_ai AFTER INSERT ON ${table} BEGIN
           INSERT INTO ${fts}(rowid, data, target_id, agent_type)
           VALUES (new.rowid, ${text('new.data')}, new.target_id, new.agent_type);

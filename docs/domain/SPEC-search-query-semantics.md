@@ -79,8 +79,19 @@ typed text
    2026-11-14 every term had to be in one document of one index). One term is
    still matched within one document: the tokens of `10.0.0.5` must be
    adjacent in the same body or in the Event's own data.
+   A term in which the tokenizer finds no token (`|`, `&&`, `>`, `--`, `:`
+   on their own; every index uses `unicode61 remove_diacritics 2` with no
+   token characters added, and SQLite itself is asked outside ASCII) would
+   match nothing on its own, so it is left out: `cat /etc/passwd | grep root`
+   matches as `cat /etc/passwd grep root`, and punctuation inside a term
+   (`root&&echo`, `--flag`, `a|b`) is read as the words it separates. A query
+   made only of such terms keeps them and matches nothing, as it did before
+   terms were matched one by one. Only the last term typed is prefix-matched;
+   when that is the one left out, none is, so after `cat /etc/passwd |` the
+   word `/etc/passwd` is matched whole.
    Event, HTTP body and recording search share this translation
-   (`src/core/query/fts-match.ts`), so every typed input is valid MATCH syntax.
+   (`src/core/query/fts-match.ts`): every term is quoted as a phrase, so no
+   typed input is malformed MATCH syntax.
    Event indexes tokenize decoded JSON values and property names, not JSON
    serialization escapes. A word after a newline or tab must be searchable as
    that word, without an invented `n` or `t` prefix. Rebuilding this derived

@@ -9,7 +9,7 @@ import type { RedLogEvent } from './db/events'
 import type { ExportSnapshot } from './export-plan'
 import type { EventFilter } from './db/event-queries'
 import type { ParsedQuery } from './query/contract'
-import { ftsTerms } from './query/fts-match'
+import { ftsTerms, FTS_TOKENIZE } from './query/fts-match'
 import { BODY_REF_FIELDS, type BodyRef } from './http-body-store'
 import { withVerifiedBody, withVerifiedSavedFile, savedFileRefs, withInlineBase64, ContentAccessError, type ByteSource, type SavedFileRef } from './body-source'
 const INDEX_CHUNK_BYTES = 1024 * 1024
@@ -38,7 +38,7 @@ function getIndex(projectDir = getProjectDir()): Database.Database {
     // FTS5 finds a row only by MATCH or rowid. body_docs maps each document to
     // its (event, body) pair through a real index, so removing one ref's text
     // never reads every document.
-    db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS body_fts USING fts5(content,tokenize='unicode61 remove_diacritics 2',prefix='2 3');
+    db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS body_fts USING fts5(content,tokenize='${FTS_TOKENIZE}',prefix='2 3');
     CREATE TABLE IF NOT EXISTS body_docs (doc INTEGER PRIMARY KEY,event_id TEXT NOT NULL,sha256 TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS body_docs_ref ON body_docs(event_id,sha256);
     CREATE INDEX IF NOT EXISTS body_docs_sha256 ON body_docs(sha256);

@@ -4,7 +4,7 @@ import crypto from 'crypto'
 import Database from 'better-sqlite3'
 import { stripAnsi, readSingleCastRange, type CastSlice } from './cast-slice'
 import { getProjectDir, dbGeneration } from './db'
-import { ftsTerms } from './query/fts-match'
+import { ftsTerms, FTS_TOKENIZE } from './query/fts-match'
 import { ensurePrivateFile } from './private-fs'
 
 // Full-text search over terminal recordings.
@@ -123,7 +123,7 @@ export function getCastIndex(projectDir?: string): Database.Database {
       t_ms     UNINDEXED,
       off      UNINDEXED,
       len      UNINDEXED,
-      tokenize = 'unicode61 remove_diacritics 2',
+      tokenize = '${FTS_TOKENIZE}',
       prefix   = '2 3'
     );
     CREATE TABLE IF NOT EXISTS cast_files (
