@@ -160,5 +160,33 @@ describe('a bundle whose rows carry them', () => {
       expect(r.stdout).toMatch(/^Chain\s+: INTACT$/m)
       expect(r.status, out).toBe(0)
     })
+
+    // Input that is not what a writer produces ends in a verdict, never a
+    // traceback.
+    python.it('a line that is not UTF-8 is a malformed line, as an unparsable one is', () => {
+      expect(bundle, 'the bundle is made by the test before').not.toBe('')
+      const copy = path.join(path.dirname(bundle), 'not-utf8')
+      fs.cpSync(bundle, copy, { recursive: true })
+      const file = path.join(copy, 'events.jsonl')
+      const lines = fs.readFileSync(file).toString('utf8').split('\n')
+      fs.writeFileSync(file, Buffer.concat([Buffer.from(lines[0] + '\n'), Buffer.from([0xff, 0xfe, 0x0a]), Buffer.from(lines.slice(1).join('\n'))]))
+      const r = spawnSync(pythonBin, ['-I', VERIFIER, copy], { encoding: 'utf8' })
+      expect(r.stderr).toContain('malformed events.jsonl at line 2:')
+      expect(r.stderr).not.toContain('Traceback')
+      expect(r.status).toBe(1)
+    })
   })
+})
+
+python.it('signers are listed in code-unit order whatever type the row gave operator_id', () => {
+  const script = [
+    'import importlib.util, sys',
+    'spec = importlib.util.spec_from_file_location("redlog_verify", sys.argv[1])',
+    'rv = importlib.util.module_from_spec(spec); spec.loader.exec_module(rv)',
+    'items = {"b": "1", 7: "2", "\\U0001F600": "3", "\\uff5e": "4"}.items()',
+    'print([k for k, _ in sorted(items, key=rv._signer_order)])'
+  ].join('\n')
+  const r = spawnSync(pythonBin, ['-I', '-c', script, VERIFIER], { encoding: 'utf8' })
+  expect(r.stderr).toBe('')
+  expect(r.stdout.trim()).toBe(`[7, 'b', '\u{1F600}', '～']`)
 })

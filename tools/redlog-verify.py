@@ -168,6 +168,12 @@ def _js_encode_scalar(v: Any) -> str:
     return out
 
 
+def _signer_order(item: Tuple[Any, str]) -> bytes:
+    """Report order of (operator_id, fingerprint): code units of the id. An
+    operator_id is whatever the row says, so it need not be a string."""
+    return _utf16_order(str(item[0]))
+
+
 def _utf16_order(key: str) -> bytes:
     """A key's sort position in the writer: Array.prototype.sort compares
     UTF-16 code units. Python's sorted() compares code points, which puts a
@@ -410,7 +416,10 @@ def _iter_lines(path: Path):
         for lineno, raw in enumerate(fh, start=1):
             start = offset
             offset += len(raw)
-            line = raw.decode("utf-8").strip()
+            try:
+                line = raw.decode("utf-8").strip()
+            except UnicodeDecodeError as e:
+                raise SystemExit(f"malformed {path.name} at line {lineno}: {e}")
             if not line:
                 continue
             try:
@@ -981,7 +990,7 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False, hash_only: bool = Fal
             print(f"  no pubkey       : {signed_no_pubkey} (operator missing signerPubKey)")
     if unsigned:
         print(f"Unsigned events  : {unsigned}")
-    for op_id, fp in sorted(signers.items(), key=lambda kv: _utf16_order(kv[0])):
+    for op_id, fp in sorted(signers.items(), key=_signer_order):
         print(f"Signer           : {op_id}  sha256:{fp}")
     if signers:
         print("  compare these fingerprints with the operator out of band;")
