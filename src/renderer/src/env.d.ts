@@ -62,6 +62,7 @@ interface ResolvedExportPlan {
     excludedPersonal: number
     outOfScopeHttpFlows?: number
     maskedOutOfScope: number
+    maskedUnclassified?: number
     sanitized: number
     attachmentsIncluded: number
     attachmentsMissing: number

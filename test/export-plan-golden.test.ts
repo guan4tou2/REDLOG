@@ -51,7 +51,7 @@ describe('buildExportPlan', () => {
   it('exercises every counter the plan reports, so the pin is not trivially zero', () => {
     const seen = observePlan(fixture.dir, { format: 'json', maskOutOfScope: true })
     expect(seen.counts).toMatchObject({ excludedDoNotExport: 4, excludedPersonal: expect.any(Number) })
-    for (const key of ['excludedPersonal', 'outOfScopeHttpFlows', 'maskedOutOfScope', 'sanitized', 'unsupported', 'truncatedOutputs', 'pauseWindows', 'interruptedRecordings', 'interruptedCommands'] as const) {
+    for (const key of ['excludedPersonal', 'outOfScopeHttpFlows', 'maskedOutOfScope', 'maskedUnclassified', 'sanitized', 'unsupported', 'truncatedOutputs', 'pauseWindows', 'interruptedRecordings', 'interruptedCommands'] as const) {
       expect(seen.counts[key], key).toBeGreaterThan(0)
     }
     expect(seen.counts.captureGaps!.length).toBeGreaterThan(1)

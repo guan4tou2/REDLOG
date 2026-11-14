@@ -10,7 +10,7 @@ import { useViewExport } from '../lib/exportScope'
 import { formatDateTime } from '../lib/time'
 import { useSharedFilter, toEventFilter } from '../lib/FilterContext'
 import { capabilitiesFor } from '../../../core/export-capabilities'
-import { selectionConditions, subsetSummary } from '../lib/exportSubsetText'
+import { selectionConditions, subsetNarrows, subsetSummary } from '../lib/exportSubsetText'
 
 export interface ExportMenuProps {
   totalCount?: number
@@ -24,12 +24,24 @@ function planScopeSet(plan: { scopeSnapshot?: { targets?: string[]; excludeTarge
   return (plan.scopeSnapshot?.targets ?? []).length > 0 || (plan.scopeSnapshot?.excludeTargets ?? []).length > 0
 }
 
+/** What masking does to command output for this plan (scope-sanitize.ts):
+ *  out-of-scope targets lose their output; with scope targets, so does a
+ *  command that names no target; command text is never masked. Nothing is
+ *  said when masking is off or no scope is set: the Policy row already says
+ *  so, and the copy rules do not describe the off state (§25.5.2). */
+function commandsNote(plan: Pick<ResolvedExportPlan, 'request' | 'scopeSnapshot'>, t: (key: string) => string): string | null {
+  if (!plan.request.maskOutOfScope || !planScopeSet(plan)) return null
+  return (plan.scopeSnapshot?.targets ?? []).length > 0 ? t('export.commandsMasked') : t('export.commandsMaskedExcludedOnly')
+}
+
 /** What the preview says about scope, in the two places it is easy to assume
- *  wrongly: an empty scope is not "everything verified in scope", and the web
- *  scope does not select commands. Module scope on purpose — declared inside
- *  ExportMenu it would remount on every render. */
-function ScopeNotes({ scopeSet, onSetScope, t }: {
+ *  wrongly: an empty scope is not "everything verified in scope", and what the
+ *  scope does to commands. HAR carries no commands, so it has no note about
+ *  them. Module scope on purpose — declared inside ExportMenu it would remount
+ *  on every render. */
+function ScopeNotes({ scopeSet, commandsNote, onSetScope, t }: {
   scopeSet: boolean
+  commandsNote: string | null
   onSetScope?: () => void
   t: (key: string, vars?: Record<string, string | number>) => string
 }): JSX.Element {
@@ -45,7 +57,7 @@ function ScopeNotes({ scopeSet, onSetScope, t }: {
           )}
         </div>
       )}
-      <p data-testid="export-commands-note" className="text-redlog-text-faint">{t('export.commandsNotScoped')}</p>
+      {commandsNote && <p data-testid="export-commands-note" className="text-redlog-text-faint">{commandsNote}</p>}
     </div>
   )
 }
@@ -269,7 +281,9 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
     ...selection.current?.request,
     format: next.format,
     subset: next.range === 'all' ? { kind: 'all' } : selection.current!.subset,
-    scrubPii: next.scrubPii,
+    // A format that cannot scrub has no control for it; the plan's Policy row
+    // then says nothing was scrubbed rather than the request being refused.
+    scrubPii: next.scrubPii && capabilitiesFor(next.format).piiScrubbing,
     maskOutOfScope: capabilitiesFor(next.format).scopeMasking === 'always' || next.maskScope,
     excludeAttachments: next.excludeAttachments,
     includeAttachments: next.includeAttachments
@@ -320,11 +334,14 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
     setResultWarning(false)
     setOpen(true)
     void loadRecent()
-    updateDraft({ ...draft, format, range: 'current', excludeAttachments: [], includeAttachments: [], scrubPii: false })
+    // Decided here, before the one resolution: a view the operator has not
+    // narrowed opens on the whole project, not on "current results" that
+    // happen to be everything and get labelled partial evidence.
+    const range = subsetNarrows(selection.current!.subset) ? 'current' : 'all'
+    updateDraft({ ...draft, format, range, excludeAttachments: [], includeAttachments: [], scrubPii: false })
   }
 
   const changeFormat = (format: ExportFormat): void => {
-    if (draft.scrubPii && !capabilitiesFor(format).piiScrubbing) return
     if (format === 'json' || format === 'ndjson' || format === 'bundle') {
       try { localStorage.setItem(FORMAT_KEY, format) } catch { /* convenience only */ }
     }
@@ -430,7 +447,11 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
   const formats: ExportFormat[] = ['bundle']
   const viewFormat = selection.current?.request?.format
   if (viewFormat === 'har') formats.push(viewFormat)
-  const otherFormats: ExportFormat[] = ['json', 'ndjson', ...(viewFormat === 'timeline' ? ['timeline' as const] : [])]
+  // HAR is planned for any selection (the exchanges among it) or the whole
+  // project; an activity or a session it cannot carry. The Timeline format is
+  // the visible slice, so it stays with the Timeline.
+  const operation = selection.current?.subset.kind === 'activity' || selection.current?.subset.kind === 'session'
+  const otherFormats: ExportFormat[] = ['json', 'ndjson', ...(viewFormat !== 'har' && !operation ? ['har' as const] : []), ...(viewFormat === 'timeline' ? ['timeline' as const] : [])]
   const capability = capabilitiesFor(draft.format)
 
   return (
@@ -489,7 +510,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
               <label className="min-w-0 text-redlog-text-dim">
                 {t('export.currentFormat')}
                 <select aria-label={t('export.currentFormat')} value={formats.includes(draft.format) ? draft.format : 'other'} disabled={busy} onChange={e => changeFormat(e.target.value === 'other' ? 'json' : e.target.value as ExportFormat)} className="mt-1 block w-full bg-redlog-elevated border border-redlog-border rounded px-2 py-1.5 text-redlog-text">
-                  {formats.map(format => <option key={format} value={format} disabled={draft.scrubPii && !capabilitiesFor(format).piiScrubbing}>{format === 'bundle' ? t('export.bundle') : format.toUpperCase()}</option>)}
+                  {formats.map(format => <option key={format} value={format}>{format === 'bundle' ? t('export.bundle') : format.toUpperCase()}</option>)}
                   <option value="other">{t('export.otherFormats')}</option>
                 </select>
               </label>
@@ -500,11 +521,13 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                 {otherFormats.map(format => <option key={format} value={format}>{format.toUpperCase()}</option>)}
               </select>
             </label>}
-            <p data-testid="export-range-current" className="px-3 pb-1 text-xs text-redlog-text-dim">{draft.range === 'current' ? t('export.range.current', { summary: subsetSummary(selection.current!.subset, t) }) : t('export.range.allHint')}</p>
+            {/* What "current" covers is said once, in the preview's Selection
+                row. This line is only for leaving a filter the operator set. */}
+            {draft.range === 'all' && subsetNarrows(selection.current!.subset)
+              && <p data-testid="export-range-current" className="px-3 pb-1 text-xs text-redlog-text-dim">{t('export.range.allHint')}</p>}
             <p className="px-3 pb-2 text-xs text-redlog-text-faint">{t(`export.formatHelp.${draft.format}`)}</p>
             {totalCount === 0 && <p className="px-3 pb-2 text-xs text-redlog-text-faint">{t('export.empty')}</p>}
-            <Toggle on={draft.scrubPii} setOn={scrubPii => updateDraft({ ...draft, scrubPii })} label={t('export.scrubPii')} disabled={busy || !capability.piiScrubbing} />
-            {!capability.piiScrubbing && <p className="px-3 text-xs text-redlog-text-faint">{t('export.cannotScrub')}</p>}
+            {capability.piiScrubbing && <Toggle on={draft.scrubPii} setOn={scrubPii => updateDraft({ ...draft, scrubPii })} label={t('export.scrubPii')} disabled={busy} />}
             {/* A format that always masks has no toggle; the preview's Policy
                 row says whether anything is masked. */}
             {capability.scopeMasking === 'optional'
@@ -595,6 +618,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                         was hardcoded 0 - both are gone rather than guessed. */}
                     <ScopeNotes
                       scopeSet={planScopeSet(resolvedPlan)}
+                      commandsNote={resolvedPlan.request.format === 'har' ? null : commandsNote(resolvedPlan, t)}
                       onSetScope={onOpenScopeSettings && !busy ? () => { closeAll(); onOpenScopeSettings() } : undefined}
                       t={t}
                     />
@@ -603,6 +627,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                     <PreviewRow label={t('export.preview.total')} value={resolvedPlan.counts.examined} />
                     {(resolvedPlan.counts.outOfScopeHttpFlows ?? 0) > 0 && <PreviewRow label={t('export.preview.outOfScopeHttp')} value={resolvedPlan.counts.outOfScopeHttpFlows!} warn />}
                     {planScopeSet(resolvedPlan) && <PreviewRow label={t('export.preview.outOfScope')} value={resolvedPlan.counts.maskedOutOfScope} warn />}
+                    <PreviewRow label={t('export.preview.unclassified')} value={resolvedPlan.counts.maskedUnclassified ?? 0} warn />
                     <PreviewRow label={t('export.preview.dropped')} value={resolvedPlan.counts.excludedDoNotExport} warn />
                     <PreviewRow label={t('export.preview.personalDropped')} value={resolvedPlan.counts.excludedPersonal} warn />
                     <PreviewRow label={t('export.preview.sanitized')} value={resolvedPlan.counts.sanitized} />

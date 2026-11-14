@@ -13,25 +13,40 @@ export type ActivitySegment =
   | { kind: 'item'; item: ActivitySummary; at: number }
   | { kind: 'fold'; key: string; items: ActivitySummary[]; at: number }
 
-/** A RedLog state change. Scope observations are findings, not plumbing —
- *  except a hit nobody could judge: with no scope configured the evaluator
- *  files every observed host under `in_scope` with `authority: 'unknown'`
- *  (範圍未判定), one row per host, and those buried the operator's actions. */
-export function isFoldableSystem(item: ActivitySummary): boolean {
-  if (item.anchor.agentType !== 'system') return false
-  const d = item.anchor.data
-  if (d?.subtype !== SCOPE_VIOLATION_SUBTYPE) return true
-  return d.distance === 'in_scope' && d.authority === 'unknown'
+/** The row's data when RedLog wrote it about itself (agent type `system`). */
+const systemData = (item: ActivitySummary): Record<string, unknown> | undefined =>
+  item.anchor.agentType === 'system' ? item.anchor.data ?? {} : undefined
+
+/** A clean scope verdict: every in-scope action writes one, the positive
+ *  record that scope was observed (`ScopePolicy` always emits `in_scope`). It
+ *  stays in the chain and in every count; here it is RedLog's own bookkeeping
+ *  beside the action it judged, and its `action` repeats that action's text,
+ *  so a search for the command matched it too (decision 2026-11-15 §1 item 6).
+ *  With no scope configured the same row says 範圍未判定 (`authority:
+ *  'unknown'`). Any other distance is an observation and never folds. */
+function isScopeAdherence(item: ActivitySummary): boolean {
+  const d = systemData(item)
+  return d?.subtype === SCOPE_VIOLATION_SUBTYPE && d.distance === 'in_scope'
 }
 
-/** The list as rows and folds, in order; `at` is each segment's first index. */
-export function foldSystemRuns(items: readonly ActivitySummary[], enabled: boolean): ActivitySegment[] {
+/** A RedLog state change. Scope observations are findings, not plumbing;
+ *  a clean verdict is not an observation. */
+export function isFoldableSystem(item: ActivitySummary): boolean {
+  const d = systemData(item)
+  return !!d && (d.subtype !== SCOPE_VIOLATION_SUBTYPE || isScopeAdherence(item))
+}
+
+/** The list as rows and folds, in order; `at` is each segment's first index.
+ *  While a query is active (`all` false) the operator asked for the rows it
+ *  matched, so only clean verdicts fold. */
+export function foldSystemRuns(items: readonly ActivitySummary[], all: boolean): ActivitySegment[] {
+  const foldable = all ? isFoldableSystem : isScopeAdherence
   const out: ActivitySegment[] = []
   let i = 0
   while (i < items.length) {
-    if (enabled && isFoldableSystem(items[i])) {
+    if (foldable(items[i])) {
       let j = i
-      while (j < items.length && isFoldableSystem(items[j])) j++
+      while (j < items.length && foldable(items[j])) j++
       if (j - i >= SYSTEM_FOLD_MIN) {
         out.push({ kind: 'fold', key: items[i].id, items: items.slice(i, j), at: i })
         i = j
