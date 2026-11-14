@@ -42,7 +42,7 @@ const ROOT = path.join(__dirname, '..', '..')
 // Counted 2026-11-13 on origin/main c27ed558: 276 agent_type comparisons in 68 files, 303 subtype
 // comparisons in 68 files. The spec's figure (about 274 in
 // 62 files) was counted by a looser pattern on 2026-11-12; this is the parser's.
-// 2026-11-15, two changes:
+// 2026-11-15, three changes:
 // - activityKey's `'scanner'` became the HTTP_AGENT constant that search's
 //   exchange unit binds (activity-projection.ts httpExchangeSql): agent -1.
 // - ATTACHED_CAUSE_SQL (activity-projection.ts), the SQL twin of
@@ -50,14 +50,21 @@ const ROOT = path.join(__dirname, '..', '..')
 //   a UDF would add a JavaScript call per projected row — and there is no
 //   registry yet to ask instead. The JavaScript side reuses the classification's
 //   existing comparison and adds none.
+// - Spec 071 SC-003, a command's links surviving a restart: agent +5, subtype
+//   +5. db/stored-links.ts reads a command's start, end, final chunk and chunk
+//   numbers, and a flow's request and response, back from the rows, and
+//   db/index.ts's two partial indexes repeat the probes' kinds; the late-output
+//   bookkeeping in ingest.ts was folded from two maps into one and gave back
+//   most of what its JavaScript side added. The probes must name the kinds for
+//   SQLite to use the partial indexes, and there is no registry yet to ask.
 // 2026-11-15, Spec 071 T035: receiverProvenance (evidence-rules.ts) finds a
 //   session's start by `agentType !== 'system'` and `subtype !==
 //   'session_start'`: agent +1, subtype +1. It is a verifier rule, and
 //   tools/redlog-verify.py states the same comparison in Python, where no
 //   registry can reach; the rule's other comparisons in that file
 //   (attachmentRefs) are of the same kind.
-const AGENT_BASELINE = 277
-const SUBTYPE_BASELINE = 305
+const AGENT_BASELINE = 282
+const SUBTYPE_BASELINE = 310
 const TABLE_BASELINE = 31
 
 type Counter = 'agent' | 'subtype'

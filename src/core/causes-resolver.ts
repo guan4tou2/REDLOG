@@ -2,6 +2,7 @@ import path from 'node:path'
 import { compareCodeUnits } from './code-unit-order'
 import { terminalIdentity } from './ingest/terminal'
 import { fieldText } from './ingest/field-text'
+import type { StoredCommand } from './db/stored-links'
 
 // v0.6.89 P0-A: `_causes` upstream-event lookup for events that arrive via
 // /api/events (or any other post-hoc insertion path). Each event pair follows
@@ -20,6 +21,13 @@ import { fieldText } from './ingest/field-text'
 // a long-running instance doesn't leak. TTL is not tracked; the mitmproxy
 // addon caps flows at 5 min and shell command lifetime is bounded by the
 // operator's terminal session, so eviction by size is enough.
+//
+// The cache is the fast path, not the record. When it has nothing for a
+// command id or a flow id — the app restarted since the start, or the entry
+// was evicted — the caller's `stored` answers from the project's rows by the
+// same id (db/stored-links.ts), and the answer is the one the cache would have
+// given had it never been lost (Spec 071 SC-003). What it finds is put back in
+// the cache, so the rest of that command's rows are hits again.
 
 const MAX_ENTRIES = 10_000
 
@@ -65,6 +73,12 @@ const commandIdMap = new BoundedMap<string>()
 // apart from `commandIdMap` so a command that really ended stays ended: a
 // chunk for it is still `unattributed`, not a reopened command.
 const lateCommandIdMap = new BoundedMap<string>()
+// Command ids whose chunks memory knows belong to no open command: no start
+// was stored, the end did not say a job keeps printing, or a `final` chunk
+// came. Without it, every such chunk — a stream the relay sends once a second —
+// asked the database again. Forgotten when a start with that id is stored
+// (noteStartEvent) and with the project (resetCausesResolver).
+const closedCommandIds = new BoundedMap<true>()
 type CommandCorrelation = { eventId: string; cwd: string; endedAt?: number }
 export type RelatedCommandCandidate = {
   event_id: string
@@ -75,11 +89,13 @@ const activeShellCommands = new BoundedMap<CommandCorrelation>()
 const recentShellCommands = new BoundedMap<CommandCorrelation>()
 const RECENT_COMMAND_GRACE_MS = 2_000
 
-function commandIdOf(data: Record<string, unknown>): string | null {
-  const value = data.command_id ?? data.commandId
-  if (typeof value !== 'string') return null
-  const trimmed = value.trim()
-  return trimmed === '' ? null : trimmed
+/** The command id of a row: the `command_id` string exactly as sent. The
+ *  stored lookup (db/stored-links.ts) compares the same string, so memory and
+ *  the rows agree on what one command is. Nothing sends it with whitespace or
+ *  as `commandId`; an id that is not a non-empty string is no id. */
+export function commandIdOf(data: Record<string, unknown>): string | null {
+  const value = data.command_id
+  return typeof value === 'string' && value !== '' ? value : null
 }
 
 function shellKey(data: Record<string, unknown>): string | null {
@@ -107,7 +123,9 @@ export function noteStartEvent(agentType: string, data: Record<string, unknown>,
   }
   if (agentType === 'shell' && data.subtype === 'command_start') {
     const commandId = commandIdOf(data)
-    if (commandId) commandIdMap.set(commandId, eventId)
+    // A new round of this id: whatever the last round left open for late
+    // output is that round's, not this one's.
+    if (commandId) { commandIdMap.set(commandId, eventId); lateCommandIdMap.delete(commandId); closedCommandIds.delete(commandId) }
     const key = shellKey(data)
     if (key) {
       shellStartMap.set(key, eventId)
@@ -119,20 +137,50 @@ export function noteStartEvent(agentType: string, data: Record<string, unknown>,
   }
 }
 
+/** The project's rows, for when the cache has nothing (see the header).
+ *  Handed in by ingest, so this module stays free of the database. */
+export interface StoredLinks {
+  command: (commandId: string) => StoredCommand | null
+  /** The rowid of the newest final chunk of `commandId`. */
+  lastFinal: (commandId: string) => number | null
+  openFlowStart: (flowId: string) => string | null
+  /** A lookup threw since this row began, so "nothing found" may not be
+   *  true: nothing may be remembered as closed on it. */
+  readonly failed: boolean
+}
+
 /**
  * Called BEFORE insertEvent for an "end" event. Returns the upstream event
  * id(s) to add to `data._causes`. Empty array when no upstream is known
- * (e.g. we started recording mid-flow, or the start event was evicted).
+ * (e.g. we started recording mid-flow).
+ *
+ * What the row does to the links — a response closing its flow, an end closing
+ * its command, a final chunk closing its job — is handed to `settle`, which
+ * ingest runs only once the row is stored: a row refused (paused, unrecorded,
+ * a duplicate) was never recorded, and the record must still read as if it
+ * had not come, which is what the stored rows will say after a restart.
+ * Without `settle` it is done at once. Two terminal hints settle at once
+ * either way, as they always did: the cwd hint (`activeShellCommands`), so a
+ * command that ended while paused is not offered as still running, and the
+ * terminal key (`shellStartMap`), which nothing stored stands behind, so an
+ * end refused while paused does not leave its start for the next command
+ * with the same text to cite.
  */
-export function resolveIncomingCauses(agentType: string, data: Record<string, unknown>): string[] {
+export function resolveIncomingCauses(agentType: string, data: Record<string, unknown>, stored?: StoredLinks, settle?: (change: () => void) => void): string[] {
+  const later = settle ?? ((change: () => void) => change())
   if (agentType === 'scanner') {
     const sub = data.subtype
     if ((sub === 'http_response' || sub === 'http_error' || sub === 'http_request_dropped') && typeof data.flow_id === 'string') {
-      const id = httpFlowMap.get(data.flow_id)
+      const flowId = data.flow_id
+      let id = httpFlowMap.get(flowId)
+      if (!id && stored) {
+        id = stored.openFlowStart(flowId) ?? undefined
+        if (id) httpFlowMap.set(flowId, id)
+      }
       if (id) {
         // Only clear on response — dropped/error might reference a flow that
         // still receives a real response later (rare but possible via retry).
-        if (sub === 'http_response') httpFlowMap.delete(data.flow_id)
+        if (sub === 'http_response') later(() => httpFlowMap.delete(flowId))
         return [id]
       }
     }
@@ -146,47 +194,82 @@ export function resolveIncomingCauses(agentType: string, data: Record<string, un
     const commandId = commandIdOf(data)
     if (!commandId) return []
     const id = commandIdMap.get(commandId) ?? lateCommandIdMap.get(commandId)
+      ?? (closedCommandIds.get(commandId) ? undefined : storedChunkCommand(commandId, stored))
     // The relay's last row for this command: nothing more will arrive, so the
     // id is released.
-    if (data.final === true) lateCommandIdMap.delete(commandId)
+    if (data.final === true) {
+      later(() => {
+        lateCommandIdMap.delete(commandId)
+        if (!commandIdMap.get(commandId)) closedCommandIds.set(commandId, true)
+      })
+    }
     return id ? [id] : []
   }
   if (agentType === 'shell' && data.subtype === 'command_end') {
     const commandId = commandIdOf(data)
+    const key = shellKey(data)
+    // The terminal hints settle now, recorded or not; what the key held is
+    // still the answer for this row.
+    const keyed = key ? shellStartMap.get(key) : undefined
+    if (key) {
+      shellStartMap.delete(key)
+      const active = activeShellCommands.get(key)
+      activeShellCommands.delete(key)
+      if (active) recentShellCommands.set(key, { ...active, endedAt: Date.now() })
+    }
     if (commandId) {
-      const id = commandIdMap.get(commandId)
+      const id = commandIdMap.get(commandId) ?? storedOpenCommand(commandId, stored)
       if (id) {
         // The contract puts `command_end` after the last chunk, so the id has
         // done its work; a chunk arriving after this is late by definition
         // and is recorded as unattributed rather than reopening the command —
         // unless the relay said at the time that a background job would keep
         // printing, in which case the late chunks are that command's.
-        commandIdMap.delete(commandId)
-        if (data.late_output === true || data.output_streamed === true) lateCommandIdMap.set(commandId, id)
-        const key = shellKey(data)
-        if (key) {
-          shellStartMap.delete(key)
-          const active = activeShellCommands.get(key)
-          activeShellCommands.delete(key)
-          if (active) recentShellCommands.set(key, { ...active, endedAt: Date.now() })
-        }
+        const late = data.late_output === true || data.output_streamed === true
+        later(() => {
+          commandIdMap.delete(commandId)
+          if (late) { lateCommandIdMap.set(commandId, id); closedCommandIds.delete(commandId) } else closedCommandIds.set(commandId, true)
+        })
         return [id]
       }
     }
-    const key = shellKey(data)
-    if (key) {
-      const id = shellStartMap.get(key)
-      const active = activeShellCommands.get(key)
-      activeShellCommands.delete(key)
-      if (active) recentShellCommands.set(key, { ...active, endedAt: Date.now() })
-      if (id) {
-        shellStartMap.delete(key)
-        return [id]
-      }
-    }
-    return []
+    return keyed ? [keyed] : []
   }
   return []
+}
+
+/** The start of command `commandId` that no command_end has closed yet, as
+ *  `commandIdMap` would hold it. */
+function storedOpenCommand(commandId: string, stored: StoredLinks | undefined): string | undefined {
+  const command = stored?.command(commandId)
+  return command?.start && !command.firstEnd ? command.start.id : undefined
+}
+
+/** The command a chunk belongs to, as the maps would hold it: still running
+ *  (`commandIdMap`), or ended saying a background job keeps printing with no
+ *  final chunk since (`lateCommandIdMap`). Otherwise the id goes in
+ *  `closedCommandIds`, so the next chunk does not ask again. What is found
+ *  is the stored record, so it is kept whether or not this chunk is. */
+function storedChunkCommand(commandId: string, stored: StoredLinks | undefined): string | undefined {
+  if (!stored) return undefined
+  const command = stored.command(commandId)
+  const start = command?.start
+  // The end memory honoured: the first after the start. A second end found
+  // the command already closed and changed nothing.
+  const end = command?.firstEnd
+  if (start && !end) {
+    commandIdMap.set(commandId, start.id)
+    return start.id
+  }
+  // A final chunk before that end closed nothing after it.
+  const finalAt = start && end?.lateOutput ? stored.lastFinal(commandId) : null
+  if (start && end?.lateOutput && (finalAt === null || finalAt < end.rowid)) {
+    lateCommandIdMap.set(commandId, start.id)
+    return start.id
+  }
+  // A lookup that failed is no answer: ask again with the next chunk.
+  if (!stored.failed) closedCommandIds.set(commandId, true)
+  return undefined
 }
 
 /** Cwd/time overlap is an investigation hint, not proof that a process wrote
@@ -217,6 +300,7 @@ export function resetCausesResolver(): void {
   shellStartMap.clear()
   commandIdMap.clear()
   lateCommandIdMap.clear()
+  closedCommandIds.clear()
   activeShellCommands.clear()
   recentShellCommands.clear()
 }

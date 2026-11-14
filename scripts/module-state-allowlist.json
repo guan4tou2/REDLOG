@@ -226,6 +226,10 @@
       "class": "project-legacy",
       "reason": "Cause-resolution map for the open project; cleared by resetCausesResolver."
     },
+    "src/core/causes-resolver.ts#closedCommandIds": {
+      "class": "project-legacy",
+      "reason": "Command ids known to accept no chunk, so a stray chunk does not ask the database again; cleared by resetCausesResolver."
+    },
     "src/core/causes-resolver.ts#activeShellCommands": {
       "class": "project-legacy",
       "reason": "Cause-resolution map for the open project; cleared by resetCausesResolver."
@@ -514,13 +518,9 @@
       "class": "project-legacy",
       "reason": "Tail of command output by session id."
     },
-    "src/core/ingest.ts#lateTargetByCommand": {
+    "src/core/ingest.ts#lateByCommand": {
       "class": "project-legacy",
-      "reason": "Late-target lookups by command id."
-    },
-    "src/core/ingest.ts#lateChunkSeen": {
-      "class": "project-legacy",
-      "reason": "Late chunks seen by command id."
+      "reason": "Late-output target and seen chunk numbers by command id; rebuilt from stored rows when missing."
     },
     "src/core/ingest.ts#seenGeneration": {
       "class": "project-legacy",

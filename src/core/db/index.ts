@@ -407,6 +407,21 @@ function applySchema(): void {
   db.exec('CREATE INDEX IF NOT EXISTS idx_events_source_ts ON events(source, timestamp DESC)')
   db.exec('CREATE INDEX IF NOT EXISTS idx_events_logged_source_ts ON events_logged(source, timestamp DESC)')
   db.exec('CREATE INDEX IF NOT EXISTS idx_events_transcript_uuid ON events(agent_type, transcript_uuid) WHERE transcript_uuid IS NOT NULL')
+  // A command's rows by the id the shell hook minted for it (Spec 071 SC-003):
+  // what a command_end or a late chunk finds its command by, and a resent
+  // chunk its earlier copy by, when memory has lost them (db/stored-links.ts).
+  // Shell rows are all chained, so `events` only. The second index holds only
+  // final chunks. Built inside this open's transaction, on the main thread,
+  // the first time a project opens (nothing here builds an index later):
+  // measured on a bare table of 60% shell rows, 1M rows took 1.1 s +
+  // 0.45 s (100k: 85 + 42 ms); the review measured 3.8 s at 1M for the earlier
+  // two-column form on fuller rows. About 2 µs more per shell insert.
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_shell_command
+    ON events(json_extract(data, '$.command_id'), subtype, json_extract(data, '$.seq'))
+    WHERE agent_type = 'shell' AND json_extract(data, '$.command_id') IS NOT NULL`)
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_shell_command_final
+    ON events(json_extract(data, '$.command_id'))
+    WHERE agent_type = 'shell' AND subtype = 'command_output' AND json_type(data, '$.final') = 'true'`)
   db.exec(`CREATE INDEX IF NOT EXISTS idx_events_logged_http_flow
     ON events_logged(json_extract(data, '$.flow_id'), timestamp DESC)
     WHERE agent_type = 'scanner' AND subtype IN ('http_request_start', 'http_response')`)

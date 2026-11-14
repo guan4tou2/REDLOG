@@ -52,14 +52,44 @@ const ITEMS: Item[] = [
   { agent_type: 'shell', data: { subtype: 'command_end', command: 'whoami', terminalId: 't2', pid: 13, command_id: 'c3', exit_code: 0, stdout: 'kali\n' } }
 ].map((item, i) => ({ ...item, data: { ...item.data, source_timestamp: at(i) } }))
 
-/** What SC-003 holds equal, per row. */
+/** What SC-003 holds equal, per row — and, to say which row it is, its kind,
+ *  its command, and a chunk's command id, number and label. */
 const sc003 = (rows: StoredRow[]) => {
   const causes = causesByPosition(rows)
   return rows.map((r) => ({
     kind: `${r.table}:${String(r.row.agent_type)}.${String(r.data.subtype)}`, command: r.data.command,
+    ...(r.data.subtype === 'command_output' ? { chunk: `${String(r.data.command_id)}#${String(r.data.seq)}`, unattributed: r.data.unattributed } : {}),
     target_id: r.row.target_id, engagement_id: r.row.engagement_id, operator_id: r.row.operator_id, _causes: causes(r)
   }))
 }
+
+/** Background jobs: two commands whose end says a job keeps printing (one
+ *  filed under the engagement's current target, one under the target its own
+ *  text names), one whose end does not, then their late chunks — a resend and
+ *  one after the final row among them. The current target changes from A to B
+ *  before the first chunk, so a chunk filed by the global target instead of its
+ *  command's shows. */
+const bg = (command_id: string, seq: number, stdout: string, extra: Record<string, unknown> = {}): Item =>
+  ({ agent_type: 'shell', data: { subtype: 'command_output', command_id, late: true, seq, stdout, final: false, captured_by: 'redlog-relay', ...extra } })
+const LATE_RAW: Item[] = [
+  { agent_type: 'shell', data: { subtype: 'command_start', command: 'sleep 30 &', terminalId: 't1', pid: 21, command_id: 'L1' } },
+  { agent_type: 'shell', data: { subtype: 'command_end', command: 'sleep 30 &', terminalId: 't1', pid: 21, command_id: 'L1', exit_code: 0, late_output: true } },
+  { agent_type: 'shell', data: { subtype: 'command_start', command: 'nmap -sV 10.0.0.9', terminalId: 't1', pid: 22, command_id: 'L2' } },
+  { agent_type: 'shell', data: { subtype: 'command_end', command: 'nmap -sV 10.0.0.9', terminalId: 't1', pid: 22, command_id: 'L2', exit_code: 0, late_output: true } },
+  { agent_type: 'shell', data: { subtype: 'command_start', command: 'id', terminalId: 't1', pid: 23, command_id: 'N1' } },
+  { agent_type: 'shell', data: { subtype: 'command_end', command: 'id', terminalId: 't1', pid: 23, command_id: 'N1', exit_code: 0, stdout: 'uid=0\n' } },
+  bg('L1', 0, 'bg one\n'), // 6: the first chunk; the target is B from here
+  bg('L2', 0, 'bg nmap\n'),
+  bg('N1', 0, 'stray\n'), // its command did not say a job would keep printing
+  bg('L1', 1, 'bg two\n'),
+  bg('L1', 2, 'bg three\n', { final: true }),
+  bg('L1', 3, 'after final\n')
+]
+const LATE: Item[] = LATE_RAW.map((item, i) => ({ ...item, data: { ...item.data, source_timestamp: at(i) } }))
+/** The same chunk sent again, as a relay does when our answer was late. */
+const RESEND = 10
+LATE.splice(RESEND, 0, LATE[9])
+const LATE_TARGETS = { 0: 'A', 6: 'B' }
 
 const ROW_IDENTITY = ['id', 'hash', 'prev_hash', 'signature', 'monotonic_ns', 'created_at', 'session_id']
 /** The whole row, less what identity, chain position and receipt make different. */
@@ -87,14 +117,41 @@ sqlite.describe('restart equivalence (SC-003)', () => {
     for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true })
   })
 
-  /** Post `items` live, each a little after it was observed, restarting the app before each index in `restartsBefore`. */
-  async function live(items: Item[], restartsBefore: number[] = []): Promise<StoredRow[]> {
-    const dir = tmp('live')
+  interface Delivery {
+    /** Restart the app before each of these indexes. */
+    restartsBefore?: number[]
+    /** The engagement's current target, set before the item at each index (and
+     *  again on every restart, as main does when a project opens). */
+    targets?: Record<number, string>
+    /** From this index on, the items wait in the handoff spool and are drained
+     *  after one more restart. */
+    spoolFrom?: number
+    /** The status the API answers an item with, where it is not 201. */
+    status?: Record<number, number>
+    /** An existing project: post these first, restart, then deliver. */
+    dir?: string
+  }
+
+  /** Post `items` live, each a little after it was observed, restarting the app
+   *  where asked. Every item's receipt time follows its position, so a resend
+   *  carries its original's observation time but arrives later. */
+  async function live(items: Item[], opts: Delivery = {}): Promise<StoredRow[]> {
+    const dir = opts.dir ?? tmp('live')
     let rt = await openRuntime(dir)
-    for (const [i, item] of items.entries()) {
-      if (restartsBefore.includes(i)) { await rt.close(); rt = await openRuntime(dir) }
-      vi.setSystemTime(Number(item.data.source_timestamp) + 50)
-      await rt.api(item)
+    let target: string | null = null
+    const spoolFrom = opts.spoolFrom ?? items.length
+    for (const [i, item] of items.slice(0, spoolFrom).entries()) {
+      if (opts.restartsBefore?.includes(i)) { await rt.close(); rt = await openRuntime(dir); rt.activeTarget(target) }
+      if (opts.targets?.[i] !== undefined) { target = opts.targets[i]; rt.activeTarget(target) }
+      vi.setSystemTime(at(i) + 50)
+      await rt.api(item, opts.status?.[i])
+    }
+    if (spoolFrom < items.length) {
+      // The target the operator set while those items waited.
+      for (const [i, t] of Object.entries(opts.targets ?? {})) if (Number(i) >= spoolFrom) target = t
+      await rt.close(); rt = await openRuntime(dir); rt.activeTarget(target)
+      vi.setSystemTime(at(items.length) + 60_000)
+      rt.spool(items.slice(spoolFrom), tmp('spool'))
     }
     await rt.close()
     return storedRows(dir)
@@ -120,22 +177,104 @@ sqlite.describe('restart equivalence (SC-003)', () => {
 
   it('live, restarted between two commands: the same rows, whole', async () => {
     const a = await live(ITEMS)
-    const b = await live(ITEMS, [4])
+    const b = await live(ITEMS, { restartsBefore: [4] })
     expect(whole(b)).toEqual(whole(a))
     expect(new Set(b.map((r) => r.row.session_id)).size, 'the restart opened a second session').toBe(2)
   }, SLOW)
 
-  // KNOWN GAP (SC-003): what links an end to its start is held in memory
-  // (causes-resolver.ts: command_id, terminal+pid+command, flow_id), so a
-  // restart between a command's start and its end loses the link. Persisting
-  // the causal link belongs to O18, which spec.md says has no FR or task yet;
-  // no task here will turn this. It pins exactly what differs — the one end row's `_causes`, and the companion it
-  // derives, which cites it and so moves with it in no other way.
-  it('KNOWN GAP (O18, no task yet): restarted inside a command, its end loses its `_causes`, and nothing else differs', async () => {
+  // The links between a command's rows are kept in memory as the fast path;
+  // a restart finds the start in the database instead, by the same identity.
+  it('live, restarted inside a command: its end still cites its start, and the rows are the same, whole', async () => {
     const a = await live(ITEMS)
-    const b = await live(ITEMS, [5]) // between ITEMS[4] and ITEMS[5], sshuttle's start and end
-    const lost = (r: ReturnType<typeof sc003>[number]): boolean => r.kind === 'events:shell.command_end' && r.command === ITEMS[5].data.command
-    expect(sc003(a).filter(lost).map((r) => r._causes), 'live, the end cites its start').toEqual([['#2']])
-    expect(sc003(b)).toEqual(sc003(a).map((r) => lost(r) ? { ...r, _causes: undefined } : r))
+    const b = await live(ITEMS, { restartsBefore: [5] }) // between sshuttle's start and end
+    const end = (r: ReturnType<typeof sc003>[number]): boolean => r.kind === 'events:shell.command_end' && r.command === ITEMS[5].data.command
+    expect(sc003(a).filter(end).map((r) => r._causes), 'live, the end cites its start').toEqual([['#2']])
+    expect(sc003(b)).toEqual(sc003(a))
+    expect(whole(b)).toEqual(whole(a))
+  }, SLOW)
+
+  it('live, restarted inside an HTTP flow: the response cites its request, as live', async () => {
+    const a = await live(ITEMS)
+    const b = await live(ITEMS, { restartsBefore: [3] }) // between the request and its response
+    const response = sc003(a).find((r) => r.kind === 'events_logged:scanner.http_response')
+    expect(response?._causes, 'live, the response cites its request').toEqual([`#${sc003(a).findIndex((r) => r.kind === 'events_logged:scanner.http_request_start')}`])
+    expect(sc003(b)).toEqual(sc003(a))
+  }, SLOW)
+
+  it('an http_response sent again after a restart does not cite the request a second time', async () => {
+    const items = [...ITEMS, { ...ITEMS[3], data: { ...ITEMS[3].data } }]
+    const a = await live(items)
+    const b = await live(items, { restartsBefore: [3, items.length - 1] })
+    const responses = (rows: StoredRow[]) => sc003(rows).filter((r) => r.kind === 'events_logged:scanner.http_response').map((r) => r._causes)
+    expect(responses(a), 'live: the first response cites the request, the second nothing').toEqual([[expect.any(String)], undefined])
+    expect(sc003(b)).toEqual(sc003(a))
+  }, SLOW)
+
+  it('a command_end sent again after a restart does not cite the start a second time', async () => {
+    const again = { ...ITEMS[5], data: { ...ITEMS[5].data } }
+    const items = [...ITEMS, again]
+    const a = await live(items)
+    // Restarted inside the command, and again before the resend.
+    const b = await live(items, { restartsBefore: [5, items.length - 1] })
+    const ends = (rows: StoredRow[]) => sc003(rows).filter((r) => r.kind === 'events:shell.command_end' && r.command === again.data.command).map((r) => r._causes)
+    expect(ends(a), 'live: the first end cites the start, the second nothing').toEqual([['#2'], undefined])
+    expect(sc003(b)).toEqual(sc003(a))
+  }, SLOW)
+
+  describe('background output (late chunks)', () => {
+    const status = { [RESEND]: 409 }
+    const chunks = (rows: StoredRow[]) => sc003(rows).filter((r) => r.kind === 'events:shell.command_output')
+
+    it('live: each chunk is filed with its command and under its command\'s target; a resend is kept once', async () => {
+      const a = chunks(await live(LATE, { targets: LATE_TARGETS, status }))
+      expect(a.map((r) => [r.chunk, r.target_id, r.unattributed, r._causes])).toEqual([
+        ['L1#0', 'A', undefined, ['#0']],
+        ['L2#0', '10.0.0.9', undefined, ['#2']],
+        // Not a command that said a job would keep printing: attributed to no
+        // command, yet filed under the target that command had, which is what
+        // live does (ingest.ts keeps a command's target from its start).
+        ['N1#0', 'A', true, undefined],
+        ['L1#1', 'A', undefined, ['#0']],
+        ['L1#2', 'A', undefined, ['#0']],
+        ['L1#3', 'B', true, undefined]
+      ])
+    }, SLOW)
+
+    it.each([
+      ['between the ends and the first chunk', [6]],
+      ['between two chunks of one command', [9]],
+      ['before the resend', [RESEND]],
+      ['between the final chunk and the one after it', [RESEND + 2]],
+      ['after every row', [6, 7, 8, 9, RESEND, RESEND + 1, RESEND + 2]]
+    ])('restarted %s: the same rows as live', async (_label, restartsBefore) => {
+      const a = await live(LATE, { targets: LATE_TARGETS, status })
+      const b = await live(LATE, { targets: LATE_TARGETS, status, restartsBefore })
+      expect(sc003(b)).toEqual(sc003(a))
+    }, SLOW)
+
+    it('the chunks waited in the handoff spool across a restart: the same rows as live', async () => {
+      const a = await live(LATE, { targets: LATE_TARGETS, status })
+      const b = await live(LATE.filter((_, i) => i !== RESEND), { targets: LATE_TARGETS, spoolFrom: 6 })
+      expect(sc003(b)).toEqual(sc003(a))
+    }, SLOW)
+  })
+
+  it('a command id is the open project\'s: the same id in another project cites nothing there', async () => {
+    const first = tmp('first')
+    await live(ITEMS.slice(0, 5), { dir: first })
+    const other = await live([ITEMS[5]])
+    expect(sc003(other).filter((r) => r.kind === 'events:shell.command_end').map((r) => r._causes)).toEqual([undefined])
+  }, SLOW)
+
+  // The identity is the command id within the open project, as the memory
+  // version keys it: a late chunk carries no terminal, so a terminal cannot be
+  // part of the key, and the hooks mint the id from the shell's pid and a
+  // nanosecond clock. Whatever live does with one id seen in two terminals, a
+  // restart does the same.
+  it('one command id ended from another terminal: a restart links it exactly as live does', async () => {
+    const items = [ITEMS[4], { ...ITEMS[5], data: { ...ITEMS[5].data, terminalId: 't9' } }]
+    const a = await live(items)
+    const b = await live(items, { restartsBefore: [1] })
+    expect(sc003(b)).toEqual(sc003(a))
   }, SLOW)
 })
