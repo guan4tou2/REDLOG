@@ -9,83 +9,83 @@
       },
       {
         "id": "00000000-0000-4000-8000-000000000006",
-        "hash": "7e81a86d0e7b004842f5147ad260c5e1b8fb8937d9388bd283eef156bb6ec53d",
-        "sha256": "bec8a66c589219cfd75fdef4ca5d22f7910d9bbe2ab3fa1610e808ed4c0cb6a4"
+        "hash": "07ffd7966f43c9ddf41f77c228f26e781f067e3dafd8d35f783fa760b75b2f09",
+        "sha256": "4e2cfc1ddc63998473edc7caa5a9216fac281745ba10aff01550302cf8e0cda2"
       },
       {
         "id": "00000000-0000-4000-8000-000000000010",
-        "hash": "2b22e93d81dfe5085d46b50450f8e4f7d0b9a33873c20a60ff8db7363b8714e4",
-        "sha256": "3a7f7be5ab38fb78ade773c519ce9a2ea943c31f513a318ec45af7cde31e6a2e"
+        "hash": "778d546ebbad2cb4064b3ea34a297f2708ec666a261ef4bcd15480c6227f2515",
+        "sha256": "5949e550164e4363563a3a558b5a73ba118eed6736da91fe81ab2a5a400645ce"
       },
       {
         "id": "00000000-0000-4000-8000-000000000012",
-        "hash": "f88efeb09dbfc9adba94dddfeca863b32159f17afa0b0952695a1d84bf829dba",
-        "sha256": "c6018ad29bd78c2dd3a17ae2fcbc87c50955baf2708397de2dbd3ac44d4898ba"
+        "hash": "33b0a863394a76f8be21fd5f01ad204d7baace9f15a048e360bd82ef8bedc850",
+        "sha256": "c82d9c1ab98e605e19493751abcd66894f9e91b5942d419edcca9639e4dc4c60"
       },
       {
         "id": "00000000-0000-4000-8000-000000000014",
-        "hash": "f35dd7ac58cc7d7cd6bf85d7db9056e649b42a3a14ae281e1c750e888982160d",
-        "sha256": "d11fd0fb2e4ef1a8f25389e84f385b291860d2b33f2d67ca01cca3af4d1f1a43"
+        "hash": "f679c8000b9bc8f14eac512b7bab2991677830e2a742b67104595de23e8e3cc8",
+        "sha256": "86e7869e3d671568ff14ee32257d4096ff0c13bfda03be03d1fe8afeb5307b2b"
       },
       {
         "id": "00000000-0000-4000-8000-000000000016",
-        "hash": "24386419d0053db6f7ffed8c6e7d5a7ec3f2b408f3e31e60dd36eed937e74bcd",
-        "sha256": "d579b27cd38a7fecf7abac663d992626339780ca034eb155f0c39efd920da41b"
+        "hash": "6f4d6da7082d5b27651a6416fa7f2c6ee965a3317126f5375de6a161f584a32a",
+        "sha256": "1afcde4ffcf7f5a7995c0d861c24d6452693691779a937cc7671036eb924edd8"
       },
       {
         "id": "00000000-0000-4000-8000-000000000018",
-        "hash": "d5607348df8f8cb24e3e54068a51a4458b185255ef8e3f69fc167907c257b45d",
-        "sha256": "17b10a5d8cba8493ba0e8b4c21a34740e53a74d237df625889d04ced1f2a8483"
+        "hash": "765cf6600abaafe0a0c5c0a0876238f325b6f3548aa10da8b5ae68f5742516a7",
+        "sha256": "82e6744b33558f3d94f1c70803ef5026487a7d7173fd05589da3fb6e6668e9ea"
       },
       {
         "id": "00000000-0000-4000-8000-000000000020",
-        "hash": "054fbb1f884cfb70a1895bc208769eec8cfcde0a8b2e54596b18517091633cdf",
-        "sha256": "a08ab1cd9056d4f3c3a6def5a4a66ac1346b769d2050298a9fa32a7a81aca682"
+        "hash": "2f817f3b1be2a92a862bcf736533e45c84c301f27469d2e5bce1de20fce91953",
+        "sha256": "2ca4f14813434adc0768a9b8d332e9d97c2bb0b2aaaa665193c40b82745955c6"
       },
       {
         "id": "00000000-0000-4000-8000-000000000022",
-        "hash": "e71f49d96cc491254228e780b7a7e3d83115f1755491c498eeff301667209ec9",
-        "sha256": "48dbb7c75966d47fca9479df61e65a26950fc781cdc1b56287370386ca4ec720"
+        "hash": "6a8e998a3b5ce8ac8dca93f95d28b513ead1f33082398514a6e127d070ab5116",
+        "sha256": "90145079a8b0d7fdb8cbbc7da8972cb4c8a07920d05c9e0153ab29a44f4fea39"
       },
       {
         "id": "00000000-0000-4000-8000-000000000024",
-        "hash": "b66d56bfe2a09459e38250636de304286ecbad1e21051fdb9cdfac895fa6f52e",
-        "sha256": "a2ca717e3c596f07e1b69c4369667fb230819991c9f92c888bdf03a6fe907286"
+        "hash": "0b291d287c140505b710a5d0fa990e5f33267a36998db9c7be5fde22ed687462",
+        "sha256": "99bda8525a0256e76910211a1aee14523734018cb66c6796e382ed5494a220bf"
       },
       {
         "id": "00000000-0000-4000-8000-000000000026",
-        "hash": "d1840dfd8c4e20d9ade4627253dc832a34e1747c3019c563d7336a0269dc4d7b",
-        "sha256": "7b6fa051b954af8ce111432edafd748984b70b94cf77f4b70636fed9e8bc3a53"
+        "hash": "7a7f80db682576fb55c844a5e8f5fc693a5e225a336fed20d0f82de7fb6d6c66",
+        "sha256": "43aa4fb4b98076d2310eb6cce701381539ea76e196a18b12a22760bcfcce8724"
       },
       {
         "id": "00000000-0000-4000-8000-000000000028",
-        "hash": "efb44d39750d64aaf7d6f5b7c1b692768bbc05235051f0085f2e0a3d560c84a4",
-        "sha256": "64af93fde65524779f32d480aed0f864b4d62c357d3acd6fcc285318805fdf29"
+        "hash": "28062f2ca9095ed6f983e36f567e3c985a17b4d67810f9bc9382dde513ca21e7",
+        "sha256": "924da5a2f10ef086912fee73de3a035ef153d4630c812f097135f160b033bfac"
       },
       {
         "id": "00000000-0000-4000-8000-000000000030",
-        "hash": "4b82d123093cf1159123f754dabb9670e76af77699bfc86d1354c9466536cbe2",
-        "sha256": "210ed2e8f94b90df1e790f40ef7a366f4d9768e5c12f6c9e74cc3c6701bdf849"
+        "hash": "ef3864d2e492fa19a7489247fb92d7a0ad0cb2cd4d321458504cf71490a081af",
+        "sha256": "0f4a248fccb24436eb6baa1b9b27f630f77e57861f834b27b802859793fb88a1"
       },
       {
         "id": "00000000-0000-4000-8000-000000000032",
-        "hash": "9b378ac93caac506293712439b9cba3cea3d4be475f7cf6a333f1aaafb5c8870",
-        "sha256": "e705fb3abe3ebf98c8383460937a73eac317392ae7a519448cc13311ef738afe"
+        "hash": "6614330f7a07c6b1bc93489f44c4974d39cd0dbed8c8264d081326d1be3ad6a3",
+        "sha256": "5f5f938a483dc83655ca113062afd9ff67ecbced41af16d64498caf80e5230c1"
       },
       {
         "id": "00000000-0000-4000-8000-000000000035",
-        "hash": "226e4fab6813a1d96e2a8fb8257a57791be3690287a1ed0219918d85f3decc8b",
-        "sha256": "870f291d90df71ffc2c2d1d93ae2c53eee805cb2222443acf83834ba100b96ca"
+        "hash": "5dc03cba520587f858e8401afc46d4dd8d0eb3ed8191ca7a20fbeb18d65337a2",
+        "sha256": "bc6bc3073ca59b9b73bdfc26299f0da4c3061df4e2cb2dc60b1f368933d466e2"
       },
       {
         "id": "00000000-0000-4000-8000-000000000037",
-        "hash": "78b81697e47bf22ccdca35ae4e0cb972c78f489901d122b2d5d89a9fd4d754c6",
-        "sha256": "b12ef7e6b2f91580f3d6639ad3f73d2b4c081a57256c7b002f5b450c7e289c9a"
+        "hash": "3f303491adf1fede3c26a9cf16109b8ec4d64a0bc90d8b3cb4f838d3f8057813",
+        "sha256": "235d2f9f396cc6584920f6c97c344167ced2aa87e1cfbe21c90a0cbd2c7f1bfe"
       },
       {
         "id": "00000000-0000-4000-8000-000000000040",
-        "hash": "fd0329b4f99413583cdff575f9fb1fab7ea91dbbbb11f56e2d2314fe01844c20",
-        "sha256": "452cf23045fd331b2107bd00177383b45ab3f09c5d3a663a142e16bc73409062"
+        "hash": "d7228de4e40c3d3ef9bb3db327e1f5381ded8fcd58c96731ea13cbe0575ea83d",
+        "sha256": "37a74d3801dbaae46e10e09be2bc78b647d5f08e0723700bcbefe2d9fc2ffc0f"
       }
     ],
     "events_logged": [
@@ -96,7 +96,7 @@
       }
     ]
   },
-  "rowsSha256": "930db987c91e6d56e2274dbd5903af4e5992245067c0614f5bd489be29ce8e8c",
+  "rowsSha256": "ad593c01435b7c409a16966eb91fa3bdc8758fa5158baf8d6a96e8cfeecfea76",
   "stamps": {
     "events": [
       {
@@ -118,7 +118,8 @@
           "door": "legacy-api",
           "producer": "legacy",
           "credential": null,
-          "auth": "bearer"
+          "auth": "bearer",
+          "terminal": "t-api"
         }
       },
       {
@@ -130,6 +131,7 @@
           "producer": "legacy",
           "credential": null,
           "auth": "bearer",
+          "terminal": "t-api",
           "stripped": [
             "_ingest",
             "_raw",
@@ -146,7 +148,8 @@
           "door": "legacy-api",
           "producer": "legacy",
           "credential": null,
-          "auth": "bearer"
+          "auth": "bearer",
+          "terminal": "t-api"
         }
       },
       {
@@ -157,7 +160,8 @@
           "door": "legacy-api",
           "producer": "legacy",
           "credential": null,
-          "auth": "bearer"
+          "auth": "bearer",
+          "terminal": "t-api"
         }
       },
       {
@@ -168,7 +172,8 @@
           "door": "in-process",
           "producer": "in-process",
           "credential": null,
-          "auth": "in-process"
+          "auth": "in-process",
+          "terminal": "term-1"
         }
       },
       {
@@ -179,7 +184,8 @@
           "door": "in-process",
           "producer": "in-process",
           "credential": null,
-          "auth": "in-process"
+          "auth": "in-process",
+          "terminal": "term-1"
         }
       },
       {
@@ -201,7 +207,8 @@
           "door": "in-process",
           "producer": "in-process",
           "credential": null,
-          "auth": "in-process"
+          "auth": "in-process",
+          "terminal": "term-1"
         }
       },
       {
@@ -223,7 +230,8 @@
           "door": "in-process",
           "producer": "in-process",
           "credential": null,
-          "auth": "in-process"
+          "auth": "in-process",
+          "terminal": "term-1"
         }
       },
       {
@@ -245,7 +253,8 @@
           "door": "legacy-handoff",
           "producer": "legacy-handoff",
           "credential": null,
-          "auth": "none"
+          "auth": "none",
+          "terminal": "t-spool"
         }
       },
       {
@@ -312,7 +321,7 @@
     "walked": 17,
     "brokenAtEventId": null,
     "brokenReason": null,
-    "currentHead": "b7626e4e717ac401fc3e8024ebaf0856b8830f58da34f199a2636dedb8e0cedb",
+    "currentHead": "2376968abfc70f276341b874875b2f7193178081c08ea0be33376e1c880afd83",
     "anchorMatchesWalkedHead": false,
     "clockAnomalies": [],
     "signedCount": 17,

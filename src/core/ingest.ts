@@ -33,6 +33,7 @@ import { extractBodyToSidecar, extractTextToSidecar } from './http-body-store'
 import { linkHttpBodyEvent } from './http-body-index'
 import { noteDbError } from './capture-health'
 import { DERIVED, currentEntrance, stripReserved, withEntrance, type IngestEntrance } from './ingest/stamp'
+import { terminalIdentity } from './ingest/terminal'
 
 // ── Injected collaborators ──────────────────────────────────────────────────
 // core/ cannot import main/, so the pieces that live there are handed in.
@@ -494,7 +495,7 @@ function enrich(agentType: string, data: Record<string, unknown>, targetId: stri
 
     // Bracket this command's output by byte range in the session .cast. The
     // bytes stay on disk; only the reference enters the chain.
-    const termId = typeof data.terminalId === 'string' ? data.terminalId : null
+    const termId = terminalIdentity(data)
     if (termId && data.source === 'builtin-terminal' && castProbe) {
       const pos = castProbe(termId)
       if (pos) {
@@ -550,8 +551,9 @@ function enrich(agentType: string, data: Record<string, unknown>, targetId: stri
   // includes the tail of the previous chunk of the same session — a secret
   // split across two chunks is found when its second half arrives. Values
   // already recorded are dropped by the detector's dedup, not here.
-  if (agentType === 'shell' && typeof data.terminalId === 'string') {
-    const tid = data.terminalId
+  const sessionTerminal = agentType === 'shell' ? terminalIdentity(data) : null
+  if (sessionTerminal !== null) {
+    const tid = sessionTerminal
     if (data.subtype === 'session_output' && typeof data.stdout === 'string' && data.stdout && lootDetectorRef?.findMatches) {
       const text = (sessionTail.get(tid) ?? '') + data.stdout
       sessionTail.delete(tid)

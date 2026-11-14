@@ -585,12 +585,12 @@
     "sealVersion": 1,
     "exportId": "00000000-0000-4000-8000-000000000043",
     "bundleVersion": 4,
-    "manifestSha256": "ee014e40ad985cd595790bfb246698b2313a6aa92d874ed6389bf3d50aef680b",
+    "manifestSha256": "afe4c0611b76f3323079184dcf39a860ff4cacc0539927abd4091ff7820b5da4",
     "events": {
      "count": 18,
-     "bytes": 19828,
-     "sha256": "99ceb412a5286c557ee701c3f739e919827df19219be2a3d8cf1893703106c49",
-     "headHash": "1041d17f715e8472c4ab43c1e507d3e38ce739107f40bdced12d6ed4e2dcd016"
+     "bytes": 19942,
+     "sha256": "010085919f9cdb0b3c8b6e88f04c662cc207bb905e03e234723a99a7697a1047",
+     "headHash": "0d55fd8fa9764d2559c85a2b14f42c92571cf699ff0dcf65bfff80bfc4bfb89d"
     },
     "description": "export sealed: 18 chained row(s), 7 file(s), 0 omitted attachment(s)"
    }
@@ -966,21 +966,21 @@
  "exports": {
   "early": {
    "json": {
-    "bytes": 28428,
-    "sha256": "7ee32f7c5addd9923f386809d4e3d93c8cac9059d9bbfc768cdc07bfab6398b3",
+    "bytes": 28574,
+    "sha256": "d4f3e959993767c9db3633e4190dd6ab71cbf3fd80c4ebf8ee25a3eaf2b4a227",
     "rows": 19,
     "normalizedSha256": "602748c40739e070694f4a89fbad47112cb9b7a310deb494d246f1fe261387b5"
    },
    "ndjson": {
-    "bytes": 21449,
-    "sha256": "767eac34863ac2a6b182521fa765d2568aa0c9308a8c79521a9e8761f8114886",
+    "bytes": 21547,
+    "sha256": "6feacd26df5236aaada6d4875f9ef159567050dca8edeea3f2776bba83a3b859",
     "normalizedSha256": "602748c40739e070694f4a89fbad47112cb9b7a310deb494d246f1fe261387b5",
     "rows": 19
    },
    "bundleEvents": {
-    "bytes": 21141,
-    "sha256": "f80cf76b0b2b08893e598916f66f9308009a8018c16a9f79635b5a24a14f60b5",
-    "normalizedSha256": "cf6824280d557ab030e2a4cbdb5ae858a96b482b52925086896ab8c6c63a85fc",
+    "bytes": 21255,
+    "sha256": "dcc010b463d07680bf625c807f911092f9958308b4492dab55722bfb9d60ddd6",
+    "normalizedSha256": "3151f4ba788890e1f394a7c072f97c682b90adc4f362ae4b21b4bb8d7a3d839f",
     "rows": 19
    },
    "bundleLogged": {
@@ -1007,11 +1007,11 @@
   "final": {
    "json": {
     "rows": 28,
-    "normalizedSha256": "993c5cdf70f33c7c66bacfa6b03b08722b568a8ea28369ab803974dc947a1d15"
+    "normalizedSha256": "9775ad31e46d89acdec0d50ec293c7c78fddc2907b7746ad8f831505b3f42573"
    },
    "ndjson": {
     "rows": 28,
-    "normalizedSha256": "993c5cdf70f33c7c66bacfa6b03b08722b568a8ea28369ab803974dc947a1d15"
+    "normalizedSha256": "9775ad31e46d89acdec0d50ec293c7c78fddc2907b7746ad8f831505b3f42573"
    }
   }
  }

@@ -9,6 +9,7 @@ import { storeRaw, type RawRef } from '../raw-store'
 import type { RedLogEvent, EnvelopeInput, StoredEnvelope } from './event-types'
 import { ENVELOPE_SCHEMA_VERSION } from './event-types'
 import { currentEntrance, engagementForWrite, ingestStamp, stripReserved, type IngestEntrance } from '../ingest/stamp'
+import { rowTerminal, terminalIdentity } from '../ingest/terminal'
 
 interface InsertOpts {
   engagementId?: string
@@ -504,13 +505,7 @@ export function insertEvent(
   return insertChainedEvent(agentType, clean, resolved)
 }
 
-/** The terminal id the dedup window keys on. Every shell hook sends
- *  `terminalId` (#685); `terminal_id` is read only as a fallback for rows and
- *  producers that predate that. */
-function dedupTerminalId(d: Record<string, unknown>): string {
-  const v = d.terminalId ?? d.terminal_id
-  return v != null ? String(v) : ''
-}
+
 
 /** The historical chained path — hash-linked + Ed25519-signed, lands in
  *  `events`. See the block comment before insertEvent for the pause
@@ -563,7 +558,9 @@ function insertChainedEvent(
     // still land after a `command_start`.
     const cmd = String(data.command)
     const subtype = data.subtype != null ? String(data.subtype) : ''
-    const terminalId = dedupTerminalId(data)
+    // FR-011: the new row's terminal is the one its stamp will carry, and a
+    // stored row's is its stamp's (stamp.ts terminalIdentity / rowTerminal).
+    const terminalId = terminalIdentity(data) ?? ''
     const pid = data.pid != null ? String(data.pid) : ''
     const twoSecondsAgo = now - 2000
     const candidates = prepared(db,
@@ -574,7 +571,7 @@ function insertChainedEvent(
       try { d = JSON.parse(row.data) } catch { continue }
       const rowSubtype = d.subtype != null ? String(d.subtype) : ''
       const rowCmd = d.command != null ? String(d.command) : ''
-      const rowTerminalId = dedupTerminalId(d)
+      const rowTerminalId = rowTerminal(d) ?? ''
       const rowPid = d.pid != null ? String(d.pid) : ''
       if (rowSubtype !== subtype) continue
       if (rowCmd !== cmd) continue
@@ -631,7 +628,7 @@ function insertChainedEvent(
   if (anomaly) dataForChain = { ...dataForChain, _clock_anomaly: anomaly }
   if (sourceTimeRejected) dataForChain = { ...dataForChain, _source_time_rejected: sourceTimeRejected }
   // Last of the receiver's keys, and like them before the hash (FR-020).
-  dataForChain = { ...dataForChain, _ingest: ingestStamp(opts?.entrance ?? currentEntrance(), { tier: 'chained', now, stripped: opts?.stripped }) }
+  dataForChain = { ...dataForChain, _ingest: ingestStamp(opts?.entrance ?? currentEntrance(), { tier: 'chained', now, stripped: opts?.stripped, terminal: terminalIdentity(data) }) }
 
   const event: RedLogEvent = {
     id: crypto.randomUUID(),
@@ -762,7 +759,7 @@ function insertLoggedEvent(
     targetId: opts.targetId ?? null,
     // Stamped like a chained row (FR-005). Not hashed here: this tier has no
     // per-row hash, and the export's logged digest covers it (FR-024).
-    data: { ...data, _ingest: ingestStamp(opts.entrance ?? currentEntrance(), { tier: 'logged', now, stripped: opts.stripped }) },
+    data: { ...data, _ingest: ingestStamp(opts.entrance ?? currentEntrance(), { tier: 'logged', now, stripped: opts.stripped, terminal: terminalIdentity(data) }) },
     createdAt: now,
     // Deliberately absent — see the block above.
     hash: undefined,

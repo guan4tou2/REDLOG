@@ -93,13 +93,13 @@ sqlite.describe('the in-process doors and the spool', () => {
 
   it('ingestEvent from RedLog\'s own code: in-process', () => {
     ingestMod.ingestEvent('shell', { subtype: 'command_start', command: 'whoami', terminalId: 'term-1', pid: 7, source: 'builtin-terminal' }, who)
-    expect(door(stampsOf(`agent_type = 'shell'`)[0].stamp)).toEqual(IN_PROCESS)
+    expect(door(stampsOf(`agent_type = 'shell'`)[0].stamp)).toEqual({ ...IN_PROCESS, terminal: 'term-1' })
   })
 
   it('a companion the pipeline derives is `derived`; the row it came from is not', () => {
     const r = ingestMod.ingest({ agentType: 'shell', data: { subtype: 'command_start', command: 'sshuttle -r user@jump 10.10.0.0/16', terminalId: 't-p', pid: 8 }, ...who })
     expect(r.companions.map((c) => c.agentType)).toContain('pivot')
-    expect(door(stampsOf(`agent_type = 'shell'`)[0].stamp)).toEqual(IN_PROCESS)
+    expect(door(stampsOf(`agent_type = 'shell'`)[0].stamp)).toEqual({ ...IN_PROCESS, terminal: 't-p' })
     expect(stampsOf(`agent_type = 'pivot'`).map((s) => door(s.stamp))).toEqual([DERIVED])
   })
 
@@ -112,7 +112,7 @@ sqlite.describe('the in-process doors and the spool', () => {
     const run = spool.drainSpoolAsMain(pending, who)
     expect(run?.replayed).toBe(2)
     const got = stampsOf(`agent_type = 'shell'`).map((s) => door(s.stamp))
-    expect(got).toEqual([LEGACY_HANDOFF, { ...LEGACY_HANDOFF, stripped: ['_ingest'] }])
+    expect(got).toEqual([{ ...LEGACY_HANDOFF, terminal: 't-s' }, { ...LEGACY_HANDOFF, terminal: 't-s', stripped: ['_ingest'] }])
   })
 
   // Review B: rows the pipeline derives without going through emitCompanion —
@@ -166,7 +166,7 @@ sqlite.describe('the in-process doors and the spool', () => {
     ingestMod.configureIngest({ lootDetector: loot })
     ingestMod.ingest({ agentType: 'shell', data: { subtype: 'command_end', command: 'sshuttle -r user@jump 10.10.0.0/16', terminalId: 't-a', pid: 13,
       exit_code: 0, duration_sec: 5, stdout: fakeCredential('An0ther', 'S3cret', 'Value!') + '\n' }, ...who, entrance: stampMod.LEGACY_API })
-    expect(door(stampsOf(`agent_type = 'shell'`)[0].stamp)).toEqual(LEGACY_API_STAMP)
+    expect(door(stampsOf(`agent_type = 'shell'`)[0].stamp)).toEqual({ ...LEGACY_API_STAMP, terminal: 't-a' })
     const derived = stampsOf(`agent_type IN ('pivot', 'loot')`)
     expect(derived.length).toBeGreaterThanOrEqual(2)
     expect(derived.map((r) => door(r.stamp))).toEqual(derived.map(() => DERIVED))
@@ -354,7 +354,7 @@ describeApi('POST /api/events and /api/marker: legacy-api, auth bearer', () => {
     const row = await post('/api/events', { agent_type: 'shell', data: { subtype: 'command_start', command: 'id', terminalId: 'api-t', pid: 11,
       _ingest: { v: 1, door: 'in-process', producer: 'builtin-terminal', auth: 'in-process', credential: null }, _clock_anomaly: { reason: 'forged' } } })
     const stamp = (row.data as { _ingest: Stamp })._ingest
-    expect(door(stamp)).toEqual({ ...LEGACY_API, stripped: ['_ingest', '_clock_anomaly'] })
+    expect(door(stamp)).toEqual({ ...LEGACY_API, terminal: 'api-t', stripped: ['_ingest', '_clock_anomaly'] })
     expect(door(stampsOf('id = ?', row.id)[0].stamp)).toEqual(door(stamp))
   })
 
