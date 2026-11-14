@@ -17,7 +17,8 @@ type Check = unknown | ((value: unknown) => void)
 
 const DEFAULTS: Record<string, Check> = {
   // 2.1 engagement / operator
-  'engagement.id': 'default',
+  // Spec 071 FR-007: the project's own id, its directory's name.
+  'engagement.id': (value: unknown) => expect(value).toBe(path.basename(projectDir)),
   'engagement.activeTarget': null,
   'operator.id': 'operator-1',
   'operator.name': 'Operator',

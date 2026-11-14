@@ -6,6 +6,7 @@ import fs from 'fs'
 import path from 'path'
 import { retryBusy } from './private-fs'
 import { sourceTimeRejection } from './db/event-write'
+import { SHARED_DEFAULT_ENGAGEMENT } from './config'
 
 // Replaying ~/.redlog/pending, one file at a time, for the open project.
 //
@@ -402,10 +403,20 @@ export function clearUnattributedSpool(directory: string, upTo: number): ClearUn
   return result
 }
 
+/** An engagement a handoff file can be attributed by. The shared `default`
+ *  is not one: every project without an id of its own was `default` until
+ *  Spec 071 FR-007, so a file that names it says only that it was written
+ *  before that change, by one of them — which one, nothing records. */
+function attributable(engagementId: unknown): string | null {
+  return typeof engagementId === 'string' && engagementId && engagementId !== SHARED_DEFAULT_ENGAGEMENT ? engagementId : null
+}
+
+const namesSharedDefault = (payload: unknown): boolean =>
+  (payload as { _identity?: { engagementId?: unknown } } | null)?._identity?.engagementId === SHARED_DEFAULT_ENGAGEMENT
+
 /** The project a payload names, complete or not. */
 function namedEngagement(payload: unknown): string | null {
-  const engagementId = (payload as { _identity?: { engagementId?: unknown } } | null)?._identity?.engagementId
-  return typeof engagementId === 'string' && engagementId ? engagementId : null
+  return attributable((payload as { _identity?: { engagementId?: unknown } } | null)?._identity?.engagementId)
 }
 
 /** The project a file that does not parse still names in its text — a
@@ -414,14 +425,14 @@ function namedEngagement(payload: unknown): string | null {
 function engagementInText(text: string): string | null {
   const m = /"engagementId"\s*:\s*"((?:[^"\\]|\\.){1,256})"/.exec(text)
   if (!m) return null
-  try { return JSON.parse(`"${m[1]}"`) as string } catch { return null }
+  try { return attributable(JSON.parse(`"${m[1]}"`)) } catch { return null }
 }
 
 function identityOf(payload: unknown): { engagementId: string; operatorId: string } | null {
   const identity = (payload as { _identity?: { engagementId?: unknown; operatorId?: unknown } } | null)?._identity
-  if (typeof identity?.engagementId !== 'string' || !identity.engagementId ||
-      typeof identity.operatorId !== 'string' || !identity.operatorId) return null
-  return { engagementId: identity.engagementId, operatorId: identity.operatorId }
+  const engagementId = attributable(identity?.engagementId)
+  if (!engagementId || typeof identity?.operatorId !== 'string' || !identity.operatorId) return null
+  return { engagementId, operatorId: identity.operatorId }
 }
 
 /** A producer's time on the payload, if it passes the rule the row's
@@ -634,7 +645,9 @@ export function replaySpoolDirectory(
     if (!identity) {
       const dir = quarantineDirFor(directory, 'no-project')
       const moved = ledger.reserve(dir, stat.size) &&
-        moveIntoQuarantine(file, dir, name, 'no-project', 'no engagement identity: no project was open when it was written', clock())
+        moveIntoQuarantine(file, dir, name, 'no-project', namesSharedDefault(payload)
+          ? 'written under the shared engagement `default`, before projects had their own: which project is not recorded'
+          : 'no engagement identity: no project was open when it was written', clock())
       if (!moved) { try { fs.renameSync(file, `${file}${LEGACY_UNATTRIBUTED_SUFFIX}`) } catch { /* left for the next pass */ } }
       result.unattributed++
       result.outcomes[name] = 'quarantined'

@@ -58,7 +58,10 @@ const PORT_PATH = path.join(os.homedir(), '.redlog', 'api-port')
 let server: http.Server | null = null
 let primaryToken = ''
 let listeningPort = 6660
-let engagementId = 'default'
+// Set by configureApi at every open, before onApiProjectOpen lets a request
+// through. Empty until then: a write that named it with no database bound is
+// refused as `no-project` (ingest/stamp.ts engagementForWrite).
+let engagementId = ''
 let projectOpen = false
 
 let primaryOperatorId = ''

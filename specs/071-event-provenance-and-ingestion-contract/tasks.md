@@ -42,8 +42,9 @@
 ## Phase 3 — 核心蓋章（階段 1）與單一入口
 
 - [x] T020 [US1] 先 RED：`test/ingest-stamp.test.ts`。驗證 `_ingest` 的鍵、覆寫呼叫端給的值、移除保留鍵並記入 `stripped`、只含允許的型別、大小上限（FR-005、FR-006）；`rules` 的有界形式（至多 3 項、`+<n>`）與 `rules_partial` 在最壞情況仍不超過 512 bytes（Spec 075 FR-059 的消費者，075 T091 填值）。
-- [ ] T021 [US1] 實作 `src/core/ingest/stamp.ts`。engagement 由綁定 DB 決定，`'default'` 不再出現；沒有綁定 DB 時拋錯，對應 `retry`／`no-project`（FR-007）。
+- [x] T021 [US1] 實作 `src/core/ingest/stamp.ts`。engagement 由綁定 DB 決定，`'default'` 不再出現；沒有綁定 DB 時拋錯，對應 `retry`／`no-project`（FR-007）。
   - 2026-11-14 對帳（PR #765）：`engagementForWrite`（`stamp.ts`）在綁定 DB 時一律用它，兩個層的寫入都走它；都沒有綁定也沒有呼叫端的名稱時拋 `no-project`（`test/ingest-stamp.test.ts` 的「nothing bound and no engagement named」）。未達成兩處：(1) 沒有綁定 DB 時，若呼叫端帶了 engagement 仍照用，而不是拋錯（同檔 `KNOWN GAP (FR-007 / T021)`，2026-11-13 決定暫時寬鬆）；(2) 專案目錄沒有 `config.yaml` 時，`readConfig` 回 `defaults()`（`src/core/config.ts:415`、`DEFAULT_CONFIG.engagement.id = 'default'`），`main/index.ts:814` 把它綁定，新列因此寫在 `default` 引擎下（`test/config-invalid-file.test.ts` 釘住「absent 回預設值」）。
+  - 2026-11-15：兩處都已處理（FR-007 修訂註記）。(2) 沒有 engagement id、為空或為 `default` 的設定，`readConfig`／`loadConfig` 以專案目錄名（專案 id）作為 engagement；交接檔名為 `default` 的進 `no-project` 隔離區（`test/engagement-is-the-project.test.ts`，含兩個無設定專案的交接檔不再互相歸屬的重現）。(1) 不改行為、在 FR-007 明示排除：唯一的正式 `initDB` 在同一同步區塊內綁定，未綁定的 DB 只在測試與工具中；`test/ingest-stamp.test.ts` 的 KNOWN GAP 改為陳述這個事實，並以「every production open binds the database it opens」釘住。
 - [x] T022 [P] [US2] 暫停 property test 完整版（至少 10,000 組；SC-005，依 2026-11-13 修訂的規則：暫停期間收到的列為 0；交接檔可用來源時間落在已記錄區間內的列為 0；暫停前的交接項目在暫停結束後寫入）。
 - [ ] T023 [US1] 先 RED：`test/target-via.test.ts`（O11）。驗證 explicit、extracted、command、terminal-last、none 五種，跨重啟一致，不套用全域目前目標。
 - [ ] T024 [US1] 建立 `terminal_targets` 表，寫入路徑在 commit 交易內同步寫入；**不在本規格回填**：含 071 之前事件的專案，在 Spec 074 的回填完成前不套用 `terminal-last`、寫 `none`（FR-010），先 RED 斷言這一點；回填由 074 T052 實作。`command` 的承接改從持久資料查（2026-11-15 已做，見 T032 的註記；`target_via` 尚未寫）；移除 `ingest.ts:251-255` 的自動套用（app 內操作依 O16）。Spec 072 T043（`identity.target`）同一個 PR。

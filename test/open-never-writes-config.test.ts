@@ -53,7 +53,10 @@ describe('opening a project and its config.yaml (Spec 073 T007)', () => {
   // RED today: even a file that already carries every section is replaced (same bytes, new mtime).
   it.fails('(a) a complete config.yaml keeps its modification time across an open', () => {
     const complete = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-open-writes-src-'))
-    try { saveConfig(complete, structuredClone(DEFAULT_CONFIG)); fs.copyFileSync(path.join(complete, 'config.yaml'), file()) } finally { fs.rmSync(complete, { recursive: true, force: true }) }
+    // Its own engagement id: a `default` is replaced by the project's at read
+    // (Spec 071 FR-007), which would change the bytes and hide the mtime red.
+    const own = structuredClone(DEFAULT_CONFIG); own.engagement.id = path.basename(dir)
+    try { saveConfig(complete, own); fs.copyFileSync(path.join(complete, 'config.yaml'), file()) } finally { fs.rmSync(complete, { recursive: true, force: true }) }
     fs.utimesSync(file(), PAST, PAST)
     const before = fs.readFileSync(file())
     prepareOpenConfig(dir)

@@ -802,7 +802,7 @@ function startProject(project: ProjectMeta): void {
   // Prepare configuration before closing the current project. A failed read
   // or write must not leave a new binding (or discard the usable old one).
   // A config.yaml that is there but unusable throws here, untouched: its
-  // defaults would bind this project as engagement `default`.
+  // defaults are not its settings.
   const projectDir = getProjectPath(project)
   const config = prepareOpenConfig(projectDir)
   if (projectRuntime.current()) stopProject()
