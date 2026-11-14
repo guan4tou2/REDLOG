@@ -283,7 +283,7 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
   const atomic = (run: () => void): void => { if (db.inTransaction) run(); else forgetOnError(() => db.transaction(run)()) }
   if (refs.length) atomic(() => {
     for (const [pos, ref] of refs.entries()) {
-      let status = 'indexed', bytes = 0, reason = '',availableBytes=0
+      let status = 'indexed', bytes = 0, reason = '',availableBytes=0, wrote = false
       const prior = stmt(db, 'SELECT status,reason,tier,row,verified_desc,verified_file,verified_sig FROM body_event_refs WHERE event_id=? AND sha256=?').get(event.id, ref.sha256) as {
         status: string; reason: string; tier: Tier | null; row: number | null; verified_desc: string | null; verified_file: string | null; verified_sig: string | null
       } | undefined
@@ -322,7 +322,7 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
           // Re-verified bytes with the same hash: the documents stand.
           if (prior && hadDocs) { status = prior.status; reason = prior.reason; return }
           const insertText = stmt(db, 'INSERT INTO body_fts(content) VALUES(?)'), insertDoc = stmt(db, 'INSERT INTO body_docs VALUES(?,?,?)')
-          const write = (part: string): void => { if (part) insertDoc.run(insertText.run(part).lastInsertRowid, event.id, ref.sha256) }
+          const write = (part: string): void => { if (part) { insertDoc.run(insertText.run(part).lastInsertRowid, event.id, ref.sha256); wrote = true } }
           // The saved text, unless it is inline text the events index already
           // holds; and, in the same pass, once an escape has been seen, the
           // decoded text as a second document of the same (event, body) pair,
@@ -377,8 +377,11 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
         status = error instanceof ContentAccessError && error.status === 'missing' ? 'missing' : error instanceof ContentAccessError && error.status==='unsupported'?'limited':'failed'
         reason = error instanceof ContentAccessError ? error.status : 'failed'
       }
-      // Only a ref that had documents can have any to remove.
-      if (!HAS_DOCS.has(status) && hadDocs) dropDocs(db, event.id, ref.sha256)
+      // A ref whose read ends without text keeps no document: neither the ones
+      // it had nor the ones this read wrote before the file vanished or changed
+      // under it (missing and failed are retried every search, and each retry
+      // would add another copy).
+      if (!HAS_DOCS.has(status) && (hadDocs || wrote)) dropDocs(db, event.id, ref.sha256)
       // pending/limited come from the event alone; indexed/binary/partial from
       // bytes whose signature is recorded. missing/failed can change with no
       // new row (a file restored or repaired), so they carry no verification
