@@ -460,8 +460,7 @@ function triggerBookmark(): void {
 // of what they are doing. The marker's time is `at`, taken when the operator
 // CLICKED "Add marker", not when the form was saved: filling in a title takes
 // seconds, and the marker is about the moment they reached for it. An empty
-// title is allowed and gets the time as its name, which is what a bare mark
-// has always been called.
+// title is allowed and is stored as the fixed `HUD mark`; the time is the row's.
 function addHudMarker(input: { title?: string; notes?: string; at?: number; bind?: string }): { ok: boolean; id?: string; reason?: 'project-changed' } {
   const open = projectRuntime.current()
   if (!projectRuntime.project() || !open) return { ok: false }

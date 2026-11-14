@@ -26,6 +26,11 @@ interface EventMarkerProps {
   heldFrame?: string
 }
 
+/** Stored when the title is left empty. Not translated and not timed: the title
+ *  is inside the row's hash, so it must read the same in every locale, display
+ *  zone and machine. The row carries its own time. */
+const UNTITLED_MARK = 'Mark'
+
 export default function EventMarker({ onClose, atTimestamp, heldFrame, contentAnchor }: EventMarkerProps): JSX.Element {
   const [title, setTitle] = useState('')
   const [notes, setNotes] = useState('')
@@ -77,7 +82,7 @@ export default function EventMarker({ onClose, atTimestamp, heldFrame, contentAn
     let markerEvent: { id?: string } | null = null
     try {
       markerEvent = await window.redlog.marker.create({
-        title: title.trim() || t('marker.defaultTitle', { time: ts }),
+        title: title.trim() || UNTITLED_MARK,
         notes, severity, category,
         ...(contentAnchor ? { contentAnchor } : {}),
         ...(url.trim() ? { url: url.trim() } : {}),

@@ -17,6 +17,9 @@ import { getProjectDir as getOpenProjectDir } from '../../core/db/index'
 import { eventBus } from '../../core/event-bus'
 import type { ScreenshotAgent } from '../services/screenshot-agent'
 
+/** Stored title of a HUD mark made without one. A literal on purpose: see `hudMarkerFields`. */
+const HUD_MARK_TITLE = 'HUD mark'
+
 export const MARKER_TEXT_FIELDS = ['title', 'notes', 'url'] as const
 
 const DAY_MS = 24 * 3_600_000
@@ -30,8 +33,10 @@ export function hudDraftBelongsHere(bind: string | undefined, currentEngagementI
 /** The fields of a marker added from the HUD form. `at` is when the operator
  *  clicked "Add marker"; it is believed only if it is a real moment in the last
  *  day, otherwise the marker is timed at `now` rather than at a value nobody
- *  can vouch for. An empty title is allowed and named after the time, which is
- *  what a bare mark has always been called. */
+ *  can vouch for. An empty title is allowed and stored as the fixed
+ *  `HUD_MARK_TITLE`: the title is inside the row's hash, so it must not depend
+ *  on this machine's locale or time zone. The time is the row's own
+ *  `source_timestamp`, which the interface prints through `lib/time`. */
 export function hudMarkerFields(
   input: { title?: unknown; notes?: unknown; at?: unknown },
   now: number
@@ -41,7 +46,7 @@ export function hudMarkerFields(
   const title = (typeof input.title === 'string' ? input.title : '').trim().slice(0, MARKER_TITLE_MAX)
   const notes = capMarkerText(input.notes, MARKER_NOTES_MAX) ?? ''
   return {
-    title: title || `HUD mark ${new Date(at).toLocaleTimeString()}`,
+    title: title || HUD_MARK_TITLE,
     notes,
     source_timestamp: at,
     // A bare mark is marked as such, so a reviewer knows a time-only title is
