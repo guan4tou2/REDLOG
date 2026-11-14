@@ -14,9 +14,11 @@ export function pythonProvenance(stdout: string): ProvenanceCounts | null {
   }
 }
 
-/** The provenance block as printed, for comparing wording. */
+/** The provenance block as printed, for comparing wording. Python's text-mode
+ *  stdout ends a line with \r\n on Windows; the wording is what is compared,
+ *  so either ending splits. */
 export function pythonProvenanceBlock(stdout: string): string[] {
-  const lines = stdout.split('\n')
+  const lines = stdout.split(/\r?\n/)
   const at = lines.findIndex((l) => l.startsWith('Receiver stamp'))
   if (at < 0) return []
   const end = lines.findIndex((l, i) => i > at && !l.startsWith(' '))
