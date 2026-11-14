@@ -17,8 +17,9 @@
 // time; so is a derived row's `timestamp`, which has no source time.
 //
 // What else differs today is pinned below by name, door by door, as KNOWN
-// DIVERGENCE: it is not what FR-093 says, and the report that came with this
-// test says why each is not changed here.
+// DIVERGENCE: it is not what FR-093 says, and each waits on the owner (the
+// T036 note in tasks.md). A body's own `target_id` used to be one of them; the
+// spool now reads it as the API does (ingest/body-target.ts), last test.
 
 import fs from 'node:fs'
 import os from 'node:os'
@@ -152,15 +153,21 @@ sqlite.describe('door equivalence (FR-093)', () => {
     })
   }, SLOW)
 
-  // Latent today: no producer that sets a body `target_id` spools its items
-  // (mitmproxy-addon.py spools only a content-free capture_gap; pcap-agent.py
-  // drops what it cannot post, T072). Once one does, its row loses the target.
-  it('KNOWN DIVERGENCE: a body\'s own `target_id` is the row\'s target through the API, and is not read from a spool file', async () => {
-    const items: Item[] = [{ agent_type: 'scanner', target_id: 'app.example.test',
-      data: { subtype: 'http_request_start', flow_id: 'f9', method: 'GET', url: 'http://app.example.test/', source_timestamp: at(0) } }]
+  // A body's own `target_id` (pcap-agent.py sets it to the packet's
+  // destination, and spools the whole payload whenever its POST fails;
+  // mitmproxy-addon.py sets it too) is the row's target at every door, and
+  // wins over a target extracted from the content, as the API has it.
+  it('a body\'s own `target_id` is the row\'s target through the API and through a spool file alike', async () => {
+    const items: Item[] = [
+      { agent_type: 'pcap', target_id: '10.0.0.9',
+        data: { subtype: 'port_scan', port_count: 40, ports: [22, 80], first_at: at(0), source_timestamp: at(0) } },
+      { agent_type: 'shell', target_id: '10.0.0.7',
+        data: { subtype: 'command_start', command: 'nmap -sV 10.0.0.5', terminalId: 't9', pid: 90, source_timestamp: at(1) } }
+    ]
     const viaIn = await through('in-process', items)
     const viaApi = await through('legacy-api', items)
     const viaSpool = await through('legacy-handoff', items)
-    expect([viaIn, viaApi, viaSpool].map((rows) => rows.map((r) => r.target_id))).toEqual([['app.example.test'], ['app.example.test'], [null]])
+    const want = [['events:shell.command_start', '10.0.0.7'], ['events_logged:pcap.port_scan', '10.0.0.9']]
+    expect([viaIn, viaApi, viaSpool].map((rows) => rows.map((r) => [r.kind, r.target_id]))).toEqual([want, want, want])
   }, SLOW)
 })

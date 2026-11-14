@@ -1,3 +1,4 @@
+import { bodyTargetId } from './ingest/body-target'
 import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
@@ -36,6 +37,8 @@ export interface SpoolReplayEvent {
   data: Record<string, unknown>
   engagementId: string
   operatorId: string
+  /** The body's own target, read as the API reads it (ingest/body-target.ts). */
+  targetId?: string
 }
 
 /** Why a file was set aside or dropped (Spec 071 FR-050 / FR-066). */
@@ -588,7 +591,7 @@ export function replaySpoolDirectory(
       retryLater(file, name, (held?.attempts ?? 0) + 1)
       continue
     }
-    let payload: { agent_type?: unknown; data?: unknown }
+    let payload: { agent_type?: unknown; data?: unknown; target_id?: unknown; targetId?: unknown }
     try {
       payload = JSON.parse(text) as typeof payload
     } catch (e) {
@@ -653,7 +656,8 @@ export function replaySpoolDirectory(
           recovered_from_spool: true
         },
         engagementId: identity.engagementId,
-        operatorId: identity.operatorId
+        operatorId: identity.operatorId,
+        targetId: bodyTargetId(payload)
       })
     } catch (e) {
       outcome = { outcome: 'failed', detail: (e as Error).message }
