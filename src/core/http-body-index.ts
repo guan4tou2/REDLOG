@@ -181,6 +181,14 @@ export function _extraEvents(projectDir = getProjectDir()): number {
   const db = getIndex(projectDir)
   return hasExtraTables(db) ? (stmt(db, 'SELECT count(DISTINCT event_id) AS n FROM body_x_refs').get() as { n: number }).n : 0
 }
+/** This connection's TEMP refs and the rowids of its TEMP documents; a test
+ *  seam for "TEMP ids are not reused, and TEMP documents leave with their ref". */
+export function _extraLayout(projectDir = getProjectDir()): { refs: Array<RefDocs & { event_id: string }>; documents: number[] } {
+  const db = getIndex(projectDir)
+  if (!hasExtraTables(db)) return { refs: [], documents: [] }
+  return { refs: stmt(db, 'SELECT ref,event_id,raw_docs,decoded_docs FROM body_x_refs ORDER BY ref').all() as Array<RefDocs & { event_id: string }>,
+    documents: (stmt(db, 'SELECT rowid AS id FROM body_x_fts ORDER BY rowid').all() as { id: number }[]).map(r => r.id) }
+}
 /** The shared index is written only through main's read-write source
  *  connection. On a read-only one (the export worker) its writers do nothing:
  *  none of them is reached there today, and a throw on a path an export can

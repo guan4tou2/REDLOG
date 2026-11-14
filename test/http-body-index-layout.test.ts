@@ -132,6 +132,29 @@ sqlite.describe('body index layout', () => {
     expect(idx.bodySearchCoverage().sources!.find(s => s.kind === 'body')).toMatchObject({ status: 'failed', failed: 1, indexed: 0 })
   })
 
+  it("one link's documents and counts are written together, or not at all", () => {
+    // Two bodies: the first ref is written whole (documents, then its counts),
+    // and the second ref's counts fail after its documents are written.
+    let finals = 0
+    const prepare = Database.prototype.prepare
+    vi.spyOn(Database.prototype, 'prepare').mockImplementation(function (this: Database.Database, sql: string) {
+      const s = prepare.call(this, sql)
+      if (/^UPDATE body_event_refs SET sha256=/.test(sql)) {
+        const run = s.run.bind(s)
+        ;(s as unknown as { run: (...a: unknown[]) => unknown }).run = (...a: unknown[]) => { if (++finals === 2) throw new Error('counts write failed'); return run(...a) }
+      }
+      return s
+    })
+    expect(() => idx.linkHttpBodyEvent({ id: 'E', data: { subtype: 'http_response', request_body: inline('first words'), response_body: inline('second words') } }, dir))
+      .toThrow('counts write failed')
+    expect(finals).toBe(2)
+    vi.restoreAllMocks(); idx.closeHttpBodyIndex()
+    readIndex(index => expect({
+      documents: index.prepare('SELECT count(*) AS n FROM body_fts').get(),
+      refs: index.prepare('SELECT count(*) AS n FROM body_event_refs').get(),
+    }).toEqual({ documents: { n: 0 }, refs: { n: 0 } }))
+  })
+
   it('every document write replaces what its rowid held', () => {
     const ref = savedBody(dir, '{"v":"REALWORD"}'), file = path.join(dir, 'http-bodies', ref.file)
     fs.rmSync(file)
@@ -271,4 +294,46 @@ sqlite.describe('body index layout', () => {
     expect(idx._extraEvents(dir)).toBe(1)
     expect(found).toEqual([{ term: '"SHAREDWORD"', eventIds: ['A'] }, { term: '"TEMPWORD"*', eventIds: ['B'] }])
   }, 30_000)
+
+  it('TEMP ref ids are not reused either, and TEMP documents leave with their ref', () => {
+    const locked = <T>(run: () => T): T => {
+      const holder = new Database(indexFile())
+      holder.prepare('BEGIN IMMEDIATE').run()
+      try { return run() } finally { holder.prepare('ROLLBACK').run(); holder.close() }
+    }
+    savedResponse('A', { response_body_ref: savedBody(dir, '{"v":"SHAREDWORD"}') })
+    expect(searchHttpBodyEventIds('SHAREDWORD', dir)).toEqual(['A'])
+    savedResponse('B', { response_body_ref: savedBody(dir, '{"v":"FIRSTTEMPWORD"}') })
+    expect(locked(() => searchHttpBodyEventIds('FIRSTTEMPWORD', dir))).toEqual(['B'])
+    const first = idx._extraLayout(dir)
+    expect(first).toEqual({ refs: [{ ref: 1, event_id: 'B', raw_docs: 1, decoded_docs: 0 }], documents: [idx._documentRowid(1, 0, 0)] })
+    // Unlocked, main links B into the shared index, and TEMP lets B go: its
+    // row and, in the same transaction, its document.
+    expect(searchHttpBodyEventIds('FIRSTTEMPWORD', dir)).toEqual(['B'])
+    expect(idx._extraLayout(dir)).toEqual({ refs: [], documents: [] })
+    savedResponse('C', { response_body_ref: savedBody(dir, '{"v":"SECONDTEMPWORD"}') })
+    expect(locked(() => searchHttpBodyEventIds('SECONDTEMPWORD', dir))).toEqual(['C'])
+    const [c, ...more] = idx._extraLayout(dir).refs
+    expect({ c, more }).toEqual({ c: { ref: 2, event_id: 'C', raw_docs: 1, decoded_docs: 0 }, more: [] })
+    expect(idx._extraLayout(dir).documents).toEqual([idx._documentRowid(2, 0, 0)])
+  }, 30_000)
+
+  // The ref row's constraints, each refusing a row that would break the
+  // layout: counts past a kind's rowids, negative counts, and documents
+  // counted for a ref without text.
+  it.each([
+    ['saved documents past their rowids', 'raw_docs=2049'],
+    ['a negative count of saved documents', 'raw_docs=-1'],
+    ['decoded documents past their rowids', 'decoded_docs=2049'],
+    ['a negative count of decoded documents', 'decoded_docs=-1'],
+    ['documents counted for a ref without text', "status='missing'"],
+  ])('the ref table refuses %s', (_, set) => {
+    savedResponse('E', { response_body_ref: savedBody(dir, '{"v":"CHECKEDWORD"}') })
+    expect(searchHttpBodyEventIds('CHECKEDWORD', dir)).toEqual(['E'])
+    const index = new Database(indexFile())
+    try {
+      expect(index.prepare('SELECT raw_docs FROM body_event_refs').get()).toEqual({ raw_docs: 1 })
+      expect(() => index.prepare(`UPDATE body_event_refs SET ${set}`).run()).toThrow(/CHECK constraint failed/)
+    } finally { index.close() }
+  })
 })
