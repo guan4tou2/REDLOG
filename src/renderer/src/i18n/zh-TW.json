@@ -2044,7 +2044,7 @@
   "content.status.cast-recording": "終端輸出（合併）已保存在錄製中——用時間軸的「回放此指令輸出」檢視",
   "content.status.unsupported": "此內容不支援這項操作",
   "content.status.failed": "內容讀取失敗",
-  "activity.castsRestricted": "錄影索引無法套用目前條件，已排除錄影結果。",
+  "activity.castsRestricted": "已排除錄影：錄影無法依目前條件篩選。",
   "activity.castLimit": "錄影結果僅顯示前 50 筆命中。",
   "content.field.event_data": "事件資料（JSON）",
   "content.field.command": "指令",
