@@ -407,6 +407,17 @@ function applySchema(): void {
   db.exec('CREATE INDEX IF NOT EXISTS idx_events_source_ts ON events(source, timestamp DESC)')
   db.exec('CREATE INDEX IF NOT EXISTS idx_events_logged_source_ts ON events_logged(source, timestamp DESC)')
   db.exec('CREATE INDEX IF NOT EXISTS idx_events_transcript_uuid ON events(agent_type, transcript_uuid) WHERE transcript_uuid IS NOT NULL')
+  // A command's rows by the id the shell hook minted for it (Spec 071 SC-003):
+  // what a command_end or a late chunk finds its command by when the app
+  // restarted since the command started (db/stored-links.ts). Shell rows are
+  // all chained, so `events` only. Measured on a 100k-row project, 60k of
+  // them shell: built in ~100 ms on the first open; ~10 µs more per shell
+  // insert, inside run-to-run noise (170–250 µs without, batched in one
+  // transaction); a lookup 0.08 ms. The probe must not ORDER BY rowid: with it
+  // the planner took idx_events_type and a lookup was 62 ms.
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_shell_command
+    ON events(json_extract(data, '$.command_id'), subtype)
+    WHERE agent_type = 'shell' AND json_extract(data, '$.command_id') IS NOT NULL`)
   db.exec(`CREATE INDEX IF NOT EXISTS idx_events_logged_http_flow
     ON events_logged(json_extract(data, '$.flow_id'), timestamp DESC)
     WHERE agent_type = 'scanner' AND subtype IN ('http_request_start', 'http_response')`)

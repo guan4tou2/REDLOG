@@ -209,12 +209,17 @@ describeDB('ingest keeps one project from reaching the next', () => {
       expect(ingestMod.ingest({ agentType: 'shell', operatorId: a.op, engagementId: 'eng-A', data: { ...chunk } }).skipped).toBe('dedup')
     })
 
-    it('_resetIngest forgets which late chunks were seen', () => {
+    // What ingest remembered is gone after _resetIngest, as after a restart;
+    // the project's stored chunk is not, and a resend is still one (Spec 071
+    // SC-003: live keeps a resent chunk once, so a restart must too). The
+    // test above is what shows the memory itself does not outlive a project.
+    it('after _resetIngest a resend in the same project is still recognised, from its stored chunk', () => {
       const chunk = { subtype: 'command_output', command_id: 'cmd-reset', seq: 1, late: true, stream: 'stdout', stdout: 'tick\n' }
       const a = open('eng-A')
       expect(ingestMod.ingest({ agentType: 'shell', operatorId: a.op, engagementId: 'eng-A', data: { ...chunk } }).event).not.toBeNull()
       ingestMod._resetIngest()
-      expect(ingestMod.ingest({ agentType: 'shell', operatorId: a.op, engagementId: 'eng-A', data: { ...chunk, stdout: 'tock\n' } }).event).not.toBeNull()
+      expect(ingestMod.ingest({ agentType: 'shell', operatorId: a.op, engagementId: 'eng-A', data: { ...chunk, stdout: 'tock\n' } }).skipped).toBe('dedup')
+      expect(ingestMod.ingest({ agentType: 'shell', operatorId: a.op, engagementId: 'eng-A', data: { ...chunk, seq: 2, stdout: 'tock\n' } }).event).not.toBeNull()
     })
 
     it('does not file the next project\'s late output under the closed project\'s target', () => {

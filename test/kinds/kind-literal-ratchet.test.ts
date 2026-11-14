@@ -50,8 +50,15 @@ const ROOT = path.join(__dirname, '..', '..')
 //   a UDF would add a JavaScript call per projected row — and there is no
 //   registry yet to ask instead. The JavaScript side reuses the classification's
 //   existing comparison and adds none.
-const AGENT_BASELINE = 276
-const SUBTYPE_BASELINE = 304
+// - Spec 071 SC-003, a command's links surviving a restart: agent +4, subtype
+//   +5. db/stored-links.ts reads a command's start, end and chunks, and a
+//   flow's request and response, back from the rows (SQL: 3 agent, 3 subtype;
+//   telling a start from an end and a request from a response: 2 subtype), and
+//   db/index.ts's partial index repeats the probe's `agent_type = 'shell'` (1
+//   agent). The probes must name the kinds verbatim for SQLite to use the
+//   partial indexes, and there is no registry yet to ask instead.
+const AGENT_BASELINE = 280
+const SUBTYPE_BASELINE = 309
 const TABLE_BASELINE = 31
 
 type Counter = 'agent' | 'subtype'

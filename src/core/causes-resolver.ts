@@ -2,6 +2,7 @@ import path from 'node:path'
 import { compareCodeUnits } from './code-unit-order'
 import { terminalIdentity } from './ingest/terminal'
 import { fieldText } from './ingest/field-text'
+import type { StoredCommand } from './db/stored-links'
 
 // v0.6.89 P0-A: `_causes` upstream-event lookup for events that arrive via
 // /api/events (or any other post-hoc insertion path). Each event pair follows
@@ -20,6 +21,13 @@ import { fieldText } from './ingest/field-text'
 // a long-running instance doesn't leak. TTL is not tracked; the mitmproxy
 // addon caps flows at 5 min and shell command lifetime is bounded by the
 // operator's terminal session, so eviction by size is enough.
+//
+// The cache is the fast path, not the record. When it has nothing for a
+// command id or a flow id — the app restarted since the start, or the entry
+// was evicted — the caller's `stored` answers from the project's rows by the
+// same id (db/stored-links.ts), and the answer is the one the cache would have
+// given had it never been lost (Spec 071 SC-003). What it finds is put back in
+// the cache, so the rest of that command's rows are hits again.
 
 const MAX_ENTRIES = 10_000
 
@@ -119,16 +127,28 @@ export function noteStartEvent(agentType: string, data: Record<string, unknown>,
   }
 }
 
+/** The project's rows, for when the cache has nothing (see the header).
+ *  Handed in by ingest, so this module stays free of the database. */
+export interface StoredLinks {
+  /** `withChunks`: a chunk asks, and needs the chunk summary too. */
+  command: (commandId: string, withChunks: boolean) => StoredCommand | null
+  openFlowStart: (flowId: string) => string | null
+}
+
 /**
  * Called BEFORE insertEvent for an "end" event. Returns the upstream event
  * id(s) to add to `data._causes`. Empty array when no upstream is known
- * (e.g. we started recording mid-flow, or the start event was evicted).
+ * (e.g. we started recording mid-flow).
  */
-export function resolveIncomingCauses(agentType: string, data: Record<string, unknown>): string[] {
+export function resolveIncomingCauses(agentType: string, data: Record<string, unknown>, stored?: StoredLinks): string[] {
   if (agentType === 'scanner') {
     const sub = data.subtype
     if ((sub === 'http_response' || sub === 'http_error' || sub === 'http_request_dropped') && typeof data.flow_id === 'string') {
-      const id = httpFlowMap.get(data.flow_id)
+      let id = httpFlowMap.get(data.flow_id)
+      if (!id && stored) {
+        id = stored.openFlowStart(data.flow_id) ?? undefined
+        if (id) httpFlowMap.set(data.flow_id, id)
+      }
       if (id) {
         // Only clear on response — dropped/error might reference a flow that
         // still receives a real response later (rare but possible via retry).
@@ -145,7 +165,7 @@ export function resolveIncomingCauses(agentType: string, data: Record<string, un
   if (agentType === 'shell' && data.subtype === 'command_output') {
     const commandId = commandIdOf(data)
     if (!commandId) return []
-    const id = commandIdMap.get(commandId) ?? lateCommandIdMap.get(commandId)
+    const id = commandIdMap.get(commandId) ?? lateCommandIdMap.get(commandId) ?? storedChunkCommand(commandId, stored)
     // The relay's last row for this command: nothing more will arrive, so the
     // id is released.
     if (data.final === true) lateCommandIdMap.delete(commandId)
@@ -154,7 +174,7 @@ export function resolveIncomingCauses(agentType: string, data: Record<string, un
   if (agentType === 'shell' && data.subtype === 'command_end') {
     const commandId = commandIdOf(data)
     if (commandId) {
-      const id = commandIdMap.get(commandId)
+      const id = commandIdMap.get(commandId) ?? storedOpenCommand(commandId, stored)
       if (id) {
         // The contract puts `command_end` after the last chunk, so the id has
         // done its work; a chunk arriving after this is late by definition
@@ -187,6 +207,29 @@ export function resolveIncomingCauses(agentType: string, data: Record<string, un
     return []
   }
   return []
+}
+
+/** The start of command `commandId` that no command_end has closed yet, as
+ *  `commandIdMap` would hold it. */
+function storedOpenCommand(commandId: string, stored: StoredLinks | undefined): string | undefined {
+  const command = stored?.command(commandId, false)
+  return command?.start && !command.end ? command.start.id : undefined
+}
+
+/** The command a chunk belongs to, as the two maps would hold it: still
+ *  running (`commandIdMap`), or ended saying a background job keeps printing
+ *  and no chunk has said it was the last (`lateCommandIdMap`). */
+function storedChunkCommand(commandId: string, stored: StoredLinks | undefined): string | undefined {
+  const command = stored?.command(commandId, true)
+  if (!command?.start) return undefined
+  const { start, end, finalSeen } = command
+  if (!end) {
+    commandIdMap.set(commandId, start.id)
+    return start.id
+  }
+  if (!end.lateOutput || finalSeen) return undefined
+  lateCommandIdMap.set(commandId, start.id)
+  return start.id
 }
 
 /** Cwd/time overlap is an investigation hint, not proof that a process wrote

@@ -55,6 +55,8 @@ export interface Runtime {
    *  legacy-handoff. A string is the file's text as written, `_identity`
    *  included. */
   spool(items: Array<Item | string>, dir: string, replayed?: number): SpoolReplayResult | null
+  /** The engagement's current target, as main configures it on project open. */
+  activeTarget(target: string | null): void
   close(): Promise<void>
 }
 
@@ -107,6 +109,7 @@ export async function openRuntime(dir: string): Promise<Runtime> {
       expect(run?.replayed, JSON.stringify(run)).toBe(replayed)
       return run
     },
+    activeTarget(target) { ingest.configureIngest({ activeTarget: target }) },
     async close() {
       // In stopProject's order: the API's project close (which writes out the
       // refusal count, ingest/nesting-ceiling.ts) while the database is open.
