@@ -526,8 +526,15 @@ test.describe.serial('timeline-standard-mode: timeline standard / swim-lane mode
     expect(await timelineMode(page)).toBe('standard')
     await expect(page.getByTestId('timeline-standard-track')).toBeVisible()
     await expect(page.locator('[data-testid^="timeline-band-"]')).toHaveCount(0)
-    // The shell command AND the Evidence marker share the one track.
-    expect(await page.locator('[data-timeline-event]').count()).toBeGreaterThanOrEqual(2)
+    // The shell command AND the Evidence marker share the one track. Not a
+    // count of marks: the project-open rows, the command and the marker land
+    // within a second or two, and how many marks that makes depends on whether
+    // two count badges clear each other (they merge when they would overlap).
+    // What must hold is that the track's marks name both lanes.
+    const named = (await page.locator('[data-timeline-event]').evaluateAll(
+      (els) => els.map((el) => el.getAttribute('aria-label') ?? ''))).join(' | ')
+    expect(named, named).toMatch(/Shell|whoami/)
+    expect(named, named).toMatch(/Marker|mode-note/)
     await expect(page.getByRole('button', { name: /whoami/ }).first()).toBeVisible()
   })
 
