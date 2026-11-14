@@ -47,6 +47,8 @@ export interface ContentWindow {
 }
 export interface ContentFindCursor extends ContentCursor {
   query: string
+  /** Where the scan resumes, at most 11 bytes before `offset` (content-find.ts). */
+  from: number
 }
 export interface ContentFindRequest {
   ref: ContentRef
@@ -54,6 +56,7 @@ export interface ContentFindRequest {
   cursor?: ContentFindCursor
 }
 export interface ContentFindResult {
+  /** The saved bytes the match covers: an escaped run is longer than the needle. */
   match: {
     offset: number
     bytes: number
