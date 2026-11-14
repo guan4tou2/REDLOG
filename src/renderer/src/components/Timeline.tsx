@@ -1157,8 +1157,8 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
   // re-binding on every density change.
   const maxZoomRef = useRef(maxZoom)
   useEffect(() => { maxZoomRef.current = maxZoom }, [maxZoom])
-  // A lone event's dot as the track draws it, so clustering merges exactly the
-  // marks that would overlap (severity enlarges a dot, a subagent turn indents it).
+  // A lone event's dot as the track draws it, so clustering knows when a count
+  // badge would cover it (severity enlarges a dot, a subagent turn indents it).
   const singleMark = useCallback((e: RedLogEvent) => ({
     w: Math.round(SINGLE_DOT_PX * dotShape(e, foldById.get(e.id)?.effective.severity).scale),
     dx: subagentIndentPx(e)
@@ -2494,15 +2494,17 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
                   // would fight the count glyph.
                   const marks = single ? dotShape(evt, foldById.get(evt.id)?.effective.severity) : { shape: 'circle' as DotShape, scale: 1 }
                   // The mark's size comes from the clustering (c.w), which
-                  // merged every pair of marks that would have overlapped. A
-                  // badge is as tall as it always was and widens for digits.
+                  // merged whatever a count badge would have covered. A badge
+                  // is as tall as it always was and widens for digits.
                   const dot = single ? c.w : clusterBadgeSize(c.events.length)
                   // 27, not 24: the dot is a button, and 24 CSS px renders at
                   // 21.6 device px under `body { zoom: 0.9 }`. The visual dot
                   // keeps its own size (`dot`); this is only the transparent
                   // hit area around it, so a small dot is still easy to click.
-                  // Its width (c.hitW) stops halfway to a closer neighbour, so
-                  // one mark's hit area never covers the next mark.
+                  // Beside a count badge its width (c.hitW) stops halfway to
+                  // the neighbour, so no badge's hit area covers another mark.
+                  // Two lone dots may still overlap: the later (or the
+                  // selected, z 10) wins, as before.
                   const hit = Math.max(MARK_HIT_PX, dot + 8)
                   const hitW = c.hitW
                   // v0.6.89.5: filter dimming. Focus-chain and filter query

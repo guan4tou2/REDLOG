@@ -129,9 +129,10 @@ export interface TimelineCluster {
   w: number
   /** The mark is drawn centred at `x + dx` (a subagent turn's indent). */
   dx: number
-  /** Width of the clickable area, centred on the mark: `MARK_HIT_PX` unless a
-   *  neighbour is closer, then cut at the midpoint of the space between them,
-   *  so no mark's click area covers another mark. */
+  /** Width of the clickable area, centred on the mark: `MARK_HIT_PX`, cut at
+   *  the midpoint of the space to a closer neighbour when either of the two is
+   *  a count badge, so no badge's click area covers another mark. Two lone
+   *  dots keep their full areas and the later one sits on top, as before. */
   hitW: number
   events: RedLogEvent[]
 }
@@ -139,25 +140,55 @@ export interface TimelineCluster {
 interface Group { from: number; to: number; sumX: number; n: number; l: number; r: number; w: number; dx: number }
 
 /**
- * Cluster one lane's events into marks that never overlap.
+ * Whether two neighbouring marks must become one. Only a count badge forces a
+ * merge, because only a badge hides something when covered: its number. Two
+ * lone dots never merge — they stay the marks their 14px buckets made, since a
+ * dot's shape (severity, scope) is information and a badge would hide it; a
+ * dot or two of overlap between them is drawn, later on top, as it always was.
+ * A badge and a dot merge only when their drawn boxes intersect; two badges
+ * also keep `MARK_GAP_PX` apart, so their numbers read as separate.
+ */
+function mustMerge(a: Group, b: Group): boolean {
+  if (a.n === 1 && b.n === 1) return false
+  return a.r + (a.n > 1 && b.n > 1 ? MARK_GAP_PX : 0) > b.l
+}
+
+/**
+ * Cluster one lane's events into marks where no count badge overlaps a
+ * neighbour.
  *
  * Bucketing by `clusterPx` alone did not guarantee that: two buckets 14px apart
  * each drew a 16–24px badge, so every badge covered half of the next. After
- * bucketing, a left-to-right stack merges any two neighbours whose drawn boxes
- * would come closer than `MARK_GAP_PX`. A merge moves the mark to the new mean
- * and may widen it, so it is checked against its left neighbour again; each
- * bucket is pushed once and every merge removes one group, so this is O(n).
+ * bucketing, a left-to-right stack resolves each collision `mustMerge` finds.
+ * The incoming mark first tries to take the bucket after it (when those two
+ * would have to merge anyway), which moves it right, away from the
+ * collision — in an even run that pairs buckets instead
+ * of growing one cluster leftwards. When that does not clear it, it merges
+ * into the mark on its left, and the result is checked leftwards again. Each
+ * bucket is taken once and every merge removes one group, so this is O(n).
+ *
+ * The events must be in draw order. A swim-lane row is in capture order, and a
+ * marker placed earlier (`atTimestamp`) sits out of it, which made a mark
+ * hundreds of pixels left of its neighbour look like a collision; such a row is
+ * put in display order first (the sort runs only when it is out of order).
  */
 function laneClusters(
-  evs: readonly RedLogEvent[],
+  rows: readonly RedLogEvent[],
   toX: (ts: number) => number,
   clusterPx: number,
   singleMark: (e: RedLogEvent) => SingleMark
 ): { groups: Group[]; buckets: RedLogEvent[][] } {
+  let evs = rows
+  for (let i = 1; i < rows.length; i++) {
+    if (displayTs(rows[i]) < displayTs(rows[i - 1])) {
+      evs = [...rows].sort((a, b) => displayTs(a) - displayTs(b))
+      break
+    }
+  }
   const buckets = bucketByPixel(evs, (e) => toX(displayTs(e)), clusterPx)
-  const shape = (g: Group, first: RedLogEvent): Group => {
+  const shape = (g: Group): Group => {
     if (g.n === 1) {
-      const m = singleMark(first)
+      const m = singleMark(buckets[g.from][0])
       g.w = m.w; g.dx = m.dx
     } else {
       g.w = clusterBadgeWidth(g.n); g.dx = 0
@@ -167,15 +198,29 @@ function laneClusters(
     g.r = cx + g.w / 2
     return g
   }
+  const of = (i: number): Group =>
+    shape({ from: i, to: i, sumX: buckets[i].reduce((a, e) => a + toX(displayTs(e)), 0), n: buckets[i].length, l: 0, r: 0, w: 0, dx: 0 })
+  const join = (a: Group, b: Group): Group =>
+    shape({ from: a.from, to: b.to, sumX: a.sumX + b.sumX, n: a.n + b.n, l: 0, r: 0, w: 0, dx: 0 })
   const stack: Group[] = []
-  buckets.forEach((b, i) => {
-    let g = shape({ from: i, to: i, sumX: b.reduce((a, e) => a + toX(displayTs(e)), 0), n: b.length, l: 0, r: 0, w: 0, dx: 0 }, b[0])
-    while (stack.length && stack[stack.length - 1].r + MARK_GAP_PX > g.l) {
-      const prev = stack.pop() as Group
-      g = shape({ from: prev.from, to: g.to, sumX: prev.sumX + g.sumX, n: prev.n + g.n, l: 0, r: 0, w: 0, dx: 0 }, buckets[prev.from][0])
+  let i = 0
+  while (i < buckets.length) {
+    let g = of(i++)
+    while (stack.length && mustMerge(stack[stack.length - 1], g)) {
+      const top = stack[stack.length - 1]
+      if (i < buckets.length) {
+        const next = of(i)
+        // Only a pair that would have to merge anyway: never two lone dots,
+        // nor a dot with a badge it does not touch.
+        if (mustMerge(g, next)) {
+          const right = join(g, next)
+          if (!mustMerge(top, right)) { g = right; i++; continue }
+        }
+      }
+      g = join(stack.pop() as Group, g)
     }
     stack.push(g)
-  })
+  }
   return { groups: stack, buckets }
 }
 
@@ -199,8 +244,10 @@ export function buildClusters(
       let half = Math.max(MARK_HIT_PX, g.w + 8) / 2
       const prev = groups[gi - 1]
       const next = groups[gi + 1]
-      if (prev) half = Math.min(half, cx - (prev.r + g.l) / 2)
-      if (next) half = Math.min(half, (g.r + next.l) / 2 - cx)
+      // Only beside a badge: two lone dots may overlap, and cutting there
+      // could leave a dot with less hit area than its own size.
+      if (prev && (prev.n > 1 || g.n > 1)) half = Math.min(half, cx - (prev.r + g.l) / 2)
+      if (next && (next.n > 1 || g.n > 1)) half = Math.min(half, (g.r + next.l) / 2 - cx)
       const colorLane = toLane(events[0].agentType, events[0].data?.subtype as string | undefined, pluginTypes)
       out.push({
         key: `${rowKey}-${events[0].id}`, lane: colorLane, li,

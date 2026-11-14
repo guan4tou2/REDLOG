@@ -809,8 +809,8 @@ test.describe.serial('timeline-virtualisation', () => {
 
 // Dense, evenly spaced traffic: 300 flows in 50 minutes. Buckets were 14px
 // apart and every counted badge 16–24px wide, so each covered half of the next
-// — "10" read as "1" and the click went to the neighbour. Marks in one lane
-// must now sit apart, and each badge's number must fit inside it.
+// — "10" read as "1" and the click went to the neighbour. A badge must now sit
+// clear of its neighbours, and its number must fit inside it.
 //
 // One unit family only: `offsetLeft` / `offsetWidth` (CSS px). The mark is the
 // button's first child and the button is its offsetParent, so its left on the
@@ -843,14 +843,19 @@ function spacingProblems(marks: MarkBox[]): string[] {
   const bad: string[] = []
   const lanes = new Map<number, MarkBox[]>()
   for (const m of marks) lanes.set(m.top, [...(lanes.get(m.top) ?? []), m])
+  // DOM order is draw order within a lane. A badge (a mark with a number)
+  // keeps clear of anything; two lone dots may touch or overlap, as they always
+  // could, and only have to stay in time order. offset* round to whole pixels,
+  // so a badge and a dot that touch, or touching hit areas, may read 1px over.
   for (const lane of lanes.values()) {
-    lane.sort((a, b) => a.left - b.left)
     for (let i = 1; i < lane.length; i++) {
       const prev = lane[i - 1]
       const next = lane[i]
-      if (next.left < prev.right) bad.push(`overlap at ${prev.left}..${prev.right} / ${next.left}..${next.right}`)
-      // offset* round to whole pixels; touching hit areas may round 1px over.
-      if (next.hitLeft < prev.hitRight - 1) bad.push(`hit areas overlap at ${prev.hitRight} / ${next.hitLeft}`)
+      const badges = (prev.text ? 1 : 0) + (next.text ? 1 : 0)
+      if (badges === 2 && next.left < prev.right) bad.push(`badges overlap at ${prev.left}..${prev.right} / ${next.left}..${next.right}`)
+      if (badges === 1 && next.left < prev.right - 1) bad.push(`badge and dot overlap at ${prev.left}..${prev.right} / ${next.left}..${next.right}`)
+      if (badges === 0 && !(next.left > prev.left)) bad.push(`dots out of order at ${prev.left} / ${next.left}`)
+      if (badges > 0 && next.hitLeft < prev.hitRight - 1) bad.push(`hit areas overlap at ${prev.hitRight} / ${next.hitLeft}`)
     }
   }
   for (const m of marks) {
