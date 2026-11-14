@@ -95,12 +95,19 @@ function writtenText(patch: Patch): string {
   } finally { fs.rmSync(dir, { recursive: true, force: true }) }
 }
 
+/** Read from a project directory with a fixed name: a file whose engagement
+ *  is the shared `default` reads as the project's own id, the directory's
+ *  name (Spec 071 FR-007). */
+const PROJECT_ID = 'legacy-project'
+
 function load(name: string): RedLogConfig {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-legacy-'))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-legacy-'))
+  const dir = path.join(root, PROJECT_ID)
   try {
+    fs.mkdirSync(dir)
     fs.copyFileSync(path.join(DIR, `${name}.yaml`), path.join(dir, 'config.yaml'))
     return JSON.parse(JSON.stringify(loadConfig(dir))) as RedLogConfig
-  } finally { fs.rmSync(dir, { recursive: true, force: true }) }
+  } finally { fs.rmSync(root, { recursive: true, force: true }) }
 }
 
 const lf = (s: string): string => s.replace(/\r\n/g, '\n')
@@ -143,6 +150,9 @@ describe('config.yaml shapes in the field, as loadConfig reads them today (Spec 
     expect(golden['hand-minimal'].httpCapture).toMatchObject({ port: 6661, listenHost: '127.0.0.1' })
     expect(golden['hand-pack-members-absent'].packMembers).toBeUndefined()
     expect(golden['written-packs-with-members'].packMembers).toEqual({ processMonitor: false, fileWatcher: true })
+    // A file that says the shared `default` is the project's own engagement.
+    expect(golden['written-default'].engagement.id).toBe(PROJECT_ID)
+    expect(golden['hand-minimal'].engagement.id).toBe('minimal')
     // Today the operator is whatever the project file says.
     expect(golden['written-operator-changed'].operator).toEqual({ id: 'alice-9', name: 'Alice Nguyen' })
   })

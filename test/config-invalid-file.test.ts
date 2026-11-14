@@ -57,11 +57,16 @@ afterEach(() => {
 })
 
 describe('reading config.yaml', () => {
-  it('says absent, with the defaults, when there is no file', () => {
+  // Spec 071 FR-007: the defaults, except the engagement, which is the
+  // project's own id (its directory's name), never the shared `default`.
+  const ownDefaults = (): typeof DEFAULT_CONFIG => ({ ...DEFAULT_CONFIG, engagement: { ...DEFAULT_CONFIG.engagement, id: path.basename(dir) } })
+
+  it('says absent, with the defaults and the project\'s own engagement, when there is no file', () => {
     const read = config.readConfig(dir)
     expect(read.kind).toBe('absent')
-    expect(read.kind === 'absent' && read.config).toEqual(DEFAULT_CONFIG)
-    expect(loadConfig(dir)).toEqual(DEFAULT_CONFIG)
+    expect(read.kind === 'absent' && read.config).toEqual(ownDefaults())
+    expect(loadConfig(dir)).toEqual(ownDefaults())
+    expect(loadConfig(dir).engagement.id).not.toBe('default')
   })
 
   it('merges a valid file over the defaults, as before', () => {
@@ -113,11 +118,15 @@ describe('opening a project (prepareOpenConfig, called by startProject before an
     })
   }
 
-  it('writes the defaults on a first open, as today', () => {
+  // The write itself is today's (Spec 073 Phase 4 removes it); what it writes
+  // is now the project's own engagement, not `default` (Spec 071 FR-007).
+  it('writes the defaults with the project\'s own engagement on a first open', () => {
+    const own = { ...DEFAULT_CONFIG, engagement: { ...DEFAULT_CONFIG.engagement, id: path.basename(dir) } }
     const c = config.prepareOpenConfig(dir)
-    expect(c).toEqual(DEFAULT_CONFIG)
+    expect(c).toEqual(own)
     expect(fs.existsSync(file())).toBe(true)
-    expect(loadConfig(dir)).toEqual(DEFAULT_CONFIG)
+    expect(loadConfig(dir)).toEqual(own)
+    expect(bytes().toString('utf8')).toMatch(new RegExp(`^engagement:\\n  id: ${path.basename(dir)}\\n`))
   })
 
   it('keeps a valid file\'s values and writes back the merged form, as today', () => {
