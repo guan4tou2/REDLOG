@@ -192,6 +192,24 @@ export function formatLag(
   return t('time.lagD', { d: Math.floor(hours / 24) })
 }
 
+/**
+ * A measured elapsed time short enough for a narrow column, never more than
+ * seven characters below 100 hours: `999 ms`, `59.9s`, `2m 3s`, `1h 0m`. The
+ * units are the symbols the Timeline and command rows already print. Rounding
+ * goes up a unit rather than printing `60.0s` or `60s`. The exact value belongs
+ * in the cell's `title`.
+ */
+export function formatElapsedMs(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return ''
+  if (Math.round(ms) < 1000) return `${Math.round(ms)} ms`
+  const tenths = Math.round(ms / 100)
+  if (tenths < 600) return `${(tenths / 10).toFixed(1)}s`
+  const secs = Math.round(ms / 1000)
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ${secs % 60}s`
+  const mins = Math.round(ms / 60_000)
+  return `${Math.floor(mins / 60)}h ${mins % 60}m`
+}
+
 /** Human-readable byte size: `1.2 MB`, `340 KB`, etc. */
 export function formatSize(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return ''
