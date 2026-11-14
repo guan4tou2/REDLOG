@@ -10,7 +10,7 @@ import crypto from 'crypto'
 import { verifyEventSignature } from './signing'
 import {
   ATTACHMENT_DIRS, BUNDLE_VERSION, SEAL_SUBTYPE, SEAL_VERSION, VERIFY_EXIT, attachmentRefs, authenticationVerdict,
-  chainedRowCanonical, sealedManifestDigest, sha256Hex, type AttachmentRef, type VerifyCategory
+  chainedRowCanonical, receiverProvenance, sealedManifestDigest, sha256Hex, type AttachmentRef, type ProvenanceCounts, type VerifyCategory
 } from './evidence-rules'
 import { canonicalStringify } from './db/event-write'
 import { compareCodeUnits } from './code-unit-order'
@@ -39,6 +39,11 @@ export interface BundleVerdict {
     missingUndeclared: string[]
     unlisted: string[]
   }
+  /** Receiver provenance of every delivered row (Spec 071 FR-022–024). It
+   *  never changes `category` or `exitCode`. null when the verdict was
+   *  reached before every row was read, where tools/redlog-verify.py prints
+   *  no report. */
+  provenance: ProvenanceCounts | null
 }
 
 /** v4 manifest fields. Anything else in a v4 manifest is a field this
@@ -116,8 +121,8 @@ function parsedData(row: Row): unknown {
 
 export function verifyBundleDir(dir: string, opts: BundleVerifyOptions = {}): BundleVerdict {
   const attachments: BundleVerdict['attachments'] = { bound: [], boundUnverifiedRow: [], unbound: [], mismatched: [], omittedDeclared: [], missingUndeclared: [], unlisted: [] }
-  const verdict = (category: VerifyCategory, problems: string[], seal: BundleVerdict['seal'] = 'not-sealed'): BundleVerdict =>
-    ({ exitCode: VERIFY_EXIT[category], category, problems, seal, attachments })
+  const verdict = (category: VerifyCategory, problems: string[], seal: BundleVerdict['seal'] = 'not-sealed', provenance: ProvenanceCounts | null = null): BundleVerdict =>
+    ({ exitCode: VERIFY_EXIT[category], category, problems, seal, attachments, provenance })
   try { return verify(dir, opts, attachments, verdict) }
   catch (e) {
     // Python's malformed events.jsonl line exits 1 with its message.
@@ -127,7 +132,7 @@ export function verifyBundleDir(dir: string, opts: BundleVerifyOptions = {}): Bu
 }
 
 function verify(dir: string, opts: BundleVerifyOptions, attachments: BundleVerdict['attachments'],
-  verdict: (c: VerifyCategory, p: string[], s?: BundleVerdict['seal']) => BundleVerdict): BundleVerdict {
+  verdict: (c: VerifyCategory, p: string[], s?: BundleVerdict['seal'], prov?: ProvenanceCounts) => BundleVerdict): BundleVerdict {
   const manifestPath = path.join(dir, 'manifest.json'), eventsPath = path.join(dir, 'events.jsonl')
   if (!fs.existsSync(manifestPath)) return verdict('malformed', ['manifest.json missing'])
   if (!fs.existsSync(eventsPath)) return verdict('malformed', ['events.jsonl missing'])
@@ -418,7 +423,12 @@ function verify(dir: string, opts: BundleVerifyOptions, attachments: BundleVerdi
 
   const category: VerifyCategory = failed ? 'failed' : attachmentFailed ? 'attachmentMismatch' : sealFailed ? 'sealMismatch'
     : auth.state !== 'verified' && !opts.hashOnly ? 'notAuthenticated' : 'verified'
-  return verdict(category, problems, sealState)
+  const asProvenance = (list: Array<{ row: Row; data: unknown }>, tier: 'chained' | 'logged', hashChecked: boolean) =>
+    list.map(({ row, data }) => ({ tier, hashChecked, sessionId: row.session_id, agentType: row.agent_type, data }))
+  const provenance = receiverProvenance([
+    ...asProvenance(verifiedRows, 'chained', true), ...asProvenance(unverifiedRows, 'chained', false), ...asProvenance(loggedList, 'logged', false)
+  ])
+  return verdict(category, problems, sealState, provenance)
 }
 
 function loadOperators(dir: string): Map<string, string | null> {

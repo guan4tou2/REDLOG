@@ -171,6 +171,18 @@
         "omittedDeclared": [],
         "missingUndeclared": [],
         "unlisted": []
+      },
+      "provenance": {
+        "chained": {
+          "proven": 0,
+          "selfDescribed": 18,
+          "undetermined": 0
+        },
+        "logged": {
+          "selfDescribed": 3,
+          "stamped": 0,
+          "undetermined": 0
+        }
       }
     },
     "projection": {
@@ -186,18 +198,30 @@
         "omittedDeclared": [],
         "missingUndeclared": [],
         "unlisted": []
+      },
+      "provenance": {
+        "chained": {
+          "proven": 0,
+          "selfDescribed": 20,
+          "undetermined": 0
+        },
+        "logged": {
+          "selfDescribed": 3,
+          "stamped": 0,
+          "undetermined": 0
+        }
       }
     }
   },
   "pythonVerify": {
     "complete": {
       "status": 0,
-      "stdout": "\nRedLog bundle verification report\n========================================\nBundle dir       : <bundle>\nBundle version   : 4\nEngagement ID    : eng-golden-pre071\nEvents walked    : 18\nManifest checksum: matches (not an authenticated source identity)\nChain            : INTACT\nChain-head match : yes (recomputed matches manifest.chainHead)\nSeal             : SEALED (export 00000000-0000-4000-8000-000000000023; it follows the delivered chain directly)\n                   rows before it and the manifest are as exported\nSignatures       : 18 verified\nSigner           : op-golden  sha256:5df840e88a41a05b32c8c076086ae442d696f8556d8e3452d2738f96722e8e0d\n  compare these fingerprints with the operator out of band;\n  a key taken from this bundle only proves the bundle agrees with itself\nLogged tier      : 3 rows present in events_logged.jsonl\n                   (not chained or signed; digest matches; bytes sealed by the export)\nAttachments      : 0 match the digest recorded at capture\nManifest files   : 5 verified (sha256 matches)\n",
+      "stdout": "\nRedLog bundle verification report\n========================================\nBundle dir       : <bundle>\nBundle version   : 4\nEngagement ID    : eng-golden-pre071\nEvents walked    : 18\nManifest checksum: matches (not an authenticated source identity)\nChain            : INTACT\nChain-head match : yes (recomputed matches manifest.chainHead)\nSeal             : SEALED (export 00000000-0000-4000-8000-000000000023; it follows the delivered chain directly)\n                   rows before it and the manifest are as exported\nSignatures       : 18 verified\nSigner           : op-golden  sha256:5df840e88a41a05b32c8c076086ae442d696f8556d8e3452d2738f96722e8e0d\n  compare these fingerprints with the operator out of band;\n  a key taken from this bundle only proves the bundle agrees with itself\nLogged tier      : 3 rows present in events_logged.jsonl\n                   (not chained or signed; digest matches; bytes sealed by the export)\nReceiver stamp   : events.jsonl: 0 proven, 18 self-described, 0 cannot be determined\n                   events_logged.jsonl: 3 self-described, 0 cannot be determined\n                   proven: the row and its session's session_start both carry _ingest, under checked hashes\n                   self-described: no stamp, a session_start without one, or a row not hashed one by one\n                   these counts do not change the verdict or the exit code\nAttachments      : 0 match the digest recorded at capture\nManifest files   : 5 verified (sha256 matches)\n",
       "stderr": ""
     },
     "projection": {
       "status": 0,
-      "stdout": "\nRedLog bundle verification report\n========================================\nBundle dir       : <bundle>\nBundle version   : 4\nEngagement ID    : eng-golden-pre071\nEvents walked    : 20\nManifest checksum: matches (not an authenticated source identity)\nEvidence         : Projection (delivered subset)\nSource chain     : NOT VERIFIED (omitted/transformed source records)\nOmitted chained  : 1\nTransformed rows : 6 (source payload/signature not verified)\nProjection limits: policy/transformation metadata is exporter-declared\nChain-head match : n/a (source boundary, not delivered subset)\nSeal             : SEALED (export 00000000-0000-4000-8000-000000000027; it follows the delivered chain directly)\n                   rows before it and the manifest are as exported\nSignatures       : 16 verified\nSigner           : op-golden  sha256:5df840e88a41a05b32c8c076086ae442d696f8556d8e3452d2738f96722e8e0d\n  compare these fingerprints with the operator out of band;\n  a key taken from this bundle only proves the bundle agrees with itself\nLogged tier      : 3 rows present in events_logged.jsonl\n                   (not chained or signed; digest not comparable (the delivered logged tier is a subset or transformed); bytes sealed by the export)\nAttachments      : 0 match the digest recorded at capture\nManifest files   : 5 verified (sha256 matches)\n",
+      "stdout": "\nRedLog bundle verification report\n========================================\nBundle dir       : <bundle>\nBundle version   : 4\nEngagement ID    : eng-golden-pre071\nEvents walked    : 20\nManifest checksum: matches (not an authenticated source identity)\nEvidence         : Projection (delivered subset)\nSource chain     : NOT VERIFIED (omitted/transformed source records)\nOmitted chained  : 1\nTransformed rows : 6 (source payload/signature not verified)\nProjection limits: policy/transformation metadata is exporter-declared\nChain-head match : n/a (source boundary, not delivered subset)\nSeal             : SEALED (export 00000000-0000-4000-8000-000000000027; it follows the delivered chain directly)\n                   rows before it and the manifest are as exported\nSignatures       : 16 verified\nSigner           : op-golden  sha256:5df840e88a41a05b32c8c076086ae442d696f8556d8e3452d2738f96722e8e0d\n  compare these fingerprints with the operator out of band;\n  a key taken from this bundle only proves the bundle agrees with itself\nLogged tier      : 3 rows present in events_logged.jsonl\n                   (not chained or signed; digest not comparable (the delivered logged tier is a subset or transformed); bytes sealed by the export)\nReceiver stamp   : events.jsonl: 0 proven, 20 self-described, 0 cannot be determined\n                   events_logged.jsonl: 3 self-described, 0 cannot be determined\n                   proven: the row and its session's session_start both carry _ingest, under checked hashes\n                   self-described: no stamp, a session_start without one, or a row not hashed one by one\n                   these counts do not change the verdict or the exit code\nAttachments      : 0 match the digest recorded at capture\nManifest files   : 5 verified (sha256 matches)\n",
       "stderr": ""
     }
   }

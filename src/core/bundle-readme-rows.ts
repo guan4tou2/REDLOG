@@ -1,7 +1,9 @@
-// The bundle README's section on what RedLog adds to a row (Spec 071 FR-097).
-// A module of its own so test/bundle-readme-rows.test.ts can check the reading
-// rule and the worked examples it states against what the writer and
-// restoreDataDepth do: the README is read by a recipient who has only it.
+// The bundle README's section on what RedLog adds to a row (Spec 071 FR-097)
+// and how the verifier counts its receiver provenance (FR-022–024). A module
+// of its own so test/bundle-readme-rows.test.ts can check the reading rule,
+// the worked examples and the three states it states against what the writer,
+// restoreDataDepth and receiverProvenance do: the README is read by a
+// recipient who has only it.
 
 export const ROW_ADDITIONS_README: readonly string[] = [
   '## What RedLog adds to a row',
@@ -47,5 +49,25 @@ export const ROW_ADDITIONS_README: readonly string[] = [
   'whole by its SHA-256 in `manifest.json`, which the seal signs, and',
   '`tiers.loggedDigest` there records the row count and SHA-256 of the',
   'logged tier as RedLog held it at export.',
+  '',
+  '### Receiver provenance',
+  '',
+  'The verifier counts each row as one of three:',
+  '',
+  '- **proven**: a row of `events.jsonl` that carries `_ingest`, whose',
+  '  session\'s `system` `session_start` rows in `events.jsonl` all carry it',
+  '  too, and the export transformed none of them. RedLog writes that row',
+  '  when a project is opened. Versions that did not stamp it did not remove',
+  '  an `_ingest` a sender supplied either, so a stamp alone does not show',
+  '  that RedLog wrote it.',
+  '- **self-described**: every other row whose session has a `session_start`',
+  '  in `events.jsonl`: a row with no stamp, a row of a session whose start',
+  '  has none, a row the export transformed, and every row of',
+  '  `events_logged.jsonl`, whose stamp is not protected row by row.',
+  '- **cannot be determined**: `events.jsonl` holds no `session_start` of the',
+  '  row\'s `session_id`. An export of selected rows can leave it out; one of',
+  '  search results, of an activity or of a source session does.',
+  '',
+  'The counts do not change the verdict or the exit code.',
   ''
 ]
