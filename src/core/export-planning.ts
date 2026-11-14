@@ -1,8 +1,8 @@
 import type { ProjectMeta } from './project-manager'
 import { loadConfig, snapshotScope } from './config'
 import { getDoNotExportIds } from './db/do-not-export'
-import { isOutOfScope, isPersonalDomain } from './scope-sanitize'
-import { redactEventForExport, type RedactExportOpts } from './redact-export'
+import { isOutOfScope, isPersonalDomain, isUnclassifiedScope } from './scope-sanitize'
+import { redactEventForExport, scopeMaskChanges, type RedactExportOpts } from './redact-export'
 import { iterateExportSelection, iterateSnapshotEvents } from './export-selection'
 import { capabilitiesFor } from './export-capabilities'
 import { listExportAttachments, exportAttachmentDigest, withFrozenSizes } from './export-attachments'
@@ -39,6 +39,7 @@ export function buildExportPlan(project: ProjectMeta, rawRequest: ExportRequest)
   let excludedDoNotExport = 0
   let excludedPersonal = 0
   let maskedOutOfScope = 0
+  let maskedUnclassified = 0
   let sanitized = 0
   const selectedEventIds: string[] = []
   const selectedIdSet = new Set<string>()
@@ -67,6 +68,10 @@ export function buildExportPlan(project: ProjectMeta, rawRequest: ExportRequest)
     selectedEventIds.push(event.id)
     selectedIdSet.add(event.id)
     if (request.maskOutOfScope && isOutOfScope(event.targetId, scope)) maskedOutOfScope++
+    // A row with no target is masked like an out-of-scope one when the scope
+    // has targets. Counted only when the mask changed it: a targetless row with
+    // nothing maskable is delivered as recorded.
+    if (request.maskOutOfScope && isUnclassifiedScope(event.targetId, scope) && scopeMaskChanges(event.data, event.targetId, scope)) maskedUnclassified++
     if (redacted.data !== event.data) sanitized++
     outOfScopeHttpFlows.add(redacted)
     referencedAttachments?.add(redacted)
@@ -120,6 +125,9 @@ export function buildExportPlan(project: ProjectMeta, rawRequest: ExportRequest)
       excludedPersonal,
       outOfScopeHttpFlows: outOfScopeHttpFlows.done(),
       maskedOutOfScope,
+      // Present only when non-zero, so a plan with nothing unclassified keeps
+      // the counts, fingerprint and manifest it had before this was counted.
+      ...(maskedUnclassified > 0 ? { maskedUnclassified } : {}),
       sanitized,
       attachmentsIncluded: attachmentCounts.included,
       attachmentsMissing: attachmentCounts.missing,

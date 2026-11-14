@@ -24,12 +24,22 @@ function planScopeSet(plan: { scopeSnapshot?: { targets?: string[]; excludeTarge
   return (plan.scopeSnapshot?.targets ?? []).length > 0 || (plan.scopeSnapshot?.excludeTargets ?? []).length > 0
 }
 
+/** What masking does to command output for this plan (scope-sanitize.ts):
+ *  out-of-scope targets lose their output; with scope targets, so does a
+ *  command that names no target; command text is never masked. */
+function commandsNote(plan: Pick<ResolvedExportPlan, 'request' | 'scopeSnapshot'>, t: (key: string) => string): string {
+  if (!plan.request.maskOutOfScope || !planScopeSet(plan)) return t('export.commandsUnmasked')
+  return (plan.scopeSnapshot?.targets ?? []).length > 0 ? t('export.commandsMasked') : t('export.commandsMaskedExcludedOnly')
+}
+
 /** What the preview says about scope, in the two places it is easy to assume
- *  wrongly: an empty scope is not "everything verified in scope", and the web
- *  scope does not select commands. Module scope on purpose — declared inside
- *  ExportMenu it would remount on every render. */
-function ScopeNotes({ scopeSet, onSetScope, t }: {
+ *  wrongly: an empty scope is not "everything verified in scope", and what the
+ *  scope does to commands. HAR carries no commands, so it has no note about
+ *  them. Module scope on purpose — declared inside ExportMenu it would remount
+ *  on every render. */
+function ScopeNotes({ scopeSet, commandsNote, onSetScope, t }: {
   scopeSet: boolean
+  commandsNote: string | null
   onSetScope?: () => void
   t: (key: string, vars?: Record<string, string | number>) => string
 }): JSX.Element {
@@ -45,7 +55,7 @@ function ScopeNotes({ scopeSet, onSetScope, t }: {
           )}
         </div>
       )}
-      <p data-testid="export-commands-note" className="text-redlog-text-faint">{t('export.commandsNotScoped')}</p>
+      {commandsNote && <p data-testid="export-commands-note" className="text-redlog-text-faint">{commandsNote}</p>}
     </div>
   )
 }
@@ -595,6 +605,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                         was hardcoded 0 - both are gone rather than guessed. */}
                     <ScopeNotes
                       scopeSet={planScopeSet(resolvedPlan)}
+                      commandsNote={resolvedPlan.request.format === 'har' ? null : commandsNote(resolvedPlan, t)}
                       onSetScope={onOpenScopeSettings && !busy ? () => { closeAll(); onOpenScopeSettings() } : undefined}
                       t={t}
                     />
@@ -603,6 +614,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
                     <PreviewRow label={t('export.preview.total')} value={resolvedPlan.counts.examined} />
                     {(resolvedPlan.counts.outOfScopeHttpFlows ?? 0) > 0 && <PreviewRow label={t('export.preview.outOfScopeHttp')} value={resolvedPlan.counts.outOfScopeHttpFlows!} warn />}
                     {planScopeSet(resolvedPlan) && <PreviewRow label={t('export.preview.outOfScope')} value={resolvedPlan.counts.maskedOutOfScope} warn />}
+                    <PreviewRow label={t('export.preview.unclassified')} value={resolvedPlan.counts.maskedUnclassified ?? 0} warn />
                     <PreviewRow label={t('export.preview.dropped')} value={resolvedPlan.counts.excludedDoNotExport} warn />
                     <PreviewRow label={t('export.preview.personalDropped')} value={resolvedPlan.counts.excludedPersonal} warn />
                     <PreviewRow label={t('export.preview.sanitized')} value={resolvedPlan.counts.sanitized} />

@@ -96,9 +96,62 @@ describe('the export preview shows only what the plan measured', () => {
     expect(screen.queryByTestId('export-scope-unset')).toBeNull()
   })
 
-  it('always says commands are not filtered by the web scope', async () => {
+  // The note used to say commands and their output were not filtered by web
+  // scope, while the export replaced the output of every command that was out
+  // of scope or named no target. It now says what each state does.
+  describe('the commands note says what this export does to command output', () => {
+    const note = (): string => screen.getByTestId('export-commands-note').textContent ?? ''
+    const noScope = { targets: [], excludeTargets: [], personalDomains: [] }
+
+    it('masking on with scope targets: text kept, output of out-of-scope or targetless commands replaced', async () => {
+      await draw(plan())
+      expect(note()).toBe('Command text is kept; output is replaced with a marker when the target is out of scope or not detected.')
+    })
+
+    it('masking on with exclusions only: only an excluded target loses its output', async () => {
+      await draw(plan({ scopeSnapshot: { targets: [], excludeTargets: ['login.corp.local'], personalDomains: [] } }))
+      expect(note()).toBe('Command text is kept; output is replaced with a marker when the target is excluded.')
+    })
+
+    it('masking off, or no scope: nothing is masked by scope, and no more is claimed', async () => {
+      await draw(plan({ request: { format: 'json', subset: { kind: 'all' }, maskOutOfScope: false, scopeOnly: false, scrubPii: false } }))
+      expect(note()).toBe('Command output is not masked by scope.')
+      cleanup()
+      await draw(plan({ scopeSnapshot: noScope }))
+      expect(note()).toBe('Command output is not masked by scope.')
+    })
+
+    it('is not shown for HAR, which carries no commands', async () => {
+      await draw(plan({
+        capabilities: { snapshot: true, boundedSubset: true, scopeMasking: 'always', piiScrubbing: false, attachments: false },
+        request: { format: 'har', subset: { kind: 'all' }, maskOutOfScope: true, scopeOnly: false, scrubPii: false }
+      }))
+      expect(screen.queryByTestId('export-commands-note')).toBeNull()
+    })
+
+    it('the old sentence is gone in every state', async () => {
+      for (const p of [plan(), plan({ scopeSnapshot: noScope }),
+        plan({ request: { format: 'json', subset: { kind: 'all' }, maskOutOfScope: false, scopeOnly: false, scrubPii: false } })]) {
+        await draw(p)
+        expect(screen.getByRole('dialog').textContent).not.toMatch(/not filtered by web scope/)
+        cleanup()
+      }
+    })
+  })
+
+  it('counts events with no target whose content was masked, and only when there are any', async () => {
+    await draw(plan({ counts: { ...plan().counts, maskedUnclassified: 3 } }))
+    expect(screen.getByRole('dialog').textContent).toMatch(/No target \(content masked\)\s*3/)
+    cleanup()
     await draw(plan())
-    expect(screen.getByTestId('export-commands-note').textContent).toMatch(/Commands and their output are not filtered by web scope/)
+    expect(screen.getByRole('dialog').textContent).not.toMatch(/No target/)
+  })
+
+  it('labels the sanitized count as events changed, not fields', async () => {
+    await draw(plan())
+    const panel = screen.getByRole('dialog').textContent ?? ''
+    expect(panel).toMatch(/Events with content changed\s*2/)
+    expect(panel).not.toMatch(/Fields redacted/)
   })
 
   it('shows no invented in-scope or screenshot counts', async () => {

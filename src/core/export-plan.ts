@@ -70,6 +70,10 @@ export interface ExportCounts {
   excludedPersonal: number
   outOfScopeHttpFlows?: number
   maskedOutOfScope: number
+  /** Events with no target whose content the mask replaced: a scope with
+   *  targets was set and masking was on. Absent when zero. */
+  maskedUnclassified?: number
+  /** Events whose data was changed for delivery, by any redaction. */
   sanitized: number
   attachmentsIncluded: number
   attachmentsMissing: number
