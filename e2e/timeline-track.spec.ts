@@ -807,6 +807,122 @@ test.describe.serial('timeline-virtualisation', () => {
   })
 })
 
+// Dense, evenly spaced traffic: 300 flows in 50 minutes. Buckets were 14px
+// apart and every counted badge 16–24px wide, so each covered half of the next
+// — "10" read as "1" and the click went to the neighbour. Marks in one lane
+// must now sit apart, and each badge's number must fit inside it.
+//
+// One unit family only: `offsetLeft` / `offsetWidth` (CSS px). The mark is the
+// button's first child and the button is its offsetParent, so its left on the
+// track is the sum of the two offsets. Never a bounding rect: body is zoomed.
+interface MarkBox { top: number; left: number; right: number; hitLeft: number; hitRight: number; count: number; text: string; scroll: number; client: number; textW: number }
+const markBoxes = (p: Page): Promise<MarkBox[]> => p.evaluate(() =>
+  Array.from(document.querySelectorAll('[data-timeline-event]')).map((el) => {
+    const btn = el as HTMLElement
+    const mark = btn.querySelector('[data-timeline-mark]') as HTMLElement
+    const text = mark.textContent ?? ''
+    const span = mark.firstElementChild as HTMLElement | null
+    const n = /(\d+)/.exec(btn.getAttribute('aria-label') ?? '')
+    return {
+      top: btn.offsetTop + mark.offsetTop,
+      left: btn.offsetLeft + mark.offsetLeft,
+      right: btn.offsetLeft + mark.offsetLeft + mark.offsetWidth,
+      hitLeft: btn.offsetLeft,
+      hitRight: btn.offsetLeft + btn.offsetWidth,
+      // A lone dot has no number; its accessible name starts with a time.
+      count: text ? Number(n?.[1] ?? NaN) : 1,
+      text,
+      scroll: mark.scrollWidth,
+      client: mark.clientWidth,
+      textW: span?.offsetWidth ?? 0
+    }
+  }))
+
+/** Problems with the marks on screen: overlaps per lane, and counts that do not fit. */
+function spacingProblems(marks: MarkBox[]): string[] {
+  const bad: string[] = []
+  const lanes = new Map<number, MarkBox[]>()
+  for (const m of marks) lanes.set(m.top, [...(lanes.get(m.top) ?? []), m])
+  for (const lane of lanes.values()) {
+    lane.sort((a, b) => a.left - b.left)
+    for (let i = 1; i < lane.length; i++) {
+      const prev = lane[i - 1]
+      const next = lane[i]
+      if (next.left < prev.right) bad.push(`overlap at ${prev.left}..${prev.right} / ${next.left}..${next.right}`)
+      // offset* round to whole pixels; touching hit areas may round 1px over.
+      if (next.hitLeft < prev.hitRight - 1) bad.push(`hit areas overlap at ${prev.hitRight} / ${next.hitLeft}`)
+    }
+  }
+  for (const m of marks) {
+    if (m.text && m.text !== String(m.count)) bad.push(`badge at ${m.left} says "${m.text}" for ${m.count} events`)
+    if (m.scroll > m.client || m.textW > m.client) bad.push(`"${m.text}" at ${m.left} clipped: ${m.textW}/${m.scroll} in ${m.client}`)
+  }
+  return bad
+}
+
+test.describe.serial('timeline-cluster-spacing: dense marks do not overlap', () => {
+  test.beforeAll(async () => {
+    test.setTimeout(180_000)
+    await resetShared()
+    await openTestProject(page, 'cluster-spacing')
+    await page.waitForTimeout(1000)
+    const base = `http://127.0.0.1:${readFileSync(join(tmpHome, '.redlog', 'api-port'), 'utf-8').trim()}`
+    const token = readFileSync(join(tmpHome, '.redlog', 'api-token'), 'utf-8').trim()
+    const now = Date.now()
+    for (let i = 0; i < 300; i++) {
+      const r = await fetch(`${base}/api/events/seed`, { method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ agent_type: 'scanner', data: {
+          subtype: 'http_response', flow_id: `cs${i}`, method: 'GET', url: `https://app.example/p/${i}`,
+          status: 200, content_length: 120, duration_ms: 30, source_timestamp: now - (300 - i) * 10_000
+        } }) })
+      expect(r.ok, `seed ${i}: ${r.status}`).toBe(true)
+    }
+    await openView(page, 'timeline')
+    await page.getByTestId('timeline-more-menu').waitFor({ state: 'visible', timeout: 10_000 })
+    if (await timelineMode(page) !== 'standard') await setTimelineMode(page, 'standard')
+  })
+
+  for (const [w, h] of [[1400, 900], [800, 500]] as const) {
+    test(`standard track at ${w}x${h}: marks sit apart and every count fits`, async () => {
+      try {
+        await resizeMainWindow(app, w, h)
+        await resetTimelineZoom(page)
+        await page.waitForTimeout(800)
+        await expect.poll(async () => (await markBoxes(page)).length).toBeGreaterThan(1)
+        const marks = await markBoxes(page)
+        console.log(`[DBG] ${w}x${h}: ${marks.length} marks, ${marks.reduce((a, m) => a + m.count, 0)} events`)
+        expect(marks.some((m) => m.count > 1), 'dense data should still cluster').toBe(true)
+        expect(spacingProblems(marks)).toEqual([])
+        // Zoomed in, the clusters split and re-merge: the rule still holds.
+        await page.getByRole('button', { name: /Zoom in|放大/ }).click()
+        await page.waitForTimeout(600)
+        expect(spacingProblems(await markBoxes(page))).toEqual([])
+      } catch (e) {
+        console.log(`[DBG] ${(e as Error).message.split('\n').slice(0, 5).join(' | ')}`)
+        throw e
+      }
+    })
+  }
+
+  test('swim lanes at 1400x900: marks in each lane sit apart', async () => {
+    try {
+      await resizeMainWindow(app, 1400, 900)
+      await setTimelineMode(page, 'lanes')
+      await resetTimelineZoom(page)
+      await page.waitForTimeout(800)
+      const marks = await markBoxes(page)
+      expect(marks.length).toBeGreaterThan(1)
+      expect(spacingProblems(marks)).toEqual([])
+    } catch (e) {
+      console.log(`[DBG] ${(e as Error).message.split('\n').slice(0, 5).join(' | ')}`)
+      throw e
+    } finally {
+      await setTimelineMode(page, 'standard')
+    }
+  })
+})
+
 // Stitch 05 重點視窗: the viewport frame on the density strip is a handle. Its
 // body pans the track; a grip resizes it and the zoom follows on release.
 // Positions come from boundingBox(), which is in the same space page.mouse

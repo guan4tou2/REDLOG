@@ -36,7 +36,7 @@ import { usePersistentState } from '../lib/usePersistentState'
 import { parseTimelineMode, type TimelineMode } from '../lib/timelineMode'
 import { pairedToolHalf } from '../lib/toolPairing'
 import { nextSelection } from '../lib/timelineSelection'
-import { computeMaxZoom, buildClusters, filterVisibleClusters, type TimelineCluster } from '../lib/timelineGeometry'
+import { computeMaxZoom, buildClusters, filterVisibleClusters, clusterBadgeSize, SINGLE_DOT_PX, MARK_HIT_PX, type TimelineCluster } from '../lib/timelineGeometry'
 import { buildTimeMap, computeDomainBounds, computeBins, densestRun, placeRulerMarkers, tickLabelAlign, type TimeMap } from '../lib/timelineTimeMap'
 import { binRange, densityAreaPath, dragMinimapWindow, peakBin, type MinimapWindow, type WindowGrip } from '../lib/minimapWindow'
 import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
@@ -1157,9 +1157,15 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
   // re-binding on every density change.
   const maxZoomRef = useRef(maxZoom)
   useEffect(() => { maxZoomRef.current = maxZoom }, [maxZoom])
+  // A lone event's dot as the track draws it, so clustering merges exactly the
+  // marks that would overlap (severity enlarges a dot, a subagent turn indents it).
+  const singleMark = useCallback((e: RedLogEvent) => ({
+    w: Math.round(SINGLE_DOT_PX * dotShape(e, foldById.get(e.id)?.effective.severity).scale),
+    dx: subagentIndentPx(e)
+  }), [foldById])
   const clusters = useMemo(
-    () => buildClusters(visibleRows, rowEvents, toX, laneH, CLUSTER_PX, pluginTypes),
-    [visibleRows, rowEvents, toX, laneH, pluginTypes]
+    () => buildClusters(visibleRows, rowEvents, toX, laneH, CLUSTER_PX, pluginTypes, singleMark),
+    [visibleRows, rowEvents, toX, laneH, pluginTypes, singleMark]
   )
 
   // Only terminal ends and recording pauses make a band; the domain moves on
@@ -2487,16 +2493,18 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
                   // lists members individually, so per-event emphasis there
                   // would fight the count glyph.
                   const marks = single ? dotShape(evt, foldById.get(evt.id)?.effective.severity) : { shape: 'circle' as DotShape, scale: 1 }
-                  const dot = single
-                    ? Math.round(9 * marks.scale)
-                    : Math.min(24, 13 + Math.round(Math.log2(c.events.length) * 3))
+                  // The mark's size comes from the clustering (c.w), which
+                  // merged every pair of marks that would have overlapped. A
+                  // badge is as tall as it always was and widens for digits.
+                  const dot = single ? c.w : clusterBadgeSize(c.events.length)
                   // 27, not 24: the dot is a button, and 24 CSS px renders at
                   // 21.6 device px under `body { zoom: 0.9 }`. The visual dot
                   // keeps its own size (`dot`); this is only the transparent
                   // hit area around it, so a small dot is still easy to click.
-                  // Dots closer than CLUSTER_PX already overlapped at 24 and
-                  // still do: the later one (or the selected, z 10) wins.
-                  const hit = Math.max(27, dot + 8)
+                  // Its width (c.hitW) stops halfway to a closer neighbour, so
+                  // one mark's hit area never covers the next mark.
+                  const hit = Math.max(MARK_HIT_PX, dot + 8)
+                  const hitW = c.hitW
                   // v0.6.89.5: filter dimming. Focus-chain and filter query
                   // are mutually exclusive (enforced by the effects above), so
                   // at most one branch fires. A cluster is "active" (not
@@ -2531,7 +2539,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
                   // hangs off its parent main-thread turn rather than
                   // clobbering it. Only applies to single-event dots
                   // (clusters already visually distinct via count label).
-                  const indent = single ? subagentIndentPx(evt) : 0
+                  const indent = c.dx
                   // v0.11.6 (AUDIT V9): a real button, not a div.
                   //
                   // These were plain divs with a click handler — no role, no
@@ -2564,9 +2572,9 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
                       aria-pressed={sel || undefined}
                       className="absolute cursor-pointer flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 rounded"
                       style={{
-                        left: c.x - hit / 2 + indent,
+                        left: c.x - hitW / 2 + indent,
                         top: c.y - hit / 2,
-                        width: hit,
+                        width: hitW,
                         height: hit,
                         zIndex: sel ? 10 : 2,
                         opacity: dimmed ? 0.15 : 1,
@@ -2602,9 +2610,10 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
                       }}
                     >
                       <div
-                        className={dimmed ? 'flex items-center justify-center' : 'flex items-center justify-center transition-transform hover:scale-125'}
+                        data-timeline-mark
+                        className={dimmed ? 'shrink-0 flex items-center justify-center' : 'shrink-0 flex items-center justify-center transition-transform hover:scale-125'}
                         style={{
-                          width: dot, height: dot,
+                          width: c.w, height: dot,
                           // diamond = a square turned 45°; ring = hollow.
                           borderRadius: !single ? 5 : marks.shape === 'diamond' ? 2 : '50%',
                           backgroundColor: marks.shape === 'ring' ? 'transparent' : LANE_COLORS[c.lane],
@@ -2625,7 +2634,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
                               : `0 0 6px ${LANE_COLORS[c.lane]}40`
                         }}
                       >
-                        {!single && <span style={{ fontSize: 11, fontWeight: 800, color: 'rgba(0,0,0,0.78)', lineHeight: 1 }}>{c.events.length}</span>}
+                        {!single && <span style={{ fontSize: 11, fontWeight: 800, color: 'rgba(0,0,0,0.78)', lineHeight: 1, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{c.events.length}</span>}
                       </div>
                       {/* v0.9.6 (T3): I/O texture on single shell command_end
                           dots. A 3px notch = output exists on disk; amber =
@@ -2650,7 +2659,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
                               <span
                                 style={{
                                   position: 'absolute',
-                                  left: hit / 2 + dot / 2 - 3, top: hit / 2 + dot / 2 - 3,
+                                  left: hitW / 2 + dot / 2 - 3, top: hit / 2 + dot / 2 - 3,
                                   width: 3, height: 3, borderRadius: '50%',
                                   background: IO_MARK_COLOR[m.io],
                                   pointerEvents: 'none'
