@@ -15,7 +15,7 @@ import { BODY_REF_FIELDS, type BodyRef } from './http-body-store'
 import { withVerifiedBody, withVerifiedSavedFile, savedFileRefs, withInlineBase64, ContentAccessError, type ByteSource, type SavedFileRef } from './body-source'
 const INDEX_CHUNK_BYTES = 1024 * 1024
 const INDEX_OVERLAP_CHARS = 65536
-const INDEX_VERSION = 10
+const INDEX_VERSION = 11
 let index: Database.Database | null = null, indexDir: string | null = null
 function getIndex(projectDir = getProjectDir()): Database.Database {
   if (index && indexDir === projectDir)
@@ -35,7 +35,8 @@ function getIndex(projectDir = getProjectDir()): Database.Database {
   // coverage needs per ref (engagement, source row, order, source bytes), so
   // coverage reads this table instead of re-deriving every row's refs. v10
   // keys a ref by its event and the field it is in (its slot), not by its
-  // hash: a request and a response with the same bytes are two refs.
+  // hash: a request and a response with the same bytes are two refs. v11
+  // gives each ref an id of its own, never reused.
   // An older index is rebuilt once, from the source rows, at the next search.
   // The schema is written in one transaction, and an index already current is
   // opened without a write: each commit is a flush, slow on Windows.
@@ -298,8 +299,8 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
   if (refs.length) atomic(() => {
     for (const [pos, ref] of refs.entries()) {
       let status = 'indexed', bytes = 0, reason = '',availableBytes=0, wrote = false
-      const prior = stmt(db, `SELECT status,reason,tier,row,pos,verified_desc,verified_file,verified_sig FROM ${t.refs} WHERE event_id=? AND slot=?`).get(event.id, ref.slot) as {
-        status: string; reason: string; tier: Tier | null; row: number | null; pos: number; verified_desc: string | null; verified_file: string | null; verified_sig: string | null
+      const prior = stmt(db, `SELECT ref,status,reason,tier,row,pos,verified_desc,verified_file,verified_sig FROM ${t.refs} WHERE event_id=? AND slot=?`).get(event.id, ref.slot) as {
+        ref: number; status: string; reason: string; tier: Tier | null; row: number | null; pos: number; verified_desc: string | null; verified_file: string | null; verified_sig: string | null
       } | undefined
       const file = refFile(ref, projectDir)
       const body = ref.kind === 'body' ? ref : null
@@ -405,17 +406,20 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
       const final = FINAL_STATUSES.has(status)
       const size = Number.isSafeInteger(ref.size) ? ref.size : 0
       const sourceBytes = sourceBytesOf(ref)
-      stmt(db, `INSERT INTO ${t.refs} VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(event_id,slot) DO UPDATE SET
-    sha256=excluded.sha256,file=excluded.file,size=excluded.size,encoding=excluded.encoding,status=excluded.status,indexed_bytes=excluded.indexed_bytes,reason=excluded.reason,kind=excluded.kind,available_bytes=excluded.available_bytes,
-    tier=coalesce(excluded.tier,${t.refs}.tier),verified_desc=excluded.verified_desc,verified_file=excluded.verified_file,verified_sig=excluded.verified_sig,
-    engagement_id=coalesce(excluded.engagement_id,${t.refs}.engagement_id),row=coalesce(excluded.row,${t.refs}.row),pos=excluded.pos,source_bytes=excluded.source_bytes
-    -- A missing or failed ref retried with the same outcome changes nothing:
-    -- no write, so a search that finds nothing new commits nothing.
-    WHERE (sha256,file,size,encoding,status,indexed_bytes,reason,kind,available_bytes,verified_desc,verified_file,verified_sig,pos,source_bytes)
-      IS NOT (excluded.sha256,excluded.file,excluded.size,excluded.encoding,excluded.status,excluded.indexed_bytes,excluded.reason,excluded.kind,excluded.available_bytes,
-        excluded.verified_desc,excluded.verified_file,excluded.verified_sig,excluded.pos,excluded.source_bytes)
-      OR coalesce(excluded.tier,tier) IS NOT tier OR coalesce(excluded.row,row) IS NOT row OR coalesce(excluded.engagement_id,engagement_id) IS NOT engagement_id`).run(event.id, ref.slot, ref.sha256, ref.file, size, String(ref.encoding ?? 'unknown'), status, bytes, reason, ref.kind,availableBytes,
-        tier, final ? desc : null, final && status !== 'pending' ? file : null, final && status !== 'pending' ? sig : null, source.engagementId, source.row, pos, sourceBytes)
+      const values = { ref: prior?.ref ?? null, event: event.id, slot: ref.slot, sha256: ref.sha256, file: ref.file, size, encoding: String(ref.encoding ?? 'unknown'), status,
+        bytes, reason, kind: ref.kind, available: availableBytes, tier, desc: final ? desc : null, verifiedFile: final && status !== 'pending' ? file : null,
+        sig: final && status !== 'pending' ? sig : null, engagement: source.engagementId, row: source.row, pos, sourceBytes }
+      // An existing ref is updated by its id, never upserted: an upsert that
+      // changes nothing still takes an AUTOINCREMENT id, and writes.
+      if (values.ref === null) stmt(db, `INSERT INTO ${t.refs}(event_id,slot,sha256,file,size,encoding,status,indexed_bytes,reason,kind,available_bytes,tier,verified_desc,verified_file,verified_sig,engagement_id,row,pos,source_bytes)
+    VALUES(@event,@slot,@sha256,@file,@size,@encoding,@status,@bytes,@reason,@kind,@available,@tier,@desc,@verifiedFile,@sig,@engagement,@row,@pos,@sourceBytes)`).run(values)
+      // A missing or failed ref retried with the same outcome changes nothing:
+      // no write, so a search that finds nothing new commits nothing.
+      else stmt(db, `UPDATE ${t.refs} SET sha256=@sha256,file=@file,size=@size,encoding=@encoding,status=@status,indexed_bytes=@bytes,reason=@reason,kind=@kind,available_bytes=@available,
+    tier=coalesce(@tier,tier),verified_desc=@desc,verified_file=@verifiedFile,verified_sig=@sig,engagement_id=coalesce(@engagement,engagement_id),row=coalesce(@row,row),pos=@pos,source_bytes=@sourceBytes
+    WHERE ref=@ref AND ((sha256,file,size,encoding,status,indexed_bytes,reason,kind,available_bytes,verified_desc,verified_file,verified_sig,pos,source_bytes)
+      IS NOT (@sha256,@file,@size,@encoding,@status,@bytes,@reason,@kind,@available,@desc,@verifiedFile,@sig,@pos,@sourceBytes)
+      OR coalesce(@tier,tier) IS NOT tier OR coalesce(@row,row) IS NOT row OR coalesce(@engagement,engagement_id) IS NOT engagement_id)`).run(values)
     }
   })
   return refs
@@ -584,10 +588,12 @@ function recheck(projectDir: string): boolean {
   }
   return true
 }
-const REF_COLUMNS = `event_id TEXT NOT NULL,slot TEXT NOT NULL,sha256 TEXT NOT NULL,file TEXT NOT NULL,size INTEGER NOT NULL,encoding TEXT NOT NULL,
+// `ref`: the ref's own id, never reused (AUTOINCREMENT): a new ref that took
+// a dead ref's id would take any of its documents that were not removed.
+const REF_COLUMNS = `ref INTEGER PRIMARY KEY AUTOINCREMENT,event_id TEXT NOT NULL,slot TEXT NOT NULL,sha256 TEXT NOT NULL,file TEXT NOT NULL,size INTEGER NOT NULL,encoding TEXT NOT NULL,
      status TEXT NOT NULL,indexed_bytes INTEGER NOT NULL,reason TEXT NOT NULL,kind TEXT NOT NULL,available_bytes INTEGER NOT NULL,
      tier TEXT,verified_desc TEXT,verified_file TEXT,verified_sig TEXT,
-     engagement_id TEXT,row INTEGER,pos INTEGER NOT NULL,source_bytes INTEGER NOT NULL,PRIMARY KEY(event_id,slot)`
+     engagement_id TEXT,row INTEGER,pos INTEGER NOT NULL,source_bytes INTEGER NOT NULL,UNIQUE(event_id,slot)`
 const hasExtraTables = (db: Database.Database): boolean =>
   stmt(db, "SELECT 1 FROM sqlite_temp_master WHERE type='table' AND name='body_x_refs'").get() !== undefined
 function ensureExtraTables(db: Database.Database): void {
