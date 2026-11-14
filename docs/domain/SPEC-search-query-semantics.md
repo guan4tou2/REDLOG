@@ -228,9 +228,13 @@ nothing. Joining a command's rows was not decided (2026-11-15).
   Opening an older snapshot still reads that confirmed prefix. Capture-start
   without a snapshot and extra unconfirmed bytes are pending; no vendor path is
   scanned. Raw files have file precision, not per-message attribution. Tool,
-  transcript, Event, operator, source, target, time, scope, privacy and tier
+  transcript, Event, operator, source, target, time, scope and tier
   conditions exclude raw full-text matches with unsupported coverage. Stored
-  Event matches continue through the canonical predicates.
+  Event matches continue through the canonical predicates. Hidden non-work
+  traffic (`hidePersonal`, on by default) does not exclude them, on or off,
+  and coverage lists it neither as applied to them nor as unsupported
+  (decision 2026-11-15 §3, as for recordings): non-work text a conversation
+  holds can show.
 - Each query reports source classes, representation, revision, byte coverage,
   filter applicability and pending/partial/unsupported/failed/unavailable
   states. Missing or changed sources lose their derived full text. Output held only in

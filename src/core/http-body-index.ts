@@ -767,13 +767,19 @@ export function pruneSavedFileIndex(file:string, projectDir=getProjectDir()):voi
     if(path.resolve(projectDir,ref.file)===absolute)dropExtra(db,ref.event_id)
   forgetMark(db)})()
 }
-/** A raw snapshot spans its Session prefix, not individual target/time/tool rows. */
+/** A raw snapshot spans its Session prefix, not individual target/time/tool rows.
+ *  Hidden non-work traffic is not among them: it is on by default, and raw
+ *  transcripts are searched whatever it says, as recordings are (decision
+ *  2026-11-15 §3), at the cost that non-work text in a conversation can show. */
 export function rawTranscriptFiltersUnsupported(conditions: readonly {field:string}[], filter?: {
-  targetId?:unknown;since?:unknown;before?:unknown;inScopeOnly?:unknown;hidePersonal?:unknown;tier?:unknown
+  targetId?:unknown;since?:unknown;before?:unknown;inScopeOnly?:unknown;tier?:unknown
 }): boolean {
   return conditions.some(c=>['tool','transcript','event','operator','source'].includes(c.field)) || Boolean(filter &&
-    (filter.targetId || filter.since != null || filter.before != null || filter.inScopeOnly || filter.hidePersonal || filter.tier))
+    (filter.targetId || filter.since != null || filter.before != null || filter.inScopeOnly || filter.tier))
 }
+/** Filter keys that say nothing about a raw transcript: neither applied to it
+ *  nor a reason to leave it out (rawTranscriptFiltersUnsupported). */
+const RAW_IGNORED = ['hidePersonal', 'personalDomains']
 /** For each term of `query` (as ftsTerms quotes it: a phrase, the last one a
  *  prefix), the events that have a body document containing it. A term is
  *  matched within one document; different terms may sit in different
@@ -888,14 +894,14 @@ export function bodySearchCoverage(snapshot?: ExportSnapshot, projectId?: string
   const coverage: BodySearchCoverage = {projectId:projectId??null,boundary:snapshot,revision:'',indexed:0,missing:0,binary:0,limited:0,partial:0,pending:0,failed:0,indexedBytes:0,sourceBytes:0,unsupported:0,sources:[]}
   const applied = [...(options?.parsed?.conditions.map(c=>c.field)??[]),
     ...Object.entries(options?.filter??{}).filter(([,v])=>v!=null&&v!==false&&v!=='').map(([key])=>key)].sort()
-  const rawUnsupported = applied.filter(key=>['tool','transcript','event','operator','source','targetId','since','before','inScopeOnly','hidePersonal','tier'].includes(key))
+  const rawUnsupported = applied.filter(key=>['tool','transcript','event','operator','source','targetId','since','before','inScopeOnly','tier'].includes(key))
   const groups = new Map<string,SearchCoverageSource>()
   const hashes = new Map<string,ReturnType<typeof createHash>>()
   for (const kind of ['events','body','artifact','ai-raw'] as const) {
     const unsupported = kind==='ai-raw'?rawUnsupported:[]
     groups.set(kind,{kind,status:'covered',revision:'',indexed:0,missing:0,binary:0,pending:0,failed:0,unsupported:0,limited:0,partial:0,indexedBytes:0,sourceBytes:0,
       representation:kind==='events'?'decoded-event-json':kind==='ai-raw'?'confirmed-jsonl-prefix':'saved-bytes',precision:kind==='events'?'event':'file',
-      filters:{applied:applied.filter(key=>!unsupported.includes(key)),unsupported}})
+      filters:{applied:applied.filter(key=>!unsupported.includes(key)&&!(kind==='ai-raw'&&RAW_IGNORED.includes(key))),unsupported}})
     hashes.set(kind,createHash('sha256').update(`saved-index-v${INDEX_VERSION}`).update(JSON.stringify([applied,unsupported])))
   }
   const eventGroup=groups.get('events')!,eventHash=hashes.get('events')!
