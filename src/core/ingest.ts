@@ -95,7 +95,7 @@ export interface IngestInput {
   engagementId: string
   targetId?: string
   bypassPause?: boolean
-  /** Envelope: raw bytes / ref, mapper, producer id, producer timestamp. */
+  /** Envelope: raw bytes / ref, producer timestamp. */
   envelope?: EnvelopeInput
   /** When the reported thing actually happened at the source, if the producer
    *  knows and it is not simply "now" — a replayed transcript, a spool that sat
@@ -390,8 +390,7 @@ export function ingest(input: IngestInput): IngestResult {
     try {
       const r = ingest({
         agentType: type, data: { ...d, _causes: [event.id] }, operatorId, engagementId,
-        targetId: tid ?? targetId, derived: true,
-        envelope: { source: input.envelope?.source, mapper: { id: 'derived', version: '1' } }
+        targetId: tid ?? targetId, derived: true
       })
       if (r.event) companions.push(r.event)
     } catch { /* companions are additive; the primary row already landed */ }

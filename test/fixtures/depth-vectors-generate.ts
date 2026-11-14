@@ -102,7 +102,7 @@ export async function generateDepthVectors(out: string): Promise<DepthExpected> 
     const who = { engagementId: ENG, operatorId: OP }
     const api = (agentType: string, data: Record<string, unknown>): void => {
       step()
-      const r = ingestMod.ingest({ agentType, data, ...who, entrance: LEGACY_API, envelope: { source: 'api', mapper: { id: 'identity', version: '1' } } })
+      const r = ingestMod.ingest({ agentType, data, ...who, entrance: LEGACY_API })
       if (!r.event) throw new Error(`depth vectors: ${agentType}.${String(data.subtype)} was not written (${r.skipped})`)
     }
 

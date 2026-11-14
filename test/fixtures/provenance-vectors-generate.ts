@@ -137,10 +137,9 @@ export async function generateProvenanceVectors(out: string): Promise<Provenance
     writeOperatorKeys(keysDir, OP)
     ops.createOperator({ id: OP, name: 'Provenance Operator', token: ['provenance', 'vectors', 'operator'].join('-'), isPrimary: true })
     const who = { engagementId: ENG, operatorId: OP }
-    const API = { source: 'api', mapper: { id: 'identity', version: '1' } }
-    const api = (agentType: string, data: Record<string, unknown>, extra: Record<string, unknown> = {}): void => {
+    const api = (agentType: string, data: Record<string, unknown>, extra: { raw?: string } = {}): void => {
       step()
-      const r = ingestMod.ingest({ agentType, data, ...who, entrance: LEGACY_API, envelope: { ...API, ...extra } })
+      const r = ingestMod.ingest({ agentType, data, ...who, entrance: LEGACY_API, envelope: extra })
       if (!r.event) throw new Error(`vectors: ${agentType}.${String(data.subtype)} was not written (${r.skipped})`)
     }
 

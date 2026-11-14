@@ -200,8 +200,9 @@ function applySchema(): void {
       ntp_offset_ms INTEGER,
       signature TEXT,
       -- Envelope (docs/DESIGN-plugin-kernel.md §3-4). raw_ref points at the
-      -- verbatim producer bytes in <project>/raw/; mapper names the
-      -- (id,version) that derived data; source is the producer id.
+      -- verbatim producer bytes in <project>/raw/. mapper and source are no
+      -- longer written (NULL on rows from Spec 071 T036 on; older rows keep
+      -- theirs): outside the hash, not exported, read by nothing.
       raw_ref TEXT,
       mapper TEXT,
       schema_version INTEGER,

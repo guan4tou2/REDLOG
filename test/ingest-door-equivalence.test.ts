@@ -16,10 +16,13 @@
 // item brings none, which no legacy item does). `created_at` is the receipt
 // time; so is a derived row's `timestamp`, which has no source time.
 //
-// What else differs today is pinned below by name, door by door, as KNOWN
-// DIVERGENCE: it is not what FR-093 says, and each waits on the owner (the
-// T036 note in tasks.md). A body's own `target_id` used to be one of them; the
-// spool now reads it as the API does (ingest/body-target.ts), last test.
+// One more field differs by design and is asserted as a stated exception:
+// `_ingest.producer`, the receiver's class for the writer (FR-071), which the
+// door and the credential decide and FR-012 relies on. Nothing else differs:
+// the `source` and `mapper` columns are no longer written (NULL at every
+// door), and a replayed row's data no longer carries `recovered_from_spool`
+// (the Timeline reads the stamp's door). A body's own `target_id` is read the
+// same at every door (ingest/body-target.ts), last test.
 
 import fs from 'node:fs'
 import os from 'node:os'
@@ -63,11 +66,14 @@ function comparable(rows: StoredRow[]): Array<Record<string, unknown>> {
   })
 }
 
-const ALL = ['events:shell.command_start', 'events:shell.command_end', 'events:shell.command_start', 'events:pivot.route_add',
-  'events_logged:scanner.http_request_start', 'events_logged:scanner.http_response', 'events_logged:dns.dns_query']
-
 /** FR-093's own list. `credential` is null at every legacy door, so never differs yet. */
 const FR093 = ['data._ingest.door', 'data._ingest.auth', 'data._ingest.credential']
+/** FR-093's stated exception: `_ingest.producer` is decided by the door and the
+ *  credential (in-process, the per-project token, a spool file), and FR-012
+ *  depends on it. */
+const PRODUCER = 'data._ingest.producer'
+const PRIMARY = ['events:shell.command_start', 'events:shell.command_end', 'events:shell.command_start',
+  'events_logged:scanner.http_request_start', 'events_logged:scanner.http_response', 'events_logged:dns.dns_query']
 
 sqlite.describe('door equivalence (FR-093)', () => {
   const dirs: string[] = []
@@ -109,6 +115,8 @@ sqlite.describe('door equivalence (FR-093)', () => {
   }
   const beyondFr093 = (d: Record<string, string[]>): Record<string, string[]> =>
     Object.fromEntries(Object.entries(d).filter(([p]) => !FR093.includes(p)))
+  const producerOf = (rows: Array<Record<string, unknown>>): string[] =>
+    rows.map((r) => String(((r.data as { _ingest: { producer?: unknown } })._ingest).producer))
 
   it('the fixture writes what it says: both tiers, a link, a target, a companion', async () => {
     const rows = await through('in-process')
@@ -120,37 +128,32 @@ sqlite.describe('door equivalence (FR-093)', () => {
     expect(rows.filter((r) => r.target_id === '10.0.0.5')).not.toHaveLength(0)
   }, SLOW)
 
-  it('legacy-api against in-process: FR-093\'s fields, and KNOWN DIVERGENCE `_ingest.producer` and the envelope columns', async () => {
+  it('legacy-api against in-process: FR-093\'s fields, and the stated exception `_ingest.producer`; nothing else', async () => {
     const a = await through('in-process')
     const b = await through('legacy-api')
-    const primary = ['events:shell.command_start', 'events:shell.command_end', 'events:shell.command_start',
-      'events_logged:scanner.http_request_start', 'events_logged:scanner.http_response', 'events_logged:dns.dns_query']
     expect(Object.keys(divergence(a, b)).filter((p) => FR093.includes(p)).sort()).toEqual(['data._ingest.auth', 'data._ingest.door'])
-    expect(beyondFr093(divergence(a, b))).toEqual({
-      // The receiver's class for the writer (FR-071): RedLog itself, or the
-      // holder of the per-project token.
-      'data._ingest.producer': primary,
-      // The envelope columns, outside the hash: in-process callers pass none,
-      // and a companion takes its primary row's `source` (ingest.ts emitCompanion).
-      mapper: primary,
-      source: ALL
-    })
+    // The receiver's class for the writer (FR-071): RedLog itself, or the
+    // holder of the per-project token. A companion is `derived` at both.
+    expect(beyondFr093(divergence(a, b))).toEqual({ [PRODUCER]: PRIMARY })
+    expect(producerOf(a)).toEqual(a.map((r) => (PRIMARY.includes(String(r.kind)) ? 'in-process' : 'derived')))
+    expect(producerOf(b)).toEqual(b.map((r) => (PRIMARY.includes(String(r.kind)) ? 'legacy' : 'derived')))
   }, SLOW)
 
-  it('legacy-handoff against legacy-api: FR-093\'s fields, and KNOWN DIVERGENCE `_ingest.producer`, the `source` column and `recovered_from_spool`', async () => {
+  it('legacy-handoff against legacy-api: FR-093\'s fields, and the stated exception `_ingest.producer`; nothing else', async () => {
     const a = await through('legacy-api')
     const b = await through('legacy-handoff')
-    const primary = ['events:shell.command_start', 'events:shell.command_end', 'events:shell.command_start',
-      'events_logged:scanner.http_request_start', 'events_logged:scanner.http_response', 'events_logged:dns.dns_query']
     expect(Object.keys(divergence(a, b)).filter((p) => FR093.includes(p)).sort()).toEqual(['data._ingest.auth', 'data._ingest.door'])
-    expect(beyondFr093(divergence(a, b))).toEqual({
-      'data._ingest.producer': primary,
-      // spool-replay.ts adds it to the data of every row it replays: inside
-      // the hash, and read by the Timeline (timelineDomain.ts).
-      'data.recovered_from_spool': primary,
-      // `api` against `spool`, on the companion too.
-      source: ALL
-    })
+    expect(beyondFr093(divergence(a, b))).toEqual({ [PRODUCER]: PRIMARY })
+    expect(producerOf(b)).toEqual(b.map((r) => (PRIMARY.includes(String(r.kind)) ? 'legacy-handoff' : 'derived')))
+  }, SLOW)
+
+  it('no door writes the `source` or `mapper` column, or `recovered_from_spool`', async () => {
+    for (const door of ['in-process', 'legacy-api', 'legacy-handoff'] as const) {
+      for (const r of await through(door)) {
+        expect([r.kind, door, r.source ?? null, r.mapper ?? null]).toEqual([r.kind, door, null, null])
+        expect(r.data, `${door} ${String(r.kind)}`).not.toHaveProperty('recovered_from_spool')
+      }
+    }
   }, SLOW)
 
   // A body's own `target_id` (pcap-agent.py sets it to the packet's
@@ -174,7 +177,7 @@ sqlite.describe('door equivalence (FR-093)', () => {
   // FR-097: a container nested past the writer's bound is collapsed by the
   // writer, at every door alike — the API door included since the owner's
   // 2026-11-14 decision 「收下並摺疊」 (it used to answer 400). So FR-093 holds
-  // for an over-deep item with exactly the divergences above, and the
+  // for an over-deep item with exactly the exception above, and the
   // collapsed text and its count are not among them.
   it('an over-deep item is the same row at every door: the collapsed text and its count do not differ', async () => {
     let deep: unknown = 'leaf'
@@ -188,9 +191,7 @@ sqlite.describe('door equivalence (FR-093)', () => {
       expect(primary).toHaveLength(6)
       for (const r of primary) expect((r.data as { _ingest: Record<string, unknown> })._ingest.collapsed, String(r.kind)).toBe(1)
     }
-    const primary = ['events:shell.command_start', 'events:shell.command_end', 'events:shell.command_start',
-      'events_logged:scanner.http_request_start', 'events_logged:scanner.http_response', 'events_logged:dns.dns_query']
-    expect(beyondFr093(divergence(viaIn, viaApi))).toEqual({ 'data._ingest.producer': primary, mapper: primary, source: ALL })
-    expect(beyondFr093(divergence(viaApi, viaSpool))).toEqual({ 'data._ingest.producer': primary, 'data.recovered_from_spool': primary, source: ALL })
+    expect(beyondFr093(divergence(viaIn, viaApi))).toEqual({ [PRODUCER]: PRIMARY })
+    expect(beyondFr093(divergence(viaApi, viaSpool))).toEqual({ [PRODUCER]: PRIMARY })
   }, SLOW)
 })

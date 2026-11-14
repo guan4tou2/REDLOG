@@ -268,8 +268,11 @@ export function computeBadges(
   if (d.recovered === true) {
     b.push({ icon: '🔄', reason: 'recovered from orphaned session', key: 'recovered' })
   }
-  if (d.recovered_from_spool === true) {
-    b.push({ icon: '📮', reason: 'recovered from shell hook spool', key: 'spool' })
+  // The receiver's stamp says which door a row came in by; a producer's own
+  // data cannot give itself this badge.
+  const door = (d._ingest as { door?: unknown } | undefined)?.door
+  if (door === 'legacy-handoff' || door === 'handoff') {
+    b.push({ icon: '📮', reason: 'recovered from the handoff spool', key: 'spool' })
   }
   if (evt.agentType === 'system' && (sub === 'screenshot_deleted' || sub === 'cast_pruned' || sub === 'screenshot_pruned' || sub === 'cast_evicted' || sub === 'screenshot_evicted')) {
     b.push({ icon: '🗑️', reason: `evidence removed (${sub})`, key: 'evidence' })

@@ -70,7 +70,7 @@ sqlite.describe('receiver provenance in both verifiers, from every export path',
     ingestMod._resetIngest()
     const who = { engagementId: ENG, operatorId: OP }
     const api = (agentType: string, data: Record<string, unknown>): string => {
-      const r = ingestMod.ingest({ agentType, data, ...who, entrance: LEGACY_API, envelope: { source: 'api', mapper: { id: 'identity', version: '1' } } })
+      const r = ingestMod.ingest({ agentType, data, ...who, entrance: LEGACY_API })
       if (!r.event) throw new Error(`not written: ${agentType}.${String(data.subtype)}`)
       return r.event.id
     }

@@ -283,7 +283,7 @@ describeShell(`degrading honestly (${target?.label ?? 'no zsh reachable'})`, () 
         expect(result.replayed).toBe(payloads.length)
         for (const data of emitted) {
           expect(data.source_timestamp, 'the replay dropped the occurrence time').toBeTruthy()
-          expect(data.recovered_from_spool).toBe(true)
+          expect(data).not.toHaveProperty('recovered_from_spool')
         }
       } finally {
         fs.rmSync(dir, { recursive: true, force: true })

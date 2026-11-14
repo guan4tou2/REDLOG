@@ -153,8 +153,8 @@ sqlite.describe('rows written before Spec 071', () => {
       const step = (): void => { vi.advanceTimersByTime(1000) }
       const before = (dbMod.getDB().prepare('SELECT (SELECT COUNT(*) FROM events) + (SELECT COUNT(*) FROM events_logged) AS n').get() as { n: number }).n
       step(); events.insertEvent('system', { subtype: 'session_start' }, who)
-      step(); ingestMod.ingest({ agentType: 'shell', data: { subtype: 'command_start', command: 'nmap -p 443 10.0.0.6', terminalId: 't-new', pid: 9001 }, ...who, envelope: { source: 'api', mapper: { id: 'identity', version: '1' } } })
-      step(); ingestMod.ingest({ agentType: 'scanner', data: { subtype: 'http_request_start', flow_id: 'f-new', method: 'GET', url: 'http://10.0.0.6/' }, ...who, envelope: { source: 'api', mapper: { id: 'identity', version: '1' } } })
+      step(); ingestMod.ingest({ agentType: 'shell', data: { subtype: 'command_start', command: 'nmap -p 443 10.0.0.6', terminalId: 't-new', pid: 9001 }, ...who })
+      step(); ingestMod.ingest({ agentType: 'scanner', data: { subtype: 'http_request_start', flow_id: 'f-new', method: 'GET', url: 'http://10.0.0.6/' }, ...who })
       step(); ingestMod.ingestEvent('shell', { subtype: 'command_start', command: 'hostname', terminalId: 'term-new', pid: 9002, source: 'builtin-terminal' }, who)
       const spool = tmp('spool')
       fs.writeFileSync(path.join(spool, '0001.json'), JSON.stringify({ agent_type: 'shell', data: { subtype: 'command_start', command: 'ls', pid: 9003, terminalId: 't-new-spool', source_timestamp: Date.now() - 5000 }, _identity: who }))

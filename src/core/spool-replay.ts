@@ -675,10 +675,7 @@ export function replaySpoolDirectory(
     try {
       outcome = emit({
         agentType,
-        data: {
-          ...data,
-          recovered_from_spool: true
-        },
+        data,
         engagementId: identity.engagementId,
         operatorId: identity.operatorId,
         targetId: bodyTargetId(payload)

@@ -32,8 +32,7 @@ describe.skipIf(!db)('a queue-full gap after restart', () => {
       const other = replaySpoolDirectory(spool, { engagementId: 'B', operatorId: 'op-B' }, () => true)
       expect(other.replayed).toBe(0)
       const replay = replaySpoolDirectory(spool, { engagementId: 'A', operatorId: 'op-A' }, (e) =>
-        !!ingest({ agentType: e.agentType, data: e.data, engagementId: e.engagementId, operatorId: e.operatorId,
-          envelope: { source: 'spool', mapper: { id: 'identity', version: '1' } } }).event)
+        !!ingest({ agentType: e.agentType, data: e.data, engagementId: e.engagementId, operatorId: e.operatorId }).event)
       expect(replay.replayed).toBeGreaterThan(0)
       const gaps = queryEvents({ limit: -1 }).filter((e) => e.data.subtype === 'capture_gap' && e.data.reason === 'queue-full')
       expect(gaps.length).toBe(replay.replayed)

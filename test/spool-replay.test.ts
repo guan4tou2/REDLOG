@@ -32,7 +32,8 @@ describe('spool replay isolation', () => {
     replaySpoolDirectory(d, { engagementId: 'project-b', operatorId: 'op-b' }, e => { emitted.push(e); return true })
     expect(replaySpoolDirectory(d, { engagementId: 'project-a', operatorId: 'op-new' }, e => { emitted.push(e); return true }))
       .toEqual({ replayed: 1, deferred: 0, unattributed: 0, invalid: 0, failed: 0, last: 'secret-a.json', losses: [], retries: [], outcomes: { 'secret-a.json': 'ingested' } })
-    expect(emitted[0]).toMatchObject({ engagementId: 'project-a', operatorId: 'op-a', data: { command: 'secret-a', recovered_from_spool: true } })
+    expect(emitted[0]).toMatchObject({ engagementId: 'project-a', operatorId: 'op-a', data: { command: 'secret-a' } })
+    expect(emitted[0].data).not.toHaveProperty('recovered_from_spool')
     expect(fs.existsSync(file)).toBe(false)
   })
 

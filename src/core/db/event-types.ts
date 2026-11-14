@@ -70,24 +70,20 @@ export interface EventCausalChain {
 export const ENVELOPE_SCHEMA_VERSION = 1
 
 /** Envelope metadata a producer (through `ingest`) may attach to an event:
- *  the verbatim bytes it sent, which mapper normalised them, the producer id,
- *  and the producer's own timestamp. `raw` is stored to the raw sidecar and
- *  its sha256 is folded into the hashed `data`, so the chain attests the bytes
- *  without carrying them. All fields optional — a producer that already speaks
- *  the envelope shape (the identity mapper) can omit `raw`. */
+ *  the verbatim bytes it sent and the producer's own timestamp. `raw` is
+ *  stored to the raw sidecar and its sha256 is folded into the hashed `data`,
+ *  so the chain attests the bytes without carrying them. All fields optional.
+ *  The `mapper` and `source` columns are no longer written (NULL on new rows):
+ *  outside the hash, not exported, read by nothing. */
 export interface EnvelopeInput {
   raw?: Buffer | string
   rawEncoding?: 'json' | 'bytes'
-  mapper?: { id: string; version: string }
-  source?: string
   tsSource?: number | null
   schemaVersion?: number
 }
 
 export interface StoredEnvelope {
   rawRef: import('../raw-store').RawRef | null
-  mapper: { id: string; version: string } | null
-  source: string | null
   tsSource: number | null
   schemaVersion: number
 }

@@ -44,7 +44,6 @@ const OP = 'op-A'
 const id = { engagementId: ENG, operatorId: OP }
 const T0 = Date.UTC(2026, 10, 12, 9, 0, 0)
 const SEC = 1000
-const API = { source: 'api', mapper: { id: 'identity', version: '1' } }
 
 sqlite.describe('the pause rule and the spool drain after review', () => {
   let dir = ''
@@ -111,10 +110,10 @@ sqlite.describe('the pause rule and the spool drain after review', () => {
   sqlite.it('P8: a producer clock 30 s slow, 10 s into a pause — refused; after the resume — written', () => {
     pause(T0 + 100 * SEC)
     at(T0 + 110 * SEC)
-    const during = ing.ingest({ agentType: 'shell', data: { subtype: 'command_start', command: 'cat /private/diary', terminalId: 't', pid: 7, source_timestamp: T0 + 80 * SEC }, ...id, envelope: API })
+    const during = ing.ingest({ agentType: 'shell', data: { subtype: 'command_start', command: 'cat /private/diary', terminalId: 't', pid: 7, source_timestamp: T0 + 80 * SEC }, ...id })
     resume(T0 + 200 * SEC)
     at(T0 + 205 * SEC)
-    const after = ing.ingest({ agentType: 'shell', data: { subtype: 'command_start', command: 'nmap after-resume', terminalId: 't', pid: 8, source_timestamp: T0 + 175 * SEC }, ...id, envelope: API })
+    const after = ing.ingest({ agentType: 'shell', data: { subtype: 'command_start', command: 'nmap after-resume', terminalId: 't', pid: 8, source_timestamp: T0 + 175 * SEC }, ...id })
     expect({ during: during.skipped, after: !!after.event }).toEqual({ during: 'paused', after: true })
     expect(commands()).toEqual(['nmap after-resume'])
   })
@@ -124,7 +123,7 @@ sqlite.describe('the pause rule and the spool drain after review', () => {
     at(T0 + 11 * SEC)
     const bytes = Buffer.from('typed after pause: s3cr3t-password\n')
     const r = ing.ingest({ agentType: 'shell', data: { subtype: 'command_output', command_id: 'c-relay', seq: 1, streamed: true, stream: 'stdout',
-      source_timestamp: T0 + 9500, stdout: bytes.toString(), output_body: { data: bytes.toString('base64'), encoding: 'base64', size: bytes.length, sha256: '' }, final: false }, ...id, envelope: API })
+      source_timestamp: T0 + 9500, stdout: bytes.toString(), output_body: { data: bytes.toString('base64'), encoding: 'base64', size: bytes.length, sha256: '' }, final: false }, ...id })
     expect(r.skipped).toBe('paused')
     expect(rows().filter((x) => x.type === 'shell')).toEqual([])
   })
