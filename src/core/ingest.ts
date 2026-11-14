@@ -20,8 +20,8 @@ import { insertEvent, lastRecordingResumeTime, PAUSE_EXEMPT_AGENT_TYPES, type Re
 import { dbEngagement, dbGeneration } from './db/index'
 import { eventBus } from './event-bus'
 import { isCapturePlumbing } from './capture-plumbing'
-import { relatedCommandCandidates, resolveIncomingCauses, noteStartEvent, resetCausesResolver, type StoredLinks } from './causes-resolver'
-import { storedCommand, storedOpenFlowStart, type StoredCommand } from './db/stored-links'
+import { commandIdOf, relatedCommandCandidates, resolveIncomingCauses, noteStartEvent, resetCausesResolver, type StoredLinks } from './causes-resolver'
+import { storedCommand, storedHighestSeq, storedLastFinal, storedOpenFlowStart, storedSeqSeen, type StoredCommand } from './db/stored-links'
 import { socketCausesFor, noteCommandPid } from './socket-attribution'
 import { scopeSignalFor } from './alert/scope-signal'
 import { detectCredentialUse } from './credential-detector'
@@ -175,11 +175,15 @@ export function ingest(input: IngestInput): IngestResult {
   const entrance = input.derived ? DERIVED : (input.entrance ?? currentEntrance())
   const stripped = stripReserved(data)
 
-  // Runtime pairs must settle even if the evidence write is paused. Otherwise
+  // The cwd hint settles here even if the evidence write is paused: otherwise
   // a command_end seen during pause leaves a phantom active command that can
-  // be correlated with unrelated files after recording resumes.
+  // be correlated with unrelated files after recording resumes. The causal
+  // links settle only once the row is stored (`settled`, run after the
+  // commit): a refused row was never recorded, so the command it would have
+  // closed is still open in the record, as the stored rows say after a restart.
   const stored = storedLinks()
-  const lifecycleCauseIds = resolveIncomingCauses(agentType, data, stored)
+  const settled: Array<() => void> = []
+  const lifecycleCauseIds = resolveIncomingCauses(agentType, data, stored, (change) => { settled.push(change) })
   if (agentType === 'shell' && !input.derived && terminalLifecycle && !terminalLifecycle.prepare(data, engagementId)) {
     return { event: null, skipped: 'unrecorded', companions: [] }
   }
@@ -256,31 +260,31 @@ export function ingest(input: IngestInput): IngestResult {
   }
 
   // 2a''. What ingest remembers about a command whose background output this
-  //     is: the chunks already stored and the target the command was filed
-  //     under. When it remembers nothing — the app restarted since — it is
-  //     read back from the command's rows, as it would have been remembered.
-  const lateCommandId = agentType === 'shell' && data.subtype === 'command_output'
-    && typeof data.command_id === 'string' ? data.command_id : null
-  if (lateCommandId && !input.derived && !lateChunkSeen.has(lateCommandId) && !lateTargetByCommand.has(lateCommandId)) {
-    restoreLateState(lateCommandId, stored.command(lateCommandId, true))
-  }
+  //     is: the target the command was filed under and the chunks already
+  //     stored. When it remembers nothing — the app restarted, or the entry
+  //     was evicted — it is read back from the command's rows, as it would have
+  //     been remembered (restoreLateState).
+  const lateCommandId = agentType === 'shell' && data.subtype === 'command_output' ? commandIdOf(data) : null
+  const late = lateCommandId && !input.derived
+    ? lateByCommand.get(lateCommandId) ?? restoreLateState(lateCommandId, stored)
+    : undefined
 
   // 2a'. A relay that times out waiting for our answer sends the same chunk
   //     again, and we may already have it: the request landed, the reply was
   //     late. Same command, same seq is the same chunk, so it is kept once --
   //     otherwise the detail pane prints those lines twice and the byte count
   //     on the final row stops matching what is stored.
-  if (agentType === 'shell' && !input.derived && data.subtype === 'command_output'
-      && (data.late === true || data.streamed === true) && typeof data.command_id === 'string' && typeof data.seq === 'number'
-      && lateChunkSeen.get(data.command_id)?.has(data.seq)) {
+  if (late && lateCommandId && (data.late === true || data.streamed === true) && typeof data.seq === 'number'
+      && (late.seen.has(data.seq)
+        || (late.stored !== undefined && data.seq <= late.stored.highest && storedSeqSeen(lateCommandId, data.seq, late.stored.after)))) {
     return { event: null, skipped: 'dedup', companions: [] }
   }
 
   // 2b. A background job's late output has no command text to read a target
   //     from, and must not get one by reading its bytes. The command it belongs
   //     to was filed under a target when it ended; the chunk goes to the same.
-  if (lateCommandId && !targetId && lateTargetByCommand.has(lateCommandId)) {
-    targetId = lateTargetByCommand.get(lateCommandId) ?? undefined
+  if (late?.filed && !targetId) {
+    targetId = late.target ?? undefined
   }
 
   // 3. Enrichment stamps + what the companions will need. Only for primary
@@ -331,22 +335,20 @@ export function ingest(input: IngestInput): IngestResult {
     if (agentType === 'shell' && !input.derived) terminalLifecycle?.recorded(event)
   })
   step('late-output bookkeeping', () => {
-    if (agentType === 'shell' && !input.derived && data.subtype === 'command_output' && (data.late === true || data.streamed === true)
-        && typeof data.command_id === 'string' && typeof data.seq === 'number') {
-      let seen = lateChunkSeen.get(data.command_id)
-      if (!seen) {
-        seen = new Set()
-        remember(lateChunkSeen, data.command_id, seen)
-      }
-      seen.add(data.seq)
-    }
-    if (agentType === 'shell' && !input.derived && typeof data.command_id === 'string') {
-      if (data.subtype === 'command_start' || (data.subtype === 'command_end' && (data.late_output === true || data.output_streamed === true))) {
-        remember(lateTargetByCommand, data.command_id, targetId ?? null)
-      } else if (data.subtype === 'command_output' && data.final === true) {
-        lateTargetByCommand.delete(data.command_id)
-        lateChunkSeen.delete(data.command_id)
-      }
+    const commandId = agentType === 'shell' && !input.derived ? commandIdOf(data) : null
+    if (!commandId) return
+    if (data.subtype === 'command_start') {
+      // A new round of this id: its chunks are counted afresh.
+      remember(commandId, { filed: true, target: targetId ?? null, seen: new Set() })
+    } else if (data.subtype === 'command_end' && (data.late_output === true || data.output_streamed === true)) {
+      const entry = lateByCommand.get(commandId)
+      if (entry) { entry.filed = true; entry.target = targetId ?? null } else remember(commandId, { filed: true, target: targetId ?? null, seen: new Set() })
+    } else if (lateCommandId && data.final === true) {
+      lateByCommand.delete(commandId)
+    } else if (lateCommandId && (data.late === true || data.streamed === true) && typeof data.seq === 'number') {
+      const entry = late ?? lateByCommand.get(commandId)
+      if (entry && lateByCommand.get(commandId) === entry) entry.seen.add(data.seq)
+      else remember(commandId, { ...(entry ?? { filed: false, target: null }), seen: new Set([...(entry?.seen ?? []), data.seq]) })
     }
   })
 
@@ -359,6 +361,7 @@ export function ingest(input: IngestInput): IngestResult {
     eventBus.publish(event, { bypassPause: input.bypassPause })
   })
   step('causal links', () => {
+    for (const change of settled) change()
     noteStartEvent(agentType, data, event.id)
     // Record pid → this command_start so later traffic on that pid's sockets can
     // cite it (docs/design/DESIGN-traffic-attribution.md §2.3).
@@ -469,43 +472,65 @@ interface Plan {
  *  in count so sessions that never sent `session_end` cannot accumulate. */
 const sessionTail = new Map<string, string>()
 
-// command_id → the target its command was filed under, for commands whose
-// `command_end` said a background job would keep printing. The chunks that
-// follow are filed there too. Bounded; released at the relay's `final` row.
-const lateTargetByCommand = new Map<string, string | null>()
-/** Which chunk numbers of a still-running background command are already
- *  stored, so a resend is recognised. Cleared when the final row lands. After
- *  an app restart it is read back from the stored chunks (restoreLateState):
- *  live delivery keeps a resent chunk once, so a restart must too (SC-003). */
-const lateChunkSeen = new Map<string, Set<number>>()
+/** What ingest keeps per command id for a background job's late output: the
+ *  target the command was filed under (`filed`: set by its command_start, and
+ *  by a command_end that said a job keeps printing), and which chunk numbers
+ *  are already stored, so a resend is recognised (live keeps a resent chunk
+ *  once, so a restart must too: SC-003). One map, so an entry is evicted
+ *  whole: two maps bounded alike but filled by different rows lost one half and
+ *  kept the other, and a chunk of a command 256 starts back was filed under
+ *  the global target. Released at the relay's `final` row. */
+interface LateCommand {
+  filed: boolean
+  target: string | null
+  seen: Set<number>
+  /** Rebuilt from the database: chunks up to number `highest` written after
+   *  rowid `after` are stored but not in `seen`, so a resend among them is
+   *  asked of the database, one seek. */
+  stored?: { after: number; highest: number }
+}
+const lateByCommand = new Map<string, LateCommand>()
 const LATE_TARGET_MAX = 256
 
-/** Set `key`, evicting the oldest entry at the bound. */
-function remember<V>(map: Map<string, V>, key: string, value: V): void {
-  if (map.size >= LATE_TARGET_MAX) map.delete(map.keys().next().value as string)
-  map.set(key, value)
+/** Set `commandId`'s entry, evicting the oldest at the bound. */
+function remember(commandId: string, entry: LateCommand): LateCommand {
+  if (!lateByCommand.has(commandId) && lateByCommand.size >= LATE_TARGET_MAX) lateByCommand.delete(lateByCommand.keys().next().value as string)
+  lateByCommand.set(commandId, entry)
+  return entry
 }
 
-/** Put back what the two maps above would hold for `commandId` had the app not
- *  restarted, from the command's stored rows. Both are dropped at the final
- *  chunk, so after one there is nothing to put back. The target is the one the
- *  bookkeeping last set: a command_end's that said a job keeps printing, else
- *  the command_start's. */
-function restoreLateState(commandId: string, command: StoredCommand | null): void {
-  if (!command || command.finalSeen) return
-  if (command.seqs.length > 0) remember(lateChunkSeen, commandId, new Set(command.seqs))
-  if (command.end?.lateOutput) remember(lateTargetByCommand, commandId, command.end.targetId)
-  else if (command.start) remember(lateTargetByCommand, commandId, command.start.targetId)
+/** Rebuild `commandId`'s entry from its stored rows, as the bookkeeping would
+ *  have left it. The target is the one last filed — a command_end's that said a
+ *  job keeps printing, else the command_start's — unless a final chunk came
+ *  after it. Chunk numbers count from the newer of the round's start and the
+ *  last final chunk. At most four seeks, however many chunks are stored; and
+ *  the entry is kept, so the next chunk of this id asks nothing. */
+function restoreLateState(commandId: string, stored: StoredLinks): LateCommand {
+  const command = stored.command(commandId)
+  const filedBy = command?.end?.lateOutput ? command.end : command?.start ?? null
+  const finalAt = stored.lastFinal(commandId, command?.start?.rowid ?? 0)
+  const filed = filedBy !== null && (finalAt === null || finalAt < filedBy.rowid)
+  const after = Math.max(command?.start?.rowid ?? 0, finalAt ?? 0)
+  const highest = storedHighestSeq(commandId, after)
+  return remember(commandId, {
+    filed, target: filed ? filedBy.targetId : null, seen: new Set(),
+    ...(highest !== null ? { stored: { after, highest } } : {})
+  })
 }
 
 /** The project's rows, read once per ingested row however many steps ask. */
 function storedLinks(): StoredLinks {
   const commands = new Map<string, StoredCommand | null>()
+  const finals = new Map<string, number | null>()
   return {
-    command(commandId, withChunks) {
-      const key = `${withChunks ? 'chunks' : 'rows'}:${commandId}`
-      if (!commands.has(key)) commands.set(key, storedCommand(commandId, withChunks))
-      return commands.get(key) ?? null
+    command(commandId) {
+      if (!commands.has(commandId)) commands.set(commandId, storedCommand(commandId))
+      return commands.get(commandId) ?? null
+    },
+    lastFinal(commandId, after) {
+      const key = `${after}:${commandId}`
+      if (!finals.has(key)) finals.set(key, storedLastFinal(commandId, after))
+      return finals.get(key) ?? null
     },
     openFlowStart: storedOpenFlowStart
   }
@@ -532,8 +557,7 @@ function dropStateOfClosedProject(): void {
 function clearPerProjectState(): void {
   castOffsetAtStart.clear()
   sessionTail.clear()
-  lateTargetByCommand.clear()
-  lateChunkSeen.clear()
+  lateByCommand.clear()
 }
 
 function emptyPlan(): Plan {

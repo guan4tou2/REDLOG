@@ -48,19 +48,28 @@ sqlite.describe('stored links (SC-003)', () => {
       const prepare = conn.prepare.bind(conn)
       const spy = vi.spyOn(conn, 'prepare').mockImplementation(((sql: string) => { seen.push(sql); return prepare(sql) }) as typeof conn.prepare)
       try {
-        links.storedCommand('c1', true)
+        links.storedCommand('c1')
+        links.storedLastFinal('c1', 0)
+        links.storedHighestSeq('c1', 0)
+        links.storedSeqSeen('c1', 1, 0)
         links.storedOpenFlowStart('f1')
       } finally { spy.mockRestore() }
       return seen
     }
-    const plan = (sql: string): string => (db.getDB().prepare(`EXPLAIN QUERY PLAN ${sql}`).all('x') as Array<{ detail: string }>).map((r) => r.detail).join(' | ')
+    const plan = (sql: string): string => {
+      const params = (sql.match(/\?/g) ?? []).map((_, i) => (i === 0 ? 'x' : 1))
+      return (db.getDB().prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...params) as Array<{ detail: string }>).map((r) => r.detail).join(' | ')
+    }
 
-    it('the command probes use idx_events_shell_command, the flow probe idx_events_logged_http_flow', () => {
+    it('each probe is a seek on its index, with no sort', () => {
       const plans = probes().map(plan)
-      expect(plans).toHaveLength(3)
-      expect(plans[0]).toMatch(/^SEARCH events USING INDEX idx_events_shell_command \(<expr>=\? AND subtype=\?\)$/)
-      expect(plans[1]).toMatch(/^SEARCH events USING INDEX idx_events_shell_command \(<expr>=\? AND subtype=\?\)$/)
-      expect(plans[2]).toMatch(/^SEARCH events_logged USING INDEX idx_events_logged_http_flow \(<expr>=\?\)$/)
+      expect(plans).toEqual([
+        'SEARCH events USING INDEX idx_events_shell_command (<expr>=? AND subtype=?)',
+        'SEARCH events USING INDEX idx_events_shell_command_final (<expr>=? AND rowid>?)',
+        'SEARCH events USING INDEX idx_events_shell_command (<expr>=? AND subtype=?)',
+        'SEARCH events USING INDEX idx_events_shell_command (<expr>=? AND subtype=? AND <expr>=? AND rowid>?)',
+        'SEARCH events_logged USING INDEX idx_events_logged_http_flow (<expr>=?)'
+      ])
     })
   })
 
@@ -86,17 +95,71 @@ sqlite.describe('stored links (SC-003)', () => {
       expect(lost.work.scans).toBe(hit.scans)
     })
 
-    it('a late chunk whose command is remembered runs no statement more; one after a restart runs two seeks, once', () => {
+    it('a late chunk whose command is remembered runs no statement more; one after a restart runs three seeks, once', () => {
       start('c1', 1); end('c1', 1, true); chunk('c1', 0)
       const remembered = measureWork(() => chunk('c1', 1)).work
       start('c2', 2); end('c2', 2, true); chunk('c2', 0)
       ingestMod._resetIngest()
       const first = measureWork(() => chunk('c2', 1))
       expect(first.result.event?.data._causes).toHaveLength(1)
-      expect(first.work.statements - remembered.statements).toBe(2)
+      expect(first.work.statements - remembered.statements).toBe(3)
       expect(first.work.scans).toBe(remembered.scans)
       // What the seeks found is remembered again: the next chunk is a hit.
       expect(measureWork(() => chunk('c2', 2)).work.statements).toBe(remembered.statements)
+    })
+
+    // Review item 1. A chunk whose command is not open — no start was stored
+    // (it was refused while paused), its end did not declare late output, or a
+    // `final` chunk came before — must not re-read that id's earlier chunks
+    // each time: the relay sends one a second, and ingest runs on the main
+    // process.
+    describe('a chunk with no open command costs the same however many came before it', () => {
+      const tuple = (w: { statements: number; rows: number; scans: number }) => [w.statements, w.rows, w.scans]
+      const many = (cid: string, from: number, to: number): void => {
+        db.getDB().transaction(() => { for (let i = from; i < to; i++) chunk(cid, i) })()
+      }
+      const cases: Array<[string, (cid: string) => void]> = [
+        ['no stored start', () => {}],
+        ['its end did not declare late output', (cid) => { start(cid, 1); end(cid, 1) }],
+        ['after its final chunk', (cid) => { start(cid, 2); end(cid, 2, true); put('shell', { subtype: 'command_output', command_id: cid, late: true, seq: -1, stdout: 'last\n', final: true }) }]
+      ]
+      it.each(cases)('%s: the 2nd, 100th and 1,000th chunk do the same work, and the 1st no more than a constant', (_label, setup) => {
+        setup('o1')
+        const first = measureWork(() => chunk('o1', 0)).work
+        const second = measureWork(() => chunk('o1', 1)).work
+        many('o1', 2, 99)
+        const hundredth = measureWork(() => chunk('o1', 99)).work
+        many('o1', 100, 999)
+        const thousandth = measureWork(() => chunk('o1', 999)).work
+        expect(tuple(hundredth)).toEqual(tuple(second))
+        expect(tuple(thousandth)).toEqual(tuple(second))
+        // ...and that is a memory hit: no more than a chunk of a command memory holds open.
+        start('k1', 3); end('k1', 3, true); chunk('k1', 0)
+        const remembered = measureWork(() => chunk('k1', 1)).work
+        expect(second.statements).toBe(remembered.statements)
+        expect(first.rows - second.rows).toBeLessThanOrEqual(3)
+        // After a restart, the first chunk costs the same with 1,000 stored chunks before it as with one.
+        ingestMod._resetIngest()
+        const afterMany = measureWork(() => chunk('o1', 1000)).work
+        setup('o2'); chunk('o2', 0)
+        ingestMod._resetIngest()
+        const afterOne = measureWork(() => chunk('o2', 1)).work
+        expect(tuple(afterMany)).toEqual(tuple(afterOne))
+      })
+    })
+
+    it('an HTTP response after a restart runs one seek; what it found is remembered for the error and response after it', () => {
+      const req = (flow_id: string) => put('scanner', { subtype: 'http_request_start', flow_id, method: 'GET', url: 'http://10.0.0.8/', host: '10.0.0.8' })
+      const after = (flow_id: string, subtype: string) => put('scanner', { subtype, flow_id, url: 'http://10.0.0.8/', host: '10.0.0.8', ...(subtype === 'http_response' ? { status_code: 200 } : {}) })
+      req('h1')
+      const hit = measureWork(() => after('h1', 'http_error')).work
+      req('h2')
+      ingestMod._resetIngest()
+      const miss = measureWork(() => after('h2', 'http_error'))
+      expect(miss.result.event?.data._causes).toHaveLength(1)
+      expect(miss.work.statements - hit.statements).toBe(1)
+      const again = measureWork(() => after('h2', 'http_error')).work
+      expect(again.statements).toBe(hit.statements)
     })
   })
 })
