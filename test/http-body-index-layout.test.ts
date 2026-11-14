@@ -169,13 +169,32 @@ sqlite.describe('body index layout', () => {
 
   it('a body that would need more documents than its rowids hold is indexed as far as they go, and is partial', () => {
     idx._limitDocumentsPerKind(1)
-    const filler = 'filler words '.repeat(100_000)
-    const ref = savedBody(dir, `{"v":"HEADWORD ${filler} TAILWORD"}`)
+    const filler = 'filler words '.repeat(100_000), text = `{"v":"HEADWORD ${filler} TAILWORD"}`
+    const ref = savedBody(dir, text)
     savedResponse('E', { response_body_ref: ref })
     expect(searchHttpBodyEventIds('HEADWORD', dir)).toEqual(['E'])
     expect(searchHttpBodyEventIds('TAILWORD', dir)).toEqual([])
-    expect(refRow('E')).toMatchObject({ status: 'partial', reason: 'too-large', raw_docs: 1, decoded_docs: 0 })
-    expect(idx.bodySearchCoverage().sources!.find(s => s.kind === 'body')).toMatchObject({ status: 'partial', partial: 1 })
+    // The one document is the first MiB of text cut back to its last word
+    // boundary: those bytes are what is indexed, not the whole body.
+    let end = 1024 * 1024 - 1
+    while (/[\p{L}\p{N}\p{Co}\p{M}]/u.test(text[end])) end--
+    const row = readIndex(index => index.prepare('SELECT status,reason,raw_docs,decoded_docs,indexed_bytes FROM body_event_refs WHERE event_id=?').get('E'))
+    expect(row).toEqual({ status: 'partial', reason: 'too-large', raw_docs: 1, decoded_docs: 0, indexed_bytes: end + 1 })
+    expect(idx.bodySearchCoverage().sources!.find(s => s.kind === 'body')).toMatchObject({ status: 'partial', partial: 1, indexedBytes: end + 1, sourceBytes: Buffer.byteLength(text) })
+  })
+
+  it('the bytes indexed of a body cut at the limit count the text two overlapping documents share once', () => {
+    idx._limitDocumentsPerKind(2)
+    const MiB = 1024 * 1024, text = `{"v":"${'filler words '.repeat(Math.ceil(2.3 * MiB / 13))}"}`
+    savedResponse('E', { response_body_ref: savedBody(dir, text) })
+    expect(searchHttpBodyEventIds('filler', dir)).toEqual(['E'])
+    expect(refRow('E')).toMatchObject({ status: 'partial', reason: 'too-large', raw_docs: 2 })
+    const bytes = readIndex(index => (index.prepare('SELECT indexed_bytes AS n FROM body_event_refs WHERE event_id=?').get('E') as { n: number }).n)
+    // The second document ends at the last word boundary of the second MiB
+    // read. Counting the 64 Ki characters it repeats from the first would put
+    // this past 2 MiB.
+    expect(bytes).toBeLessThanOrEqual(2 * MiB)
+    expect(bytes).toBeGreaterThan(2 * MiB - 13)
   })
 
   it('two refs never share a rowid: each has its own range, and a document beyond it is refused', () => {

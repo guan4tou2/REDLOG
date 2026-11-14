@@ -298,20 +298,28 @@ function withInlineText(text: string, use: (source: ByteSource) => void): void {
   const bytes = Buffer.from(text, 'utf8')
   use({ bytes: bytes.length, digest: createHash('sha256').update(bytes).digest('hex'), format: 'utf8', read: (offset, length) => bytes.subarray(offset, offset + length) })
 }
+/** A document stream, and how far into its text the documents written so far
+ *  reach. */
+type FtsWriter = ((part: string, final?: boolean) => void) & { readonly covered: number }
 /** One FTS document stream: text in, rows of about INDEX_CHUNK_BYTES out,
  *  each cut at a tokenizer boundary and overlapping the one before. Call with
- *  `final` once, last. */
-function ftsWriter(write: (part: string) => void): (part: string, final?: boolean) => void {
-  let text = '', skippingToken = false
+ *  `final` once, last. `covered`: the UTF-8 bytes of the stream's text up to
+ *  the end of the last document written, each byte counted once however many
+ *  overlapping documents hold it (a huge token's unindexed suffix counts as
+ *  reached). */
+function ftsWriter(write: (part: string) => void): FtsWriter {
+  let text = '', skippingToken = false, dropped = 0, covered = 0
   const separator = /[^\p{L}\p{N}\p{Co}\p{M}]/u
-  return (part, final = false) => {
+  const bytes = (s: string): number => Buffer.byteLength(s, 'utf8')
+  const push = (part: string, final = false): void => {
     if(skippingToken) {
       const at=part.search(separator)
-      if(at<0) return
+      if(at<0) { dropped+=bytes(part); covered=dropped; return }
+      dropped+=bytes(part.slice(0,at)); covered=dropped
       part=part.slice(at); skippingToken=false
     }
     text+=part
-    if(final) { write(text); text=''; return }
+    if(final) { if(text) { write(text); covered=dropped+bytes(text) } text=''; return }
     if(text.length<INDEX_CHUNK_BYTES) return
     let end=text.length-1
     while(end>=0 && !separator.test(text[end])) end--
@@ -319,15 +327,19 @@ function ftsWriter(write: (part: string) => void): (part: string, final?: boolea
       // The FTS tokenizer itself caps a single token at 32768 bytes. Preserve
       // that prefix once; never turn a huge token's suffix into a hit.
       write(Buffer.from(text).subarray(0,32768).toString('utf8'))
+      dropped+=bytes(text); covered=dropped
       text=''; skippingToken=true; return
     }
     const complete=text.slice(0,end+1)
     write(complete)
+    covered=dropped+bytes(complete)
     let start=complete.length>INDEX_OVERLAP_CHARS ? complete.length-INDEX_OVERLAP_CHARS : complete.length
     // Both ends of every overlapping document are tokenizer boundaries.
     while(start<complete.length && start>0 && !separator.test(complete[start-1])) start++
+    dropped+=bytes(complete.slice(0,start))
     text=complete.slice(start)+text.slice(end+1)
   }
+  return Object.defineProperty(push, 'covered', { get: () => covered }) as FtsWriter
 }
 /** At ingest: link a scanner event's saved and base64 bodies now, so retention
  *  can find the events behind a file. The row is above the watermark, so the
@@ -415,7 +427,7 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
           const inlineText = body?.inline !== undefined && body.encoding === 'text'
           const saved = inlineText ? null : ftsWriter(write(0))
           const escapes = body?.decode ? jsonEscapeDecoder() : null
-          let decoded: ReturnType<typeof ftsWriter> | null = null, lead = '', leadCut = false
+          let decoded: FtsWriter | null = null, lead = '', leadCut = false
           const startDecoded = (text: string, final: boolean): void => {
             decoded = ftsWriter(write(1))
             let start = leadCut ? lead.search(/[^\p{L}\p{N}\p{Co}\p{M}]/u) + 1 : 0
@@ -443,12 +455,17 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
             saved?.('', true)
             if (escapes) {
               const out = escapes.end()
-              if (decoded) (decoded as ReturnType<typeof ftsWriter>)(out, true)
+              if (decoded) (decoded as FtsWriter)(out, true)
               else if (escapes.changed) startDecoded(out, true)
             }
           } catch (error) {
             // Indexed as far as this ref's rowids go; the rest is not searched.
-            if (error instanceof TooManyDocuments) { status = 'partial'; reason = 'too-large' }
+            // Indexed: the saved text's bytes its documents reach (the decoded
+            // text's, for a body indexed only decoded), at most the body.
+            if (error instanceof TooManyDocuments) {
+              status = 'partial'; reason = 'too-large'
+              bytes = Math.min(source.bytes, (saved ?? (decoded as FtsWriter | null))?.covered ?? 0)
+            }
             else if (strict || !(error instanceof TypeError || error instanceof NotText)) throw error
             else { bytes = 0; status = 'binary'; reason = 'binary' }
           }
