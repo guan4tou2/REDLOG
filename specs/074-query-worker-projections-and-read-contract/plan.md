@@ -125,6 +125,8 @@
 
 `terminal_targets` 的回填（舊專案第一次開啟）：`heavy` 以唯讀連線計算 `(terminal, observed_at, target, source_row_id)`，分批送回主行程，由主行程以小交易依序寫入；回填完成前，該專案的新列不套用 `terminal-last`，寫 `_ingest.target_via: "none"`，永久（071 FR-010 已採用此規則，2026-11-12 對帳）。回填完成時以 `projection` 訊息告知主行程，寫入路徑自此套用 `terminal-last`。表可整張刪除並重建；重建不改變已寫入列的 `target_via`。
 
+> **Superseded（2026-11-15，DECISIONS 2026-11-15 §5）**：上段的回填取消：不計算、不寫 `tt-backfill`、不以 `projection` 訊息通知「回填完成」。`terminal_targets` 從空的開始，只有新列填入（071 FR-010）。
+
 **否決**：(a) 全部併進一個衍生檔——要合併兩個既有的 `user_version` 方案，第一次升級時重建所有使用者的 body 與 cast 索引；(b) 投影表放進 `timeline.db`——證據檔混入可丟棄的資料，讀取服務就成為證據檔的第二個寫入者；(c) Activity 留在 TEMP——每次開啟重算全專案（02 §2）。
 
 ### D6 投影執行器
@@ -291,7 +293,7 @@ interface ProjectResource {
 | 名稱 | 存放 | 來源 | 推進者 | 每列成本 | 「時間 T」怎麼回答 | retention | 版本／重建 |
 |---|---|---|---|---|---|---|---|
 | `activity` | `derived.db` | 兩層全部列 | `heavy` | 1 插入 + 1 群組 upsert | 不適用（以 rowid 界定的快照） | 依 `retention_pruned_logged` 刪 logged 列並重算受影響群組 | v2（v1 為 TEMP）；只重建本投影 |
-| `terminal_targets` | `timeline.db` | 有 `explicit`／`extracted` 目標的新列 | 主行程，commit 交易內；舊專案回填見 D5 | ≤1 插入 | `(terminal, observed_at ≤ T)` 最新一列 | chained 不刪；logged 來源的列依 `created_at` 刪 | 表可整張刪除並回填 |
+| `terminal_targets` | `timeline.db` | 有 `explicit`／`extracted` 目標的新列 | 主行程，commit 交易內；舊專案不回填（D5 的 Superseded） | ≤1 插入 | `(terminal, observed_at ≤ T)` 最新一列 | chained 不刪；logged 來源的列依 `created_at` 刪 | 表可整張刪除（不回填） |
 | `intervals` | `derived.db` | 072 註冊表宣告為 `start`／`end`／`state` 的種類 | `heavy` | ≤2 寫入（開一段或關一段） | `stateAt(ts[], keys[])`：`(kind, key, start_ts)` 索引上二分 | logged 來源的區間刪除；被切斷的區間 `end_basis` 不變 | 註冊表版本變更即重建本投影 |
 | `cause_counts` | `derived.db` | 每列 `_causes` 的 `caused` 參照 | `heavy` | 每參照 1 upsert（≤32） | 不適用 | 被刪的 effect 從計數扣除 | 重建本投影 |
 | `body_coverage` | `http-body-index.db` | `body_event_refs` 的狀態變更 | `heavy` | 每次狀態變更 2 次 upsert（舊狀態減、新狀態加） | 不適用 | `prune*` 時差量扣除 | `user_version` 8 |
@@ -321,7 +323,7 @@ type FromWorker =
   | { t: 'res'; id: number; ok: true; value: unknown; asOf: AsOf; completeness: ListCompleteness; work: WorkCount }
   | { t: 'res'; id: number; ok: false; error: 'superseded' | 'busy' | 'bad-request' | 'failed'; message?: string }
   | { t: 'projection'; status: ProjectionStatus }      // 推進或重建後
-  | { t: 'tt-backfill'; rows: TerminalTargetRow[]; done: boolean } // 交給主行程寫入
+  | { t: 'tt-backfill'; rows: TerminalTargetRow[]; done: boolean } // 已取消（D5 的 Superseded）
 ```
 
 `work` 是該請求的工作量計數（走訪列、語句、開檔、lstat），在測試與 dev 下收集，正式版只收集數字不記內容；FR-094 的測試讀它。
@@ -371,7 +373,7 @@ type FromWorker =
 2. **Phase 2（需要 073 的資源介面；未定時以 `ProjectRuntime.onStop` 實作同形介面）**：讀取服務骨架、第一個 `kind`（`aggregateTargets`）、打包、崩潰與重啟、RYW（`seq` 先由主行程在 `insertEvent` 回傳點包一層；071 落地後改由 commit 原語提供）。
 3. **Phase 3**：依成本排名移動讀取；每移一個，白名單與匯入邊界的基準下降。
 4. **Phase 4**：`derived.db`、投影執行器、`activity`、`body_coverage`（併入 `work/1112-search`）、`kind_totals`、`target_totals`；衍生檔單一寫入者。
-5. **Phase 5（需要 072 的註冊表與 071 的 `_causes` 指令 id）**：`intervals`、`cause_counts`、`stateAt`；舊專案的 `terminal_targets` 回填。072 未落地時 `intervals` 只處理今天已知的種類並以 `legacy` 清單標示，這份清單在 072 落地時刪除。
+5. **Phase 5（需要 072 的註冊表與 071 的 `_causes` 指令 id）**：`intervals`、`cause_counts`、`stateAt`；（舊專案的 `terminal_targets` 回填已取消）。072 未落地時 `intervals` 只處理今天已知的種類並以 `legacy` 清單標示，這份清單在 072 落地時刪除。
 6. **Phase 6**：畫面讀取模型、topics、計數。
 7. **Phase 7**：導覽堆疊、各頁篩選（取代 038）。
 8. **Phase 8**：閘門收緊、文件、驗收。
