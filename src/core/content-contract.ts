@@ -112,10 +112,19 @@ export function bodyTruncation(
   return { saved, total: typeof inline.size === 'number' && inline.size > saved ? inline.size : null }
 }
 
-/** Shared partial-index predicate: evidence rows without saved content stay off reader scans. */
+/** Network payload bodies (inline `<field>` or `<field>_ref`) whose text the
+ *  body index also indexes with JSON `\uXXXX` escapes decoded
+ *  (src/core/json-escape-text.ts). Command output and saved files are not
+ *  among them. */
+export const ESCAPE_DECODED_BODY_FIELDS = ['request_body', 'response_body', 'ws_body', 'tcp_body'] as const
+
+/** Shared partial-index predicate: evidence rows without saved content stay off reader scans.
+ *  An inline text body that may hold a `\u` escape is in it too: the body
+ *  index keeps that body's decoded text, which the events index cannot. */
 export const BODY_SOURCE_PREDICATE = `CASE WHEN json_valid(data) THEN (${[
   ...BODY_REF_FIELDS.map(field => `json_extract(data,'$.${field}.sha256') IS NOT NULL`),
   ...BODY_REF_FIELDS.filter(field => field.endsWith('_body_ref')).map(field => `json_extract(data,'$.${field.slice(0, -4)}.encoding')='base64'`),
+  ...ESCAPE_DECODED_BODY_FIELDS.map(field => `instr(json_extract(data,'$.${field}.data'),'\\u')>0`),
   "(agent_type='file_transfer' AND subtype='artifact_added')",
   "(agent_type='agent' AND subtype IN ('transcript_snapshot','transcript_capture_started'))"
 ].join(' OR ')}) ELSE 0 END`

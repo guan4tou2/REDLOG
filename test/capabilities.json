@@ -10,7 +10,8 @@
     "pwsh": "required",
     "python-cryptography": "required",
     "pty": "required",
-    "listen": "required"
+    "listen": "required",
+    "electron-runtime": "unknown"
   },
   "darwin": {
     "better-sqlite3": "required",
@@ -22,7 +23,8 @@
     "pwsh": "required",
     "python-cryptography": "required",
     "pty": "required",
-    "listen": "required"
+    "listen": "required",
+    "electron-runtime": "unknown"
   },
   "win32": {
     "better-sqlite3": "required",
@@ -34,6 +36,7 @@
     "pwsh": "required",
     "python-cryptography": "required",
     "pty": "absent",
-    "listen": "required"
+    "listen": "required",
+    "electron-runtime": "unknown"
   }
 }

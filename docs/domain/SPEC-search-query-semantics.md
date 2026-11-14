@@ -70,11 +70,28 @@ typed text
 4. **Text.** Each whitespace-separated term is matched as an FTS phrase, so
    `10.0.0.5`, `-sV` and `/etc/passwd` match as typed. The last term is
    prefix-matched, so a half-typed word still matches. Terms combine with AND
-   and need not be adjacent — including the words inside one quoted run. Text
-   matches stored event content, or indexed saved content the Event references
-   (body, text artifact, or a confirmed AI raw prefix; see Coverage).
+   and need not be adjacent — including the words inside one quoted run. An
+   Event matches when every term is found somewhere in it: in its stored
+   content (the events index) or in any indexed saved content it references
+   (body, text artifact, or a confirmed AI raw prefix; see Coverage) — each
+   term on its own. So a body word and a URL, host or header word match
+   together, and two words in two different bodies of one Event match (before
+   2026-11-14 every term had to be in one document of one index). One term is
+   still matched within one document: the tokens of `10.0.0.5` must be
+   adjacent in the same body or in the Event's own data.
+   A term in which the tokenizer finds no token (`|`, `&&`, `>`, `--`, `:`
+   on their own; every index uses `unicode61 remove_diacritics 2` with no
+   token characters added, and SQLite itself is asked outside ASCII) would
+   match nothing on its own, so it is left out: `cat /etc/passwd | grep root`
+   matches as `cat /etc/passwd grep root`, and punctuation inside a term
+   (`root&&echo`, `--flag`, `a|b`) is read as the words it separates. A query
+   made only of such terms keeps them and matches nothing, as it did before
+   terms were matched one by one. Only the last term typed is prefix-matched;
+   when that is the one left out, none is, so after `cat /etc/passwd |` the
+   word `/etc/passwd` is matched whole.
    Event, HTTP body and recording search share this translation
-   (`src/core/query/fts-match.ts`), so every typed input is valid MATCH syntax.
+   (`src/core/query/fts-match.ts`): every term is quoted as a phrase, so no
+   typed input is malformed MATCH syntax.
    Event indexes tokenize decoded JSON values and property names, not JSON
    serialization escapes. A word after a newline or tab must be searchable as
    that word, without an invented `n` or `t` prefix. Rebuilding this derived
@@ -140,6 +157,30 @@ typed text
   original import path. UTF-8 text is searchable; binary/images are unsupported
   for content search. Small inline base64 uses the Reader's decoded bytes;
   encoded data over 16 KiB requires a saved reference and reports limited.
+- Request, response, WebSocket and TCP bodies, inline or saved, are also
+  indexed with JSON `\uXXXX` escapes decoded (surrogate pairs combined),
+  whatever their content type: a term matches a body whose escaped text
+  decodes to it, by rule 4. The body is never parsed for this, and text that
+  only shows an escape literally matches the character it names.
+- Bytes that are not valid UTF-8 are indexed as text only when the body's
+  media type is textual (the capture addon's TEXT_CONTENT_TYPES: json, html,
+  text, xml, javascript, css, csv, yaml, svg, form data) and they decode,
+  without a NUL, in the charset its content type declares (UTF-8 when none).
+  Anything else stays binary. A body cut short at capture
+  (`REDLOG_MAX_BODY`), or whose declared charset stops decoding at its end, is
+  indexed as far as it goes and counted `partial`, not covered — when the
+  body index holds it. A body of at most 4,096 characters stays inline on
+  the event, and an inline text body with no `\uXXXX` escape has no body-index
+  entry: the events index searches it, and coverage does not count it. So
+  with `REDLOG_MAX_BODY` at 4096 or less, a text body cut short at capture
+  without an escape in it is searched as far as it goes and is not reported
+  as partial.
+- Known limits: under Node 24.12 (ICU 77) an invalid Big5 body is decoded
+  with its invalid bytes dropped and counted indexed; the app's runtime
+  (Electron 45, ICU 78) rejects it, and it stays binary. ISO-2022-JP and
+  UTF-7 bodies are 7-bit, so they are saved as text and indexed in their
+  encoded form: their words are not found, and coverage still says covered.
+- The decoded text shares its saved body's status, pruning and coverage.
 - AI raw search admits only the latest `transcript_snapshot` prefix per saved
   project file within the query dataset, with matching cumulative size/hash.
   Opening an older snapshot still reads that confirmed prefix. Capture-start

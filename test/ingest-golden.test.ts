@@ -90,7 +90,7 @@ describe('ingest write path, byte for byte', () => {
     expect(counted.fts).toBeGreaterThanOrEqual(counted.refs)
     // The index's own verification columns (inode/mtime signatures) differ per run.
     for (const row of index.prepare('SELECT event_id,sha256,file,size,encoding,status,indexed_bytes,reason,kind,available_bytes FROM body_event_refs ORDER BY event_id,sha256').all()) h.update(JSON.stringify(row) + '\n')
-    for (const row of index.prepare('SELECT event_id,sha256,content FROM body_fts ORDER BY event_id,sha256,rowid').all()) h.update(JSON.stringify(row) + '\n')
+    for (const row of index.prepare('SELECT d.event_id,d.sha256,f.content FROM body_fts f JOIN body_docs d ON d.doc=f.rowid ORDER BY d.event_id,d.sha256,f.rowid').all()) h.update(JSON.stringify(row) + '\n')
     index.close()
     h.update(results.join(','))
     const head = (db.getDB().prepare('SELECT hash FROM events ORDER BY created_at DESC, rowid DESC LIMIT 1').get() as { hash: string }).hash

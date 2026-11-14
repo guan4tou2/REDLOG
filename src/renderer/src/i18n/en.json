@@ -2071,6 +2071,7 @@
   "activity.tool.unknown": "Unrecognized tool",
   "activity.coverage.missing": "Missing saved sources: {{count}}",
   "activity.coverage.limited": "Above full-text index limit: {{count}}",
+  "activity.coverage.partial": "Partly indexed sources: {{count}}",
   "activity.coverage.pending": "Pending source indexes: {{count}}",
   "activity.coverage.binary": "Unindexed binary sources: {{count}}",
   "activity.coverage.failed": "Changed or unreadable sources: {{count}}",

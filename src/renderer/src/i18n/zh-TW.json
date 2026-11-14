@@ -2071,6 +2071,7 @@
   "activity.tool.unknown": "未辨識工具",
   "activity.coverage.missing": "缺檔 {{count}}",
   "activity.coverage.limited": "超過全文索引上限 {{count}}",
+  "activity.coverage.partial": "部分索引 {{count}}",
   "activity.coverage.pending": "待索引 {{count}}",
   "activity.coverage.binary": "二進位未索引 {{count}}",
   "activity.coverage.failed": "內容變更或讀取失敗 {{count}}",

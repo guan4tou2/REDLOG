@@ -45,7 +45,7 @@ const READ_SYMBOLS: readonly string[] = [
   'querySourceSessions', 'queryEventCausalChain', 'queryScreenshotPage', 'queryHttpFlowPage', 'queryEventsPage',
   'distinctAgentTypes', 'getLootCount', 'aggregateTargets', 'distinctHosts',
   // http-body-index writes
-  'linkHttpBodyEvent', 'pruneHttpBodyIndex', 'pruneSavedFileIndex', 'searchHttpBodyEventIds',
+  'linkHttpBodyEvent', 'pruneHttpBodyIndex', 'pruneSavedFileIndex', 'searchHttpBodyTermIds',
   // cast-index writes
   'indexCast', 'backfillCastIndex', 'pruneCast'
 ]

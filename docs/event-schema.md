@@ -205,6 +205,20 @@ has `"truncated": true`, `size` is the bytes stored, and `totalSize` is the
 size the addon saw, when it reported one. Without `totalSize` the total is
 unknown: it is never filled in from `size`.
 
+The body is recorded once, as `request_body` / `request_body_ref` (with
+`request_body_preview`). `params` holds only `query`, `body_form`,
+`body_multipart` and `body_raw`; a JSON body is not parsed into it. `body_raw`
+is a preview sent for a body declared JSON that does not parse, and for every
+body that is not JSON, form-urlencoded or multipart.
+
+Search reads a body through the body index (`http-body-index.db`, derived,
+never written back): the saved text as written; for request, response,
+WebSocket and TCP bodies, also that text with JSON `\uXXXX` escapes decoded,
+inline or saved, when it has any; and a body with a textual media type saved
+as base64 because it is not valid UTF-8, read in the charset its content type
+declares (`request_headers` / `content_type`, UTF-8 when none) as far as it
+decodes. The rules are in docs/domain/SPEC-search-query-semantics.md.
+
 The `tls` object (HTTPS only):
 ```json
 { "tls_version": "TLSv1.3", "cipher": "...", "alpn": "h2",

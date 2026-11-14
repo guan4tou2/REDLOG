@@ -821,6 +821,10 @@ def _extract_all_headers(headers) -> list[list[str]]:
     return result
 
 
+def _discard(_value):
+    return None
+
+
 def _extract_params(flow: http.HTTPFlow) -> dict:
     params = {}
     parsed = urlparse(flow.request.pretty_url)
@@ -833,9 +837,24 @@ def _extract_params(flow: http.HTTPFlow) -> dict:
     if flow.request.content:
         body_text = flow.request.get_text(strict=False) or ""
         if "application/json" in content_type:
+            # The body is recorded once, as request_body / request_body_preview;
+            # a parsed second copy would put a depth chosen by the target or the
+            # tester into the event. The parse below only classifies: its result
+            # is dropped, and only a body that is not JSON keeps a raw preview.
+            # The hooks keep it from building what it would drop: each object
+            # becomes None as soon as it is read (peak memory for a 12 MB body
+            # 57 MB -> 1 MB), and a number is never converted, so a valid
+            # integer past Python's 4,300-digit conversion limit is not
+            # mistaken for invalid JSON.
             try:
-                params["body_json"] = json.loads(body_text)
-            except (json.JSONDecodeError, ValueError):
+                json.loads(body_text, object_pairs_hook=_discard, parse_int=_discard, parse_float=_discard)
+            except RecursionError:
+                # Not a ValueError: a deeply nested body overflows json.loads on
+                # Python 3.11 at about 1,000 levels (3.12/3.13 deeper). It is
+                # nested, not invalid, so it gets no preview here, and the
+                # event is still sent.
+                pass
+            except ValueError:
                 params["body_raw"] = _truncate(body_text, PREVIEW_BODY)
         elif "application/x-www-form-urlencoded" in content_type:
             form_data = parse_qs(body_text, keep_blank_values=True)

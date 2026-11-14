@@ -1,5 +1,5 @@
 import { parentPort, workerData, receiveMessageOnPort, type MessagePort } from 'node:worker_threads'
-import { openReadonlyProjectDB, closeDB, getDB } from '../../core/db/index'
+import { openFrozenProjectDB, closeDB, getDB } from '../../core/db/index'
 import { executeExportTask, type ExportTask } from '../../core/export-task'
 import type { SealWriter } from '../../core/bundle-export'
 
@@ -21,8 +21,7 @@ const sealWriter: SealWriter = (engagementId, data) => {
 }
 
 try {
-  openReadonlyProjectDB(task.project.path, task.project.id)
-  getDB().exec('BEGIN')
+  openFrozenProjectDB(task.project.path, task.project.id)
   try { parentPort!.postMessage({ result: executeExportTask(task, { sealWriter }) }) }
   finally { getDB().exec('ROLLBACK') }
 } catch (error) {

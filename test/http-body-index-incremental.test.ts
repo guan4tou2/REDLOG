@@ -5,7 +5,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { initDB, closeDB, getDB } from '../src/core/db/index'
-import { searchHttpBodyEventIds, bodySearchCoverage, closeHttpBodyIndex, linkHttpBodyEvent, pruneHttpBodyIndex, pruneSavedFileIndex, eventIdsReferencingBody } from '../src/core/http-body-index'
+import { searchHttpBodyEventIds } from './helpers/body-search'
+import { bodySearchCoverage, closeHttpBodyIndex, linkHttpBodyEvent, pruneHttpBodyIndex, pruneSavedFileIndex, eventIdsReferencingBody } from '../src/core/http-body-index'
 import type { ExportSnapshot } from '../src/core/export-plan'
 
 // #695: a text search used to re-walk every content-ref row and re-open and
@@ -54,7 +55,7 @@ function dump(): unknown {
       // The verification columns hold inode and mtime signatures, which differ
       // between two runs by construction.
       refs: db.prepare('SELECT event_id,sha256,file,size,encoding,status,indexed_bytes,reason,kind,available_bytes FROM body_event_refs ORDER BY event_id,sha256').all(),
-      fts: db.prepare('SELECT event_id,sha256,content FROM body_fts ORDER BY event_id,sha256,content').all(),
+      fts: db.prepare('SELECT d.event_id,d.sha256,f.content FROM body_fts f JOIN body_docs d ON d.doc=f.rowid ORDER BY d.event_id,d.sha256,f.content').all(),
     }
   } finally { db.close() }
 }
@@ -233,7 +234,7 @@ describe('incremental body-search backfill', () => {
     const prepare = Database.prototype.prepare
     vi.spyOn(Database.prototype, 'prepare').mockImplementation(function (this: Database.Database, sql: string) {
       const s = prepare.call(this, sql)
-      if (/^SELECT id,data,agent_type FROM/.test(sql)) {
+      if (/^SELECT id,data,agent_type[ ,]/.test(sql)) {
         const iterate = s.iterate.bind(s), get = s.get.bind(s)
         ;(s as unknown as { iterate: (...a: unknown[]) => unknown }).iterate = function* (...a: unknown[]) { for (const r of iterate(...a)) { rows++; yield r } }
         ;(s as unknown as { get: (...a: unknown[]) => unknown }).get = (...a: unknown[]) => { const r = get(...a); if (r) rows++; return r }
@@ -253,15 +254,21 @@ describe('incremental body-search backfill', () => {
     expect(work(() => searchHttpBodyEventIds('alpha', dir))).toEqual({ opens: 0, rows: 0 })
   })
 
-  it('after a restart with nothing changed, walks the rows but opens no file', () => {
+  // The watermark is persisted with the rows it vouches for.
+  it('after a restart with nothing changed, reads no row and opens no file', () => {
     seed(30)
     searchHttpBodyEventIds('alpha', dir)
     closeHttpBodyIndex()
-    expect(work(() => expect(searchHttpBodyEventIds('work7', dir)).toEqual(['w7']))).toEqual({ opens: 0, rows: 30 })
+    expect(work(() => expect(searchHttpBodyEventIds('work7', dir)).toEqual(['w7']))).toEqual({ opens: 0, rows: 0 })
     // A file changed while the app was closed is re-verified; nothing else is.
     fs.writeFileSync(path.join(dir, 'http-bodies', `${sha('alpha work4')}.body`), 'gamma work4 longer')
     closeHttpBodyIndex()
-    expect(work(() => expect(searchHttpBodyEventIds('work4', dir)).toEqual([]))).toEqual({ opens: 1, rows: 30 })
+    expect(work(() => expect(searchHttpBodyEventIds('work4', dir)).toEqual([]))).toEqual({ opens: 1, rows: 1 })
+    // A row added while it was closed costs that row (and w4, now failed, is
+    // retried as every failed ref is).
+    closeHttpBodyIndex()
+    bodyEvent('w30', 'alpha work30')
+    expect(work(() => expect(searchHttpBodyEventIds('work30', dir)).toEqual(['w30']))).toEqual({ opens: 2, rows: 2 })
   })
 
   it('re-verifies only the file that changed', () => {
@@ -308,23 +315,64 @@ describe('incremental body-search backfill', () => {
     } finally { holder.close() }
   })
 
-  // Another connection holding the index's write lock (the export worker,
-  // mid-walk) must not fail a search: it answers from the index as it stands,
-  // and coverage, which reads the project's rows, shows what is not linked.
-  it('answers from the index as it stands while another writer holds it', () => {
+  // A search that finds nothing new writes nothing, missing refs retried with
+  // the same outcome included: on Windows each commit is a flush.
+  it('commits nothing when nothing changed, a missing body retried included', () => {
+    seed(5)
+    insert('gone', { response_body_ref: { sha256: sha('never written'), file: `${sha('never written')}.body`, size: 13, encoding: 'text' } })
+    searchHttpBodyEventIds('alpha', dir)
+    const holder = new Database(path.join(dir, 'http-body-index.db'))
+    try {
+      const before = walCommits()
+      searchHttpBodyEventIds('alpha', dir)
+      bodySearchCoverage()
+      expect(walCommits() - before).toBe(0)
+    } finally { holder.close() }
+  })
+
+  // Another connection holding the index's write lock must not fail a search
+  // or leave it short: the row the watermark does not cover is read into this
+  // connection's TEMP tables, and the shared index is not written.
+  it('answers in full, without writing the index, while another writer holds it', () => {
     seed(5)
     searchHttpBodyEventIds('alpha', dir)
     bodyEvent('w5', 'alpha work5')
     const holder = new Database(path.join(dir, 'http-body-index.db'))
     try {
       holder.prepare('BEGIN IMMEDIATE').run()
-      expect(searchHttpBodyEventIds('alpha', dir)).toHaveLength(5)
-      expect(bodySearchCoverage()).toMatchObject({ indexed: 5, pending: 1 })
+      expect(searchHttpBodyEventIds('alpha', dir)).toHaveLength(6)
+      expect(bodySearchCoverage()).toMatchObject({ indexed: 6, pending: 0 })
+      expect(eventIdsReferencingBody(sha('alpha work5'), dir)).toEqual([])
       holder.prepare('ROLLBACK').run()
     } finally { holder.close() }
     expect(searchHttpBodyEventIds('alpha', dir)).toHaveLength(6)
     expect(bodySearchCoverage()).toMatchObject({ indexed: 6, pending: 0 })
+    expect(eventIdsReferencingBody(sha('alpha work5'), dir)).toEqual(['w5'])
   }, 30_000)
+
+  // The watermark vouches for the rows written with it: a sync whose mark
+  // cannot be written leaves neither, so no later reader trusts a half.
+  it('writes the watermark in the transaction of the rows it vouches for', () => {
+    seed(5)
+    const prepare = Database.prototype.prepare
+    vi.spyOn(Database.prototype, 'prepare').mockImplementation(function (this: Database.Database, sql: string) {
+      const s = prepare.call(this, sql)
+      if (/INTO body_index_meta VALUES\('mark'/.test(sql)) (s as unknown as { run: () => never }).run = () => { throw new Error('mark write failed') }
+      return s
+    })
+    expect(() => searchHttpBodyEventIds('alpha', dir)).toThrow('mark write failed')
+    // The failing statement is cached on the handle: drop both.
+    vi.restoreAllMocks(); closeHttpBodyIndex()
+    const index = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
+    try {
+      expect({
+        refs: index.prepare('SELECT count(*) AS n FROM body_event_refs').get(),
+        docs: index.prepare('SELECT count(*) AS n FROM body_docs').get(),
+        mark: index.prepare("SELECT count(*) AS n FROM body_index_meta WHERE key='mark'").get(),
+      }).toEqual({ refs: { n: 0 }, docs: { n: 0 }, mark: { n: 0 } })
+    } finally { index.close() }
+    expect(searchHttpBodyEventIds('work3', dir)).toEqual(['w3'])
+  })
 
   it('treats a row ingest already linked as a no-op at the next search', () => {
     seed(5)

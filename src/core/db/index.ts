@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3'
 import { BODY_SOURCE_PREDICATE } from '../content-contract'
+import { FTS_TOKENIZE } from '../query/fts-match'
 import path from 'path'
 import fs from 'fs'
 import { mkdirPrivate, ensurePrivateFile, restrictFile } from '../private-fs'
@@ -381,7 +382,13 @@ function applySchema(): void {
   `)
 
   for (const table of ['events', 'events_logged']) {
-    db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_content_refs ON ${table}(id) WHERE ${BODY_SOURCE_PREDICATE}`)
+    // The predicate is the index: a project whose index was built from an
+    // older predicate gets it rebuilt, since the body index reads it with
+    // INDEXED BY and a query cannot use a partial index its WHERE does not imply.
+    const name = `idx_${table}_content_refs`
+    const built = (db.prepare("SELECT sql FROM sqlite_master WHERE type='index' AND name=?").get(name) as { sql: string } | undefined)?.sql
+    if (built !== undefined && !built.endsWith(`WHERE ${BODY_SOURCE_PREDICATE}`)) db.exec(`DROP INDEX ${name}`)
+    db.exec(`CREATE INDEX IF NOT EXISTS ${name} ON ${table}(id) WHERE ${BODY_SOURCE_PREDICATE}`)
   }
 
   // The Capture Health probes (src/core/capture-health.ts, newestEvent). Each
@@ -469,7 +476,7 @@ function applySchema(): void {
         const fts = `${table}_fts`
         const ftsSql = `CREATE VIRTUAL TABLE ${fts} USING fts5(
           data, target_id, agent_type, content='', contentless_delete=1,
-          tokenize='unicode61 remove_diacritics 2', prefix='2 3')`
+          tokenize='${FTS_TOKENIZE}', prefix='2 3')`
         const insertTrigger = (text: (data: string) => string): string => `CREATE TRIGGER ${fts}_ai AFTER INSERT ON ${table} BEGIN
           INSERT INTO ${fts}(rowid, data, target_id, agent_type)
           VALUES (new.rowid, ${text('new.data')}, new.target_id, new.agent_type);
@@ -547,6 +554,14 @@ export function openReadonlyProjectDB(projectDir: string, engagementId: string):
   currentProjectDir = projectDir
   boundEngagement = engagementId
   generation++
+}
+
+/** How an export worker opens the project: read-only, inside one read
+ *  transaction it holds for the whole export, so every read sees the same
+ *  rows (export-worker.ts). The caller ends it with `ROLLBACK`. */
+export function openFrozenProjectDB(projectDir: string, engagementId: string): void {
+  openReadonlyProjectDB(projectDir, engagementId)
+  getDB().exec('BEGIN')
 }
 
 export function getDB(): Database.Database {

@@ -36,7 +36,12 @@ function request(extra: Partial<ActivityRequest> = {}): ActivityRequest {
 const EVERY_ROW = { since: -1 }
 
 let n = 0
-function seed(count: number, base = 0): void {
+// One transaction for the whole seed: a commit per row is a disk flush per
+// row, and on the Windows runner 120 of them have taken 19 s (this file's
+// first case timed out at 15 s on 2026-11-15 while the same case ran in
+// 0.45 s on main the same hour).
+function seed(count: number, base = 0): void { getDB().transaction(() => seedRows(count, base))() }
+function seedRows(count: number, base: number): void {
   for (let i = 0; i < count; i++) {
     const k = (base + i) % 7, ts = 1000 + base + i
     if (k === 0) add(`s${base + i}`, ts, 'shell', { subtype: 'command_start', terminalId: 't1', command_id: `c${(base + i) >> 1}`, command: 'id' })

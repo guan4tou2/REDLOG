@@ -15,7 +15,9 @@ import { linkHttpBodyEvent, closeHttpBodyIndex } from '../src/core/http-body-ind
 //
 // The rows for a (event, body) pair are only ever written beside its
 // body_event_refs row, in one transaction, and every delete removes both. No
-// ref row means no FTS rows, so there is nothing to delete.
+// ref row means no FTS rows, so there is nothing to delete. (Removal now goes
+// by rowid through body_docs; test/http-body-index-work.test.ts checks that
+// no statement filters body_fts on anything else.)
 
 let dir: string
 beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-body-link-')); initDB(dir) })
@@ -27,7 +29,7 @@ function ftsDeletes(run: () => void): number {
   const prepare = Database.prototype.prepare
   const spy = vi.spyOn(Database.prototype, 'prepare').mockImplementation(function (this: Database.Database, sql: string) {
     const stmt = prepare.call(this, sql)
-    if (/DELETE FROM body_fts WHERE event_id=\?/.test(sql)) {
+    if (/DELETE FROM body_fts/.test(sql)) {
       const exec = stmt.run.bind(stmt)
       ;(stmt as unknown as { run: (...a: unknown[]) => unknown }).run = (...a: unknown[]) => { seen.push(sql); return exec(...a) }
     }
@@ -38,7 +40,7 @@ function ftsDeletes(run: () => void): number {
 }
 const indexed = (): Array<{ event_id: string; content: string }> => {
   const db = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
-  try { return db.prepare('SELECT event_id,content FROM body_fts ORDER BY event_id,rowid').all() as Array<{ event_id: string; content: string }> }
+  try { return db.prepare('SELECT d.event_id,f.content FROM body_fts f JOIN body_docs d ON d.doc=f.rowid ORDER BY d.event_id,f.rowid').all() as Array<{ event_id: string; content: string }> }
   finally { db.close() }
 }
 
