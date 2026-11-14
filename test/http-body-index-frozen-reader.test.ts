@@ -44,6 +44,23 @@ const chainedBody = (id: string, text: string): string => {
   return ref.sha256
 }
 
+/** A logged scanner response whose saved body (and nothing else) holds
+ *  `word`; `at` is its created_at, the order retention deletes in. */
+const loggedBody = (id: string, word: string, at: number): void => {
+  const ref = savedBody(dir, `{"v":"${word} ${id}"}`)
+  getDB().prepare(`INSERT INTO events_logged (id,timestamp,engagement_id,session_id,operator_id,agent_type,subtype,hostname,data,created_at)
+    VALUES (?,?,'project','capture','operator','scanner','http_response','host',?,?)`).run(id, at, JSON.stringify({ subtype: 'http_response', url: 'http://t.test/', response_body_ref: ref }), at)
+}
+const dnsRow = (id: string, at: number): void => {
+  getDB().prepare(`INSERT INTO events_logged (id,timestamp,engagement_id,session_id,operator_id,agent_type,subtype,hostname,data,created_at)
+    VALUES (?,?,'project','capture','operator','scanner','dns_query','host',?,?)`).run(id, at, JSON.stringify({ subtype: 'dns_query', name: 'x.test' }), at)
+}
+/** What retention runs on the logged tier (retention.ts sweepLoggedTier). */
+const retain = (before: number, limit: number): void => {
+  getDB().prepare(`DELETE FROM events_logged WHERE rowid IN (SELECT rowid FROM events_logged WHERE created_at < ? LIMIT ${limit})`).run(before)
+}
+const ids = (prefix: string, from: number, to: number): string[] => Array.from({ length: to - from }, (_, i) => `${prefix}-${from + i}`).sort()
+
 sqlite.describe('a read-only connection whose view is behind the shared index', () => {
   beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-body-frozen-')); db.initDB(dir) })
   afterEach(async () => { await reader?.close(); reader = null; idx.closeHttpBodyIndex(); db.closeDB(); fs.rmSync(dir, { recursive: true, force: true }) })
@@ -88,6 +105,49 @@ sqlite.describe('a read-only connection whose view is behind the shared index', 
     expect({ first: first.rows, second: second.rows }).toEqual({ first: 3, second: 0 })
     expect(shared()).toEqual(before)
   }, 30_000)
+
+  // Retention deletes the oldest logged rows after the reader opened: the
+  // shared index no longer describes rows the reader still sees.
+  it('after retention deleted rows its view still has: answers every row it sees', async () => {
+    for (let i = 0; i < 10; i++) loggedBody(`old-${i}`, 'alpha', 1000 + i)
+    search('alpha')
+    reader = await openFrozenReader(dir, 'project')
+    for (let i = 0; i < 3; i++) loggedBody(`new-${i}`, 'alpha', 2000 + i)
+    retain(1005, 1000)
+    expect(search('alpha').items.map(e => e.id).sort()).toEqual([...ids('old', 5, 10), ...ids('new', 0, 3)].sort())
+    const before = shared()
+    const answer = await reader.search('alpha')
+    expect(answer.ids).toEqual(ids('old', 0, 10))
+    expect(answer.coverage).toMatchObject({ status: 'covered', indexed: 10 })
+    expect(shared()).toEqual(before)
+  }, 30_000)
+
+  // events_logged has no AUTOINCREMENT: once retention removed every logged
+  // row, new capture starts again at rowid 1.
+  it('after rowid reuse below its view: answers its own rows, not the new ones at the same rowids', async () => {
+    for (let i = 0; i < 3; i++) loggedBody(`old-${i}`, 'alpha', 1000 + i)
+    search('alpha')
+    reader = await openFrozenReader(dir, 'project')
+    retain(2000, 1000)
+    for (let i = 0; i < 3; i++) dnsRow(`dns-${i}`, 3000 + i)
+    for (let i = 0; i < 5; i++) loggedBody(`new-${i}`, 'alpha', 4000 + i)
+    expect(search('alpha').items.map(e => e.id).sort()).toEqual(ids('new', 0, 5))
+    const answer = await reader.search('alpha')
+    expect(answer.ids).toEqual(ids('old', 0, 3))
+    expect(answer.coverage).toMatchObject({ status: 'covered', indexed: 3 })
+  }, 30_000)
+
+  it('pages through more than one page after retention, as a multi-page export plan does', async () => {
+    getDB().transaction(() => { for (let i = 0; i < 1100; i++) loggedBody(`old-${String(i).padStart(4, '0')}`, 'alpha', 1000 + i) })()
+    search('alpha')
+    reader = await openFrozenReader(dir, 'project')
+    getDB().transaction(() => { for (let i = 0; i < 3; i++) loggedBody(`new-${i}`, 'alpha', 9000 + i) })()
+    retain(1005, 1000)
+    search('alpha')
+    const paged = await reader.pages('alpha', 1000)
+    expect(paged.error).toBeUndefined()
+    expect(paged.ids).toHaveLength(1100)
+  }, 60_000)
 
   it('a replaced database: the reader answers its own rows and writes nothing; main rebuilds', async () => {
     for (let i = 0; i < 5; i++) savedResponse(`gone-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha gone${i}"}`) })

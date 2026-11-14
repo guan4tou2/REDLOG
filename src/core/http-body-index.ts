@@ -616,12 +616,20 @@ interface ReadPlan {
  *  rowid is below the watermark's. Only a read-only connection is ever behind:
  *  main's read-write connection sees every commit, so for it a lower highest
  *  rowid means rows were deleted or the database replaced, and its sync walks
- *  before it reads. A view behind in a tier is taken as a prefix of what the
- *  index describes when the last ref the index holds at or below the view's
- *  highest rowid is, in this view, the same event at the same rowid (a
- *  replaced database has other ids there); a view at or above it, when the
- *  watermark's prefix is intact in it. Both tiers must agree, or the shared
- *  index vouches for nothing in this view. */
+ *  before it reads. In a tier where the view is behind, the shared index
+ *  vouches for the view's rows when it holds refs for exactly as many rows at
+ *  or below the view's highest rowid as the view has content-ref rows there
+ *  (counting only the transcript prefixes the watermark holds), and the last
+ *  row it holds there is the same event at the same rowid in the view. Rows
+ *  are only ever added above the highest rowid, so the index cannot hold a
+ *  row there that the view lacks unless a rowid was reused, which the event
+ *  check sees; a row the view has and the index no longer describes (deleted
+ *  by retention since the view was taken, or a rowid reused after every row
+ *  was) makes the counts differ. A row that yields no ref at all also makes
+ *  them differ, and the view is read locally: slower, never wrong. Where the
+ *  view is at or above the watermark, the watermark's prefix must be intact
+ *  in it. Both tiers must pass, or the shared index vouches for nothing in
+ *  this view. */
 function vouchedFor(db: Database.Database, mark: Mark | null): [number, number] | null {
   if (!mark) return null
   const source = getDB(), out: number[] = []
@@ -636,6 +644,10 @@ function vouchedFor(db: Database.Database, mark: Mark | null): [number, number] 
     } else {
       const last = stmt(db, 'SELECT event_id,row FROM body_event_refs WHERE tier=? AND row<=? ORDER BY row DESC LIMIT 1').get(table, view.max) as { event_id: string; row: number } | undefined
       if (last && idAt(last.row) !== last.event_id) return null
+      const held = (stmt(db, 'SELECT count(DISTINCT row) AS n FROM body_event_refs WHERE tier=? AND row<=?').get(table, view.max) as { n: number }).n
+      const seen = (source.prepare(`SELECT count(*) AS n FROM ${table} INDEXED BY idx_${table}_content_refs WHERE rowid<=? AND (${BODY_SOURCE_PREDICATE}) AND ${ONLY_LATEST_PREFIX}`)
+        .get(view.max, JSON.stringify(mark.latest)) as { n: number }).n
+      if (held !== seen) return null
       out.push(view.max)
     }
   }

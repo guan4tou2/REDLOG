@@ -58,7 +58,8 @@ function prng(seed: number): () => number {
 }
 
 interface Body { file: string | null; words: string[] }
-interface Modelled { id: string; tier: 'events' | 'events_logged'; rowid: number; fields: string[]; bodies: Body[] }
+/** `deleted`: the step retention deleted the row at. */
+interface Modelled { id: string; tier: 'events' | 'events_logged'; rowid: number; fields: string[]; bodies: Body[]; deleted?: number }
 
 const SEEDS = process.env.REDLOG_LIFECYCLE_SEED ? [Number(process.env.REDLOG_LIFECYCLE_SEED)] : [1, 2, 3]
 const STEPS = 300
@@ -116,28 +117,32 @@ sqlite.describe('body index lifecycle, seeded', () => {
     for (let i = 0; i < 30; i++) add.inline()
     for (let i = 0; i < 3; i++) add.same()
 
-    /** What a correct index answers for `text`, inside `snapshot` if given. */
-    const oracle = (text: string, snapshot?: ExportSnapshot): string[] => {
+    /** What a correct index answers for `text`, inside `snapshot` if given,
+     *  for a view taken at step `seenAt` (default: now). */
+    const oracle = (text: string, snapshot?: ExportSnapshot, seenAt = Infinity): string[] => {
       const terms = text.split(' ')
       const has = (words: string[], term: string, last: boolean) => words.some(w => last ? w.startsWith(term) : w === term)
-      return model.filter(e => !snapshot || e.rowid <= (e.tier === 'events' ? snapshot.chainedMaxRowId : snapshot.loggedMaxRowId))
+      return model.filter(e => e.deleted === undefined || e.deleted >= seenAt)
+        .filter(e => !snapshot || e.rowid <= (e.tier === 'events' ? snapshot.chainedMaxRowId : snapshot.loggedMaxRowId))
         .filter(e => terms.every((term, i) => has(e.fields, term, i === terms.length - 1)
           || e.bodies.some(b => (b.file === null || !gone.has(b.file)) && has(b.words, term, i === terms.length - 1))))
         .map(e => e.id).sort()
     }
     const query = (): string => {
-      const e = pick(model.filter(m => m.bodies.length)), body = e.bodies[0].words[1]
+      const e = pick(model.filter(m => m.bodies.length && m.deleted === undefined)), body = e.bodies[0].words[1]
       return pick([body, `${e.fields[1]} ${body}`, `${body} ${e.fields[1]}`, `zz${n}`, 'shared words', 'echoed'])
     }
     const bodyCoverage = (snapshot?: ExportSnapshot) => idx.bodySearchCoverage(snapshot).sources!.find(s => s.kind === 'body')!
     /** Missing refs are retried by every sync, by design: the ones gone now,
      *  and the ones restored since the last sync (still missing in the index). */
     const missingSinceSync = new Set<string>()
-    const retried = (): number => model.reduce((sum, e) => sum + e.bodies.filter(b => b.file && (gone.has(b.file) || missingSinceSync.has(b.file))).length, 0)
+    const retried = (): number => model.filter(e => e.deleted === undefined).reduce((sum, e) => sum + e.bodies.filter(b => b.file && (gone.has(b.file) || missingSinceSync.has(b.file))).length, 0)
     /** (b) and the model checks for one call through main's index. */
     function checked<T>(run: () => T): T {
       const counted = cost(run)
-      expect(counted.rows, `${where()}: source rows read`).toBeLessThanOrEqual(addedSince + retried() + 3)
+      // Rows deleted under the watermark: the next sync walks, by design.
+      if (!walkExpected) expect(counted.rows, `${where()}: source rows read`).toBeLessThanOrEqual(addedSince + retried() + 3)
+      walkExpected = false
       addedSince = 0
       missingSinceSync.clear(); for (const f of gone.keys()) missingSinceSync.add(f)
       return counted.result
@@ -149,7 +154,7 @@ sqlite.describe('body index lifecycle, seeded', () => {
       if (coverage.status === 'covered') { compared++; if (expected.length) found++ }
       if (coverage.status === 'covered') expect(answer.sort(), `${where()}: "${text}" while coverage says covered`).toEqual(expected)
       if (!snapshot) expect(coverage.indexed + coverage.missing + coverage.failed + coverage.pending + coverage.partial + coverage.binary + coverage.limited,
-        `${where()}: refs counted`).toBe(model.reduce((sum, e) => sum + e.bodies.length, 0))
+        `${where()}: refs counted`).toBe(model.filter(e => e.deleted === undefined).reduce((sum, e) => sum + e.bodies.length, 0))
     }
     function documentsHold(): void {
       const index = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
@@ -165,7 +170,7 @@ sqlite.describe('body index lifecycle, seeded', () => {
     let compared = 0, found = 0
     let older: ExportSnapshot = readActivitySnapshot(db.getReadonlyDB())
     let other: { db: typeof db; queries: typeof queries; idx: typeof idx } | null = null
-    let frozen: FrozenReader | null = null
+    let frozen: FrozenReader | null = null, frozenAt = 0, frozenBehindRetention = false, walkExpected = false
     const sharedState = (): unknown => {
       const index = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
       try {
@@ -204,13 +209,18 @@ sqlite.describe('body index lifecycle, seeded', () => {
           // The export worker: read-only, one read transaction for its life,
           // so its view falls behind while main goes on.
           op = 'frozen reader'
-          if (!frozen || random() < 0.3) { await frozen?.close(); frozen = await openFrozenReader(dir, 'eng') }
+          if (!frozen || random() < 0.3) { await frozen?.close(); frozen = await openFrozenReader(dir, 'eng'); frozenAt = step; frozenBehindRetention = walkExpected }
           const before = sharedState(), text = query()
           const answer = await frozen.search(text)
-          if (answer.coverage.status === 'covered') expect(answer.ids, `${where()}: frozen reader, "${text}"`).toEqual(oracle(text, frozen.snapshot))
-          expect(answer.rows, `${where()}: source rows the frozen reader read`).toBeLessThanOrEqual(40)
+          if (answer.coverage.status === 'covered') expect(answer.ids, `${where()}: frozen reader, "${text}"`).toEqual(oracle(text, frozen.snapshot, frozenAt))
+          // When the shared index does not vouch for its view (retention
+          // deleted rows its view still has, or main has not walked since a
+          // deletion its view already shows), its first search reads that
+          // view into TEMP; then it is bounded again.
+          if (!frozenBehindRetention) expect(answer.rows, `${where()}: source rows the frozen reader read`).toBeLessThanOrEqual(40)
+          frozenBehindRetention = false
           expect(sharedState(), `${where()}: the frozen reader wrote the shared index`).toEqual(before)
-        } else if (r < 0.76) {
+        } else if (r < 0.75) {
           op = 'other instance, older snapshot'
           if (!other) {
             vi.resetModules()
@@ -225,6 +235,16 @@ sqlite.describe('body index lifecycle, seeded', () => {
           const coverage = other.idx.bodySearchCoverage(older).sources!.find(s => s.kind === 'body')!
           if (coverage.status === 'covered') expect(page.items.map(e => e.id).sort(), `${where()}: other instance, "${text}"`).toEqual(oracle(text, older))
           agree(checked(() => queries.executeEventQuery({ parsed: parsed(text), filter: {}, limit: 500 })).items.map(e => e.id), text)
+        } else if (r < 0.77) {
+          // Retention on the logged tier: the oldest rows go, as sweepLoggedTier deletes them.
+          op = 'retention'
+          const doomed = db.getDB().prepare('SELECT id FROM events_logged ORDER BY created_at,rowid LIMIT ?').all(1 + Math.floor(random() * 5)) as { id: string }[]
+          db.getDB().prepare(`DELETE FROM events_logged WHERE rowid IN (SELECT rowid FROM events_logged ORDER BY created_at,rowid LIMIT ${doomed.length})`).run()
+          for (const { id } of doomed) { const e = model.find(m => m.id === id); if (e) e.deleted = step }
+          // A snapshot from before the deletion is refused ("changed by retention"): take a new one.
+          older = readActivitySnapshot(db.getReadonlyDB())
+          walkExpected = true
+          if (frozen) frozenBehindRetention = true
         } else if (r < 0.79) {
           op = 'vanish'
           const files = model.flatMap(e => e.bodies.map(b => b.file)).filter((f): f is string => !!f && !gone.has(f))

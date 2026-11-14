@@ -45,6 +45,24 @@ parentPort.on('message', async ({ id, op, arg }) => {
       const page = m.queries.executeEventQuery({ parsed: outcome.parsed, filter: {}, snapshot, limit: 1000 })
       const body = page.bodyCoverage.sources.find(s => s.kind === 'body')
       result = { ids: page.items.map(e => e.id).sort(), rows, coverage: { status: body.status, indexed: body.indexed, missing: body.missing, pending: body.pending } }
+    } else if (op === 'pages') {
+      // Every page of one search, following the cursor, as export selection does.
+      rows = 0
+      const outcome = m.contract.parseQuery(arg.text)
+      const ids = []
+      let cursor = null
+      try {
+        do {
+          const page = m.queries.executeEventQuery({ parsed: outcome.parsed, filter: {}, snapshot, cursor, limit: arg.limit })
+          for (const e of page.items) ids.push(e.id)
+          cursor = page.hasMore ? page.nextCursor : null
+        } while (cursor)
+        result = { ids: ids.sort(), rows }
+      } catch (error) { result = { ids: ids.sort(), rows, error: String(error && error.message || error) } }
+    } else if (op === 'call') {
+      // A writer of the shared index, called from this read-only connection.
+      m.idx[arg.name](...arg.args)
+      result = null
     } else if (op === 'close') {
       m.db.getDB().exec('ROLLBACK'); m.idx.closeHttpBodyIndex(); m.db.closeDB()
     }
@@ -56,6 +74,10 @@ parentPort.on('message', async ({ id, op, arg }) => {
 export interface FrozenReader {
   snapshot: ExportSnapshot
   search(text: string): Promise<{ ids: string[]; rows: number; coverage: { status: string; indexed: number; missing: number; pending: number } }>
+  /** Every page of one search under its snapshot, `limit` per page. */
+  pages(text: string, limit: number): Promise<{ ids: string[]; rows: number; error?: string }>
+  /** Call an exported function of http-body-index.ts in the worker. */
+  call(name: string, ...args: unknown[]): Promise<void>
   close(): Promise<void>
 }
 
@@ -78,6 +100,8 @@ export async function openFrozenReader(dir: string, engagementId: string): Promi
   return {
     snapshot,
     search: text => call('search', { text }),
+    pages: (text, limit) => call('pages', { text, limit }),
+    call: (name, ...args) => call('call', { name, args }),
     close: async () => { try { await call('close') } finally { await worker.terminate() } },
   }
 }
