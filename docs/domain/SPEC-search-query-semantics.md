@@ -168,7 +168,13 @@ typed text
   without a NUL, in the charset its content type declares (UTF-8 when none).
   Anything else stays binary. A body cut short at capture
   (`REDLOG_MAX_BODY`), or whose declared charset stops decoding at its end, is
-  indexed as far as it goes and counted `partial`, never as covered.
+  indexed as far as it goes and counted `partial`, not covered — when the
+  body index holds it. A body of at most 4,096 characters stays inline on
+  the event, and an inline text body with no `\uXXXX` escape has no body-index
+  entry: the events index searches it, and coverage does not count it. So
+  with `REDLOG_MAX_BODY` at 4096 or less, a text body cut short at capture
+  without an escape in it is searched as far as it goes and is not reported
+  as partial.
 - Known limits: under Node 24.12 (ICU 77) an invalid Big5 body is decoded
   with its invalid bytes dropped and counted indexed; the app's runtime
   (Electron 45, ICU 78) rejects it, and it stays binary. ISO-2022-JP and
