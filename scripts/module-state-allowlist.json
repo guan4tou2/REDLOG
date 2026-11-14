@@ -638,7 +638,35 @@
       "class": "constant",
       "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
     },
-    "src/core/scope-sanitize.ts#SCOPE_SANITIZED_FIELDS": {
+    "src/core/scope-sanitize.ts#OPAQUE_SCHEMES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/scope-sanitize.ts#ERROR_CLASSES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/scope-sanitize.ts#LOOT_MATCH_METADATA": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/scope-sanitize.ts#COOKIE_ATTRIBUTES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/scope-sanitize.ts#NAME_OR_ADDRESS_ANSWERS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/scope-sanitize.ts#BROWSER_CONSOLE_SUBTYPES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/scope-sanitize.ts#NAVIGATION": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/scope-sanitize.ts#HTTP_SUBTYPES": {
       "class": "constant",
       "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
     },

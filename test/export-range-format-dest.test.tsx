@@ -18,7 +18,7 @@ function plan(): ResolvedExportPlan {
     id: 'plan-1', fingerprint: '1234567890abcdef', expiresAt: Date.now() + 1000,
     snapshot: { chainedMaxRowId: 1, loggedMaxRowId: 1, takenAt: 1_700_000_000_000 },
     scopeSnapshot: { targets: [], excludeTargets: [], personalDomains: [] },
-    capabilities: { snapshot: true, boundedSubset: false, scopeMasking: true, piiScrubbing: true, attachments: false },
+    capabilities: { snapshot: true, boundedSubset: false, scopeMasking: 'optional', piiScrubbing: true, attachments: false },
     request: { format: 'json', subset: { kind: 'all' }, maskOutOfScope: true, scopeOnly: false, scrubPii: false },
     counts: { examined: 3, included: 3, excludedDoNotExport: 0, excludedPersonal: 0, maskedOutOfScope: 0, sanitized: 0, attachmentsIncluded: 0, attachmentsMissing: 0, attachmentsUnattributed: 0, unsupported: 0 }
   }
