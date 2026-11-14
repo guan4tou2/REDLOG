@@ -1,4 +1,5 @@
 import path from 'node:path'
+import { compareCodeUnits } from './code-unit-order'
 import { terminalIdentity } from './ingest/terminal'
 
 // v0.6.89 P0-A: `_causes` upstream-event lookup for events that arrive via
@@ -205,7 +206,7 @@ export function relatedCommandCandidates(data: Record<string, unknown>, now = Da
     .filter((candidate) => candidate.endedAt != null && now - candidate.endedAt <= RECENT_COMMAND_GRACE_MS && inside(candidate))
     .map(({ eventId, cwd }) => ({ eventId, cwd, method: 'cwd-near-command-end' as const, state: 'recent' as const }))
   return [...active, ...recent]
-    .sort((a, b) => b.cwd.length - a.cwd.length || a.eventId.localeCompare(b.eventId))
+    .sort((a, b) => b.cwd.length - a.cwd.length || compareCodeUnits(a.eventId, b.eventId))
     .map(({ eventId, method, state }) => ({ event_id: eventId, method, state }))
 }
 

@@ -22,6 +22,7 @@ import {
 } from './terminal-class'
 import type { RuleRejection } from './loot-detector'
 import { retryBusy } from './private-fs'
+import { compareCodeUnits } from './code-unit-order'
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -212,7 +213,7 @@ function replaceFile(target: string, body: string): string | undefined {
  *  by whichever tool had it. */
 export function syncTerminalProfiles(home: string = os.homedir()): { written: boolean; error?: string } {
   const target = snapshotPath(home)
-  const profiles = [...registry.keys()].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+  const profiles = [...registry.keys()].sort(compareCodeUnits)
     .flatMap((pluginId) => registry.get(pluginId) ?? [])
   if (profiles.length === 0) {
     try {

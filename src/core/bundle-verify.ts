@@ -13,6 +13,7 @@ import {
   chainedRowCanonical, sealedManifestDigest, sha256Hex, type AttachmentRef, type VerifyCategory
 } from './evidence-rules'
 import { canonicalStringify } from './db/event-write'
+import { compareCodeUnits } from './code-unit-order'
 
 export interface BundleVerifyOptions {
   hashOnly?: boolean
@@ -366,7 +367,7 @@ function verify(dir: string, opts: BundleVerifyOptions, attachments: BundleVerdi
   const declaredOmissions = new Map<string, string>()
   if (v4) for (const o of manifest.omittedAttachments as Array<{ path: string; reason: string }>) declaredOmissions.set(o.path, o.reason)
   const fileMismatchPaths = new Set<string>()
-  for (const [rel, refs] of [...refsByPath].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+  for (const [rel, refs] of [...refsByPath].sort(([a], [b]) => compareCodeUnits(a, b))) {
     const file = path.join(dir, rel)
     if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
       const reason = declaredOmissions.get(rel)

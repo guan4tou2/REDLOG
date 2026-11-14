@@ -28,6 +28,7 @@
 //
 // No imports beyond a type: the renderer uses this file too.
 import type { RedLogEvent } from './db/event-types'
+import { compareCodeUnits } from './code-unit-order'
 
 /** chained above logged at an exact (timestamp, rowId) tie. */
 export const EVENT_TIER_RANK = { chained: 1, logged: 0 } as const
@@ -81,5 +82,5 @@ export function compareEventOrder(a: EventOrderFields, b: EventOrderFields): num
   const at = tierRank(a.tier)
   const bt = tierRank(b.tier)
   if (at !== bt) return at < bt ? -1 : 1
-  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+  return compareCodeUnits(a.id, b.id)
 }

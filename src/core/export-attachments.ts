@@ -18,6 +18,7 @@ import crypto from 'crypto'
 import type { RedLogEvent } from './db/event-types'
 import { isOutOfScope, type ScopeForSanitize } from './scope-sanitize'
 import { BODY_REF_FIELDS } from './http-body-store'
+import { compareCodeUnits } from './code-unit-order'
 
 export type ExportAttachmentKind = 'screenshot' | 'cast' | 'httpBody' | 'artifact'
 
@@ -97,7 +98,7 @@ export function withFrozenSizes(current: readonly ExportAttachment[], approved: 
 export function exportAttachmentDigest(projectDir: string, attachments: readonly ExportAttachment[]): string {
   const digest = crypto.createHash('sha256')
   const buffer = Buffer.allocUnsafe(64 * 1024)
-  for (const attachment of [...attachments].filter(item => item.status === 'included').sort((a, b) => a.id.localeCompare(b.id))) {
+  for (const attachment of [...attachments].filter(item => item.status === 'included').sort((a, b) => compareCodeUnits(a.id, b.id))) {
     const fd = fs.openSync(path.join(projectDir, attachment.id), 'r')
     const hash = crypto.createHash('sha256')
     let total = 0
@@ -272,5 +273,5 @@ export function listExportAttachments(
     })
   }
 
-  return out.sort((a, b) => a.id.localeCompare(b.id))
+  return out.sort((a, b) => compareCodeUnits(a.id, b.id))
 }

@@ -8,6 +8,7 @@ import { activityKey, activityId, activityClassification } from '../activity-pro
 import { QUERY_FIELDS, type ParsedQuery } from '../query/contract'
 import { EVENT_TIER_RANK, eventOrderAfter, eventOrderBy, type EventOrderColumns } from '../event-order'
 import type { ActivityRequest, ActivityPage, ActivityMembersRequest, ActivityMembersPage, ActivitySnapshot, ActivitySummary } from '../activity-contract'
+import { compareCodeUnits } from '../code-unit-order'
 
 const registered = new WeakSet<object>()
 const indexed = new WeakMap<object, ActivitySnapshot>()
@@ -15,7 +16,7 @@ const PREVIEW = 20
 const fingerprint = (value: unknown): string => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 function stable(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stable)
-  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, stable(v)]))
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined).sort(([a], [b]) => compareCodeUnits(a, b)).map(([k, v]) => [k, stable(v)]))
   return value
 }
 function validateParsed(parsed: ParsedQuery): void {

@@ -1,0 +1,103 @@
+{
+  "$comment": "Canonical JSON vectors (see test/canonical-vectors.test.ts). `text` is what a verifier parses; `canonical` and `sha256` are what src/core/db/event-write.ts canonicalStringify makes of JSON.parse(text). Both verifiers must produce exactly these bytes. Regenerate the expected values with REDLOG_WRITE_CANONICAL_VECTORS=1 npx vitest run test/canonical-vectors.test.ts.",
+  "cases": [
+    {
+      "name": "sibling keys: astral before high-BMP (UTF-16 order, not code-point order)",
+      "text": "{\"😀\":1,\"～\":2,\"a\":3}",
+      "canonical": "{\"a\":3,\"😀\":1,\"～\":2}",
+      "sha256": "e21f5db750188b8f4db75c4d3cbedd459c99a29f0b6c54ab62a0ed3cfe91168d"
+    },
+    {
+      "name": "the same keys nested in objects and arrays",
+      "text": "{\"outer\":{\"\":{\"𐀀\":\"x\",\"￿\":\"y\"},\"list\":[{\"😀\":1,\"～\":2}]},\"􏿿\":true,\"�\":false}",
+      "canonical": "{\"outer\":{\"list\":[{\"😀\":1,\"～\":2}],\"\":{\"𐀀\":\"x\",\"￿\":\"y\"}},\"􏿿\":true,\"�\":false}",
+      "sha256": "429f80e664bf00697333c6d79f9c8bda2b6d5dd357c927696d1f75c8bb291df9"
+    },
+    {
+      "name": "BMP keys: case, digits, integer-like keys, punctuation",
+      "text": "{\"9\":7,\"10\":6,\"b\":1,\"B\":2,\"a_b\":3,\"a-b\":4,\"ab\":5,\"01\":8,\"-1\":9,\"\":10,\" \":11,\"é\":12,\"é\":13}",
+      "canonical": "{\"\":10,\" \":11,\"-1\":9,\"01\":8,\"10\":6,\"9\":7,\"B\":2,\"a-b\":4,\"a_b\":3,\"ab\":5,\"b\":1,\"é\":13,\"é\":12}",
+      "sha256": "8fdeafe66e550f8680cd9cb9671f55424a14709966d88f0ac6ee60a6a88fd11b"
+    },
+    {
+      "name": "lone surrogates as keys and values",
+      "text": "{\"\\ud800\":1,\"\\udfff\":2,\"\\ud83d\":\"\\ude00\",\"k\":\"\\ud800x\"}",
+      "canonical": "{\"k\":\"\\ud800x\",\"\\ud800\":1,\"\\ud83d\":\"\\ude00\",\"\\udfff\":2}",
+      "sha256": "97966ae2f40da9c05d26c7d432f5cbfc71c116d5e7f8fea2de0ce5e84fd3d8f8"
+    },
+    {
+      "name": "an escaped surrogate pair is one character",
+      "text": "{\"\\ud83d\\ude00\":\"\\ud83d\\ude00\",\"\\uff5e\":1}",
+      "canonical": "{\"😀\":\"😀\",\"～\":1}",
+      "sha256": "d00ec4c167ac01015e78d44311a2ae73aa3d4067d0ead8accbdedc9ef7380a83"
+    },
+    {
+      "name": "string escapes: controls, DEL, slash, U+2028/2029, quote, backslash",
+      "text": "{\"s\":\"\\u0000\\u0001\\u0002\\u0003\\u0004\\u0005\\u0006\\u0007\\b\\t\\n\\u000b\\f\\r\\u000e\\u000f\\u0010\\u0011\\u0012\\u0013\\u0014\\u0015\\u0016\\u0017\\u0018\\u0019\\u001a\\u001b\\u001c\\u001d\\u001e\\u001f/  \\\"\\\\\"}",
+      "canonical": "{\"s\":\"\\u0000\\u0001\\u0002\\u0003\\u0004\\u0005\\u0006\\u0007\\b\\t\\n\\u000b\\f\\r\\u000e\\u000f\\u0010\\u0011\\u0012\\u0013\\u0014\\u0015\\u0016\\u0017\\u0018\\u0019\\u001a\\u001b\\u001c\\u001d\\u001e\\u001f/  \\\"\\\\\"}",
+      "sha256": "0012994a18f26c5ab91498a23dc3023726bfb7426da7ae42c73ffc87960001a8"
+    },
+    {
+      "name": "__proto__ is an ordinary key in parsed JSON",
+      "text": "{\"__proto__\":{\"x\":1},\"constructor\":2}",
+      "canonical": "{\"__proto__\":{\"x\":1},\"constructor\":2}",
+      "sha256": "e60a56211596fcee44c6b87d771fd1c3d2ebdb176e14f1d67a0f4ce5a90a5fd5"
+    },
+    {
+      "name": "small floats: plain notation down to 1e-6, exponent below",
+      "text": "{\"n\":[0.0001,0.00001,0.000001,1e-7,1.5e-7,1e-10,5e-324,-0.00005,0.30000000000000004,123.456]}",
+      "canonical": "{\"n\":[0.0001,0.00001,0.000001,1e-7,1.5e-7,1e-10,5e-324,-0.00005,0.30000000000000004,123.456]}",
+      "sha256": "46b3a128423d1863c4a5eb783ca80db3de9b3c99172703b9b89a3b585486aa27"
+    },
+    {
+      "name": "large numbers: plain up to 1e21, exponent from it",
+      "text": "{\"n\":[10000000000000000,9007199254740992,9007199254740994,123456789012345680000,1e+21,1.5e+300,1.7976931348623157e+308,-1e+21]}",
+      "canonical": "{\"n\":[10000000000000000,9007199254740992,9007199254740994,123456789012345680000,1e+21,1.5e+300,1.7976931348623157e+308,-1e+21]}",
+      "sha256": "216f21c1d4382502c96594f6b8a8d32b00533151543aaa27ff7189c8f5fd6b56"
+    },
+    {
+      "name": "number literals JSON.parse reads as a double",
+      "text": "{\"one\":1.0,\"exp\":1E5,\"negz\":-0,\"negzf\":-0.0,\"big\":12345678901234567890,\"bigger\":1000000000000000000000,\"over\":1e400,\"under\":-1e400,\"tiny\":1e-400}",
+      "canonical": "{\"big\":12345678901234567000,\"bigger\":1e+21,\"exp\":100000,\"negz\":0,\"negzf\":0,\"one\":1,\"over\":null,\"tiny\":0,\"under\":null}",
+      "sha256": "6b275bda37fc92197b9203e68a0294180d81098f0f3cce4e7c1c321e853ad660"
+    },
+    {
+      "name": "duplicate keys: the last one wins",
+      "text": "{\"a\":1,\"b\":2,\"a\":3}",
+      "canonical": "{\"a\":3,\"b\":2}",
+      "sha256": "493df656a590967c84d643bdd55ee956fb53262c51b154115083c9bcc4c992e3"
+    },
+    {
+      "name": "whitespace between tokens is not part of the canonical form",
+      "text": " { \"b\" : [ 1 , 2 ] ,\n\t\"a\" : { } , \"c\" : [ ] , \"d\" : null , \"e\" : true , \"f\" : false } ",
+      "canonical": "{\"a\":{},\"b\":[1,2],\"c\":[],\"d\":null,\"e\":true,\"f\":false}",
+      "sha256": "5be35f46e71327dfc8187a40fdc8ffd9881303f95aa6fd1dd86900e6b524b135"
+    },
+    {
+      "name": "integers at the 2^53 boundary: exact up to 2^53, rounded to a double past it",
+      "text": "{\"max\":9007199254740992,\"maxNeg\":-9007199254740992,\"plus1\":9007199254740993,\"plus3\":9007199254740995,\"minus1Neg\":-9007199254740993,\"safe\":9007199254740991}",
+      "canonical": "{\"max\":9007199254740992,\"maxNeg\":-9007199254740992,\"minus1Neg\":-9007199254740992,\"plus1\":9007199254740992,\"plus3\":9007199254740996,\"safe\":9007199254740991}",
+      "sha256": "484e6c1dc75088ce003e43fba6b49ef3ea20068c907287e77364ac1dbfc1f572"
+    },
+    {
+      "name": "integers far past 2^53: 19, 20 and 23 digits",
+      "text": "[9223372036854775807,18446744073709551615,12345678901234567890123]",
+      "canonical": "[9223372036854776000,18446744073709552000,1.2345678901234568e+22]",
+      "sha256": "9bce55132a59e3621ea0844b1c43d7a54369c96c9e1ed799ccfe63f81189936a"
+    }
+  ],
+  "rejected": [
+    {
+      "name": "NaN is not JSON",
+      "text": "{\"a\":NaN}"
+    },
+    {
+      "name": "Infinity is not JSON",
+      "text": "{\"a\":Infinity}"
+    },
+    {
+      "name": "-Infinity is not JSON",
+      "text": "[-Infinity]"
+    }
+  ]
+}

@@ -17,6 +17,7 @@ import { isAttachmentId, type ExportAttachment } from './export-attachments'
 import { BUNDLE_VERSION, SEAL_SUBTYPE, SEAL_VERSION, attachmentRefs, sealedManifestDigest, sha256Hex } from './evidence-rules'
 import { verifyBundleDir } from './bundle-verify'
 import { findBundleVerifier } from './bundle-verifier-path'
+import { compareCodeUnits } from './code-unit-order'
 
 interface ManifestFile {
   path: string
@@ -518,7 +519,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
       }
     }
     let dirCreated = false
-    for (const name of fs.readdirSync(srcShots)) {
+    for (const name of fs.readdirSync(srcShots).sort(compareCodeUnits)) {
       const s = path.join(srcShots, name)
       if (!fs.statSync(s).isFile()) continue
       if (leftOutByOperatorOrPlan(`screenshots/${name}`)) continue
@@ -561,7 +562,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   let castsIncluded = 0
   if (fs.existsSync(srcCasts)) {
     fs.mkdirSync(dstCasts, { recursive: true })
-    for (const name of fs.readdirSync(srcCasts)) {
+    for (const name of fs.readdirSync(srcCasts).sort(compareCodeUnits)) {
       if (leftOutByOperatorOrPlan(`casts/${name}`)) continue
       const s = path.join(srcCasts, name)
       const d = path.join(dstCasts, name)
@@ -584,7 +585,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   let httpBodiesExcluded = 0
   if (fs.existsSync(srcBodies)) {
     const dstBodies = path.join(bundleDir, 'http-bodies')
-    const bodyFiles = fs.readdirSync(srcBodies).filter((n) => n.endsWith('.body'))
+    const bodyFiles = fs.readdirSync(srcBodies).filter((n) => n.endsWith('.body')).sort(compareCodeUnits)
     if (bodyFiles.length > 0) {
       let dirCreated = false
       for (const name of bodyFiles) {

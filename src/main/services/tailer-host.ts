@@ -57,6 +57,7 @@ import { jsonStringify } from '../../core/ingest/depth'
 import { isInsideDir } from '../../core/paths'
 import { restrictToOwner } from '../../core/fs-acl'
 import type { ProjectIdentity } from '../../core/project-runtime'
+import { compareCodeUnits } from '../../core/code-unit-order'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -1086,7 +1087,7 @@ function catchUpPerMessageDir(s: SessionState): void {
   try {
     const units = fs.readdirSync(s.sourcePath).filter(name => name.endsWith('.json')).map(name => ({ name, full: path.join(s.sourcePath, name) }))
       .map(p => ({ ...p, stat: fs.statSync(p.full) })).filter(p => p.stat.isFile() && p.stat.mtimeMs >= (activationFor(s.agentKind, s.sessionId) ?? 0))
-      .sort((a, b) => a.stat.mtimeMs - b.stat.mtimeMs || a.name.localeCompare(b.name))
+      .sort((a, b) => a.stat.mtimeMs - b.stat.mtimeMs || compareCodeUnits(a.name, b.name))
     for (const p of units) {
       if (s.redlogIdByUuid.get(p.name) === '__paused__') continue
       if (eventBus.paused || s.checkpointPaused || (resumeBoundary > 0 && p.stat.mtimeMs < resumeBoundary + 1)) {
