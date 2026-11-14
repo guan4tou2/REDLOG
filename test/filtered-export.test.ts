@@ -60,7 +60,7 @@ it('HTTP predicates select complete exchanges before pagination and response-tim
  }
  })()
  addExportEvent('events_logged','unrelated',1200,'example.com',{subtype:'http_request_start',flow_id:'no',method:'POST',url:'https://example.com/needle'})
- const r=await resolve({format:'har',maskOutOfScope:false,subset:{kind:'selection',projection:'http',filter:{since:1000,before:1600},http:{method:'GET',statusPrefix:'4',host:'example.com',text:'needle'}}})
+ const r=await resolve({format:'har',maskOutOfScope:true,subset:{kind:'selection',projection:'http',filter:{since:1000,before:1600},http:{method:'GET',statusPrefix:'4',host:'example.com',text:'needle'}}})
  expect(r.ok).toBe(true); expect(r.plan.counts.included).toBe(1010)
  const result=(await execute(r.plan.id)); expect(result.ok).toBe(true)
  const entries=JSON.parse(fs.readFileSync(result.artifactPath,'utf8')).log.entries
@@ -232,7 +232,7 @@ it('keeps the response pair reachable after more than ten SSE segments', async (
 it('delivers a stream-only flow in the HAR it previewed, and nothing saved after', async () => {
  addExportEvent('events_logged','lone-1',1000,'example.com',{subtype:'http_response_chunk',flow_id:'lone',seq:1,offset:0,url:'https://example.com/events',response_body:{data:'ZGF0YQ==',encoding:'base64',size:4}})
  insertFixture('events_logged','lone-ws',1001,{targetId:'example.com',agentType:'scanner',subtype:'ws_message',data:{flow_id:'lone-socket',message_count:1,direction:'server',message_type:'binary',size:2,ws_body:{data:'AP8=',encoding:'base64',size:2}}})
- const r=await resolve({format:'har',maskOutOfScope:false,subset:{kind:'time-range',since:900,before:2000}})
+ const r=await resolve({format:'har',maskOutOfScope:true,subset:{kind:'time-range',since:900,before:2000}})
  expect(r.ok).toBe(true); expect(r.plan.counts.included).toBe(2)
  addExportEvent('events_logged','lone-2',1002,'example.com',{subtype:'http_response_chunk',flow_id:'lone',seq:2,offset:4,response_body:{data:'eA==',encoding:'base64',size:1}})
  const result=(await execute(r.plan.id)); expect(result.ok).toBe(true)
@@ -288,11 +288,11 @@ it('delivers sidecar stream segments by their recorded hash, and refuses changed
  const ref=storeBody({data:bytes.toString('base64'),encoding:'base64',size:bytes.length,sha256:''})!
  insertFixture('events_logged','big-1',1000,{targetId:'example.com',agentType:'scanner',subtype:'http_response_chunk',
   data:{flow_id:'big',seq:1,offset:0,url:'https://example.com/stream',response_body_ref:ref}})
- const intact=await resolve({format:'har',maskOutOfScope:false,subset:{kind:'time-range',since:900,before:2000}})
+ const intact=await resolve({format:'har',maskOutOfScope:true,subset:{kind:'time-range',since:900,before:2000}})
  const delivered=JSON.parse(fs.readFileSync((await execute(intact.plan.id)).artifactPath,'utf8')).log._redlog.partialFlows[0].streamChunks[0]
  expect(delivered.eventId).toBe('big-1')
  expect(crypto.createHash('sha256').update(Buffer.from(delivered.body.text,'base64')).digest('hex')).toBe(ref.sha256)
- const changed=await resolve({format:'har',maskOutOfScope:false,subset:{kind:'time-range',since:900,before:2000}})
+ const changed=await resolve({format:'har',maskOutOfScope:true,subset:{kind:'time-range',since:900,before:2000}})
  const sidecar=path.join(dir,'http-bodies',ref.file)
  fs.chmodSync(sidecar,0o644); fs.writeFileSync(sidecar,Buffer.alloc(bytes.length))
  const result=(await execute(changed.plan.id))

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import fs from 'fs'
 import path from 'path'
+import { EVENT_NESTING_CEILING } from '../src/core/ingest/depth'
 import {
   parseJsonObjectBody, parseRecordingAction, parseLimitParam, parseTimeParam, jsonDepthExceeds,
   MAX_JSON_DEPTH, BODY_INVALID, BODY_NOT_OBJECT, BODY_TOO_DEEP, API_LIMITS
@@ -33,9 +34,20 @@ describe('JSON route bodies', () => {
 
   it('refuses a body nested 10 000 levels deep before parsing it', () => {
     const deep = '{"a":'.repeat(10_000) + '1' + '}'.repeat(10_000)
-    expect(parseJsonObjectBody(deep)).toEqual({ ok: false, error: BODY_TOO_DEEP })
+    expect(parseJsonObjectBody(deep)).toEqual({ ok: false, error: BODY_TOO_DEEP, tooDeep: true })
     const deepArray = '['.repeat(10_000) + ']'.repeat(10_000)
-    expect(parseJsonObjectBody(deepArray)).toEqual({ ok: false, error: BODY_TOO_DEEP })
+    expect(parseJsonObjectBody(deepArray)).toEqual({ ok: false, error: BODY_TOO_DEEP, tooDeep: true })
+  })
+
+  // Only the event route raises it, to the doors' ceiling (Spec 071 FR-097):
+  // 64 by default.
+  it('`maxDepth: EVENT_NESTING_CEILING` parses a body exactly that deep and refuses one level more; the default refuses 65', () => {
+    const body = (levels: number): string => '{"data":' + '{"a":'.repeat(levels - 2) + '{}' + '}'.repeat(levels - 2) + '}'
+    expect(parseJsonObjectBody(body(EVENT_NESTING_CEILING), { maxDepth: EVENT_NESTING_CEILING }).ok).toBe(true)
+    expect(parseJsonObjectBody(body(EVENT_NESTING_CEILING + 1), { maxDepth: EVENT_NESTING_CEILING })).toEqual({ ok: false, error: BODY_TOO_DEEP, tooDeep: true })
+    expect(parseJsonObjectBody(body(MAX_JSON_DEPTH)).ok).toBe(true)
+    expect(parseJsonObjectBody(body(MAX_JSON_DEPTH + 1), {})).toEqual({ ok: false, error: BODY_TOO_DEEP, tooDeep: true })
+    expect(parseJsonObjectBody('null', { maxDepth: EVENT_NESTING_CEILING })).toEqual({ ok: false, error: BODY_NOT_OBJECT })
   })
 
   it('counts depth structurally, not brackets inside strings', () => {

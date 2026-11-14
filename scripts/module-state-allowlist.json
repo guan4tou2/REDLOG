@@ -134,6 +134,18 @@
       "class": "project-legacy",
       "reason": "Last DB error of the open project (capture-health counters are project scoped)."
     },
+    "src/core/bundle-readme-rows.ts#ROW_ADDITIONS_README": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/capture-health.ts#_lastPipelineWarning": {
+      "class": "app",
+      "reason": "Last pipeline warning of the process (a step after a written row failed); diagnostic only, not a verdict input, holds no project id."
+    },
+    "src/core/capture-health.ts#_pipelineWarningTotal": {
+      "class": "app",
+      "reason": "Process-wide count of pipeline warnings; diagnostic only."
+    },
     "src/core/capture-health.ts#_dbErrorTotal": {
       "class": "project-legacy",
       "reason": "DB error count of the open project."
@@ -333,6 +345,10 @@
     "src/core/db/event-write.ts#statements": {
       "class": "app",
       "reason": "WeakMap/WeakSet keyed by the database handle: entries die with the handle and hold no project id."
+    },
+    "src/core/ingest/nesting-ceiling.ts#windows": {
+      "class": "app",
+      "reason": "WeakMap keyed by the database handle: the open refusal window of each project, gone with the handle."
     },
     "src/core/db/index.ts#db": {
       "class": "project-legacy",
@@ -642,7 +658,35 @@
       "class": "constant",
       "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
     },
-    "src/core/scope-sanitize.ts#SCOPE_SANITIZED_FIELDS": {
+    "src/core/scope-sanitize.ts#OPAQUE_SCHEMES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/scope-sanitize.ts#ERROR_CLASSES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/scope-sanitize.ts#LOOT_MATCH_METADATA": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/scope-sanitize.ts#COOKIE_ATTRIBUTES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/scope-sanitize.ts#NAME_OR_ADDRESS_ANSWERS": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/scope-sanitize.ts#BROWSER_CONSOLE_SUBTYPES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/scope-sanitize.ts#NAVIGATION": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/scope-sanitize.ts#HTTP_SUBTYPES": {
       "class": "constant",
       "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
     },

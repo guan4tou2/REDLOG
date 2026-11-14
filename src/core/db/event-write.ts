@@ -10,6 +10,8 @@ import type { RedLogEvent, EnvelopeInput, StoredEnvelope } from './event-types'
 import { ENVELOPE_SCHEMA_VERSION } from './event-types'
 import { currentEntrance, engagementForWrite, ingestStamp, stripReserved, type IngestEntrance } from '../ingest/stamp'
 import { rowTerminal, terminalIdentity } from '../ingest/terminal'
+import { boundDataDepth } from '../ingest/depth'
+import { fieldText } from '../ingest/field-text'
 
 interface InsertOpts {
   engagementId?: string
@@ -541,7 +543,8 @@ function insertChainedEvent(
   const db = getDB()
   const now = Date.now()
 
-  if ((agentType === 'shell' || agentType === 'agent') && data.command) {
+  // A `command` that is not a scalar is no command to match on (field-text.ts).
+  if ((agentType === 'shell' || agentType === 'agent') && data.command && fieldText(data.command) !== undefined) {
     // Dedup real duplicates (same subtype + same command within 2s) — but *never*
     // collapse a command_start/command_end pair into one. The previous
     // implementation `LIKE '%"command":"..."%'` matched on the raw JSON blob
@@ -556,12 +559,12 @@ function insertChainedEvent(
     // (command, pid) match across types within 2s, whichever fires second is
     // dropped. Kept subtype-sensitive so a `command_end` from either source can
     // still land after a `command_start`.
-    const cmd = String(data.command)
-    const subtype = data.subtype != null ? String(data.subtype) : ''
+    const cmd = fieldText(data.command) ?? ''
+    const subtype = fieldText(data.subtype) ?? ''
     // FR-011: the new row's terminal is the one its stamp will carry, and a
     // stored row's is its stamp's (ingest/terminal.ts terminalIdentity / rowTerminal).
     const terminalId = terminalIdentity(data) ?? ''
-    const pid = data.pid != null ? String(data.pid) : ''
+    const pid = fieldText(data.pid) ?? ''
     const twoSecondsAgo = now - 2000
     const candidates = prepared(db,
       `SELECT id, agent_type, data FROM events WHERE agent_type IN ('shell','agent') AND timestamp >= ? ORDER BY timestamp DESC LIMIT 20`
@@ -569,10 +572,10 @@ function insertChainedEvent(
     for (const row of candidates) {
       let d: Record<string, unknown> = {}
       try { d = JSON.parse(row.data) } catch { continue }
-      const rowSubtype = d.subtype != null ? String(d.subtype) : ''
-      const rowCmd = d.command != null ? String(d.command) : ''
+      const rowSubtype = fieldText(d.subtype) ?? ''
+      const rowCmd = fieldText(d.command) ?? ''
       const rowTerminalId = rowTerminal(d) ?? ''
-      const rowPid = d.pid != null ? String(d.pid) : ''
+      const rowPid = fieldText(d.pid) ?? ''
       if (rowSubtype !== subtype) continue
       if (rowCmd !== cmd) continue
       if (row.agent_type === agentType) {
@@ -627,8 +630,11 @@ function insertChainedEvent(
   let dataForChain: Record<string, unknown> = data
   if (anomaly) dataForChain = { ...dataForChain, _clock_anomaly: anomaly }
   if (sourceTimeRejected) dataForChain = { ...dataForChain, _source_time_rejected: sourceTimeRejected }
+  // FR-097: what is hashed and what is stored is bounded in depth — after the
+  // receiver's own keys, since `_source_time_rejected.value` is the producer's.
+  const bounded = boundDataDepth(dataForChain)
   // Last of the receiver's keys, and like them before the hash (FR-020).
-  dataForChain = { ...dataForChain, _ingest: ingestStamp(opts?.entrance ?? currentEntrance(), { tier: 'chained', now, stripped: opts?.stripped, terminal: terminalIdentity(data) }) }
+  dataForChain = { ...bounded.data, _ingest: ingestStamp(opts?.entrance ?? currentEntrance(), { tier: 'chained', now, stripped: opts?.stripped, collapsed: bounded.collapsed, terminal: terminalIdentity(data) }) }
 
   const event: RedLogEvent = {
     id: crypto.randomUUID(),
@@ -746,6 +752,9 @@ function insertLoggedEvent(
   // already does with provenance it cannot attest.
   const { occurredAt, sourceCandidate } = resolveOccurredAt(data, opts.envelope, opts.occurredAt, now)
   if (sourceCandidate !== null) env.tsSource = sourceCandidate
+  // FR-097, as in the chained arm: the digest over this tier (FR-024) and the
+  // search index read the stored value, so it is bounded the same way.
+  const bounded = boundDataDepth(data)
   const event: RedLogEvent = {
     id: crypto.randomUUID(),
     timestamp: occurredAt,
@@ -759,7 +768,7 @@ function insertLoggedEvent(
     targetId: opts.targetId ?? null,
     // Stamped like a chained row (FR-005). Not hashed here: this tier has no
     // per-row hash, and the export's logged digest covers it (FR-024).
-    data: { ...data, _ingest: ingestStamp(opts.entrance ?? currentEntrance(), { tier: 'logged', now, stripped: opts.stripped, terminal: terminalIdentity(data) }) },
+    data: { ...bounded.data, _ingest: ingestStamp(opts.entrance ?? currentEntrance(), { tier: 'logged', now, stripped: opts.stripped, collapsed: bounded.collapsed, terminal: terminalIdentity(data) }) },
     createdAt: now,
     // Deliberately absent — see the block above.
     hash: undefined,

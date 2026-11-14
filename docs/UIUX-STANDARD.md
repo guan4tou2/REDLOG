@@ -540,7 +540,7 @@ Settings↔HUD 連動、capture-health 誠實度(外掛只能改善判定、鏈�
 
 **⏸ 刻意分歧／暫緩（非缺口，列出供對照）**：2a 證據包報告畫面（§12 暫緩，但設計稱最高風險未覆蓋畫面）、Inspector 底部無分頁（§6）、per-row 同時畫 `⌇`/`⛓`（`DESIGN-two-tier-chain §9.1`，去掉 chained 字符會讓分類器在多數列消失）、Settings 12→9 頁、戰利品按住顯示移除、保存與匯出頁改單一匯出鍵、雲端/webhook/市集移除、Toast undo 仍有關閉鈕（次要）。
 
-**隱私／非攻擊資訊（2026-09-09 另查，見 `design-project-sync.md`）**：範圍遮蔽只遮**內容**、host/url metadata 永不遮（`scope-sanitize.ts:26`）；**無 `target_id` 的事件完全不判範圍**（`:37`）——大量個人指令繞過；操作員家目錄/使用者名的 `<user>`/`<project>` 清洗只在 `diagnostics.ts`（診斷），**證據包/匯出未清**。
+**隱私／非攻擊資訊（2026-09-09 另查，見 `design-project-sync.md`）**：範圍遮蔽只遮**內容**：本文、預覽、`params`、每個 header／cookie 的值、URL 的 query 值、userinfo 與 fragment；host、path 與 header／cookie／參數的**名稱**保留（`scope-sanitize.ts` 檔頭與 `SCOPE_MASKED_FIELDS`）。**無 `target_id` 的事件**只有在 scope 至少列了一個 target 時才遮（標記為 unclassified），只設排除清單時完全不判範圍——大量個人指令繞過；操作員家目錄/使用者名的 `<user>`/`<project>` 清洗只在 `diagnostics.ts`（診斷），**證據包/匯出未清**。
 
 ## 25. 控制項與文案（2026-09-29；2026-11-07 併入原 `UIUX-CONTROLS-AND-COPY.md`；原檔標為 SUPERSEDED，暫留作歷史背景）
 

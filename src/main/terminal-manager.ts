@@ -5,6 +5,7 @@ import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
 import { configureIngest, ingestEvent } from '../core/ingest'
+import { fieldText } from '../core/ingest/field-text'
 import type { RedLogEvent } from '../core/db/events'
 import { TerminalRecording, type TerminalRecordingSegment } from './terminal-recording'
 import { TerminalOutputPump } from './terminal-output'
@@ -193,14 +194,14 @@ function finaliseSession(session: TerminalSession, exitCode: number | null, reas
 
 function commandKey(data: Record<string, unknown>): string {
   return typeof data.command_id === 'string' && data.command_id
-    ? data.command_id : `${data.pid ?? ''}|${data.command ?? ''}`
+    ? data.command_id : `${fieldText(data.pid) ?? ''}|${fieldText(data.command) ?? ''}`
 }
 
 function prepareTerminalEvent(data: Record<string, unknown>, incomingEngagement: string): boolean {
   if (data.source !== 'builtin-terminal' || typeof data.terminalId !== 'string') return true
   const session = sessions.get(data.terminalId)
   if (!session) return true
-  if (!['command_start', 'command_output', 'command_end'].includes(String(data.subtype))) return true
+  if (!['command_start', 'command_output', 'command_end'].includes(fieldText(data.subtype) ?? '')) return true
   refreshTerminalConsent(session)
   if (session.operatorPaused) {
     if (data.subtype === 'command_end') session.pendingCommands.delete(commandKey(data))

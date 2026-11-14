@@ -42,8 +42,18 @@ describe('ExportPlan domain contract', () => {
   })
 
   it('declares format capability gaps instead of implying protections', () => {
-    expect(capabilitiesFor('bundle')).toMatchObject({ attachments: true, snapshot: true, scopeMasking: true })
-    expect(capabilitiesFor('har')).toMatchObject({ attachments: false, snapshot: true, scopeMasking: false })
+    expect(capabilitiesFor('bundle')).toMatchObject({ attachments: true, snapshot: true, scopeMasking: 'optional' })
+    expect(capabilitiesFor('har')).toMatchObject({ attachments: false, snapshot: true, scopeMasking: 'always' })
+  })
+
+  it('masks a format whose masking is always on even when the request turns it off; an optional format keeps the choice', () => {
+    expect(normalizeExportRequest({ format: 'har', maskOutOfScope: false }).maskOutOfScope).toBe(true)
+    expect(normalizeExportRequest({ format: 'har' }).maskOutOfScope).toBe(true)
+    for (const format of ['json', 'ndjson', 'bundle', 'timeline'] as const) {
+      expect(capabilitiesFor(format).scopeMasking).toBe('optional')
+      expect(normalizeExportRequest({ format, maskOutOfScope: false }).maskOutOfScope).toBe(false)
+      expect(normalizeExportRequest({ format, maskOutOfScope: true }).maskOutOfScope).toBe(true)
+    }
   })
 
   it('creates a frozen plan with a deterministic evidence fingerprint', () => {

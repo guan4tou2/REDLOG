@@ -167,14 +167,17 @@ const UNSPECIFIED_GAP_REASON = 'unspecified'
  *  A gap the receiver's spool drain marked `intentional` — what it did not
  *  write because it was observed while recording was paused, or came from a
  *  terminal that was not recording — is not a loss and is not counted here.
- *  Only the receiver's own rows (`system`, `source: hook-spool`) are believed
- *  on that: a producer's gap saying `intentional` still counts. */
+ *  Only the receiver's own rows (`system` with `source: hook-spool`, or with
+ *  `source: api` — the API's refusals while paused, ingest/nesting-ceiling.ts;
+ *  a producer may write no `system` row but a heartbeat,
+ *  external-event-policy.ts) are believed on that: a producer's gap saying
+ *  `intentional` still counts. */
 export function captureGapsFold(): EventFold<CaptureGapCount[]> {
   const byReason = new Map<string, CaptureGapCount>()
   return {
     add: e => {
       if ((e.agentType !== 'scanner' && e.agentType !== 'system') || e.data.subtype !== 'capture_gap') return
-      if (e.agentType === 'system' && e.data.source === 'hook-spool' && e.data.intentional === true) return
+      if (e.agentType === 'system' && (e.data.source === 'hook-spool' || e.data.source === 'api') && e.data.intentional === true) return
       const reason = typeof e.data.reason === 'string' && e.data.reason ? e.data.reason : UNSPECIFIED_GAP_REASON
       const row = byReason.get(reason) ?? { reason, gaps: 0, skippedUnits: 0, unknownAmount: 0 }
       const units = e.data.skipped_units
@@ -435,7 +438,9 @@ export function normalizeExportRequest(request: ExportRequest): NormalizedExport
   return Object.freeze({
     format: request.format,
     subset: Object.freeze({ ...subset }),
-    maskOutOfScope: request.maskOutOfScope !== false,
+    // A format that always masks says so in its plan, so the digest, the
+    // validation and the delivered manifest describe the masked bytes it writes.
+    maskOutOfScope: capabilitiesFor(request.format).scopeMasking === 'always' || request.maskOutOfScope !== false,
     scopeOnly: request.scopeOnly === true,
     scrubPii: request.scrubPii === true,
     excludeAttachments: Object.freeze([...new Set((request.excludeAttachments ?? []).filter(isAttachmentId))].sort()),
