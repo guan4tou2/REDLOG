@@ -1,7 +1,7 @@
 // Stitch audit 2026-11-08: RedLog's own state changes headed the activity log.
 // Runs of them fold into one row; findings and searched-for rows never do.
 import { describe, expect, it } from 'vitest'
-import { foldSystemRuns, SYSTEM_FOLD_MIN } from '../src/renderer/src/lib/activityFolds'
+import { foldSystemRuns, isFoldableSystem, SYSTEM_FOLD_MIN } from '../src/renderer/src/lib/activityFolds'
 import type { ActivitySummary } from '../src/core/activity-contract'
 
 const item = (id: string, agentType: string, subtype = 'x'): ActivitySummary =>
@@ -35,7 +35,36 @@ describe('foldSystemRuns', () => {
     const judged = (id: string): ActivitySummary =>
       ({ id, anchor: { id, agentType: 'system', data: { subtype: 'scope_violation', distance: 'in_scope', authority: 'fact' } } } as unknown as ActivitySummary)
     const items = [item('cmd', 'shell'), unjudged('u1'), unjudged('u2'), unjudged('u3'), unjudged('u4'), item('cmd2', 'shell'), judged('j1'), judged('j2'), judged('j3')]
-    expect(shape(foldSystemRuns(items, true))).toEqual(['cmd', 'fold(u1,u2,u3,u4)@1', 'cmd2', 'j1', 'j2', 'j3'])
+    expect(shape(foldSystemRuns(items, true))).toEqual(['cmd', 'fold(u1,u2,u3,u4)@1', 'cmd2', 'fold(j1,j2,j3)@6'])
+  })
+
+  // Decision 2026-11-15 §1 item 6: every in-scope action writes a clean
+  // verdict, the positive record that scope was observed. It is kept and
+  // chained, and folds like the rest of RedLog's own rows. Anything that is not
+  // clean is an observation the operator has to see, and never folds.
+  const verdict = (id: string, distance: string, severity: string): ActivitySummary =>
+    ({ id, anchor: { id, agentType: 'system', data: { subtype: 'scope_violation', distance, authority: 'fact', severity, action: 'nmap 10.20.0.5' } } } as unknown as ActivitySummary)
+  const clean = (id: string): ActivitySummary => verdict(id, 'in_scope', 'clean')
+
+  it('folds judged in-scope verdicts', () => {
+    expect(isFoldableSystem(clean('c'))).toBe(true)
+  })
+
+  for (const [distance, severity] of [['excluded', 'critical'], ['adjacent_subnet', 'warning'], ['adjacent_domain', 'warning'], ['unrelated', 'notice']]) {
+    it(`never folds a ${distance} observation, with or without a query`, () => {
+      const v = verdict('v', distance, severity)
+      expect(isFoldableSystem(v)).toBe(false)
+      const items = [clean('a'), clean('b'), v, clean('c'), clean('d'), clean('e')]
+      expect(shape(foldSystemRuns(items, true))).toEqual(['a', 'b', 'v', 'fold(c,d,e)@3'])
+      expect(shape(foldSystemRuns(items, false))).toEqual(['a', 'b', 'v', 'fold(c,d,e)@3'])
+      expect(shape(foldSystemRuns([v, v, v].map((x, i) => ({ ...x, id: `v${i}` })), false))).toEqual(['v0', 'v1', 'v2'])
+    })
+  }
+
+  it('folds in-scope verdicts while a query is active, and nothing else of the system', () => {
+    // A search for `nmap` matches the verdict too: its `action` repeats the command.
+    const items = [item('cmd', 'shell'), clean('a'), clean('b'), clean('c'), sys('p1'), sys('p2'), sys('p3')]
+    expect(shape(foldSystemRuns(items, false))).toEqual(['cmd', 'fold(a,b,c)@1', 'p1', 'p2', 'p3'])
   })
 
   it('only folds the system agent type, not other capture of the system', () => {

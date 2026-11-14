@@ -25,7 +25,7 @@ function installBridge(runQuery: ReturnType<typeof vi.fn>, searchCasts = vi.fn()
     events: {
       runQuery,
       searchCasts,
-      castIndexStatus: vi.fn().mockResolvedValue({ pending: 0 }),
+      castIndexStatus: vi.fn().mockResolvedValue({ total: 1, pending: 0 }),
       distinctAgentTypes: vi.fn().mockResolvedValue([]),
       getById: vi.fn().mockResolvedValue([])
     },

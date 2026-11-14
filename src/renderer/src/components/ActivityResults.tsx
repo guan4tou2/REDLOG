@@ -161,17 +161,17 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
                 {onOpen && <Button size="compact" data-testid="activity-locate" onClick={() => onOpen(item.anchor.id, item.anchor.timestamp)}>{t('activity.reader.locate')}</Button>}
                 <select aria-label={t('export.preview.subset')} value={exportKind==='session' && hasSession ? 'session' : 'activity'} onChange={e=>setExportKind(e.target.value as 'activity'|'session')} className="bg-redlog-elevated border border-redlog-border rounded px-2 py-1 text-xs"><option value="activity">{t('activity.export.activity')}</option><option value="session" disabled={!hasSession}>{t('activity.export.session')}</option></select>
               </div>
-              <p data-testid="activity-summary-meta" className="flex flex-wrap gap-x-2 text-xs text-redlog-text-faint">
-                <span>{filtering ? t('activity.sources', { matches: item.matchedCount, context: item.contextCount }) : t('activity.summary.sources', { count: item.sourceCount })}</span>
-                <span>· {t('activity.reader.field.session')} <span className="font-mono">{item.anchor.sessionId}</span></span>
-                {typeof item.anchor.data.pid === 'number' && <span>· {t('activity.reader.field.pid')} <span className="font-mono">{item.anchor.data.pid}</span></span>}
-              </p>
+              {/* Hit counts are on the row while a query is active, and the
+                  session and PID are under 事件資訊 in the Reader. With no
+                  query the row has no count, so the source count is said here. */}
+              {!filtering && <p data-testid="activity-summary-meta" className="text-xs text-redlog-text-faint">{t('activity.summary.sources', { count: item.sourceCount })}</p>}
             </div>
             <ActivityAround item={item} projectId={request.projectId} scope={{ inScopeOnly: request.filter?.inScopeOnly, hidePersonal: request.filter?.hidePersonal }} />
           </div>}
           </div>
         </div>
-          // A query asked for these rows; never fold what was searched for.
+          // A query asked for these rows; of what it matched only clean scope
+          // verdicts fold (src/renderer/src/lib/activityFolds.ts).
           return foldSystemRuns(page.items, !filtering).map((seg) => {
             if (seg.kind === 'item') return row(seg.item, seg.at, true)
             // A run holding the open row or the Reader's row stays open.

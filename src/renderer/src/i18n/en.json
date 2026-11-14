@@ -2042,7 +2042,7 @@
   "content.status.cast-recording": "Merged terminal output is saved in the recording — open it with “Replay stdout” on the timeline",
   "content.status.unsupported": "This operation is unavailable for this content",
   "content.status.failed": "Content read failed",
-  "activity.castsRestricted": "Recordings cannot apply these event filters and are excluded.",
+  "activity.castsRestricted": "Recordings excluded: they cannot be filtered by these conditions.",
   "activity.castLimit": "Showing the first 50 recording matches.",
   "content.field.event_data": "Event data (JSON)",
   "content.field.command": "Command",

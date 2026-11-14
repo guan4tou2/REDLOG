@@ -162,6 +162,7 @@ export function SearchPanel({ onOpenInTimeline, active = true, browse = false, c
   castStatusPhase.current=castStatus.state.phase
   const indexStatus = indexStatusOf(castStatus.state)
   const castPending = indexStatus.kind === 'pending'||indexStatus.kind==='partial' ? indexStatus.pending : 0
+  const hasRecordings = (castStatus.state.value?.total ?? 0) > 0
   // Facets refresh with every result set. A failed read is not "no types".
   const typesRead = useReadState(() => window.redlog.events.distinctAgentTypes(), true, [results])
   const knownTypes = typesRead.state.value ?? []
@@ -254,10 +255,19 @@ export function SearchPanel({ onOpenInTimeline, active = true, browse = false, c
     setNextCursor(null)
     const seq = ++searchSeqRef.current
     const opts = buildSearchOpts()
-    const eventFilterActive = Boolean(
-      opts.targetId || opts.agentType || opts.since != null || opts.before != null || opts.inScopeOnly || opts.hidePersonal || opts.tier || outcome.parsed.conditions.length
+    // Cast index rows carry no target, event type, scope, tier or session, and
+    // their time is the start of a ~1800-character chunk rather than of the
+    // match, so these conditions cannot be applied to a recording hit; under
+    // any of them recordings are left out rather than shown as if they
+    // satisfied it. Hiding non-work traffic is not among them: it is on by
+    // default, and recordings are searched whatever it says (decision
+    // 2026-11-15 §1 item 4), at the cost that non-work output a recording
+    // happened to capture can show.
+    const castsUnfilterable = Boolean(
+      opts.targetId || opts.agentType || opts.since != null || opts.before != null || opts.inScopeOnly || opts.tier || outcome.parsed.conditions.length
     )
-    setCastsRestricted(eventFilterActive)
+    const castText = outcome.parsed.text.trim()
+    setCastsRestricted(castsUnfilterable && castText !== '')
     if (mode === 'events') readProjectPage(outcome.parsed,opts).then(async (page) => {
       if (ac.signal.aborted || seq !== searchSeqRef.current) return
       const { rows, newFolds } = await resolveAndFold(page.items)
@@ -276,12 +286,9 @@ export function SearchPanel({ onOpenInTimeline, active = true, browse = false, c
       setSearching(false)
       setSearched(true)
     })
-    // Cast index rows do not carry target, event type, or project wall-clock
-    // metadata. Hiding them while an event filter is active avoids presenting
-    // unfiltered transcript matches as if they satisfied that filter.
     setCastHits([])
     if (mode === 'activities') { setSearching(false); setSearched(true) }
-    if (!eventFilterActive && outcome.parsed.text.trim()) {
+    if (!castsUnfilterable && castText) {
       const castSeq = seq
       window.redlog.events.searchCasts(outcome.parsed.text, 50)
         .then((r) => {
@@ -540,7 +547,9 @@ export function SearchPanel({ onOpenInTimeline, active = true, browse = false, c
         )})()}
 
         </div>
-        {searched && castsRestricted && <p role="status" className="mt-3 text-xs text-amber-300">{t('activity.castsRestricted')}</p>}
+        {/* Said only when something was left out: the status read already
+            counts the project's recordings, so a project with none says nothing. */}
+        {searched && castsRestricted && hasRecordings && <p role="status" className="mt-3 text-xs text-amber-300">{t('activity.castsRestricted')}</p>}
         {searched && castHits.length === 50 && <p role="status" className="mt-3 text-xs text-amber-300">{t('activity.castLimit')}</p>}
         {searched && (
           <CastResults
