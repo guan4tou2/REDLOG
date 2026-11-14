@@ -17,6 +17,10 @@ installWorkCounter()
 const db = await import('../src/core/db/index')
 const ops = await import('../src/core/db/operators')
 const ingestMod = await import('../src/core/ingest')
+const bodyIndex = await import('../src/core/http-body-index')
+// An HTTP row opens the body index beside the database; Windows refuses to
+// delete a directory holding an open file, so both are closed before it goes.
+const closeProject = (): void => { bodyIndex.closeHttpBodyIndex(); db.closeDB() }
 const links = await import('../src/core/db/stored-links')
 
 const ENG = 'eng-links'
@@ -32,7 +36,7 @@ sqlite.describe('stored links (SC-003)', () => {
     ingestMod._resetIngest()
   })
   afterEach(() => {
-    db.closeDB()
+    closeProject()
     fs.rmSync(dir, { recursive: true, force: true })
   })
 

@@ -20,6 +20,10 @@ const db = await import('../src/core/db/index')
 const ops = await import('../src/core/db/operators')
 const ingestMod = await import('../src/core/ingest')
 const bus = await import('../src/core/event-bus')
+const bodyIndex = await import('../src/core/http-body-index')
+// An HTTP row opens the body index beside the database; Windows refuses to
+// delete a directory holding an open file, so both are closed before it goes.
+const closeProject = (): void => { bodyIndex.closeHttpBodyIndex(); db.closeDB() }
 
 const ENG = 'eng-links-eq'
 const OP = 'op-links-eq'
@@ -46,14 +50,14 @@ sqlite.describe('memory and stored rows agree (SC-003)', () => {
   })
   afterEach(() => {
     if (bus.eventBus.paused) bus.eventBus.resume()
-    db.closeDB()
+    closeProject()
     fs.rmSync(dir, { recursive: true, force: true })
   })
 
   /** Deliver `steps` into a fresh project, restarting before each index in
    *  `restarts`; return each stored shell row and what each step answered. */
   function deliver(steps: Step[], restarts: number[] = []): { rows: Row[]; skipped: Array<string | undefined> } {
-    db.closeDB()
+    closeProject()
     const d = fs.mkdtempSync(path.join(dir, 'run-'))
     db.initDB(d)
     db.bindDBEngagement(ENG)
@@ -223,7 +227,7 @@ sqlite.describe('memory and stored rows agree (SC-003)', () => {
     ops.ensurePrimaryOperator(OP, 'Eq', ops.generateToken())
     ingestMod._resetIngest()
     const s = ingestMod.ingest({ agentType: 'shell', engagementId: 'default', operatorId: OP, data: { subtype: 'command_start', command: 'sleep 17', terminalId: 't1', pid: 7, command_id: 'U' } })
-    db.closeDB()
+    closeProject()
     db.initDB(d)
     db.bindDBEngagement(ENG)
     ingestMod._resetIngest()
