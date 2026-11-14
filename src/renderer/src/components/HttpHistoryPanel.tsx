@@ -8,7 +8,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { X, PanelBottom, PanelRight, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useI18n } from '../i18n'
-import { formatTime, formatSize } from '../lib/time'
+import { formatTime, formatSize, formatElapsedMs } from '../lib/time'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { usePanelHeight } from '../hooks/usePanelHeight'
 import { useKeepScroll } from '../lib/useKeepScroll'
@@ -576,7 +576,9 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
                         {f.contentType.replace(/^application\//, '').replace(/;.*/, '')}
                       </td>
                       <td className="px-2 py-1 text-redlog-text-dim text-right truncate" title={f.size !== null ? formatBytes(f.size) : '—'}>{f.size !== null ? formatBytes(f.size) : '—'}</td>
-                      <td className="pl-2 pr-pad py-1 text-redlog-text-dim text-right truncate" title={f.durationMs !== null ? `${f.durationMs}ms` : '—'}>{f.durationMs !== null ? `${f.durationMs}ms` : '—'}</td>
+                      {/* Not `truncate`: "123456…" read as a smaller number with
+                          no unit. The short form always fits; the title is exact. */}
+                      <td data-testid="http-flow-duration" className="pl-2 pr-pad py-1 text-redlog-text-dim text-right whitespace-nowrap" title={f.durationMs !== null ? `${f.durationMs} ms` : '—'}>{f.durationMs !== null ? formatElapsedMs(f.durationMs) : '—'}</td>
                     </>}
                   </tr>
                 )
