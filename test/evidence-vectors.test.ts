@@ -24,6 +24,7 @@ import { verifyBundleDir } from '../src/core/bundle-verify'
 import { verifyChainFullAsync } from '../src/core/chain-anchor'
 import { BODY_REF_KEYS, VERIFY_EXIT, chainedRowCanonical, type VerifyCategory } from '../src/core/evidence-rules'
 import { BODY_REF_FIELDS } from '../src/core/content-contract'
+import { pythonProvenance } from './helpers/provenance-report'
 import { BODY_REF_FOR } from '../src/core/redact-export'
 
 const VERIFIER = path.resolve(__dirname, '..', 'tools', 'redlog-verify.py')
@@ -389,6 +390,9 @@ describe('golden evidence vectors: tools/redlog-verify.py and the app agree', ()
       expect(ts.category, `${ts.problems.join('\n')}`).toBe(want)
       expect(ts.exitCode).toBe(VERIFY_EXIT[want])
       if (py) expect(py.category, py.out).toBe(ts.category)
+      // Receiver provenance (FR-023): the same counts, or none from either
+      // when the verdict came before every row was read.
+      if (py) expect(pythonProvenance(py.out), py.out).toEqual(ts.provenance)
       v.check?.(ts, py?.out ?? '')
     })
   }
