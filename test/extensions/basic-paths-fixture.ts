@@ -7,8 +7,8 @@
 // them, the screenshot shortcut, and an added artifact. Each goes through the
 // code that really handles it, not around it:
 //
-//   shell hook      the hook's payload shape -> ingest() with the envelope
-//                   POST /api/events builds (api-server.ts); the route itself
+//   shell hook      the hook's payload shape -> ingest() as POST /api/events
+//                   calls it (api-server.ts); the route itself
 //                   is checked in basic-paths-pinned.test.ts where a port can be
 //                   bound
 //   AI tools        two sample transcripts (Claude Code, Codex) through
@@ -30,8 +30,9 @@
 // What is recorded per row is everything but what is allowed to differ between
 // runs and between phases of this spec: the row id (aliased to its order),
 // every clock value, the session, the hash/prev/signature (they cover the
-// above), and data._ingest. Everything else, the columns that say which door
-// and mapper wrote it, the target, the data, is kept. Clocks, ids, host name and
+// above), and data._ingest. Everything else, the columns, the target, the data,
+// is kept (the `source` and `mapper` columns are recorded as the NULL new rows
+// carry: Spec 071 T036). Clocks, ids, host name and
 // signatures are fixed, so two runs give the same rows (basic-paths-pinned
 // checks that), and a run with other temp directories gives the same rows too.
 import crypto from 'node:crypto'
@@ -80,8 +81,8 @@ export interface BasicPathsRun {
 }
 
 export interface RunOptions {
-  /** How the shell hook's events reach ingest(): straight in with the envelope
-   *  the route builds (default), or through a real POST /api/events on a bound
+  /** How the shell hook's events reach ingest(): straight in, as the route
+   *  calls it (default), or through a real POST /api/events on a bound
    *  loopback port (needs the `listen` capability). */
   shellDoor?: 'ingest' | 'http'
   /** HOME for the run: where `~/.redlog/plugins/state.json` and friends are read from. */
@@ -259,10 +260,9 @@ export async function runBasicPaths(opts: RunOptions = {}): Promise<BasicPathsRu
     const count = (table: string): number => (db.getDB().prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n
     const mark = (name: string): void => { marks.push({ step: name, chained: count('events'), logged: count('events_logged') }) }
 
-    const API = { source: 'api', mapper: { id: 'identity', version: '1' } }
     const post = (agentType: string, data: Record<string, unknown>, targetId?: string): string | null => {
       step()
-      const r = ingestMod.ingest({ agentType, data, ...who, ...(targetId ? { targetId } : {}), entrance: LEGACY_API, envelope: API })
+      const r = ingestMod.ingest({ agentType, data, ...who, ...(targetId ? { targetId } : {}), entrance: LEGACY_API })
       return r.event?.id ?? null
     }
     let apiBase = ''
