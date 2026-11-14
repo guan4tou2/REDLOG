@@ -26,7 +26,7 @@
 // and counts match one to one), and only a ref with text has documents.
 // SQLite's integrity check runs too, but proves none of this (see there).
 //
-// REDLOG_LIFECYCLE_SEED=<n> replays one seed.
+// REDLOG_LIFECYCLE_SEED=<n> replays one seed, REDLOG_LIFECYCLE_SEED=<a>-<b> a range.
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import Database from 'better-sqlite3'
 import { createHash } from 'node:crypto'
@@ -70,7 +70,13 @@ interface Body { file: string | null; words: string[] }
  *  is a row of (one capture session, one source, so the flow id is the key). */
 interface Modelled { id: string; tier: 'events' | 'events_logged'; rowid: number; fields: string[]; bodies: Body[]; deleted?: number; flow?: string }
 
-const SEEDS = process.env.REDLOG_LIFECYCLE_SEED ? [Number(process.env.REDLOG_LIFECYCLE_SEED)] : [1, 2, 3]
+/** One seed, or a range `a-b`; by default 1, 2 and 3. */
+function seeds(spec = process.env.REDLOG_LIFECYCLE_SEED): number[] {
+  if (!spec) return [1, 2, 3]
+  const [from, to = from] = spec.split('-').map(Number)
+  return Array.from({ length: to - from + 1 }, (_, i) => from + i)
+}
+const SEEDS = seeds()
 const STEPS = 300
 let dir = ''
 
@@ -179,6 +185,9 @@ sqlite.describe('body index lifecycle, seeded', () => {
       const counted = cost(run)
       // Rows deleted under the watermark: the next sync walks, by design.
       if (!walkExpected) expect(counted.rows, `${where()}: source rows read`).toBeLessThanOrEqual(addedSince + retried() + 3)
+      // That walk takes out the rows retention deleted: from now on the
+      // shared index no longer describes a frozen view that still has them.
+      if (walkExpected && frozenRetained) { frozenUnvouched = true; frozenRetained = false }
       walkExpected = false
       addedSince = 0
       missingSinceSync.clear(); for (const f of gone.keys()) missingSinceSync.add(f)
@@ -211,6 +220,15 @@ sqlite.describe('body index lifecycle, seeded', () => {
     let older: ExportSnapshot = readActivitySnapshot(db.getReadonlyDB())
     let other: { db: typeof db; queries: typeof queries; idx: typeof idx } | null = null
     let frozen: FrozenReader | null = null, frozenAt = 0, frozenBehindRetention = false, walkExpected = false
+    // frozenRetained: retention deleted rows the frozen view still has, and
+    // main has not walked since (the shared index still holds them, so it
+    // still vouches for the view). frozenUnvouched: main has walked since,
+    // and the shared index no longer describes the view.
+    let frozenRetained = false, frozenUnvouched = false
+    /** The content rows the frozen view holds: what an unvouched reader
+     *  reads into its own tables, once. */
+    const frozenView = (): number => model.filter(e => e.bodies.length && (e.deleted === undefined || e.deleted >= frozenAt)
+      && e.rowid <= (e.tier === 'events' ? frozen!.snapshot.chainedMaxRowId : frozen!.snapshot.loggedMaxRowId)).length
     const sharedState = (): unknown => {
       const index = new Database(path.join(dir, 'http-body-index.db'), { readonly: true })
       try {
@@ -251,16 +269,19 @@ sqlite.describe('body index lifecycle, seeded', () => {
           // The export worker: read-only, one read transaction for its life,
           // so its view falls behind while main goes on.
           op = 'frozen reader'
-          if (!frozen || random() < 0.3) { await frozen?.close(); frozen = await openFrozenReader(dir, 'eng'); frozenAt = step; frozenBehindRetention = walkExpected }
+          if (!frozen || random() < 0.3) { await frozen?.close(); frozen = await openFrozenReader(dir, 'eng'); frozenAt = step; frozenBehindRetention = walkExpected; frozenRetained = false; frozenUnvouched = false }
           const before = sharedState(), text = query()
           const answer = await frozen.search(text)
           if (answer.coverage.status === 'covered') expect(answer.ids, `${where()}: frozen reader, "${text}"`).toEqual(oracle(text, frozen.snapshot, frozenAt))
-          // When the shared index does not vouch for its view (retention
-          // deleted rows its view still has, or main has not walked since a
-          // deletion its view already shows), its first search reads that
-          // view into TEMP; then it is bounded again.
-          if (!frozenBehindRetention) expect(answer.rows, `${where()}: source rows the frozen reader read`).toBeLessThanOrEqual(40)
-          frozenBehindRetention = false
+          // When the shared index does not vouch for its view (main has walked
+          // past rows retention deleted that its view still has, or has not
+          // walked since a deletion its view already shows), its first search
+          // reads that view into TEMP, by design: bounded by the view. Then,
+          // and whenever the index vouches for it, by the tight bound.
+          const unvouched = frozenBehindRetention || frozenUnvouched
+          expect(answer.rows, `${where()}: source rows the frozen reader read${unvouched ? ' (not vouched for: its view)' : ''}`)
+            .toBeLessThanOrEqual(unvouched ? frozenView() : 40)
+          frozenBehindRetention = false; frozenUnvouched = false
           expect(sharedState(), `${where()}: the frozen reader wrote the shared index`).toEqual(before)
         } else if (r < 0.75) {
           op = 'other instance, older snapshot'
@@ -286,7 +307,7 @@ sqlite.describe('body index lifecycle, seeded', () => {
           // A snapshot from before the deletion is refused ("changed by retention"): take a new one.
           older = readActivitySnapshot(db.getReadonlyDB())
           walkExpected = true
-          if (frozen) frozenBehindRetention = true
+          if (frozen) frozenRetained = true
         } else if (r < 0.79) {
           op = 'vanish'
           const files = model.flatMap(e => e.bodies.map(b => b.file)).filter((f): f is string => !!f && !gone.has(f))
