@@ -13,6 +13,7 @@
 // on, so RedLog and the shell adapter can reach the same verdict.
 
 import policy from '../../hooks/command-class.json'
+import { compareCodeUnits } from './code-unit-order'
 
 export type CommandClass = 'relayed' | 'pty' | 'native'
 
@@ -89,7 +90,6 @@ const SHIPPED = policy as ShippedClassPolicy
 const hasOwn = (o: object, key: string): boolean => Object.prototype.hasOwnProperty.call(o, key)
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
-const byCommand = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
 
 /** The most ~/.redlog/command-class.json or ~/.redlog/terminal-profiles.json
  *  may hold for the policy to read it. RedLog writes both and they are a few KB;
@@ -295,7 +295,7 @@ export function compileClassPolicy(
       conflicts.push({ kind: 'conflict', command, claims: claimed })
     }
   }
-  problems.push(...conflicts.sort((a, b) => byCommand(a.command, b.command)))
+  problems.push(...conflicts.sort((a, b) => compareCodeUnits(a.command, b.command)))
 
   const normalized = normalizeOverlay(overlay)
   problems.push(...normalized.problems)
@@ -306,7 +306,7 @@ export function compileClassPolicy(
   }
 
   const entries = [...new Set([...layer.keys(), ...conflicts.map((p) => p.command)])]
-    .sort(byCommand)
+    .sort(compareCodeUnits)
     .map((command): PolicyEntry => {
       const found = layer.get(command)
       if (!found) return { command, mode: 'relayed', source: 'fallback' }
