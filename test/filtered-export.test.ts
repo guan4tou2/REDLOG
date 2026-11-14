@@ -319,3 +319,27 @@ it('counts the capture gaps inside the selection, and carries them into the mani
  expect(manifest.actualCounts.captureGaps).toEqual(r.plan.counts.captureGaps)
  expect((await resolve({format:'json',subset:{kind:'time-range',since:3000,before:6000}})).plan.counts.captureGaps).toEqual([{reason:'queue-full',gaps:1,skippedUnits:99,unknownAmount:0}])
 })
+// HAR is offered on every page, so it is planned for the selection any page
+// contributes: the whole project carries every exchange, and an event
+// selection carries the exchanges among its rows — whole, request and
+// response, even when only one of them matched.
+it('plans HAR for the whole project and for an event selection, counting exchanges', async () => {
+ getDB().transaction(() => {
+  addExportEvent('events_logged','req-a',1000,'a.test',{subtype:'http_request_start',flow_id:'fa',method:'GET',url:'https://a.test/needle',host:'a.test'})
+  addExportEvent('events_logged','res-a',5000,'a.test',{subtype:'http_response',flow_id:'fa',status:200,content_type:'text/plain'})
+  addExportEvent('events_logged','req-b',1100,'b.test',{subtype:'http_request_start',flow_id:'fb',method:'GET',url:'https://b.test/',host:'b.test'})
+  addExportEvent('events_logged','res-b',1200,'b.test',{subtype:'http_response',flow_id:'fb',status:404,content_type:'text/plain'})
+  addExportEvent('events_logged','cmd',1050,'a.test',{subtype:'command_end',command:'curl a.test'})
+ })()
+ const all=await resolve({format:'har',subset:{kind:'all'}})
+ expect(all.ok).toBe(true); expect(all.plan.counts.exchanges).toBe(2)
+ const subset={kind:'selection',projection:'events',filter:{hidePersonal:true,targetId:'a.test',since:900,before:1500}}
+ const r=await resolve({format:'har',subset})
+ expect(r.ok).toBe(true)
+ expect(r.plan.counts).toMatchObject({exchanges:1,included:2})
+ const entries=JSON.parse(fs.readFileSync((await execute(r.plan.id)).artifactPath,'utf8')).log.entries
+ expect(entries).toHaveLength(1)
+ expect(entries[0].request.url).toBe('https://a.test/needle'); expect(entries[0].response.status).toBe(200)
+ const none=await resolve({format:'har',subset:{kind:'selection',projection:'events',filter:{agentType:'shell'}}})
+ expect(none.ok).toBe(true); expect(none.plan.counts).toMatchObject({exchanges:0,included:0})
+})

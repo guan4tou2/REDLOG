@@ -202,11 +202,19 @@ export function partialHttpFlowsFold(): EventFold<number> {
   return { add: segments.add, done: () => segments.done().size }
 }
 
+/** Exchanges among these Events: flows with a request or a response, a HAR
+ *  entry each. Rows, chunks and stream-only flows are not exchanges. */
+export function httpExchangesFold(): EventFold<number> {
+  const exchanged = new Set<string>()
+  const segments = partialHttpFlowSegmentsFold(undefined, undefined, exchanged)
+  return { add: segments.add, done: () => exchanged.size }
+}
+
 type PartialFlowSegments = Map<string, { first: { timestamp: number; targetId: string | null }; url?: string; selected: boolean; allExcluded: boolean }>
 
-function partialHttpFlowSegmentsFold(selectedIds: ReadonlySet<string> = new Set(), excluded: (event: RedLogEvent) => boolean = () => false): EventFold<PartialFlowSegments> {
+function partialHttpFlowSegmentsFold(selectedIds: ReadonlySet<string> = new Set(), excluded: (event: RedLogEvent) => boolean = () => false,
+  exchanged = new Set<string>()): EventFold<PartialFlowSegments> {
   const segmented: PartialFlowSegments = new Map()
-  const exchanged = new Set<string>()
   return {
     add: event => {
       const flowId = event.data.flow_id

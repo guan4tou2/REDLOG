@@ -102,10 +102,14 @@ describe('one export dialog', () => {
     range('all'); await ready()
     expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'timeline', subset: { kind: 'all' } })
   })
-  it('does not silently disable PII policy to select a format that cannot scrub', async () => {
+  it('does not ask a format that cannot scrub PII to scrub it, and keeps the choice for one that can', async () => {
     draw(); open(); await ready()
     fireEvent.click(screen.getByLabelText(/scrub operator pii/i)); await ready()
-    expect((screen.getByRole('option', { name: /Evidence bundle/ }) as HTMLOptionElement).disabled).toBe(true)
+    expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'json', scrubPii: true, subset: selection })
+    format('bundle'); await ready()
+    expect(screen.queryByLabelText(/scrub operator pii/i)).toBeNull()
+    expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'bundle', scrubPii: false, subset: selection })
+    format('json'); await ready()
     expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'json', scrubPii: true, subset: selection })
   })
   it('discards stale previews and cannot confirm while the new request is unresolved', async () => {

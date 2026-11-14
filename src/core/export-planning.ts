@@ -7,7 +7,7 @@ import { iterateExportSelection, iterateSnapshotEvents } from './export-selectio
 import { capabilitiesFor } from './export-capabilities'
 import { listExportAttachments, exportAttachmentDigest, withFrozenSizes } from './export-attachments'
 import { countExportAttachments, referencedAttachmentsFold, truncatedOutputsFold, pauseWindowsFold,
-  captureGapsFold, interruptedFold, partialHttpFlowsFold, countPartialHttpFlowsOutside, outOfScopeHttpFlowsFold, sequenceFingerprint,
+  captureGapsFold, interruptedFold, partialHttpFlowsFold, httpExchangesFold, countPartialHttpFlowsOutside, outOfScopeHttpFlowsFold, sequenceFingerprint,
   createExportPlan, fingerprintValue, fingerprintSequence, normalizeExportRequest, takeExportSnapshot, type ExportPlan, type ExportRequest } from './export-plan'
 
 export function buildExportPlan(project: ProjectMeta, rawRequest: ExportRequest): ExportPlan {
@@ -58,7 +58,8 @@ export function buildExportPlan(project: ProjectMeta, rawRequest: ExportRequest)
   const partialHttpFlows = request.format === 'har' ? partialHttpFlowsFold() : null
   const evidence = sequenceFingerprint()
   const httpView = request.subset.kind === 'selection' && request.subset.projection === 'http'
-  const exchangeFlowIds = httpView ? new Set<unknown>() : null
+  // Exchanges, not rows, for the HTTP view's plan and for HAR from any selection.
+  const exchanges = httpView || request.format === 'har' ? httpExchangesFold() : null
   for (const event of events) {
     examined++
     if (doNotExportIds.has(event.id)) { excludedDoNotExport++; continue }
@@ -80,7 +81,7 @@ export function buildExportPlan(project: ProjectMeta, rawRequest: ExportRequest)
     captureGaps.add(redacted)
     interrupted.add(redacted)
     partialHttpFlows?.add(redacted)
-    exchangeFlowIds?.add(redacted.data.flow_id)
+    exchanges?.add(redacted)
     evidence.add(redacted)
   }
   // The bundle's attachment listing still reads the selected Events more than
@@ -118,7 +119,7 @@ export function buildExportPlan(project: ProjectMeta, rawRequest: ExportRequest)
       ...(scopeSnap.scopeFileSha256 ? { sourceHash: scopeSnap.scopeFileSha256 } : {})
     },
     counts: {
-      ...(exchangeFlowIds ? { exchanges: exchangeFlowIds.size } : {}),
+      ...(exchanges ? { exchanges: exchanges.done() } : {}),
       examined,
       included: selectedEventIds.length,
       excludedDoNotExport,

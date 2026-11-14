@@ -42,7 +42,10 @@ export function* iterateExportSelection(request: NormalizedExportRequest, snapsh
   const parsed = parseQuery(subset.query ?? '')
   if (!parsed.ok) throw new Error('Invalid export query')
   const hasQuery = parsed.parsed.conditions.length > 0 || !!parsed.parsed.text.trim()
-  if (request.format === 'har' && subset.projection !== 'http') throw new Error('HAR requires an HTTP exchange selection')
+  // HAR of an event selection carries the exchanges among its rows, each
+  // whole: a flow is in when any of its rows matched, as an HTTP-view HAR
+  // carries every row of a flow its predicates selected.
+  const harOfEvents = request.format === 'har' && subset.projection !== 'http'
   const ids = new Set<string>()
   const commands = new Set<string>()
   const flows = new Set<string>()
@@ -64,6 +67,12 @@ export function* iterateExportSelection(request: NormalizedExportRequest, snapsh
   } while (cursor)
   // Retain membership IDs, not payload arrays. Preserve the output retry
   // deduplication used by the live command reader before canonical ordering.
+  if (harOfEvents) {
+    for (const event of iterateSnapshotEvents(snapshot, { agentType: 'scanner', tier: 'logged' })) {
+      if (typeof event.data.flow_id === 'string' && flows.has(event.data.flow_id)) yield event
+    }
+    return
+  }
   for (const command of commands) for (const event of iterateCommandOutput(command, -1, snapshot)) ids.add(event.id)
   for (const event of iterateSnapshotEvents(snapshot)) {
     const companion = subset.projection === 'http' && event.agentType === 'scanner'
