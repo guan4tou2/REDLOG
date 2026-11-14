@@ -72,13 +72,13 @@ describe('Export menu: range, remembered format, destination', () => {
   const open = (): void => { fireEvent.click(screen.getByLabelText('Export')) }
   const draw = (): void => { render(<I18nProvider><ExportMenu totalCount={1} /></I18nProvider>) }
 
-  it('says what the current view covers before anything is chosen', () => {
+  it('opens on the whole project when nothing narrows the view, and says what current covers', () => {
     draw(); open()
+    expect((screen.getByLabelText('Export range') as HTMLSelectElement).value).toBe('all')
     // The default view already hides personal traffic, and the line says so rather
     // than calling it "no filter".
+    fireEvent.change(screen.getByLabelText('Export range'), { target: { value: 'current' } })
     expect(screen.getByTestId('export-range-current').textContent).toMatch(/Current view covers: .*Hide personal traffic/)
-    fireEvent.change(screen.getByLabelText('Export range'), { target: { value: 'all' } })
-    expect(screen.getByTestId('export-range-current').textContent).toBe('The whole project; the current filter is not applied')
   })
 
   it('remembers the format picked in the dropdown', () => {

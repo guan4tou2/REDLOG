@@ -10,7 +10,7 @@ import { useViewExport } from '../lib/exportScope'
 import { formatDateTime } from '../lib/time'
 import { useSharedFilter, toEventFilter } from '../lib/FilterContext'
 import { capabilitiesFor } from '../../../core/export-capabilities'
-import { selectionConditions, subsetSummary } from '../lib/exportSubsetText'
+import { selectionConditions, subsetNarrows, subsetSummary } from '../lib/exportSubsetText'
 
 export interface ExportMenuProps {
   totalCount?: number
@@ -332,7 +332,11 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
     setResultWarning(false)
     setOpen(true)
     void loadRecent()
-    updateDraft({ ...draft, format, range: 'current', excludeAttachments: [], includeAttachments: [], scrubPii: false })
+    // Decided here, before the one resolution: a view the operator has not
+    // narrowed opens on the whole project, not on "current results" that
+    // happen to be everything and get labelled partial evidence.
+    const range = subsetNarrows(selection.current!.subset) ? 'current' : 'all'
+    updateDraft({ ...draft, format, range, excludeAttachments: [], includeAttachments: [], scrubPii: false })
   }
 
   const changeFormat = (format: ExportFormat): void => {

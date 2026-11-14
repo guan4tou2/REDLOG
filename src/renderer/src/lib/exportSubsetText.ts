@@ -18,6 +18,19 @@ export function selectionConditions(subset: Extract<Subset, { kind: 'selection' 
   ]
 }
 
+/** Whether the operator narrowed what the view shows, so the export dialog
+ *  opens on "current results" rather than the whole project. Hiding personal
+ *  traffic (on by default, and the plan drops personal domains either way) and
+ *  the housekeeping exclusion are the view's default state, not narrowing. An
+ *  activity, a source session or a time range is a subset of its own. */
+export function subsetNarrows(subset: Subset | undefined): boolean {
+  if (!subset || subset.kind === 'all') return false
+  if (subset.kind !== 'selection') return true
+  const { hidePersonal: _personal, ...filter } = subset.filter
+  const set = (value: unknown): boolean => value != null && value !== '' && value !== false
+  return Object.values(filter).some(set) || !!subset.query?.trim() || Object.values(subset.http ?? {}).some(set)
+}
+
 /** What a subset covers, in a sentence's worth of words. A selection with no
  *  condition says so: it is every stored event, not "the current view". */
 export function subsetSummary(subset: Subset | undefined, t: T): string {
