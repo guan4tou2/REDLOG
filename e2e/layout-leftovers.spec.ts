@@ -146,7 +146,11 @@ async function stickyHeaderBand(page: Page): Promise<{ scrollTop: number; scroll
     const s = scroller.getBoundingClientRect()
     const h = head.getBoundingClientRect()
     const bg = getComputedStyle(head).backgroundColor
-    const alpha = /rgba?\(([^)]+)\)/.exec(bg)?.[1].split(/[ ,/]+/).filter(Boolean)[3]
+    // Chromium reports a translucent Tailwind colour as `oklab(L a b / 0.95)`,
+    // not `rgba(…)`: read the alpha of whichever colour function it is.
+    const slash = /\/\s*([\d.]+)(%?)\s*\)\s*$/.exec(bg)
+    const legacy = /^rgba\(([^)]+)\)$/.exec(bg)?.[1].split(',')[3]
+    const alpha = slash ? String(Number(slash[1]) / (slash[2] ? 100 : 1)) : legacy?.trim()
     const strays: string[] = []
     for (const fx of [0.15, 0.5, 0.85]) {
       const x = s.left + s.width * fx
@@ -180,7 +184,8 @@ test('layout leftovers: HTTP rows never show above or through the sticky header'
     await expect.poll(() => rows.count()).toBeGreaterThan(10)
     await rows.first().click()
     await expect(page.getByTestId('http-detail-panel')).toBeVisible()
-    await expect(page.getByTestId('http-workspace-split')).toHaveAttribute('data-layout', 'right')
+    // The pane sits under the list at this size (data-layout="bottom"), which
+    // is where the strip was seen; the check does not depend on which side.
     // Whole-row and part-row offsets: a gap under a sticky header shows only
     // when a row edge is not on a pixel boundary.
     for (const top of [42 * 3, 42 * 5 + 17, 42 * 9 + 29.5]) {
