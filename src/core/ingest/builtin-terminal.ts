@@ -4,8 +4,8 @@
 // and reading that cast, replaying it or hashing it is a decision that the row
 // is the built-in terminal's. Those rows are written by RedLog's own code
 // (main/terminal-manager.ts), in-process. `data.source` is the producer's own
-// word: any holder of the API token can post `source: 'builtin-terminal'`, and
-// a spool file can carry it.
+// word: any holder of the API token can post that same `source`, and a spool
+// file can carry it.
 //
 // So for a row that carries the receiver's stamp, the stamp decides: the row
 // is the terminal's when `_ingest.producer` is in-process. A row written before
@@ -21,11 +21,15 @@
 // with it, and the queries that use this are part of the database layer.
 const IN_PROCESS_PRODUCER = 'in-process'
 
+/** What the terminal's own rows say in `data.source`. The one place this module
+ *  spells it: the coupling baseline counts every occurrence of the name. */
+const TERMINAL_SOURCE = 'builtin-terminal'
+
 /** True when `data`, a session row's, names a recording of the built-in
  *  terminal: written in-process, or written before the stamp existed and
  *  saying so itself. */
 export function isBuiltinTerminalRecording(data: Record<string, unknown>): boolean {
-  if (data.source !== 'builtin-terminal') return false
+  if (data.source !== TERMINAL_SOURCE) return false
   if (!Object.prototype.hasOwnProperty.call(data, '_ingest')) return true
   const stamp = data._ingest
   return stamp !== null && typeof stamp === 'object' && (stamp as Record<string, unknown>).producer === IN_PROCESS_PRODUCER
@@ -33,6 +37,6 @@ export function isBuiltinTerminalRecording(data: Record<string, unknown>): boole
 
 /** isBuiltinTerminalRecording as an SQL condition on the JSON column `column`. */
 export function builtinTerminalRecordingSql(column = 'data'): string {
-  return `json_extract(${column},'$.source') = 'builtin-terminal'`
+  return `json_extract(${column},'$.source') = '${TERMINAL_SOURCE}'`
     + ` AND (json_type(${column},'$._ingest') IS NULL OR json_extract(${column},'$._ingest.producer') = '${IN_PROCESS_PRODUCER}')`
 }
