@@ -14,7 +14,7 @@ import { BODY_REF_FIELDS, type BodyRef } from './http-body-store'
 import { withVerifiedBody, withVerifiedSavedFile, savedFileRefs, withInlineBase64, ContentAccessError, type ByteSource, type SavedFileRef } from './body-source'
 const INDEX_CHUNK_BYTES = 1024 * 1024
 const INDEX_OVERLAP_CHARS = 65536
-const INDEX_VERSION = 9
+const INDEX_VERSION = 10
 let index: Database.Database | null = null, indexDir: string | null = null
 function getIndex(projectDir = getProjectDir()): Database.Database {
   if (index && indexDir === projectDir)
@@ -29,7 +29,9 @@ function getIndex(projectDir = getProjectDir()): Database.Database {
   // v7 added the verification columns below; v9 adds the decoded text of
   // JSON escapes and of bodies in a declared charset, body_docs, and what
   // coverage needs per ref (engagement, source row, order, source bytes), so
-  // coverage reads this table instead of re-deriving every row's refs.
+  // coverage reads this table instead of re-deriving every row's refs. v10
+  // keys a ref by its event and the field it is in (its slot), not by its
+  // hash: a request and a response with the same bytes are two refs.
   // An older index is rebuilt once, from the source rows, at the next search.
   // The schema is written in one transaction, and an index already current is
   // opened without a write: each commit is a flush, slow on Windows.
@@ -39,20 +41,20 @@ function getIndex(projectDir = getProjectDir()): Database.Database {
     // its (event, body) pair through a real index, so removing one ref's text
     // never reads every document.
     db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS body_fts USING fts5(content,tokenize='${FTS_TOKENIZE}',prefix='2 3');
-    CREATE TABLE IF NOT EXISTS body_docs (doc INTEGER PRIMARY KEY,event_id TEXT NOT NULL,sha256 TEXT NOT NULL);
-    CREATE INDEX IF NOT EXISTS body_docs_ref ON body_docs(event_id,sha256);
+    CREATE TABLE IF NOT EXISTS body_docs (doc INTEGER PRIMARY KEY,event_id TEXT NOT NULL,slot TEXT NOT NULL,sha256 TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS body_docs_ref ON body_docs(event_id,slot);
     CREATE INDEX IF NOT EXISTS body_docs_sha256 ON body_docs(sha256);
     CREATE TABLE IF NOT EXISTS body_event_refs (
-     event_id TEXT NOT NULL,sha256 TEXT NOT NULL,file TEXT NOT NULL,size INTEGER NOT NULL,encoding TEXT NOT NULL,
+     event_id TEXT NOT NULL,slot TEXT NOT NULL,sha256 TEXT NOT NULL,file TEXT NOT NULL,size INTEGER NOT NULL,encoding TEXT NOT NULL,
      status TEXT NOT NULL,indexed_bytes INTEGER NOT NULL,reason TEXT NOT NULL,kind TEXT NOT NULL,available_bytes INTEGER NOT NULL,
      tier TEXT,verified_desc TEXT,verified_file TEXT,verified_sig TEXT,
-     engagement_id TEXT,row INTEGER,pos INTEGER NOT NULL,source_bytes INTEGER NOT NULL,PRIMARY KEY(event_id,sha256)
+     engagement_id TEXT,row INTEGER,pos INTEGER NOT NULL,source_bytes INTEGER NOT NULL,PRIMARY KEY(event_id,slot)
     );
     CREATE INDEX IF NOT EXISTS body_event_refs_sha256 ON body_event_refs(sha256);
     CREATE TABLE IF NOT EXISTS body_index_meta (key TEXT PRIMARY KEY,value TEXT NOT NULL);`)
     db.pragma(`user_version=${INDEX_VERSION}`)
   })()
-  db.exec('CREATE TEMP TABLE body_seen(event_id TEXT NOT NULL,sha256 TEXT NOT NULL,PRIMARY KEY(event_id,sha256));')
+  db.exec('CREATE TEMP TABLE body_seen(event_id TEXT NOT NULL,slot TEXT NOT NULL,PRIMARY KEY(event_id,slot));')
   indexDir = projectDir
   return index
 }
@@ -114,12 +116,12 @@ const FINAL_STATUSES = new Set(['indexed', 'partial', 'binary', 'limited', 'pend
 /** The statuses whose ref has FTS documents. */
 const HAS_DOCS = new Set(['indexed', 'partial'])
 /** Remove one ref's documents through body_docs: O(its documents). */
-function dropDocs(db: Database.Database, eventId: string, sha256: string): void {
-  const docs = stmt(db, 'SELECT doc FROM body_docs WHERE event_id=? AND sha256=?').all(eventId, sha256) as { doc: number }[]
+function dropDocs(db: Database.Database, eventId: string, slot: string): void {
+  const docs = stmt(db, 'SELECT doc FROM body_docs WHERE event_id=? AND slot=?').all(eventId, slot) as { doc: number }[]
   if (!docs.length) return
   const drop = stmt(db, 'DELETE FROM body_fts WHERE rowid=?')
   for (const { doc } of docs) drop.run(doc)
-  stmt(db, 'DELETE FROM body_docs WHERE event_id=? AND sha256=?').run(eventId, sha256)
+  stmt(db, 'DELETE FROM body_docs WHERE event_id=? AND slot=?').run(eventId, slot)
 }
 // Inline bodies whose escapes were scanned and hashed by refsOf; a test seam
 // for "a search does no per-row work for rows already linked".
@@ -149,8 +151,10 @@ function refFile(ref: IndexedRef, projectDir: string): string | null {
  *  read bytes that are not valid UTF-8 (textCharset). `inline`: the body is on
  *  the event itself, as its `encoding` says. `truncated` / `totalSize`: the
  *  capture cut it short, and the size it saw when it said. */
-type BodyIndexRef = BodyRef & {kind:'body';inline?:string;decode:boolean;charset?:string}
-type IndexedRef = BodyIndexRef | (SavedFileRef & {kind:'artifact'|'ai-raw';encoding:'text'})
+type BodyIndexRef = BodyRef & {kind:'body';inline?:string;decode:boolean;charset?:string;slot:string}
+/** `slot`: the field of the event the ref is in. An event's refs are told
+ *  apart by it, never by hash: a request and a response may be the same bytes. */
+type IndexedRef = BodyIndexRef | (SavedFileRef & {kind:'artifact'|'ai-raw';encoding:'text';slot:string})
 // Resolve after module initialization: artifact -> events -> body-store is a cycle.
 function inlineBodyFields():string[]{return BODY_REF_FIELDS.filter(field=>field.endsWith('_body_ref')).map(field=>field.slice(0,-4))}
 const decodesEscapes = (field: string): boolean => (ESCAPE_DECODED_BODY_FIELDS as readonly string[]).includes(field)
@@ -204,7 +208,7 @@ function refsOf(event: {agentType?:string;data:Record<string,unknown>}, atIngest
       const charset = body ? charsetOf(event.data, body) : undefined
       const ref = value as BodyRef
       return value && typeof value === 'object' && typeof ref.sha256 === 'string' && typeof ref.file === 'string'
-        ? [{sha256:ref.sha256,file:ref.file,size:ref.size,
+        ? [{slot:field,sha256:ref.sha256,file:ref.file,size:ref.size,
           encoding:ref.encoding,truncated:ref.truncated,...(typeof ref.totalSize === 'number' ? {totalSize:ref.totalSize} : {}),kind:'body' as const,
           decode:body !== null && decodesEscapes(body),...(charset ? {charset} : {})}] : []
     }),
@@ -215,7 +219,7 @@ function refsOf(event: {agentType?:string;data:Record<string,unknown>}, atIngest
       const cut=(stored:number)=>value.truncated===true?{truncated:true,...(typeof value.size==='number'&&value.size>stored?{totalSize:value.size}:{})}:{}
       if(value.encoding==='base64'){
         const charset=charsetOf(event.data,field), size=Buffer.byteLength(value.data,'base64')
-        return [{kind:'body' as const,file:`inline:${field}`,sha256:createHash('sha256').update(value.data).digest('hex'),
+        return [{kind:'body' as const,slot:`inline:${field}`,file:`inline:${field}`,sha256:createHash('sha256').update(value.data).digest('hex'),
           size,encoding:'base64' as const,inline:value.data,decode,...cut(size),...(charset ? {charset} : {})}]
       }
       // Inline text is in the events index already, as written. Only a body
@@ -225,10 +229,10 @@ function refsOf(event: {agentType?:string;data:Record<string,unknown>}, atIngest
       inlineRefWork++
       if(decodeJsonEscapes(value.data)===null)return []
       const size=Buffer.byteLength(value.data,'utf8')
-      return [{kind:'body' as const,file:`inline:${field}`,sha256:createHash('sha256').update(value.data).digest('hex'),
+      return [{kind:'body' as const,slot:`inline:${field}`,file:`inline:${field}`,sha256:createHash('sha256').update(value.data).digest('hex'),
         size,encoding:'text' as const,inline:value.data,decode,...cut(size)}]
     }),
-    ...savedFileRefs(event).map(ref=>({...ref,kind:ref.field==='artifact'?'artifact' as const:'ai-raw' as const,encoding:'text' as const}))
+    ...savedFileRefs(event).map(ref=>({...ref,slot:ref.field,kind:ref.field==='artifact'?'artifact' as const:'ai-raw' as const,encoding:'text' as const}))
   ]
 }
 /** Bytes read in a declared charset that are not text after all: a NUL. */
@@ -284,18 +288,20 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
   if (refs.length) atomic(() => {
     for (const [pos, ref] of refs.entries()) {
       let status = 'indexed', bytes = 0, reason = '',availableBytes=0, wrote = false
-      const prior = stmt(db, 'SELECT status,reason,tier,row,verified_desc,verified_file,verified_sig FROM body_event_refs WHERE event_id=? AND sha256=?').get(event.id, ref.sha256) as {
-        status: string; reason: string; tier: Tier | null; row: number | null; verified_desc: string | null; verified_file: string | null; verified_sig: string | null
+      const prior = stmt(db, 'SELECT status,reason,tier,row,pos,verified_desc,verified_file,verified_sig FROM body_event_refs WHERE event_id=? AND slot=?').get(event.id, ref.slot) as {
+        status: string; reason: string; tier: Tier | null; row: number | null; pos: number; verified_desc: string | null; verified_file: string | null; verified_sig: string | null
       } | undefined
       const file = refFile(ref, projectDir)
       const body = ref.kind === 'body' ? ref : null
-      const desc = JSON.stringify([ref.file, ref.size, ref.encoding ?? null, ref.kind, ref.kind !== 'body' && ref.pending === true, body?.inline !== undefined,
+      const desc = JSON.stringify([ref.sha256, ref.file, ref.size, ref.encoding ?? null, ref.kind, ref.kind !== 'body' && ref.pending === true, body?.inline !== undefined,
         body?.decode ?? false, body?.charset ?? null, body?.truncated === true, body?.totalSize ?? null])
       // Nothing that decides this row has changed since it was verified.
       if (prior && prior.verified_desc === desc && FINAL_STATUSES.has(prior.status)
         && (prior.verified_file === null || (prior.verified_file === file && fileSignature(prior.verified_file) === prior.verified_sig))) {
-        if (tier && (prior.tier !== tier || prior.row !== source.row))
-          stmt(db, 'UPDATE body_event_refs SET tier=?,row=?,engagement_id=coalesce(?,engagement_id) WHERE event_id=? AND sha256=?').run(tier, source.row, source.engagementId, event.id, ref.sha256)
+        // Ingest links without the inline text refs, so the position is set
+        // here too.
+        if (tier && (prior.tier !== tier || prior.row !== source.row || prior.pos !== pos))
+          stmt(db, 'UPDATE body_event_refs SET tier=?,row=?,pos=?,engagement_id=coalesce(?,engagement_id) WHERE event_id=? AND slot=?').run(tier, source.row, pos, source.engagementId, event.id, ref.slot)
         continue
       }
       const hadDocs = prior !== undefined && HAS_DOCS.has(prior.status)
@@ -321,8 +327,8 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
           bytes = source.bytes
           // Re-verified bytes with the same hash: the documents stand.
           if (prior && hadDocs) { status = prior.status; reason = prior.reason; return }
-          const insertText = stmt(db, 'INSERT INTO body_fts(content) VALUES(?)'), insertDoc = stmt(db, 'INSERT INTO body_docs VALUES(?,?,?)')
-          const write = (part: string): void => { if (part) { insertDoc.run(insertText.run(part).lastInsertRowid, event.id, ref.sha256); wrote = true } }
+          const insertText = stmt(db, 'INSERT INTO body_fts(content) VALUES(?)'), insertDoc = stmt(db, 'INSERT INTO body_docs VALUES(?,?,?,?)')
+          const write = (part: string): void => { if (part) { insertDoc.run(insertText.run(part).lastInsertRowid, event.id, ref.slot, ref.sha256); wrote = true } }
           // The saved text, unless it is inline text the events index already
           // holds; and, in the same pass, once an escape has been seen, the
           // decoded text as a second document of the same (event, body) pair,
@@ -366,7 +372,7 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
             }
           } catch (error) {
             if (strict || !(error instanceof TypeError || error instanceof NotText)) throw error
-            dropDocs(db, event.id, ref.sha256)
+            dropDocs(db, event.id, ref.slot)
             bytes = 0; status = 'binary'; reason = 'binary'
           }
           if (status === 'indexed' && body?.truncated) { status = 'partial'; reason = 'truncated' }
@@ -381,7 +387,7 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
       // it had nor the ones this read wrote before the file vanished or changed
       // under it (missing and failed are retried every search, and each retry
       // would add another copy).
-      if (!HAS_DOCS.has(status) && (hadDocs || wrote)) dropDocs(db, event.id, ref.sha256)
+      if (!HAS_DOCS.has(status) && (hadDocs || wrote)) dropDocs(db, event.id, ref.slot)
       // pending/limited come from the event alone; indexed/binary/partial from
       // bytes whose signature is recorded. missing/failed can change with no
       // new row (a file restored or repaired), so they carry no verification
@@ -389,10 +395,10 @@ function linkEvent(event: Pick<RedLogEvent, 'id' | 'data'> & {agentType?:string}
       const final = FINAL_STATUSES.has(status)
       const size = Number.isSafeInteger(ref.size) ? ref.size : 0
       const sourceBytes = sourceBytesOf(ref)
-      stmt(db, `INSERT INTO body_event_refs VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(event_id,sha256) DO UPDATE SET
-    file=excluded.file,size=excluded.size,encoding=excluded.encoding,status=excluded.status,indexed_bytes=excluded.indexed_bytes,reason=excluded.reason,kind=excluded.kind,available_bytes=excluded.available_bytes,
+      stmt(db, `INSERT INTO body_event_refs VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(event_id,slot) DO UPDATE SET
+    sha256=excluded.sha256,file=excluded.file,size=excluded.size,encoding=excluded.encoding,status=excluded.status,indexed_bytes=excluded.indexed_bytes,reason=excluded.reason,kind=excluded.kind,available_bytes=excluded.available_bytes,
     tier=coalesce(excluded.tier,body_event_refs.tier),verified_desc=excluded.verified_desc,verified_file=excluded.verified_file,verified_sig=excluded.verified_sig,
-    engagement_id=coalesce(excluded.engagement_id,body_event_refs.engagement_id),row=coalesce(excluded.row,body_event_refs.row),pos=excluded.pos,source_bytes=excluded.source_bytes`).run(event.id, ref.sha256, ref.file, size, String(ref.encoding ?? 'unknown'), status, bytes, reason, ref.kind,availableBytes,
+    engagement_id=coalesce(excluded.engagement_id,body_event_refs.engagement_id),row=coalesce(excluded.row,body_event_refs.row),pos=excluded.pos,source_bytes=excluded.source_bytes`).run(event.id, ref.slot, ref.sha256, ref.file, size, String(ref.encoding ?? 'unknown'), status, bytes, reason, ref.kind,availableBytes,
         tier, final ? desc : null, final && status !== 'pending' ? file : null, final && status !== 'pending' ? sig : null, source.engagementId, source.row, pos, sourceBytes)
     }
   })
@@ -488,13 +494,13 @@ function walkAll(db: Database.Database, projectDir: string, snapshot: ExportSnap
   for (const [i, tier] of rows(snapshot, undefined, latest, range).entries())
     for (const row of tier) {
       const data = JSON.parse(row.data) as Record<string, unknown>
-      for (const ref of linkEvent({ id: row.id, data, agentType: row.agent_type }, projectDir, TIERS[i], { engagementId: row.engagement_id, row: row.r })) seen.run(row.id, ref.sha256)
+      for (const ref of linkEvent({ id: row.id, data, agentType: row.agent_type }, projectDir, TIERS[i], { engagementId: row.engagement_id, row: row.r })) seen.run(row.id, ref.slot)
     }
   // The verification lives in the row, so a pruned ref takes it along.
-  stmt(db, 'DELETE FROM body_event_refs WHERE NOT EXISTS(SELECT 1 FROM body_seen s WHERE s.event_id=body_event_refs.event_id AND s.sha256=body_event_refs.sha256)').run()
+  stmt(db, 'DELETE FROM body_event_refs WHERE NOT EXISTS(SELECT 1 FROM body_seen s WHERE s.event_id=body_event_refs.event_id AND s.slot=body_event_refs.slot)').run()
   // Documents whose ref is gone or no longer has text: found through
   // body_docs (a plain table), each removed by rowid.
-  const orphans = stmt(db, "SELECT doc FROM body_docs d WHERE NOT EXISTS(SELECT 1 FROM body_event_refs r WHERE r.event_id=d.event_id AND r.sha256=d.sha256 AND r.status IN ('indexed','partial'))").all() as { doc: number }[]
+  const orphans = stmt(db, "SELECT doc FROM body_docs d WHERE NOT EXISTS(SELECT 1 FROM body_event_refs r WHERE r.event_id=d.event_id AND r.slot=d.slot AND r.status IN ('indexed','partial'))").all() as { doc: number }[]
   const dropText = stmt(db, 'DELETE FROM body_fts WHERE rowid=?'), dropDoc = stmt(db, 'DELETE FROM body_docs WHERE doc=?')
   for (const { doc } of orphans) { dropText.run(doc); dropDoc.run(doc) }
 }
@@ -545,10 +551,10 @@ export function pruneHttpBodyIndex(sha256: string, projectDir = getProjectDir())
 export function pruneSavedFileIndex(file:string, projectDir=getProjectDir()):void {
   if(!existsSync(path.join(projectDir,'http-body-index.db')))return
   const db=getIndex(projectDir),absolute=path.resolve(file)
-  const refs=db.prepare("SELECT event_id,sha256,file FROM body_event_refs WHERE kind<>'body'").all() as {event_id:string;sha256:string;file:string}[]
+  const refs=db.prepare("SELECT event_id,slot,file FROM body_event_refs WHERE kind<>'body'").all() as {event_id:string;slot:string;file:string}[]
   db.transaction(()=>{for(const ref of refs)if(path.resolve(projectDir,ref.file)===absolute){
-    dropDocs(db,ref.event_id,ref.sha256)
-    db.prepare('DELETE FROM body_event_refs WHERE event_id=? AND sha256=?').run(ref.event_id,ref.sha256)
+    dropDocs(db,ref.event_id,ref.slot)
+    db.prepare('DELETE FROM body_event_refs WHERE event_id=? AND slot=?').run(ref.event_id,ref.slot)
   }})()
   dirty = true
 }
@@ -578,7 +584,7 @@ export function searchHttpBodyTermIds(query: string, projectDir = getProjectDir(
   // Failed references have already lost their FTS rows. Report them through
   // coverage without withholding unrelated, verified matches.
   const find = stmt(db, `SELECT DISTINCT d.event_id FROM body_fts JOIN body_docs d ON d.doc=body_fts.rowid WHERE body_fts MATCH ?
-      ${excludeAiRaw ? "AND EXISTS(SELECT 1 FROM body_event_refs r WHERE r.event_id=d.event_id AND r.sha256=d.sha256 AND r.kind<>'ai-raw')" : ''}`)
+      ${excludeAiRaw ? "AND EXISTS(SELECT 1 FROM body_event_refs r WHERE r.event_id=d.event_id AND r.slot=d.slot AND r.kind<>'ai-raw')" : ''}`)
   return terms.map(term => ({ term, eventIds: (find.all(term) as { event_id: string }[]).map(row => row.event_id) }))
 }
 export interface BodySearchCoverage {
@@ -643,11 +649,11 @@ function coverageEntries(snapshot: ExportSnapshot | undefined, projectId: string
     }>).map(r => ({ eventId: r.event_id, kind: r.kind, file: r.file, sha256: r.sha256, size: r.size, sourceBytes: r.source_bytes,
       pending: r.kind === 'ai-raw' && r.status === 'pending', status: r.status, indexedBytes: r.indexed_bytes, reason: r.reason, availableBytes: r.available_bytes }))
   }
-  const lookup = stmt(getIndex(), 'SELECT status,indexed_bytes,reason,available_bytes FROM body_event_refs WHERE event_id=? AND sha256=?')
+  const lookup = stmt(getIndex(), 'SELECT status,indexed_bytes,reason,available_bytes FROM body_event_refs WHERE event_id=? AND slot=?')
   const entries: CoverageEntry[] = []
   for (const tier of rows(snapshot, projectId, latest)) for (const row of tier) {
     for (const ref of refsOf({ agentType: row.agent_type, data: JSON.parse(row.data) })) {
-      const indexed = lookup.get(row.id, ref.sha256) as { status: string; indexed_bytes: number; reason: string; available_bytes: number } | undefined
+      const indexed = lookup.get(row.id, ref.slot) as { status: string; indexed_bytes: number; reason: string; available_bytes: number } | undefined
       entries.push({ eventId: row.id, kind: ref.kind, file: ref.file, sha256: ref.sha256, size: Number.isSafeInteger(ref.size) ? ref.size : 0,
         sourceBytes: sourceBytesOf(ref),
         pending: ref.kind !== 'body' && ref.pending === true, status: indexed?.status, indexedBytes: indexed?.indexed_bytes ?? 0,

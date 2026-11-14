@@ -12,15 +12,19 @@ import path from 'node:path'
 import { requires } from './helpers/requires'
 import { seedBodySearchProject, type ProjectShape } from './helpers/body-search-project'
 import { parseQuery } from '../src/core/query/contract'
+import { cost, savedBody, savedResponse } from './helpers/body-index-work'
 
 let initDB: typeof import('../src/core/db').initDB
 let closeDB: typeof import('../src/core/db').closeDB
 let executeEventQuery: typeof import('../src/core/db/event-queries').executeEventQuery
 let idx: typeof import('../src/core/http-body-index')
+let getReadonlyDB: typeof import('../src/core/db').getReadonlyDB
+let readActivitySnapshot: typeof import('../src/core/db/dataset-snapshot').readActivitySnapshot
 const sqlite = requires('better-sqlite3')
 if (sqlite.ok) {
   const db = await import('../src/core/db')
-  initDB = db.initDB; closeDB = db.closeDB
+  initDB = db.initDB; closeDB = db.closeDB; getReadonlyDB = db.getReadonlyDB
+  readActivitySnapshot = (await import('../src/core/db/dataset-snapshot')).readActivitySnapshot
   executeEventQuery = (await import('../src/core/db/event-queries')).executeEventQuery
   idx = await import('../src/core/http-body-index')
 }
@@ -91,14 +95,23 @@ sqlite.describe('body search work on a captured project', () => {
     } finally { plans.close() }
   })
 
-  it('a second search reads coverage from the index: the same answer as computing it from the source rows', () => {
-    seedBodySearchProject(SHAPE)
-    search('RAREBODYWORD')
-    const fromIndex = idx.bodySearchCoverage()
-    // Anything that makes the index no longer describe the rows sends coverage
-    // back to the source rows; a prune does.
+  it('coverage read from the index is the answer computed from the source rows, for an event whose two bodies are the same bytes too', () => {
+    const { escaped } = seedBodySearchProject(SHAPE)
+    const same = savedBody(dir, `{"echo":"${'SAMEBYTES '.repeat(500)}"}`)
+    savedResponse('echo', { request_body_ref: same, response_body_ref: same })
+    expect(search('SAMEBYTES').items.map(e => e.id)).toEqual(['echo'])
+    // What that search asked: a snapshot at the current maxima. The index
+    // describes exactly those rows, so coverage reads no source row.
+    const now = readActivitySnapshot(getReadonlyDB())
+    const fromIndex = cost(() => idx.bodySearchCoverage(now))
+    expect(fromIndex.rows).toBe(0)
+    // Nothing that changes a ref, but the index no longer vouches for the
+    // rows: coverage is computed from every source row instead.
     idx.pruneSavedFileIndex(path.join(dir, 'artifacts', 'none'), dir)
-    const fromSource = idx.bodySearchCoverage()
-    expect(fromSource).toEqual(fromIndex)
+    const fromSource = cost(() => idx.bodySearchCoverage(now))
+    expect(fromSource.rows).toBeGreaterThan(escaped)
+    expect(fromSource.result).toEqual(fromIndex.result)
+    // Two refs, one per body, on both paths.
+    expect(fromSource.result.sources!.find(s => s.kind === 'body')!.indexed).toBe(escaped + 2)
   })
 })
