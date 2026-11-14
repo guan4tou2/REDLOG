@@ -63,7 +63,12 @@
 - [ ] T033 [US1] FTS 排除 `$._ingest`。只替換 trigger、不重建；用 10 萬列的 fixture 斷言開啟時沒有重建（FR-025）。
   - 2026-11-14 對帳（PR #765）：`db/index.ts:443-459` 只替換兩個 insert trigger，`test/fts-excludes-ingest.test.ts` 斷言以舊 trigger 建立的專案開啟時沒有重建語句、索引列數與每列 token 大小不變、新列找不到 stamp 的字。未達成：該測試只用 80 列（檔頭：10 萬列的量測留給 T091／CI），沒有 10 萬列的 fixture。
 - [x] T034 [P] 檢查 064 的 contract coverage 與其他依 `data` 鍵集合判斷的讀者（plan「其他讀者」），斷言隨變更一起修改。
-- [ ] T035 [US1] `chain-anchor.ts` 與 `redlog-verify.py` 新增來源狀態報告（已證明、自述、無法判斷；FR-022–024）；用共用向量斷言兩者一致；結束碼不變。
+- [x] T035 [US1] `bundle-verify.ts` 與 `redlog-verify.py` 新增來源狀態報告（已證明、自述、無法判斷；FR-022–024）；用共用向量斷言兩者一致；結束碼不變。
+  - 檔名更正：規則在 `src/core/evidence-rules.ts` 的 `receiverProvenance`，app 端由 `bundle-verify.ts` 呼叫（`BundleVerdict.provenance`），Python 端是 `redlog-verify.py` 的 `receiver_provenance`。FR-023 的「app 內驗證」在本規格指 bundle 驗證（plan「修訂 G」的 app 判定 `malformed` 即 `bundle-verify.ts`），共用向量也是 bundle；`chain-anchor.ts` 的 Integrity 全鏈驗證不回報、未修改。
+  - 規則（規格未言明處取保守讀法）：戳記只在已檢查的雜湊下算數（logged 列、匯出宣告為 transformed 的列至多為自述；transformed 的 `session_start` 不證明其 session 的任何列）；只有 chained 的 `system.session_start` 算 session 起點（寫入端從不把它放進 logged 層）；同一 session 有多個起點時須全部帶 `_ingest`；與列的順序無關；`_ingest` 不是物件不算戳記。logged 列只分自述與無法判斷，另計自述中帶戳記的數目（`stamped`），報告寫「not protected row by row」。
+  - 報告：`redlog-verify.py` 的人讀報告在 Logged tier 之後多一段 `Receiver stamp`（該工具沒有機器可讀輸出）；驗證在讀完所有列之前就結束時（例如 CHAIN BROKEN）不報，app 端為 `provenance: null`。判定與結束碼不變：每個既有向量的 category 與結束碼照舊，`golden-pre071/expected.json` 只多了 `provenance` 欄位與報告的五行。
+  - 測試：`test/receiver-provenance.test.ts` 與 `test/fixtures/provenance-rule-vectors.json`（16 個情形，兩個 verifier 同一檔案；`REDLOG_TEST_PYTHONS` 可指定多個直譯器，本機以 3.9.6、3.11、3.15 跑過）；`test/provenance-report.test.ts`（以 golden-pre071 專案加上三個 session，經七種匯出路徑：整個專案、時間範圍、全部列的選取、目前結果、搜尋、一個 activity、一個來源 session，兩個 verifier 的數目一致；chained 列改 `_ingest` 由雜湊抓到且不報數目；logged 列加 `_ingest` 由 logged digest 抓到且不算已證明）；`evidence-vectors`、`provenance-vectors`、`depth-vectors`、`golden-old-rows` 斷言兩者數目一致；`test/bundle-readme-rows.test.ts` 以規則向量檢查 README 的三種狀態。
+  - 已知限制（未在本任務修改）：搜尋、Activity 頁的目前結果（`excludeHousekeeping`，`HOUSEKEEPING_SQL` 含 `system.session_start`）、一個 activity、一個來源 session 的 bundle 不含 `session_start`，所有列都是「無法判斷」；報告與 README 都寫明這是選取匯出的結果。T010 之前來源可能寫入帶偽造 `_ingest` 的 `session_start`；要把 FR-022 收緊為「該 session 第一筆 chained 列是帶 `_ingest` 的 `session_start`」需修改規格。
 - [ ] T036 [US1] 入口等價測試（FR-093）。
   - 測試在 `test/ingest-door-equivalence.test.ts`，比對 in-process、legacy-api、legacy-handoff。
   - 未成立，以 KNOWN DIVERGENCE 釘住：`_ingest.producer`（`in-process`／`legacy`／`legacy-handoff`）；欄位 `source`、`mapper`（雜湊外）；交接列 data 多 `recovered_from_spool: true`（雜湊內，Timeline 讀它）。要改哪些需要擁有者決定。

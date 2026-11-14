@@ -74,18 +74,18 @@
       },
       {
         "id": "00000000-0000-4000-8000-000000000035",
-        "hash": "168215781b761fd8b898f56e39ef78cea79a839e0311ee90fb12dea4aa959601",
-        "sha256": "ba93a7061aee8d95490c4fce7b11f1360a8bf5c4a838f7cda3d86e8b0fd4000e"
+        "hash": "1a041610bde1a16730d7e313704079343ba923fbda2e300e100bb7aedd30c96d",
+        "sha256": "8124df89bf949600535405333d50178667703af73c856c18d2e6e9ea2324d592"
       },
       {
         "id": "00000000-0000-4000-8000-000000000037",
-        "hash": "28ec285065c4b8bed0450739a0be624e262cc5e6ec48ae5e1b24ae96fc1511af",
-        "sha256": "a08e067d9c52b0010fc56714d1f97646ce56c5498b69e8b7f976971fb6a7fd91"
+        "hash": "f01fcf20e891d56adb154aa5bfe06ec59241d0fc9fd6207c2a791053673ad596",
+        "sha256": "6e5d7c77636d99241cf87a4e53abde802f20b17c6753cf2e49e27519e606170b"
       },
       {
         "id": "00000000-0000-4000-8000-000000000040",
-        "hash": "6db2c5f6b166b53c2bfbb361e65ed2ccc673e8233fa07c8c83fc9037dd3fb76e",
-        "sha256": "d7e0817318fe48436cd711097e86fc64e0d0a0f7ecf6d485d9b662a3ddd2aaa6"
+        "hash": "8b1000e9d613af580fc0e505799e99b32e083c426dd31e0fdf7344407c847fca",
+        "sha256": "ae2091df9d7aeeb07667065274e535898daef7af3f9d126bcebca346900b691a"
       }
     ],
     "events_logged": [
@@ -96,7 +96,7 @@
       }
     ]
   },
-  "rowsSha256": "9eb07a939a87d293275741463ed3d09809744d2d76fe9c0a21ee221a2a12a49c",
+  "rowsSha256": "1cd6ebc8ed1dbfe556a272bf8845602679beaded6932e76cfab72439e2a7100a",
   "stamps": {
     "events": [
       {
@@ -321,7 +321,7 @@
     "walked": 17,
     "brokenAtEventId": null,
     "brokenReason": null,
-    "currentHead": "118ccc9793cddf3ba3e7a871c8060cde9f74e792c47dec45252d12f5e6c1b2a1",
+    "currentHead": "441b33a498d4214e0fb7563cdf9d1c633943171cad1c2c6af3a1f67048af2e57",
     "anchorMatchesWalkedHead": false,
     "clockAnomalies": [],
     "signedCount": 17,
@@ -345,11 +345,23 @@
       "omittedDeclared": [],
       "missingUndeclared": [],
       "unlisted": []
+    },
+    "provenance": {
+      "chained": {
+        "proven": 15,
+        "selfDescribed": 0,
+        "undetermined": 0
+      },
+      "logged": {
+        "selfDescribed": 1,
+        "stamped": 1,
+        "undetermined": 0
+      }
     }
   },
   "pythonVerify": {
     "status": 0,
-    "stdout": "\nRedLog bundle verification report\n========================================\nBundle dir       : <bundle>\nBundle version   : 4\nEngagement ID    : eng-provenance-vectors\nEvents walked    : 15\nManifest checksum: matches (not an authenticated source identity)\nChain            : INTACT\nChain-head match : yes (recomputed matches manifest.chainHead)\nSeal             : SEALED (export 00000000-0000-4000-8000-000000000033; it follows the delivered chain directly)\n                   rows before it and the manifest are as exported\nSignatures       : 15 verified\nSigner           : op-provenance  sha256:5df840e88a41a05b32c8c076086ae442d696f8556d8e3452d2738f96722e8e0d\n  compare these fingerprints with the operator out of band;\n  a key taken from this bundle only proves the bundle agrees with itself\nLogged tier      : 1 rows present in events_logged.jsonl\n                   (not chained or signed; digest matches; bytes sealed by the export)\nAttachments      : 0 match the digest recorded at capture\nManifest files   : 5 verified (sha256 matches)\n",
+    "stdout": "\nRedLog bundle verification report\n========================================\nBundle dir       : <bundle>\nBundle version   : 4\nEngagement ID    : eng-provenance-vectors\nEvents walked    : 15\nManifest checksum: matches (not an authenticated source identity)\nChain            : INTACT\nChain-head match : yes (recomputed matches manifest.chainHead)\nSeal             : SEALED (export 00000000-0000-4000-8000-000000000033; it follows the delivered chain directly)\n                   rows before it and the manifest are as exported\nSignatures       : 15 verified\nSigner           : op-provenance  sha256:5df840e88a41a05b32c8c076086ae442d696f8556d8e3452d2738f96722e8e0d\n  compare these fingerprints with the operator out of band;\n  a key taken from this bundle only proves the bundle agrees with itself\nLogged tier      : 1 rows present in events_logged.jsonl\n                   (not chained or signed; digest matches; bytes sealed by the export)\nReceiver stamp   : events.jsonl: 15 proven, 0 self-described, 0 cannot be determined\n                   events_logged.jsonl: 1 self-described (1 stamped, not protected row by row), 0 cannot be determined\n                   proven: the row and its session's session_start both carry _ingest, under checked hashes\n                   self-described: no stamp, a session_start without one, or a row not hashed one by one\n                   these counts do not change the verdict or the exit code\nAttachments      : 0 match the digest recorded at capture\nManifest files   : 5 verified (sha256 matches)\n",
     "stderr": ""
   },
   "clockAnomaly": {
@@ -366,13 +378,25 @@
         "omittedDeclared": [],
         "missingUndeclared": [],
         "unlisted": []
+      },
+      "provenance": {
+        "chained": {
+          "proven": 17,
+          "selfDescribed": 0,
+          "undetermined": 0
+        },
+        "logged": {
+          "selfDescribed": 1,
+          "stamped": 1,
+          "undetermined": 0
+        }
       }
     },
     "pythonVerify": {
       "status": 0,
-      "stdout": "\nRedLog bundle verification report\n========================================\nBundle dir       : <bundle>\nBundle version   : 4\nEngagement ID    : eng-provenance-vectors\nEvents walked    : 17\nManifest checksum: matches (not an authenticated source identity)\nChain            : INTACT\nChain-head match : yes (recomputed matches manifest.chainHead)\nSeal             : SEALED (export 00000000-0000-4000-8000-000000000038; it follows the delivered chain directly)\n                   rows before it and the manifest are as exported\nSignatures       : 17 verified\nSigner           : op-provenance  sha256:5df840e88a41a05b32c8c076086ae442d696f8556d8e3452d2738f96722e8e0d\n  compare these fingerprints with the operator out of band;\n  a key taken from this bundle only proves the bundle agrees with itself\nLogged tier      : 1 rows present in events_logged.jsonl\n                   (not chained or signed; digest matches; bytes sealed by the export)\nAttachments      : 0 match the digest recorded at capture\nManifest files   : 5 verified (sha256 matches)\n",
+      "stdout": "\nRedLog bundle verification report\n========================================\nBundle dir       : <bundle>\nBundle version   : 4\nEngagement ID    : eng-provenance-vectors\nEvents walked    : 17\nManifest checksum: matches (not an authenticated source identity)\nChain            : INTACT\nChain-head match : yes (recomputed matches manifest.chainHead)\nSeal             : SEALED (export 00000000-0000-4000-8000-000000000038; it follows the delivered chain directly)\n                   rows before it and the manifest are as exported\nSignatures       : 17 verified\nSigner           : op-provenance  sha256:5df840e88a41a05b32c8c076086ae442d696f8556d8e3452d2738f96722e8e0d\n  compare these fingerprints with the operator out of band;\n  a key taken from this bundle only proves the bundle agrees with itself\nLogged tier      : 1 rows present in events_logged.jsonl\n                   (not chained or signed; digest matches; bytes sealed by the export)\nReceiver stamp   : events.jsonl: 17 proven, 0 self-described, 0 cannot be determined\n                   events_logged.jsonl: 1 self-described (1 stamped, not protected row by row), 0 cannot be determined\n                   proven: the row and its session's session_start both carry _ingest, under checked hashes\n                   self-described: no stamp, a session_start without one, or a row not hashed one by one\n                   these counts do not change the verdict or the exit code\nAttachments      : 0 match the digest recorded at capture\nManifest files   : 5 verified (sha256 matches)\n",
       "stderr": ""
     }
   },
-  "verifierSha256": "40e4f056760161697797acf89a9c079d2b70c4945cc43c1daa73d1ae218f7c92"
+  "verifierSha256": "39ff9d25b589879914bc6185ec2ada51c85055d61f474b3f61ff4b75879dacd4"
 }

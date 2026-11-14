@@ -18,6 +18,7 @@ import { VERIFIER, pythonBin, runPythonVerifier, sha256, unpackTo } from './fixt
 import { AWKWARD, BUNDLE, clockMockDepth, generateDepthVectors, type DepthExpected } from './fixtures/depth-vectors-generate'
 import { COLLAPSED_KEY, MAX_DATA_DEPTH, restoreDataDepth } from '../src/core/ingest/depth'
 import { canonicalStringify } from '../src/core/db/event-write'
+import { pythonProvenance } from './helpers/provenance-report'
 
 const sqlite = requires('better-sqlite3')
 const python = requires('python-cryptography')
@@ -122,6 +123,16 @@ python.it('tools/redlog-verify.py accepts the bundle, and says what it said', ()
   expect(got).toEqual(expected.pythonVerify)
   expect(got.status).toBe(0)
   expect(got.stdout).toMatch(/^Chain\s+: INTACT$/m)
+})
+
+// FR-022–024: rows with wrappers are counted like any other stamped row.
+python.it('both verifiers count every chained row proven and the logged row self-described', async () => {
+  const { verifyBundleDir } = await import('../src/core/bundle-verify')
+  const dir = committed()
+  const chained = lines(path.join(dir, 'events.jsonl')).length
+  const ts = verifyBundleDir(dir)
+  expect(ts.provenance).toEqual({ chained: { proven: chained, selfDescribed: 0, undetermined: 0 }, logged: { selfDescribed: 1, stamped: 1, undetermined: 0 } })
+  expect(pythonProvenance(runPythonVerifier(dir).stdout)).toEqual(ts.provenance)
 })
 
 // Run the verifier's own row rebuild (`_rebuild_shapes`: json.loads of `data`,

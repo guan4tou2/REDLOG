@@ -21,6 +21,7 @@ import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { requires } from './helpers/requires'
 import { VERIFIER, runPythonVerifier, sha256, unpackTo } from './fixtures/golden-pre071-generate'
 import { BUNDLE, CLOCK_BUNDLE, clockMockVectors, generateProvenanceVectors, type ProvenanceExpected } from './fixtures/provenance-vectors-generate'
+import { pythonProvenance } from './helpers/provenance-report'
 
 const sqlite = requires('better-sqlite3')
 const python = requires('python-cryptography')
@@ -104,6 +105,20 @@ python.it('tools/redlog-verify.py accepts the bundle, and says what it said', ()
   const got = runPythonVerifier(committed())
   expect(got).toEqual(expected.pythonVerify)
   expect(got.status).toBe(0)
+})
+
+// FR-022–024: every row here carries the stamp and its session's start is
+// stamped, so every chained row — the seal too — is proven; the logged row is
+// stamped and self-described, never proven. Both verifiers say so.
+python.it('both verifiers count every chained row proven and the logged row self-described, for both bundles', async () => {
+  const { verifyBundleDir } = await import('../src/core/bundle-verify')
+  for (const [name, chained] of [[BUNDLE, 15], [CLOCK_BUNDLE, 17]] as const) {
+    const dir = committed(name)
+    expect(lines(path.join(dir, 'events.jsonl')).length, name).toBe(chained)
+    const ts = verifyBundleDir(dir)
+    expect(ts.provenance, name).toEqual({ chained: { proven: chained, selfDescribed: 0, undetermined: 0 }, logged: { selfDescribed: 1, stamped: 1, undetermined: 0 } })
+    expect(pythonProvenance(runPythonVerifier(dir).stdout), name).toEqual(ts.provenance)
+  }
 })
 
 // A seal written while the clock is off carries `_clock_anomaly`. The seal's
