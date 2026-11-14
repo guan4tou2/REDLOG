@@ -243,13 +243,13 @@
   | `target_via` | 目標如何決定（FR-010） |
   | `claimed` | 來源自述、未被採信為身分的值：`producer`（`name@version`）、`operator` |
   | `stripped` | 被移除的保留鍵名；沒有時省略 |
-  | `collapsed` | 因巢狀過深而以 JSON 文字存放的容器數（整數，FR-097）；沒有時省略 |
+  | `collapsed` | 因巢狀過深而換成包裝物件 `{"_collapsed": <JSON 文字>}` 的容器數（整數，FR-097）；沒有時省略 |
   | `rules` | 寫入路徑上、結果被寫進本列的使用者 Processor 規則集（Spec 075 FR-059）：字串陣列，每項 `<pluginId>#<內容雜湊前 12 碼>`，依字典序；沒有使用者規則參與時省略 |
   | `rules_partial` | `true` 表示本列的使用者推導因每事件時限而未完成（Spec 075 FR-059）；完成時省略 |
 
   來源送來的 `_ingest`、`_raw`、`_clock_anomaly`、`_source_time_rejected` 一律移除。`_causes` 是唯一可由來源寫入的底線鍵（Domain Invariant 6）。
 - **FR-006** `_ingest` 只含字串、整數、布林、null 與字串陣列，使兩個 verifier 的序列化逐位元組一致。一般項目序列化後不超過 512 bytes，含 `rules` 的列也一樣：`rules` 是有界形式，不帶外掛版本，至多 3 項、每項至多 45 bytes（`pluginId` 截至 32 字元）；超過 3 個外掛參與時，保留字典序前 2 項，第 3 項寫 `+<其餘數目>`。外掛版本與完整規則內容由內容雜湊在外掛詳情中對照（Spec 075 FR-059）。
-  > **註記（2026-11-14，FR-097）**：`collapsed` 是整數，在本條的型別限制內；只在大於 0 時出現，佔 `,"collapsed":<n>` 共 13 bytes 加上數字的位數（20 MB 的請求最多約七百萬個可折疊的容器，即至多 20 bytes）。
+  > **註記（2026-11-14，FR-097）**：`collapsed` 是整數，在本條的型別限制內；只在大於 0 時出現，佔 `,"collapsed":<n>` 共 13 bytes 加上數字的位數。數字沒有固定上限：交接目錄與行程內的寫入沒有大小上限，API 的請求本體上限是 20 MiB（`api-server.ts` `MAX_REQUEST_BYTES`）。每個被包起來的容器在 `data` 中至少佔 `{"_collapsed":"[]"}` 加上分隔的逗號共 20 bytes，所以 `collapsed` 不超過 `data` 序列化長度的 1/20，位數不超過該長度的位數（20 MiB 的本體至多約一百萬個，即 7 位數、20 bytes）。
 - **FR-007** 新列的 engagement 一律等於開著的專案 DB 所綁定的 engagement。任何入口都不再寫 `'default'`。沒有綁定的 DB 時不寫入，回 `retry`／`no-project`。
 - **FR-008** `observed.project` 與開著的專案不同時，不寫入，回 `retry`／`foreign-project`，項目留給它自己的專案（Spec 002 FR-001）。沒有 `observed.project` 的交接項目進隔離區（`no-project`，承接 Spec 002 FR-006 的語意）。專案已不在本機專案清單中的交接項目進隔離區（`unknown-project`）。
 - **FR-009** 列的操作者是觀察當下的操作者。`observed.operator` 是本專案已知且未撤銷的操作者時採用；否則採機器層級設定中的目前操作者（O12），來源的值記在 `_ingest.claimed.operator`。
@@ -446,14 +446,16 @@
 - **FR-094** 正式程式碼中，commit 階段之外出現 DB 寫入原語的呼叫時，gate 失敗。基準值只能下降，最後為 0。
 - **FR-095** commit 原語不得靜默回報「什麼都沒寫」：它要嘛寫入，要嘛丟出錯誤。入口把錯誤對應為 `retry`，並記入 capture 狀態。
 - **FR-096** commit 階段在每次 commit 之後，於行程內回傳 `CommitReceipt = {seq, chainedMaxRowId, loggedMaxRowId}`（Spec 074 FR-020）：`seq` 是每次開啟從 1 起算、每次 commit 加一的記憶體內整數，一個交易只有一個；兩個 rowid 是該 commit 後兩層的最大 rowid。它只是回傳值與 commit 後工作的輸入，**不寫入任何列或表**，不進 `_ingest`、不進雜湊。commit 後的工作把它交給 Spec 074 的讀取服務（`notifyCommit`）與變更主題分類（`topicsForCommit`）。
-- **FR-097**（2026-11-14，擁有者決定「寫入端限制深度」，DECISIONS 2026-11-14 §1）寫入端限制 `data` 的巢狀深度，不遺失任何內容：
-  - **上限** `MAX_DATA_DEPTH = 64`。**計算方式**：`data` 本身為第 1 層，直接位於其中的陣列或物件為第 2 層，依此類推；純量（含字串）不增加層數。
-  - **折疊**：會位於第 65 層的容器，在原位置換成一個字串，內容是該容器的 JSON 文字，與 `JSON.stringify` 寫出的逐位元組相同；`JSON.parse` 這個字串即得回原容器。上層不變，容器之內的內容全部保留在字串中；字串是純量，不再往內檢查，所以不論原本多深，結果都有界。折疊本身不以遞迴寫出容器文字，任何深度都不會使寫入端堆疊溢位；含循環參照的值（只可能來自行程內）照 `JSON.stringify` 拋錯。
-  - **蓋章**：`_ingest.collapsed` 記下折疊了幾個容器（FR-005），讓讀者不會把折疊出來的字串當成來源送來的字串。它在 `_ingest` 內，`_ingest` 在每個入口都整個由接收端重建（FR-005），來源無法設定。
-  - **套用點**：每一列都經過的寫入原語 `insertEvent` 的兩個層各自在加上 `_ingest` 的那一步套用：在雜湊輸入建立之前、對將要存入的同一個值；chained 層在 `_clock_anomaly`、`_source_time_rejected` 加入之後（後者的 `value` 是來源的值）。所以 API、交接目錄、行程內、`derived` 與直接呼叫 `insertEvent` 的列都受限，兩層都一樣。
-  - 在上限內的列與今天逐位元組相同；不改寫、不遷移已寫入的列；兩個 verifier 不變。
-  > **KNOWN DIVERGENCE（待擁有者決定）**：`POST /api/events` 在解析之前就以 400 拒絕巢狀超過 64 層的請求本體（`api-request.ts` 的 `MAX_JSON_DEPTH`，#695），也就是 `data` 超過 63 層。所以經由 API 入口，超過上限的項目根本不會到達寫入端，而是不被記錄；交接目錄與行程內的同一項目則以折疊形式保存（`test/ingest-depth-doors.test.ts`、`test/ingest-door-equivalence.test.ts` 釘住）。
-
+- **FR-097**（2026-11-14，擁有者決定「寫入端限制深度」與「收下並摺疊」，DECISIONS 2026-11-14 §1、§2）寫入端限制 `data` 的巢狀深度，不遺失任何內容，且存入的列不需要任何外部資訊就能還原：
+  - **上限** `MAX_DATA_DEPTH = 64`。**計算方式**：`data` 本身為第 1 層，直接位於其中的陣列或物件為第 2 層，依此類推；純量（含字串）不增加層數。存入的 `data` 不超過 64 層。
+  - **規則**：第 63 層以內的容器原樣保留。第 64 層的容器只有在「不含任何容器」且「不是標記形狀」時保留；其他第 64 層的容器在原位置換成包裝物件 `{"_collapsed": "<該容器的 JSON 文字>"}`，文字與 `JSON.stringify` 在該位置寫出的逐位元組相同（`toJSON` 收到它所在的鍵）。**標記形狀**＝唯一的自有可列舉鍵是 `_collapsed`、值是字串的物件。來源自己送的、位於第 64 層的標記形狀物件也會被包起來，所以存入之後，第 64 層的每一個標記形狀物件都是寫入端做的，沒有例外。
+  - **還原**（`restoreDataDepth`，`src/core/ingest/depth.ts`）：只看存入的 `data`：第 64 層的每一個標記形狀物件，以 `JSON.parse` 其字串的結果取代。**比 64 層淺的標記形狀物件是來源自己的**，原樣保留，不當作包裝。還原的結果與原值作為 JSON 相同（`JSON.stringify` 相同）。
+  - 寫出容器文字不以遞迴進行，任何深度都不會使寫入端堆疊溢位；含循環參照的值（只可能來自行程內）照 `JSON.stringify` 拋錯。
+  - **蓋章**：`_ingest.collapsed` 記下包裝物件的數目（FR-005）。它在 `_ingest` 內，`_ingest` 在每個入口都整個由接收端重建（FR-005），來源無法設定。
+  - **套用點**：每一列都經過的寫入原語 `insertEvent` 的兩個層各自在加上 `_ingest` 的那一步套用：在雜湊輸入建立之前、對將要存入的同一個值；chained 層在 `_clock_anomaly`、`_source_time_rejected` 加入之後（後者的 `value` 是來源的值）。**每個入口都適用，包括 API**：`POST /api/events`（與共用同一個 handler 的 `/api/events/seed`）不再以深度拒絕請求本體，過深的項目被收下、由寫入端折疊；其他 JSON 路由維持解析前 64 層的 400（它們遞迴走自己的本體，也不是證據擷取）；請求本體的 20 MiB 上限不變。Phase 5 的 `/api/ingest` 同樣不以深度拒絕。
+  - **全文搜尋**：包裝物件的字串是一個 `json_tree` 葉值，內容是 JSON 文字，所以其中的字與鍵名可以找到，**但緊接在以字母結尾的跳脫序列（`\n`、`\t`、`\r`、`\b`、`\f`、`\uXXXX`）之後的字找不到**（`line1\nword` 被切成 `line1` 與 `nword`）。不為此改 FTS trigger：在文字上再跑 `json_tree` 會碰到 SQLite 自己的深度上限而拒收整列。
+  - **結構化讀者**（閱讀器的 JSON 檢視）在第 64 層看到的是一個只有 `_collapsed` 鍵、值為 JSON 文字的物件，而不是原本的容器；要呈現原內容，先以 `restoreDataDepth` 還原。
+  - 在上限內、且第 64 層沒有標記形狀物件的列，與先前逐位元組相同；不改寫、不遷移已寫入的列；兩個 verifier 不變。
 #### J. 用戶端規格與一致性（US7）
 
 - **FR-100** 只有一份有版本的用戶端規格（契約 1），放在 `docs/domain/`。每個來源在 `producer.version` 中宣告它實作的契約版本。
@@ -569,7 +571,7 @@ O13–O17（原 Q1–Q5）已決定。以下是 2026-11-12 Phase 1 實作後新�
 | Q6 | `PRAGMA synchronous` 實為 NORMAL（見 Assumptions），`accepted` 之後來源會刪掉交接檔，所以斷電或作業系統當掉時，最近幾筆已回 `accepted` 的事件可能既不在資料庫、也不在交接目錄。要在寫入連線設 `synchronous = FULL`，還是在契約中寫明「`accepted` 對行程當掉耐久、對斷電不耐久」？ | 設 FULL（只在寫入連線）。先以 T061 的 perf lane 量測每次 commit 的額外成本，再決定；量測前不改。若不改，FR-032、FR-062 與 `docs/domain/SPEC-ingestion-contract.md` 要明寫斷電的界線 |
 | Q7（新，2026-11-13） | FR-006 的「一般項目序列化後不超過 512 bytes」在每個欄位都取上限時無法成立。實測（JSON.stringify 的 UTF-8 位元組數）：`v`、`door:"legacy-handoff"`、`auth:"in-process"`、`event_id` 取 FR-002 的上限 128 字元、`seq` 取 2^53−1、`stripped` 列滿四個保留鍵、`rules` 三項各 45 bytes、`rules_partial:true`，再加 `producer`、`credential`、`instance` 三個**空字串**，已是 506 bytes；再加 `claimed`（實作把兩個值各截到 32 字元）約 +100，FR-121 的出口三鍵約 +60。T020 因此只測「典型項目 ≤ 320 bytes（SC-009）」與「典型項目＋最壞的 `rules` ≤ 512 bytes」。512 是硬上限、還是典型項目的預算？ | 改寫為**預算**：典型項目 ≤ 320、典型項目加最壞 `rules` ≤ 512；對來源提供的欄位另定個別上限（`event_id` 128、`instance` 128、`claimed` 每值 32、`producer`／`credential` 由接收端產生），不設整體硬上限——硬上限只能靠截斷身分欄位達成，而身分欄位不該被截斷 |
 | Q8（新，2026-11-13） | FR-006 規定 `_ingest` 只含字串、整數、布林、null 與字串陣列，但 FR-005 的 `claimed` 是巢狀物件 `{producer, operator}`（plan 的資料形狀亦同）。目前實作允許 `claimed` 這一個物件、其值只能是字串，T020 以此斷言。哪一條要改？ | 改 FR-006：允許「值皆為字串的單層物件」，並只限 `claimed`。理由：兩個 verifier 對這種形狀的序列化逐位元組一致（`canonicalStringify` 排序鍵；共用向量已涵蓋）。另一個選項是把 `claimed` 攤平成 `claimed_producer`／`claimed_operator`；那要同時改 FR-005、plan 的資料形狀、T020 與共用向量 |
-| Q9（新，2026-11-14） | FR-097 讓寫入端以折疊保存過深的 `data`，但 `POST /api/events` 仍在解析前以 400 拒絕巢狀超過 64 層的請求本體（`api-request.ts` `MAX_JSON_DEPTH`，#695 為防堆疊溢位所加），項目不被記錄；mitm addon 對 4xx 不寫交接檔，所以這筆觀察就此遺失。這與 §12 完整擷取不一致，也使 API 與交接目錄對同一項目不等價（FR-093）。要不要讓 `/api/events` 不再以深度拒絕？ | 讓 `/api/events`（與之後的 `/api/ingest`）不以深度拒絕，交給 FR-097 折疊；其他 JSON 路由（標記、書籤、設定）維持 64 層的 400。已實測：拿掉這道檢查後，100,000 層的請求本體經真實的 handler 寫入，兩層都受限並蓋上 `collapsed`（V8 的 `JSON.parse` 不遞迴，ingest 在寫入前只讀頂層欄位）。另一選項是維持 400，但寫一列 `capture_gap` 記下被拒的項目 |
+| Q9（2026-11-14，**已決定**：擁有者「收下並摺疊」，見 FR-097） | FR-097 讓寫入端以折疊保存過深的 `data`，但 `POST /api/events` 在解析前以 400 拒絕巢狀超過 64 層的請求本體（`api-request.ts` `MAX_JSON_DEPTH`，即 `data` 超過 63 層；9aa28ed3 因為遮罩與 ingest 的走訪會遞迴而加上，是 `readJsonObject` 對所有 JSON 路由共用的閘門，並有「10,000 層在每條路由都回 400」的測試）。查得的事實：400 在伺服器端無聲（沒有 log、沒有 capture-health 註記、沒有缺口列；`api-server.ts:224-225`）。各來源收到 400 時：`mitmproxy-addon.py:548-553,660` 不寫交接檔也不記錄，而它是唯一會送出由目標或測試者決定的巢狀 JSON 的來源（`params.body_json` 在第 3 層，所以超過 61 層的請求本體被拒，那筆 HTTP 觀察無聲遺失）；`shell-common.sh:837-880` 對任何非 2xx 寫交接檔，經交接目錄以折疊形式保存；`pcap-agent.py:117-128` 寫交接檔；`c2-tailers/follow.js:65` 丟棄並在 stderr 印一行；`pcap-capture.js` 丟棄；`redlog-relay.py:333-341` 丟棄並計入位元組數。另有既存問題：mitm addon 的 `json.loads` 在 Python 3.9 約 1,000 層時拋 `RecursionError`，`_extract_params` 的 `except (JSONDecodeError, ValueError)` 接不到（未對 mitmproxy 內附的 Python 驗證）。考慮的做法：收下並摺疊；維持 400 並寫一列缺口。 | 已依擁有者決定實作：事件路由不以深度拒絕，其他路由維持 |
 
 ## Domain References
 
