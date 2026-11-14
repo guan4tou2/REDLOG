@@ -22,7 +22,7 @@ const sqlite = requires('better-sqlite3')
 
 /** FR-005's keys, in the table's order. */
 const FR005_KEYS = ['v', 'door', 'producer', 'credential', 'auth', 'event_id', 'instance', 'seq', 'terminal', 'target_via',
-  'claimed', 'stripped', 'rules', 'rules_partial']
+  'claimed', 'stripped', 'collapsed', 'rules', 'rules_partial']
 const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 const bytes = (v: unknown): number => Buffer.byteLength(JSON.stringify(v), 'utf8')
 
@@ -71,7 +71,7 @@ describe('the stamp (FR-005, FR-006)', () => {
 
   it('every key it can carry is one FR-005 names, in the table\'s order, of the types FR-006 allows', () => {
     const s = ingestStamp(TYPICAL_ENTRANCE, {
-      tier: 'chained', now: Date.now(), stripped: ['_raw', '_ingest'], terminal: 't-ab12',
+      tier: 'chained', now: Date.now(), stripped: ['_raw', '_ingest'], collapsed: 2, terminal: 't-ab12',
       item: { ...TYPICAL, rules: [{ pluginId: 'b', contentHash: 'f'.repeat(64) }, { pluginId: 'a', contentHash: '0'.repeat(64) }], rulesPartial: true }
     }) as Record<string, unknown>
     const keys = Object.keys(s)
@@ -84,6 +84,8 @@ describe('the stamp (FR-005, FR-006)', () => {
       claimed: { producer: 'zsh-hook@0.18.0+c1', operator: 'op-1' },
       // In RESERVED_DATA_KEYS order, whatever order they were found in.
       stripped: ['_ingest', '_raw'],
+      // FR-097: how many over-deep containers are stored as JSON text.
+      collapsed: 2,
       rules: ['a#000000000000', 'b#ffffffffffff'],
       rules_partial: true
     })
@@ -96,8 +98,8 @@ describe('the stamp (FR-005, FR-006)', () => {
   })
 
   it('optional keys are omitted, not null, when there is nothing to say', () => {
-    const s = ingestStamp(IN_PROCESS, { tier: 'chained', now: Date.now(), stripped: [], item: { rules: [], rulesPartial: false } }) as Record<string, unknown>
-    for (const k of ['instance', 'seq', 'terminal', 'claimed', 'stripped', 'rules', 'rules_partial']) expect(k in s, k).toBe(false)
+    const s = ingestStamp(IN_PROCESS, { tier: 'chained', now: Date.now(), stripped: [], collapsed: 0, item: { rules: [], rulesPartial: false } }) as Record<string, unknown>
+    for (const k of ['instance', 'seq', 'terminal', 'claimed', 'stripped', 'collapsed', 'rules', 'rules_partial']) expect(k in s, k).toBe(false)
   })
 
   it('a claimed value is a claim: bounded, and only identifier characters survive', () => {
@@ -146,6 +148,9 @@ describe('the stamp (FR-005, FR-006)', () => {
       const many = Array.from({ length: 40 }, (_, i) => ({ pluginId: `${String.fromCharCode(97 + (i % 26))}${'q'.repeat(60)}${i}`, contentHash: 'e'.repeat(64) }))
       const s = ingestStamp(TYPICAL_ENTRANCE, {
         tier: 'chained', now: Date.now(), stripped: [...RESERVED_DATA_KEYS],
+        // A 20 MiB body holds at most ~4.2 million wrapped containers (the
+        // smallest is `[[]]`, 5 bytes with its comma); 9,999,999 has a digit more.
+        collapsed: 9_999_999,
         item: { ...TYPICAL, claimed: { producer: 'p'.repeat(400), operator: 'o'.repeat(400) }, rules: many, rulesPartial: true }
       })
       expect(s.rules).toHaveLength(3)

@@ -53,6 +53,7 @@ import { eventBus } from '../../core/event-bus'
 import { getProjectDir, getDB } from '../../core/db/index'
 import { noteDbError, noteCaptureError, clearCaptureError } from '../../core/capture-health'
 import { redactSecrets, outputIfPathHiddenByCommand } from '../../core/secret-redaction'
+import { jsonStringify } from '../../core/ingest/depth'
 import { isInsideDir } from '../../core/paths'
 import { restrictToOwner } from '../../core/fs-acl'
 import type { ProjectIdentity } from '../../core/project-runtime'
@@ -566,18 +567,56 @@ export function cwdPassesGate(cwd: string, excludedPaths?: string[], watchPaths?
 // ─── Redaction + cache helpers ──────────────────────────────────────────────
 
 /** Deep-walk any JSON-shaped value; redact every string leaf via
- *  `redactSecrets`. Cycle-safe. */
+ *  `redactSecrets`. Cycle-safe: an object met a second time — a cycle, or the
+ *  same object shared twice — is written `'[cyclic]'`.
+ *
+ *  Iterative (Spec 071 FR-097): a tool input nested thousands of levels used
+ *  to overflow the stack here (at 1,563 levels of arrays), which lost the
+ *  tool call and stalled the session behind it. The walk is the recursive one
+ *  it replaced, step for step — the same pre-order, `Object.entries` taken when
+ *  an object is reached, holes kept, and `out[k] =` assignment (so an own
+ *  `__proto__` key sets the copy's prototype, as it did) —
+ *  test/tailer-redact-iterative.test.ts compares the two. */
 export function deepRedactStrings(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
   if (typeof value === 'string') return redactSecrets(value)
   if (value === null || typeof value !== 'object') return value
   if (seen.has(value as object)) return '[cyclic]'
-  seen.add(value as object)
-  if (Array.isArray(value)) return value.map((v) => deepRedactStrings(v, seen))
-  const out: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    out[k] = deepRedactStrings(v, seen)
+  interface Frame { out: Record<string, unknown> | unknown[]; src: object; entries: Array<[string, unknown]> | null; i: number }
+  const stack: Frame[] = []
+  const open = (src: object): Record<string, unknown> | unknown[] => {
+    seen.add(src)
+    if (Array.isArray(src)) {
+      const out = new Array<unknown>(src.length)
+      stack.push({ out, src, entries: null, i: 0 })
+      return out
+    }
+    const out: Record<string, unknown> = {}
+    stack.push({ out, src, entries: Object.entries(src as Record<string, unknown>), i: 0 })
+    return out
   }
-  return out
+  const root = open(value as object)
+  while (stack.length > 0) {
+    const f = stack[stack.length - 1]
+    let key: string | number
+    let child: unknown
+    if (f.entries) {
+      if (f.i >= f.entries.length) { stack.pop(); continue }
+      ;[key, child] = f.entries[f.i++]
+    } else {
+      const src = f.src as unknown[]
+      if (f.i >= src.length) { stack.pop(); continue }
+      key = f.i++
+      if (!(key in src)) continue // a hole, as Array.prototype.map leaves it
+      child = src[key]
+    }
+    let next: unknown
+    if (typeof child === 'string') next = redactSecrets(child)
+    else if (child === null || typeof child !== 'object') next = child
+    else if (seen.has(child as object)) next = '[cyclic]'
+    else next = open(child as object)
+    ;(f.out as Record<string | number, unknown>)[key] = next
+  }
+  return root
 }
 
 // v0.12.2: per-tool "which top-level fields need scanning" allowlist. Before
@@ -791,7 +830,9 @@ function emitTurn(t: ParsedTurn, ctx: EmitContext): void {
       // known-freetext field set (Bash → command only). Unknown tools
       // fall back to the full-tree walk.
       const redInput = redactToolInput(t.toolName, t.toolInput)
-      const inputJson = JSON.stringify(redInput)
+      // jsonStringify, not JSON.stringify: same text, and no recursion for an
+      // input nested deeper than the stack (Spec 071 FR-097).
+      const inputJson = jsonStringify(redInput) ?? ''
       if (Buffer.byteLength(inputJson, 'utf-8') > MAX_FULL_BYTES) {
         data.tool_input_truncated = true
         data.tool_input_length = inputJson.length

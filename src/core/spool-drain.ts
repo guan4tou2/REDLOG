@@ -42,6 +42,7 @@ import { recordedPauses, stateAt, spanBeganIn, pausedIntervals, reachesUnknown, 
 import { eventBus } from './event-bus'
 import { noteDbError } from './capture-health'
 import { LEGACY_HANDOFF } from './ingest/stamp'
+import { fieldNumber, fieldText } from './ingest/field-text'
 
 export interface SpoolDrainIdentity { engagementId: string; operatorId: string }
 
@@ -61,7 +62,7 @@ function countedInChain(): Map<string, string> {
     let data: { source?: unknown; reason?: unknown; files?: unknown }
     try { data = JSON.parse(row.data) as typeof data } catch { continue }
     if (data.source !== 'hook-spool' || !Array.isArray(data.files)) continue
-    for (const name of data.files) if (typeof name === 'string') out.set(name, String(data.reason))
+    for (const name of data.files) if (typeof name === 'string') out.set(name, fieldText(data.reason) ?? '')
   }
   return out
 }
@@ -222,7 +223,9 @@ export function drainSpoolOnce(
   const emit = ({ agentType, data: spooled, engagementId: spoolEngagement, operatorId: spoolOperator, targetId }: SpoolReplayEvent): boolean | SpoolOutcome => {
     // The question the API asks, asked first: a forged file gets no further.
     if (!isKindAllowed('legacy-handoff', agentType, spooled)) {
-      return { outcome: 'invalid', reason: 'kind-not-allowed', detail: `agent_type "${agentType}" may not be written through the spool` }
+      // Named, not copied whole: the type is the sender's text, up to the file's size.
+      const named = agentType.length > 64 ? `${agentType.slice(0, 64)}…` : agentType
+      return { outcome: 'invalid', reason: 'kind-not-allowed', detail: `agent_type "${named}" may not be written through the spool` }
     }
     // A queue-full or proxy-stop gap is judged against the pauses before it
     // lands: one counted entirely while paused is not a loss, and is done
@@ -230,8 +233,8 @@ export function drainSpoolOnce(
     // pause the record has not closed: one that reaches into it waits.
     let data: Record<string, unknown> | null = spooled
     if (isPauseJudgedGap(spooled)) {
-      const end = Number(spooled.gap_ended_at ?? spooled.gap_started_at)
-      const given = Number(spooled.gap_started_at)
+      const end = fieldNumber(spooled.gap_ended_at ?? spooled.gap_started_at)
+      const given = fieldNumber(spooled.gap_started_at)
       const start = Number.isFinite(given) ? given : end
       if (Number.isFinite(end) && reachesUnknown(pauses, start, end)) return false
       data = queueGapAgainstPauses(spooled, pausedIntervals(pauses))
@@ -288,6 +291,7 @@ function describeLoss(loss: SpoolLoss): string {
     : loss.reason === 'terminal-not-recording' ? 'from a terminal that was not recording'
     : loss.reason === 'kind-not-allowed' ? 'named a kind the spool may not write'
     : loss.reason === 'malformed' ? 'could not be read'
+    : loss.reason === 'nested-too-deep' ? 'nested more than 100,000 levels deep'
     : loss.reason === 'legacy-bad' ? 'had been set aside as unreadable by an earlier version'
     : loss.reason === 'failed' ? 'could not be written, after repeated tries'
     : `(${loss.reason})`

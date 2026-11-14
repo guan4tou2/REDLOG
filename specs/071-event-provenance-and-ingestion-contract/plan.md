@@ -215,6 +215,101 @@ authenticate(door) → validate → stamp → dedup → settle → gate → deri
 - `postCommit` 依序：publish、scope 派送、companion 列、存活狀態更新，以及 Spec 074 落地後的 `queryService.notifyCommit(receipt)`、`topicsForCommit(rows, writes)` 與 HTTP body 索引連結（改送 074 的 `derived-op`，取代 `ingest.ts:290` 的直接寫入）。
 - 推導階段若有使用者 Processor 參與，蓋章階段寫 `_ingest.rules`／`rules_partial`（FR-005、FR-006；Spec 075 FR-059）。蓋章在推導之前，所以這兩個鍵在推導完成後、commit 之前補入同一個 `_ingest`，仍在雜湊內。
 
+### D13 深度上限：寫入原語在蓋章那一步包起過深的容器（FR-097，2026-11-14）
+
+**問題**：兩個 verifier 都遞迴走 `data` 重算雜湊。Python 的會在遞迴上限停下，把完好的列報成 CHAIN BROKEN；能送 `data` 的來源（交接檔、AI 工具輸入、代理解析出的 JSON 請求本體、RedLog 自己的程式）自己決定有多深。
+
+**實測**（2026-11-14，本機；變更前）：
+
+| 誰 | 在 `data` 多深時失敗 | 版本 |
+|---|---|---|
+| `tools/redlog-verify.py` 重建一列（`_rebuild_shapes`），全為陣列 | 332 層（`RecursionError`） | Python 3.9.6、3.11.18 |
+| 同上 | 497 層 | Python 3.12.16、3.13、3.14、3.15.2 |
+| 同上，全為物件 | 991 層（`json.loads` 失敗，`_parsed_data` 退回原字串，讀成雜湊不符）／989 層 | 3.9／3.11；3.12 以上 |
+| 寫入端：FTS 的 insert trigger（`json_tree`） | 1,001 層，`SqliteError: malformed JSON`，整列不寫入 | SQLite 3.54.1（better-sqlite3） |
+| 寫入端：`canonicalStringify`／`JSON.stringify` | 約 2,300 層陣列／約 6,100 層，`RangeError` | Node 24.12；Electron 45.3.1（Node 24.22）的 `JSON.stringify` 到 2,000,000 層都不失敗 |
+| app 的 verifier（`canonicalStringify`） | 約 2,300 層陣列 | Node 24.12 |
+| `JSON.parse` | 2,000,000 層仍不失敗（V8 的解析不遞迴） | Node 24.12、Electron 45.3.1 |
+| AI tailer 的 `deepRedactStrings`（`tailer-host.ts`） | 1,563 層陣列，`RangeError`；該工具呼叫與其後同一個工作階段的每一輪都沒有寫入，`scheduleRetry` 重試同一個位移直到上限 | Node 24.12 |
+| `POST /api/events` | 請求本體超過 64 層（`data` 超過 63 層）在解析前回 400，項目不被記錄（9aa28ed3） | — |
+
+**規則**（spec FR-097）：第 63 層以內原樣；第 64 層的容器只有在不含容器、且不是標記形狀時保留，否則換成包裝物件 `{"_collapsed": "<JSON 文字>"}`。包裝物件本身是容器，所以它只能放在第 64 層，原本「第 65 層的容器換成字串」的寫法往上移了一層。存入的列只記數目時，`["[1]", [1]]` 與 `[[1], "[1]"]` 會存成同樣的位元組，讀者分不出哪個字串是寫入端做的；改成包裝物件、並把來源自己在第 64 層的標記形狀物件也包起來之後，「第 64 層的標記形狀物件都是包裝」這條規則沒有例外，`restoreDataDepth` 只看存入的列就能還原。
+
+**上限 64 的根據**：本 repo 的 fixture 與 golden 中最深的 `data` 是 3 層；本機 323,816 筆 Claude Code 與 Codex 工具呼叫中最深的輸入是 5 層（存成 `data.tool_input` 為 6 層）；代理解析出的 JSON 請求本體位於 `data.params.body_json`（第 3 層），所以 61 層以內的請求本體原樣保存（最內層只含純量時 62 層）。Python verifier 對最不利的形狀（全陣列）在 332 層失敗，是 64 的 5.2 倍；測試斷言 4 倍（256 層，再加 100 個額外的堆疊框架）仍能重建。API 既有的閘門計的是請求本體的層數，對 `data` 而言是 63，不是 64。沒有找到正當超過 64 層的真實來源；會碰到的是測試者自己送的深層 JSON 請求本體，那正是要無損保存的。
+
+**套用點**：`insertEvent`（`event-write.ts`）的兩個層，在加上 `_ingest` 的那一行：chained 層在 `_clock_anomaly`、`_source_time_rejected` 之後、`canonicalStringify` 之前；logged 層在 `_raw` 之後。理由：
+
+- 每一列——API、交接、行程內、`derived`、尚未遷移的 31 處直接呼叫——都經過這裡，而且只有這裡同時決定雜湊輸入與存入的值；放在 `ingest()` 會漏掉直接呼叫，放在入口會有五個副本。
+- `ingest()` 在寫入前讀的都是頂層欄位（`command`、`stdout`、`subtype`、`flow_id`、`pid`、`_causes`、`mtime`、`path`），遮罩 span 也只看頂層的字串欄位；頂層欄位是第 1 層的值，不會被換掉。所以去重、`_causes`、目標擷取、loot、遮罩 span 看到的與先前相同。
+- `_source_time_rejected.value` 是來源的值，比 `data.source_timestamp` 深一層，所以在它加入之後才處理。
+
+**API 入口**（擁有者 2026-11-14「收下並摺疊」）：`POST /api/events`（與共用 handler 的 `/api/events/seed`）自己讀本體（`parseJsonObjectBody(raw, { maxDepth: EVENT_NESTING_CEILING })`），十萬層以內不以深度拒絕；其他路由的 64 層閘門不變。
+
+第一版在這裡寫「從讀本體到 `insertEvent` 的每一步都只讀頂層欄位、不遞迴」，**這不成立**（第三次審查）：`String(x)` 與模板字串對陣列會呼叫 `Array.prototype.join`，而 `join` 對巢狀陣列遞迴；`Number(陣列)` 也一樣。5,000 層的陣列放在 `agent_type`、`target_id`、`data.command`（agent）、`data.pid`（shell）、`data.host`、`data.method`（scanner）、`data.query_type`（dns）時堆疊溢位，API 回 500：有的在寫入之前（什麼都沒存），有的在寫入之後（列已存入卻回 500，hook 因此改寫交接檔，同一筆觀察存成兩列）。修正是一類，不是七個補丁：
+
+- `src/core/ingest/field-text.ts` 的 `fieldText`／`fieldNumber`：字串是自己；數字、布林、bigint 是 `String`／`Number` 的結果（與先前逐位元組相同）；物件、陣列、null 等視為沒有這個欄位（`fieldNumber` 給 NaN）。界限之前把來源欄位變成文字、鍵或數字的每一處都改用它（呼叫點清單見下表）。
+- `agent_type` 不是字串時 API 回 400（交接檔原本就以 `malformed` 隔離），不再退成 `external`；403 與交接檔隔離說明中的 `agent_type` 只引用前 64 字元。
+- HTTP 本體的位元組（`*_body.data`）不是字串時不移入 sidecar：`Buffer.from` 會把它當數字陣列讀（巢狀陣列逐層轉換，`{"length": 1e9}` 配置 1 GB）。原樣留在列上並受界限。
+- 偵測 HTTP 憑證（`detectHttpCredential`）移到本體移入 sidecar 之前：先跑所有可能失敗的步驟，再寫 sidecar，失敗時不會留下沒有列的 sidecar 檔。
+- 寫入之後的步驟（終端機狀態、延遲輸出的記帳、發佈、因果連結、scope 判定、loot）各自以 `step()` 隔離：失敗記在 log 與 capture-health（`ingest-post-commit`），其餘步驟照跑，`ingest()` 回傳已寫入的列。API 另外接住帶有 `committedEvent` 的錯誤並回 201。
+
+| 呼叫點 | 原本 | 現在 |
+|---|---|---|
+| `api-server.ts` 事件路由 `agent_type` | `String(body.agent_type \|\| body.agentType \|\| 'external')` | 非字串回 400 |
+| `api-server.ts` 403 訊息 | 引用整個 `agent_type` | 前 64 字元 |
+| `api-server.ts` `ingest()` 呼叫 | 寫入後的錯誤回 500 | `committedEventOf` → 201 |
+| `ingest/body-target.ts` `bodyTargetId` | 取 `target_id`／`targetId` 的值，型別未檢查 | `fieldText` |
+| `ingest.ts` `delayedCapture` | `String(data.subtype)` | `fieldText` |
+| `ingest.ts` shell 的 enrich | `data.command as string`（陣列進 `tagCommand` 等偵測器時拋 TypeError） | `fieldText(data.command)`，非純量時不 enrich |
+| `ingest.ts` 長指令判斷 | `Number(data.duration_sec)` | `fieldNumber` |
+| `ingest.ts` `detectHttpCredential` | `String(data.host)`；標頭清單未檢查型別 | `fieldText`；名或值非純量的標頭略過；移到 sidecar 之前 |
+| `ingest.ts` `detectRedactions` | `(data.redactions ?? [])` 展開（非陣列時拋錯） | 不是陣列時視為空 |
+| `ingest.ts` loot 的 `source` | `data.command as string` | `fieldText` |
+| `ingest.ts` 寫入後 | 任一步拋錯即回失敗 | 各步隔離 |
+| `http-body-store.ts` `extractBodyToSidecar` | `Buffer.from(body.data)` | 只處理字串 |
+| `db/event-write.ts` 去重（新列與候選列） | `String(data.command)`、`String(data.subtype)`、`String(data.pid)` | `fieldText`；`command` 非純量時不做去重 |
+| `causes-resolver.ts` `shellKey` | `String(data.pid)`、`String(data.command)` | `fieldText` |
+| `alert/scope-signal.ts` `scopeSignalFor` | `data.host`、`method`、`url`、`direction`、`command`、`detectedTarget`、`query_name`、`query_type` 進模板字串 | `fieldText`；非純量的目標視為沒有目標，`method`／`query_type` 用預設值 |
+| `queue-gap.ts` | `String(data.reason)`、`Number(data.gap_*)` | `fieldText`／`fieldNumber` |
+| `spool-drain.ts` | `Number(spooled.gap_*)`、`String(data.reason)`（讀存入的缺口列） | `fieldNumber`／`fieldText` |
+| `spool-drain.ts` `kind-not-allowed` 的說明 | 引用整個 `agent_type` | 前 64 字元 |
+| `main/terminal-manager.ts` | `` `${data.pid}\|${data.command}` ``、`String(data.subtype)` | `fieldText` |
+
+查過、不需改的：`isExternalEventAllowed`（`Set.has`，不轉型）、`isCapturePlumbing`（先檢查 `typeof`）、`socketCausesFor`／`resolveByPid`／`portOfSourceAddr`（先檢查 `typeof`）、`relatedCommandCandidates`（先檢查 `typeof data.path`）、`extractTextToSidecar`（先檢查 `typeof`）、`noteCommandPid`（先檢查 `typeof`）、`sourceTimeRejection`（先檢查 `typeof`）、loot 掃描的 `textToScan`（只取字串）。讀**存入後**的列的讀者（`activity-projection.ts`、`export-plan.ts`、`scope-recompute-run.ts` 的 `String(d.x)`）面對的是已受限、至多 64 層的值，`join` 的遞迴至多 64 層。
+
+測試：`test/ingest-field-coercion.test.ts` 經真實 handler 與交接檔，七個欄位各送 5,000 層陣列、一個物件、一個 5 MB 字串（以 HEAD 的原始碼執行時 15 個中 12 個失敗：API 回 500、交接檔重試；3 個交接檔案例原本就通過，因為交接檔已檢查 `agent_type` 的型別，`method`／`query_type` 的溢位在寫入之後、已由排空接住）。
+
+**十萬層的上限**（擁有者 2026-11-14：被問「事件 API 超過十萬層就拒絕並記缺口，可以嗎？」，答「可以」；以下是實作者的解讀）：
+
+- `EVENT_NESTING_CEILING = 100,000`（`ingest/depth.ts`），數整個請求本體或交接檔（根為第 1 層），在解析前以 `jsonDepthExceeds` 線性掃描；恰好 100,000 層照常收下。
+- API：`413`，`{"error": "event is nested more than 100,000 levels deep; not recorded", "reason": "nested-too-deep"}`。在重新確認專案未切換之後才判斷，缺口列寫進收到本體時開著的專案。
+- API 的缺口列（`ingest/nesting-ceiling.ts`）：`system`／`capture_gap`，`source: "api"`、`door: "legacy-api"`、`reason: "nested-too-deep"`、`intentional: false`、`skipped_units`（被拒的項目數）、`bytes`（其本體位元組總數）、`max_nesting: 100000`、`gap_started_at`、`gap_ended_at`、`description`；`occurredAt` 為第一次拒絕的時間。不含被拒項目的任何內容。
+- 合併：以開著的專案的 DB handle 為鍵（`WeakMap`，handle 關閉即消失）。第一次拒絕立刻寫一列；其後 60 秒內的拒絕累加，視窗結束時由 `unref` 的計時器寫成一列；視窗結束後的下一次拒絕先寫出累加的，再當作第一次。視窗結束前專案已關閉時，累加的數目不寫入任何專案，只記 log 與 capture-health（`api-nesting-gap`）——已知限制。
+- 交接檔：同一上限，不解析；`engagementInText` 讀出的專案是別的專案時留給它；否則移入隔離區（`nested-too-deep`），計入該次排空每個原因一列的缺口列（`source: "hook-spool"`，既有欄位，`description` 為「nested more than 100,000 levels deep」）。
+- 量測（本機 Node 24.12，各一次）：100,001 層的本體在 0.8 ms 內判定拒絕；20 MiB 全為 `[` 的本體在 3.1 ms 內判定（第 100,001 個 `[` 即停；掃到底 80 ms）；恰好 100,000 層的本體 `JSON.parse` 11 ms、折疊 13 ms、尖峰 RSS +27 MB（先前記的 17 ms、約 +19 MB 為另一次量測）。
+- 測試：`test/ingest-depth-doors.test.ts`（100,000 層收下、100,001 層 413 與缺口列、60 秒合併成 `[1, 4]`、交接檔隔離與缺口列）；以 HEAD 的 `api-server.ts`、`spool-replay.ts`、`api-request.ts` 執行時三者皆失敗（201／全部寫入）；把視窗改為 0 時合併測試失敗（`[1,1,1,1,1]`）。
+
+**放大（已知限制）**：被包起來的最小容器是 `[[]]`，在請求本體中 5 bytes（含逗號），存成 `{"_collapsed":"[[]]"}` 加逗號 22 bytes。20 MiB 的請求本體約可含 419 萬個；審查的量測：4,193,904 個包裝、存入的列 88 MiB、DB 增加 101 MiB、寫入 14.3 s（不折疊的同大小本體 7.5 s）。不另設上限：折疊不遺失內容，而列的大小仍與送來的本體同級（約 4.4 倍以內）。
+
+**遮罩**：
+- AI 工具輸入的遮罩（`redactToolInput` → `deepRedactStrings`）在 tailer 內、進入 `ingest()` 之前完成，所以包裝物件中的文字已經是遮罩後的。`deepRedactStrings` 與其後的大小檢查已改為不遞迴（`jsonStringify`），輸出與舊的遞迴版本逐項相同（`test/tailer-redact-iterative.test.ts`）。仍然成立的限制：工具輸入的 JSON 文字超過 100 KiB（`MAX_FULL_BYTES`，早於本變更）時只存頂層鍵名（`tool_input_truncated`），所以 100,000 層的輸入（200 KB 的括號）存成鍵名，內容不在列上；40,000 層的輸入完整保存並受限。Codex adapter 對工具輸出做 `JSON.stringify(payload.output)`，在 Node 約 6,100 層時失敗並被 `catch` 吞掉（輸出遺失；Electron 的 V8 不會失敗）。
+- 匯出時的遮罩：`redactEventForExport`、`sanitize.ts`、`scopeMaskReplacements` 以頂層欄位為單位（`sanitize` 只處理有遮罩 span 的頂層字串欄位；scope 遮罩把整個頂層欄位換成說明文字，不論其內容是否含包裝物件），不受影響。`operator-pii.ts` 是在序列化後的文字上做的，包裝物件的內容比原本多一層跳脫，所以它的樣式改為任何跳脫層數都相符（每個 JSON 會跳脫的字元前允許任意長度的反斜線；使用者名稱的字界也在 `\n`、`\uXXXX` 之後成立）。
+
+**全文搜尋**：包裝物件的字串是一個 `json_tree` 葉值，內容是 JSON 文字；unicode61 依標點切詞，字與鍵名找得到，但緊接在以字母結尾的跳脫序列之後的字找不到（`line1\nword` 變成 `line1`、`nword`）。不改 trigger：在文字上再跑 `json_tree` 會碰到 SQLite 的深度上限而拒收整列。
+
+**資源**（本機，Node 24.12，`data` 為單一長鏈，各一次量測）：10 萬層 17–21 ms；100 萬層約 100 ms（尖峰 RSS 比解析後多約 140 MB）；1,000 萬層（20 MB 的交接檔）1.1–1.4 s，尖峰 RSS 比解析後多約 460–750 MB（第一版：3.3 s、約 1,190 MB），解析本身的尖峰已約 1.2–1.7 GB。容器文字以三個平行陣列記錄路徑（容器、鍵、`2 × 下一個索引 + 是否已寫出`；第一版是四個），以 Brent 法在路徑上偵測循環（不保留已走訪的集合），輸出每 4,096 段合併一次；路徑超過一百萬層時拋 `RangeError`（`JSON_TEXT_MAX_DEPTH`），不再無限制地成長——`toJSON` 無止盡產生新巢狀的值原本會耗盡記憶體。一百萬層 85 ms、RSS +121 MB（四個陣列的版本 109 ms、+123 MB；記憶體由其他部分主導）。變更前同一個檔在 `canonicalStringify` 以 `RangeError` 迅速失敗。交接檔沒有大小上限（`spool-replay.ts`），本變更不加；巢狀超過十萬層的交接檔在解析前隔離（見上）。
+
+**否決的做法**（擁有者的決定只有「寫入端限制深度」與「收下並摺疊」；以下理由是實作者的）：
+- verifier 對過深的列回報「此處無法檢查」：未被選。實作者的理由：收件方仍看到一列無法驗證的證據。
+- 調高 Python 的遞迴上限：未被選。實作者的理由：上限與 C 堆疊相依，調高會換成直譯器當掉，而且已出貨 bundle 內的 verifier 不會變。
+- 拒收或丟棄過深的項目：實作者的理由：違反 §12 的完整擷取（已啟用來源觀測到的內容一律保存）。
+- 截斷過深的部分：實作者的理由：遺失內容。
+- 只記數目、把容器換成裸字串（本變更的第一版）：讀者分不出包裝與來源送來的 JSON 字串（見上）。
+
+**讀者看到什麼**（未實作還原，只記現況）：沒有任何 app 內的讀者呼叫 `restoreDataDepth`。Inspector 的原始 JSON 檢視（`TimelineEventInspector.tsx` 的 `JSON.stringify(event.data, null, 2)`）在第 64 層顯示 `{"_collapsed": "<跳脫過的 JSON 文字>"}`；其他讀者（HTTP 詳情、Activity Reader、搜尋結果、Timeline 詳情列）讀的是具名的頂層欄位，只有當它們顯示的值本身含第 64 層的容器時才看到包裝物件。全文搜尋找得到包裝內的字（上述跳脫後的限制除外）。匯出的 bundle 原樣帶著包裝物件，README 說明如何讀。未在執行中的 app 中確認。
+
+**已寫入的列**不改寫、不遷移（產品未發行）。
+
 ### D9 存活通道（O7）
 
 - `hello`、`alive`、`bye` 寫入 `ingest_instances` 與記憶體中的存活表，不寫事件。

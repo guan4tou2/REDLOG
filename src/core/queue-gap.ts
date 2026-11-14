@@ -8,13 +8,15 @@
 // quite at a boundary — RedLog judges an http_request_* event by when it
 // arrives — but the queue drains in milliseconds.
 
+import { fieldNumber, fieldText } from './ingest/field-text'
+
 export type PauseInterval = [start: number, end: number]
 
 const PAUSE_JUDGED = new Set(['queue-full', 'proxy-stopped', 'delivery-interrupted'])
 
 /** A capture gap whose window says when the events it counts were admitted. */
 export function isPauseJudgedGap(data: Record<string, unknown>): boolean {
-  return data.subtype === 'capture_gap' && PAUSE_JUDGED.has(String(data.reason))
+  return data.subtype === 'capture_gap' && PAUSE_JUDGED.has(fieldText(data.reason) ?? '')
 }
 
 /** Null when every refusal fell inside one pause: nothing was being recorded,
@@ -23,8 +25,8 @@ export function isPauseJudgedGap(data: Record<string, unknown>): boolean {
  *  other gap is returned as it came. */
 export function queueGapAgainstPauses<T extends Record<string, unknown>>(data: T, pauses: readonly PauseInterval[]): (T & { overlaps_pause?: true }) | null {
   if (!isPauseJudgedGap(data)) return data
-  const start = Number(data.gap_started_at)
-  const end = Number(data.gap_ended_at ?? data.gap_started_at)
+  const start = fieldNumber(data.gap_started_at)
+  const end = fieldNumber(data.gap_ended_at ?? data.gap_started_at)
   if (!Number.isFinite(start) || !Number.isFinite(end)) return data
   if (pauses.some(([from, to]) => from <= start && end <= to)) return null
   if (pauses.some(([from, to]) => from <= end && start <= to)) return { ...data, overlaps_pause: true }
