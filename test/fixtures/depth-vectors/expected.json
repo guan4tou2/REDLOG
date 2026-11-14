@@ -39,8 +39,8 @@
       },
       {
         "id": "00000000-0000-4000-8000-000000000021",
-        "hash": "f9fc94b5f3869102ae6792465a4264562e6b3d68e1cc8e41bd6e975bd7fced2d",
-        "sha256": "27ff66f4736211c19341ee6b9b96026b602cfd44ed5d1b5d2e1117ee8d17f808"
+        "hash": "9287073c625dc1ed0638fa70d3a5807e2af07dcc8d3a3e1fe74fa1e7f1cb5c9f",
+        "sha256": "66371650cdf9307186d98d261957f59a40256534a54b23755fb519b7b5ab5c25"
       }
     ],
     "events_logged": [
@@ -51,7 +51,7 @@
       }
     ]
   },
-  "rowsSha256": "529da87b2b44dfa596b2a7b94e76ee3e54c371d2c86d4426a17754f38d768b92",
+  "rowsSha256": "cf77464b606d0f352f9fb59d42c09ee28bf3adaa4c60c737479aa8a95f4970bf",
   "collapsed": {
     "events:command_start:curl -d @deep.json http://10.0.0.5/api": 1,
     "events:command_start:echo markers": 1,
@@ -63,7 +63,7 @@
     "walked": 8,
     "brokenAtEventId": null,
     "brokenReason": null,
-    "currentHead": "3656089f9eb92638c7cb921698099e59249a136b442804167d13a0d87a92867f",
+    "currentHead": "357688fa780e158bdbb90b79d6ae9315ece57ee921f6db641f894c20bed23cee",
     "anchorMatchesWalkedHead": false,
     "clockAnomalies": [],
     "signedCount": 8,
@@ -94,5 +94,5 @@
     "stdout": "\nRedLog bundle verification report\n========================================\nBundle dir       : <bundle>\nBundle version   : 4\nEngagement ID    : eng-depth-vectors\nEvents walked    : 8\nManifest checksum: matches (not an authenticated source identity)\nChain            : INTACT\nChain-head match : yes (recomputed matches manifest.chainHead)\nSeal             : SEALED (export 00000000-0000-4000-8000-000000000019; it follows the delivered chain directly)\n                   rows before it and the manifest are as exported\nSignatures       : 8 verified\nSigner           : op-depth  sha256:5df840e88a41a05b32c8c076086ae442d696f8556d8e3452d2738f96722e8e0d\n  compare these fingerprints with the operator out of band;\n  a key taken from this bundle only proves the bundle agrees with itself\nLogged tier      : 1 rows present in events_logged.jsonl\n                   (not chained or signed; digest matches; bytes sealed by the export)\nAttachments      : 0 match the digest recorded at capture\nManifest files   : 5 verified (sha256 matches)\n",
     "stderr": ""
   },
-  "verifierSha256": "f49a7d4acd941b9df0acbeab592a7ac7f8a2a6cdf5ac239271700ac39e2359af"
+  "verifierSha256": "40e4f056760161697797acf89a9c079d2b70c4945cc43c1daa73d1ae218f7c92"
 }
