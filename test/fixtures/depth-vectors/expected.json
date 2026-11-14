@@ -39,8 +39,8 @@
       },
       {
         "id": "00000000-0000-4000-8000-000000000021",
-        "hash": "9287073c625dc1ed0638fa70d3a5807e2af07dcc8d3a3e1fe74fa1e7f1cb5c9f",
-        "sha256": "66371650cdf9307186d98d261957f59a40256534a54b23755fb519b7b5ab5c25"
+        "hash": "fb7220823028f0dfb8a179b87264e4da110129eed2303bac2a307c429656026e",
+        "sha256": "af716547bafc4e4d7d4cb449fea60d1b37975cc1b776d1f3a2cb81117e1090cd"
       }
     ],
     "events_logged": [
@@ -51,7 +51,7 @@
       }
     ]
   },
-  "rowsSha256": "cf77464b606d0f352f9fb59d42c09ee28bf3adaa4c60c737479aa8a95f4970bf",
+  "rowsSha256": "3c99944d004444d789ecc28be383483e09ce0d32fc8794119a568a676c6dbbe2",
   "collapsed": {
     "events:command_start:curl -d @deep.json http://10.0.0.5/api": 1,
     "events:command_start:echo markers": 1,
@@ -63,7 +63,7 @@
     "walked": 8,
     "brokenAtEventId": null,
     "brokenReason": null,
-    "currentHead": "357688fa780e158bdbb90b79d6ae9315ece57ee921f6db641f894c20bed23cee",
+    "currentHead": "18f7faceadacf2b6dd0405ecb89876ab0e90b3ca01266dfe01a6bbe66fcfbc67",
     "anchorMatchesWalkedHead": false,
     "clockAnomalies": [],
     "signedCount": 8,
