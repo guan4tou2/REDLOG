@@ -50,7 +50,7 @@ interface ResolvedExportPlan {
   capabilities: {
     snapshot: boolean
     boundedSubset: boolean
-    scopeMasking: boolean
+    scopeMasking: 'optional' | 'always'
     piiScrubbing: boolean
     attachments: boolean
   }

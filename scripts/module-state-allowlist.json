@@ -638,6 +638,14 @@
       "class": "constant",
       "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
     },
+    "src/core/scope-sanitize.ts#OPAQUE_SCHEMES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
+    "src/core/scope-sanitize.ts#ERROR_CLASSES": {
+      "class": "constant",
+      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
+    },
     "src/core/scope-sanitize.ts#COOKIE_ATTRIBUTES": {
       "class": "constant",
       "reason": "Lookup table filled at declaration; nothing mutates it afterwards."

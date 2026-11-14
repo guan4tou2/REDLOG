@@ -29,6 +29,15 @@ describe('headers', () => {
     expect(applied({ response_headers: headers }).response_headers).toEqual([['X-RedLog-Truncated', M], ['Location', M], ['X-RedLog-Truncated', '120 total, showing 100']])
   })
 
+  it('masks a target\'s own X-RedLog-Truncated header in the last position when its value is not the addon\'s count', () => {
+    const s = secret('tv')
+    expect(applied({ response_headers: [['Accept', '*/*'], ['X-RedLog-Truncated', s]] }).response_headers).toEqual([['Accept', M], ['X-RedLog-Truncated', M]])
+  })
+
+  it('masks an X-RedLog-Truncated header with the addon\'s wording when it is not the last entry', () => {
+    expect(applied({ response_headers: [['X-RedLog-Truncated', '60 total, showing 50'], ['Accept', '*/*']] }).response_headers).toEqual([['X-RedLog-Truncated', M], ['Accept', M]])
+  })
+
   it('masks an unknown shape whole: an object, a malformed entry', () => {
     const s = secret('h')
     expect(applied({ request_headers: { Authorization: s } }).request_headers).toBe(M)
@@ -70,10 +79,20 @@ describe('params', () => {
 describe('url', () => {
   const url = (u: string, field = 'url'): unknown => applied({ subtype: 'http_request_start', [field]: u })[field]
 
-  it('keeps scheme, host and path; masks each query value; keeps names, repeats and empty values', () => {
+  it('keeps scheme, host, path and the names of valued parameters, repeats included; masks every value', () => {
     const s = secret('q')
-    expect(url(`https://out.test/a/b?api_key=${s}&x=1&x=2&empty=&&flag`)).toBe(`https://out.test/a/b?api_key=${ENC}&x=${ENC}&x=${ENC}&empty=&&${ENC}`)
+    expect(url(`https://out.test/a/b?api_key=${s}&x=1&x=2&&y=3`)).toBe(`https://out.test/a/b?api_key=${ENC}&x=${ENC}&x=${ENC}&&y=${ENC}`)
     expect(new URL(String(url(`https://out.test/?api_key=${s}`))).searchParams.get('api_key')).toBe(M)
+  })
+
+  it('masks a query piece with no value whole, alone or among others, because ?debug= cannot be told from ?<secret>=', () => {
+    const s = secret('tok')
+    expect(url(`https://out.test/cb?${s}=`)).toBe(`https://out.test/cb?${ENC}`)
+    expect(url(`https://out.test/cb?c2VjcmV0${s}==`)).toBe(`https://out.test/cb?${ENC}`)
+    expect(url(`https://out.test/cb?${s}`)).toBe(`https://out.test/cb?${ENC}`)
+    expect(url(`https://out.test/cb?a=1&${s}=&flag`)).toBe(`https://out.test/cb?a=${ENC}&${ENC}&${ENC}`)
+    expect(url(`https://out.test/cb?=${s}`)).toBe(`https://out.test/cb?${ENC}`)
+    expect(url(`https://out.test/cb?k=${s}==`)).toBe(`https://out.test/cb?k=${ENC}`)
   })
 
   it('drops a fragment, including a hash route that carries a query', () => {
@@ -95,9 +114,13 @@ describe('url', () => {
     expect(url(`http://[::1/x?name=${s}`)).toBe(`http://[::1/x?${ENC}`)
   })
 
-  it('treats a data: or javascript: URL as all content', () => {
+  it('treats a data:, javascript: or vbscript: URL, and a scheme holding a control character, as all content', () => {
     expect(url(`data:text/html,${secret('d')}`)).toBe(M)
     expect(url(`javascript:alert('${secret('j')}')`)).toBe(M)
+    expect(url(`vbscript:msgbox("${secret('v')}")`)).toBe(M)
+    expect(url(`java\tscript:alert('${secret('t')}')`)).toBe(M)
+    expect(url(`  JavaScript:alert('${secret('c')}')`)).toBe(M)
+    expect(url(`ja\u0001va:x?k=${secret('x')}`)).toBe(M)
   })
 
   it('masks path, pretty_url and prev_url the same way, and leaves a URL with nothing to mask alone', () => {
@@ -121,6 +144,14 @@ describe('the rest of an HTTP-family row', () => {
     expect(mask(meta)).toBeNull()
   })
 
+  it('masks HTTPS and SVCB answer data, which carries ech= and key values', () => {
+    const s = secret('ech')
+    for (const type of ['HTTPS', 'SVCB']) {
+      const answer = { name: 'out.test', type, ttl: 60, data: `1 . alpn=h2 ech=${s}` }
+      expect(applied({ subtype: 'dns_response', answers: [answer] }).answers).toEqual([{ ...answer, data: M }])
+    }
+  })
+
   it('masks DNS answers that are not names or addresses', () => {
     const s = secret('txt')
     const answers = [{ name: 'out.test', type: 'A', ttl: 60, data: '10.0.0.1' }, { name: 'out.test', type: 'TXT', ttl: 60, data: s }]
@@ -137,6 +168,42 @@ describe('the rest of an HTTP-family row', () => {
     expect(applied({ subtype: 'navigation', host: '', description: `→ https://out.test/?q=${s}` }).description).toBe(`→ https://out.test/?q=${ENC}`)
     const con = applied({ subtype: 'console_error', message: s, stack_trace: s, source: `https://out.test/app.js?v=${s}`, line_number: 3 })
     expect(con).toMatchObject({ message: M, stack_trace: M, source: `https://out.test/app.js?v=${ENC}`, line_number: 3 })
+  })
+
+  it('masks the URL in a scope_violation action, keeping the method and the scanner prefix', () => {
+    const s = secret('sv')
+    expect(applied({ subtype: 'scope_violation', target: 'out.test', source: 'http', action: `POST https://out.test/p?k=${s}#${s}` }).action)
+      .toBe(`POST https://out.test/p?k=${ENC}`)
+    expect(applied({ subtype: 'scope_violation', target: 'out.test', source: 'scanner', action: `WS client wss://out.test/ws?k=${s}` }).action)
+      .toBe(`WS client wss://out.test/ws?k=${ENC}`)
+    expect(mask({ subtype: 'scope_violation', target: 'out.test', source: 'scanner', action: 'TCP client out.test' })).toBeNull()
+    expect(mask({ subtype: 'scope_violation', target: 'out.test', source: 'dns', action: 'A out.test' })).toBeNull()
+  })
+
+  it('masks every loot match preview and keeps type, confidence and count', () => {
+    const s = secret('loot')
+    const out = applied({ subtype: 'credential_detected', matches: [{ type: 'jwt', confidence: 'high', preview: `token=${s}` }], count: 1 })
+    expect(out).toMatchObject({ matches: [{ type: 'jwt', confidence: 'high', preview: M }], count: 1 })
+    expect(applied({ subtype: 'credential_detected', matches: 'x' }).matches).toBe(M)
+  })
+
+  it('masks URLs inside a description and keeps the sentence around them', () => {
+    const s = secret('desc')
+    expect(applied({ subtype: 'download', tool: 'curl', url: `https://out.test/f.zip?k=${s}`, description: `↓ curl: https://out.test/f.zip?k=${s}` }))
+      .toMatchObject({ url: `https://out.test/f.zip?k=${ENC}`, description: `↓ curl: https://out.test/f.zip?k=${ENC}` })
+    expect(applied({ subtype: 'x', description: `a "https://out.test/?k=${s}" and http://out.test/b?q=${s} end` }).description)
+      .toBe(`a "https://out.test/?k=${ENC}" and http://out.test/b?q=${ENC} end`)
+    expect(mask({ subtype: 'bearer_token', description: 'Bearer token → out.test' })).toBeNull()
+  })
+
+  it('keeps a known mitmproxy error class and masks the server bytes it quotes', () => {
+    const s = secret('err')
+    expect(applied({ subtype: 'http_error', error: `Bad HTTP response line: b'${s}'` }).error).toBe(`Bad HTTP response line: ${M}`)
+    expect(applied({ subtype: 'http_error', error: `Invalid header line: b'X: ${s}'` }).error).toBe(`Invalid header line: ${M}`)
+    expect(applied({ subtype: 'http_error', error: `unexpected server response: b'${s}'` }).error).toBe(`unexpected server response: ${M}`)
+    expect(applied({ subtype: 'tcp_end', error: `something new: ${s}` }).error).toBe(M)
+    expect(mask({ subtype: 'http_error', error: 'Connection killed.' })).toBeNull()
+    expect(mask({ subtype: 'tcp_end', error: 'Server disconnected' })).toBeNull()
   })
 
   it('masks a cookie_change row\'s value hashes', () => {

@@ -1,3 +1,8 @@
+// The whole-artifact grep below covers the HTTP rows only; rows derived from
+// them (scope_violation, loot, file_transfer, http_error text, DNS answers) are
+// covered by test/scope-mask-http-fields.test.ts alone, not by this grep.
+// This file runs the PREBUILT export worker (out/main/export-worker.js): after
+// changing src/, run `npm run build:export-worker`, or the first test fails.
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -113,7 +118,8 @@ describe.each(['json', 'ndjson', 'timeline'])('%s export', (format) => {
     const login = exportedRows(format, text).find((e) => e.id === 'out-login-req')!.data
     expect(login.params).toBe('[redacted: out of scope]')
     expect((login.request_headers as string[][]).map(([n]) => n)).toEqual(['Host', 'Authorization', 'Cookie', 'Cookie', 'Content-Type'])
-    expect(login.url).toBe(`https://out.test/login?api_key=${encodeURIComponent('[redacted: out of scope]')}&next=&x=${encodeURIComponent('[redacted: out of scope]')}&x=${encodeURIComponent('[redacted: out of scope]')}`)
+    // `next=` has no value: a query piece with no value is masked whole, alone or among others.
+    expect(login.url).toBe(`https://out.test/login?api_key=${encodeURIComponent('[redacted: out of scope]')}&${encodeURIComponent('[redacted: out of scope]')}&x=${encodeURIComponent('[redacted: out of scope]')}&x=${encodeURIComponent('[redacted: out of scope]')}`)
     expect(login.host).toBe('out.test')
     expect(login.path).toBe('/login')
   })
@@ -155,7 +161,8 @@ describe('HAR export', () => {
     expect(login.request.url.startsWith('https://out.test/login?')).toBe(true)
     expect(login.request.headers).toEqual(['Host', 'Authorization', 'Cookie', 'Cookie', 'Content-Type'].map((name) => ({ name, value: M })))
     expect(login.request.cookies).toEqual([{ name: 'sid', value: M }, { name: 'theme', value: M }])
-    expect(login.request.queryString).toEqual([{ name: 'api_key', value: M }, { name: 'next', value: '' }, { name: 'x', value: M }, { name: 'x', value: M }])
+    // A query piece with no value is masked whole, alone or among others, so `next=` reads back as the marker's name.
+    expect(login.request.queryString).toEqual([{ name: 'api_key', value: M }, { name: M, value: '' }, { name: 'x', value: M }, { name: 'x', value: M }])
     expect(login.request.postData).toBeUndefined()
     expect(login.response.headers).toEqual([{ name: 'Set-Cookie', value: M }, { name: 'Location', value: M }, { name: 'X-RedLog-Truncated', value: '60 total, showing 50' }])
     expect(login.response.cookies).toEqual([{ name: 'session', value: M, path: '/', httpOnly: true }])

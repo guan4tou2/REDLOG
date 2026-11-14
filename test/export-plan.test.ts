@@ -42,8 +42,8 @@ describe('ExportPlan domain contract', () => {
   })
 
   it('declares format capability gaps instead of implying protections', () => {
-    expect(capabilitiesFor('bundle')).toMatchObject({ attachments: true, snapshot: true, scopeMasking: true })
-    expect(capabilitiesFor('har')).toMatchObject({ attachments: false, snapshot: true, scopeMasking: false })
+    expect(capabilitiesFor('bundle')).toMatchObject({ attachments: true, snapshot: true, scopeMasking: 'optional' })
+    expect(capabilitiesFor('har')).toMatchObject({ attachments: false, snapshot: true, scopeMasking: 'always' })
   })
 
   it('creates a frozen plan with a deterministic evidence fingerprint', () => {

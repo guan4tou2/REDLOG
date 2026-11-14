@@ -69,14 +69,13 @@ describe('one export dialog', () => {
     fireEvent.keyDown(window, { key: 'Escape' }); open(); await ready()
     expect(resolve.mock.lastCall?.[0].subset).toEqual(next.request.subset)
   })
-  it('preserves HTTP predicates and uses HAR without claiming unsupported masking', async () => {
+  it('preserves HTTP predicates and says HAR always masks out-of-scope content, with no toggle to turn it off', async () => {
     const subset: ExportSubset = { kind: 'selection', projection: 'http', filter: { targetId: 'corp.test' }, http: { method: 'POST', statusPrefix: '4', text: 'login' } }
     draw({ label: 'HTTP', request: { format: 'har', subset } }); open(); await ready()
-    expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'har', subset, maskOutOfScope: false, scrubPii: false })
-    const mask = screen.getByLabelText(/mask out-of-scope content using web scope/i) as HTMLInputElement
-    expect(mask.disabled).toBe(true)
-    expect(mask.checked).toBe(false)
-    expect(screen.getByTestId('export-preview-policy').textContent).not.toContain('out-of-scope masked')
+    expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'har', subset, maskOutOfScope: true, scrubPii: false })
+    expect(screen.queryByLabelText(/mask out-of-scope content using web scope/i)).toBeNull()
+    expect(screen.getByText('HAR always masks out-of-scope content.')).toBeTruthy()
+    expect(screen.getByTestId('export-preview-policy').textContent).toContain('out-of-scope masked')
     format('json'); await ready()
     expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'json', subset, maskOutOfScope: true })
   })
