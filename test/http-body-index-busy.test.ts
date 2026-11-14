@@ -50,6 +50,58 @@ sqlite.describe('a search while another connection holds the index', () => {
     expect(ids).toEqual(['old-0', 'old-1', 'old-2'])
   }, 30_000)
 
+  it('waits at most about a second for the lock before answering', () => {
+    for (let i = 0; i < 3; i++) savedResponse(`old-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha old${i}"}`) })
+    search('alpha')
+    savedResponse('new', { response_body_ref: savedBody(dir, '{"n":"alpha new"}') })
+    const took = whileLocked(() => { const t = performance.now(); search('alpha'); return performance.now() - t })
+    expect(took).toBeGreaterThanOrEqual(900)
+    expect(took).toBeLessThan(3000)
+  }, 30_000)
+
+  // Each of the three TEMP clean-ups, in a sequence where it is the only one
+  // between a TEMP row and a wrong answer (or unbounded TEMP).
+  it('a body pruned after a locked search: its TEMP row does not answer coverage', () => {
+    for (let i = 0; i < 3; i++) savedResponse(`old-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha old${i}"}`) })
+    search('alpha')
+    const ref = savedBody(dir, '{"n":"alpha later"}')
+    savedResponse('later', { response_body_ref: ref })
+    expect(whileLocked(() => search('alpha').items.map(e => e.id)).sort()).toEqual(['later', 'old-0', 'old-1', 'old-2'])
+    // Retention, with no search between: no later call clears TEMP first.
+    fs.rmSync(path.join(dir, 'http-bodies', ref.file))
+    idx.pruneHttpBodyIndex(ref.sha256, dir)
+    const body = idx.bodySearchCoverage().sources!.find(s => s.kind === 'body')!
+    expect(body.status).not.toBe('covered')
+    expect(body.indexed).toBe(3)
+  }, 30_000)
+
+  it('a transcript pruned after a locked search: its TEMP row does not answer coverage', () => {
+    const folder = path.join(dir, 'agent-transcripts'); fs.mkdirSync(folder)
+    const file = path.join(folder, 'conversation.jsonl')
+    const snapshotOf = (text: string) => {
+      fs.writeFileSync(file, text)
+      return insertEvent('agent', { subtype: 'transcript_snapshot', snapshot_path: file, cumulative_bytes: Buffer.byteLength(text),
+        cumulative_sha256: createHash('sha256').update(text).digest('hex') }, { engagementId: 'eng', operatorId: 'op' })!.id
+    }
+    snapshotOf('{"m":"TRANSCRIPTWORD one"}\n')
+    search('TRANSCRIPTWORD')
+    const newer = snapshotOf('{"m":"TRANSCRIPTWORD one"}\n{"m":"two"}\n')
+    expect(whileLocked(() => search('TRANSCRIPTWORD').items.map(e => e.id))).toEqual([newer])
+    fs.rmSync(file)
+    idx.pruneSavedFileIndex(file, dir)
+    expect(idx.bodySearchCoverage().sources!.find(s => s.kind === 'ai-raw')!.status).not.toBe('covered')
+  }, 30_000)
+
+  it('TEMP keeps only what the last call needed', () => {
+    for (let i = 0; i < 3; i++) savedResponse(`old-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha old${i}"}`) })
+    search('alpha')
+    for (let i = 0; i < 5; i++) savedResponse(`new-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha new${i}"}`) })
+    whileLocked(() => search('alpha'))
+    expect(idx._extraEvents(dir)).toBe(5)
+    search('alpha')
+    expect(idx._extraEvents(dir)).toBe(0)
+  }, 30_000)
+
   it('a transcript prefix kept in TEMP during one lock does not answer coverage after its file is pruned', () => {
     const folder = path.join(dir, 'agent-transcripts'); fs.mkdirSync(folder)
     const file = path.join(folder, 'conversation.jsonl')

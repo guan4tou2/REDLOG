@@ -119,6 +119,20 @@ function dropDocs(db: Database.Database, eventId: string, slot: string, t = SHAR
 // for "a search does no per-row work for rows already linked".
 let inlineRefWork = 0
 export function _inlineRefWork(): number { return inlineRefWork }
+/** Events this connection's TEMP tables hold; a test seam for "TEMP keeps
+ *  only what the last call needed". */
+export function _extraEvents(projectDir = getProjectDir()): number {
+  const db = getIndex(projectDir)
+  return hasExtraTables(db) ? (stmt(db, 'SELECT count(DISTINCT event_id) AS n FROM body_x_refs').get() as { n: number }).n : 0
+}
+/** The shared index is written only through main's read-write source
+ *  connection. On a read-only one (the export worker) its writers do nothing:
+ *  none of them is reached there today, and a throw on a path an export can
+ *  reach would fail the export. Nothing is lost: main's next sync re-checks
+ *  every file and re-links what ingest would have. */
+function readOnlySource(): boolean {
+  try { return getDB().readonly } catch { return false }
+}
 function fileSignature(file: string): string {
   try {
     const s = fs.lstatSync(file, { bigint: true })
@@ -269,6 +283,7 @@ function ftsWriter(write: (part: string) => void): (part: string, final?: boolea
  *  next search reaches it like any new row (and finds it already verified); an
  *  event with no body writes nothing. */
 export function linkHttpBodyEvent(event: Pick<RedLogEvent, 'id' | 'data' | 'engagementId'> & {agentType?:string}, projectDir = getProjectDir()): void {
+  if (readOnlySource()) return
   linkEvent(event, projectDir, null, { engagementId: event.engagementId ?? null, row: null }, true)
 }
 interface SourceRow { engagementId: string | null; row: number | null }
@@ -717,6 +732,7 @@ export function eventIdsReferencingBody(sha256: string, projectDir = getProjectD
   return rows.map(row => row.event_id)
 }
 export function pruneHttpBodyIndex(sha256: string, projectDir = getProjectDir()): void {
+  if (readOnlySource()) return
   const db = getIndex(projectDir)
   db.transaction(() => {
     const docs = stmt(db, 'SELECT doc FROM body_docs WHERE sha256=?').all(sha256) as { doc: number }[]
@@ -733,7 +749,7 @@ export function pruneHttpBodyIndex(sha256: string, projectDir = getProjectDir())
 }
 /** Retention must remove derived raw text together with its saved file. */
 export function pruneSavedFileIndex(file:string, projectDir=getProjectDir()):void {
-  if(!existsSync(path.join(projectDir,'http-body-index.db')))return
+  if(readOnlySource()||!existsSync(path.join(projectDir,'http-body-index.db')))return
   const db=getIndex(projectDir),absolute=path.resolve(file)
   const refs=db.prepare("SELECT event_id,slot,file FROM body_event_refs WHERE kind<>'body'").all() as {event_id:string;slot:string;file:string}[]
   db.transaction(()=>{for(const ref of refs)if(path.resolve(projectDir,ref.file)===absolute){

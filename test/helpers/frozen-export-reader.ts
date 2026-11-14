@@ -1,7 +1,7 @@
 // A real `worker_threads` worker that opens the project the way the export
-// worker does (src/main/services/export-worker.ts): `openReadonlyProjectDB`,
-// then `BEGIN`, so its view of the source rows is frozen at that moment for as
-// long as it lives. It then searches under the snapshot of that view, as
+// worker does (src/main/services/export-worker.ts), through the same
+// `openFrozenProjectDB`: read-only, then `BEGIN`, so its view of the source
+// rows is frozen at that moment for as long as it lives. It then searches under the snapshot of that view, as
 // export selection does. The source modules are loaded from src/ through jiti,
 // so it is the same code the export worker bundles, not a copy of it.
 import { Worker } from 'node:worker_threads'
@@ -34,9 +34,8 @@ parentPort.on('message', async ({ id, op, arg }) => {
     if (op === 'open') {
       m = { db: await load('db/index.ts'), queries: await load('db/event-queries.ts'), idx: await load('http-body-index.ts'),
         snap: await load('db/dataset-snapshot.ts'), contract: await load('query/contract.ts') }
-      // As export-worker.ts opens it.
-      m.db.openReadonlyProjectDB(arg.dir, arg.engagementId)
-      m.db.getDB().exec('BEGIN')
+      // The function export-worker.ts opens the project with.
+      m.db.openFrozenProjectDB(arg.dir, arg.engagementId)
       snapshot = m.snap.readActivitySnapshot(m.db.getDB())
       result = { snapshot }
     } else if (op === 'search') {

@@ -149,6 +149,37 @@ sqlite.describe('a read-only connection whose view is behind the shared index', 
     expect(paged.ids).toHaveLength(1100)
   }, 60_000)
 
+  it('re-verifies what main has not: a body changed or gone since main last searched', async () => {
+    const refs = Array.from({ length: 3 }, (_, i) => { const ref = savedBody(dir, `{"n":"alpha body${i}"}`); savedResponse(`e-${i}`, { response_body_ref: ref }); return ref })
+    search('alpha')
+    fs.writeFileSync(path.join(dir, 'http-bodies', refs[0].file), '{"n":"gamma body0"}')
+    fs.rmSync(path.join(dir, 'http-bodies', refs[1].file))
+    reader = await openFrozenReader(dir, 'project')
+    const answer = await reader.search('alpha')
+    expect(answer.ids).toEqual(['e-2'])
+    expect(answer.coverage).toMatchObject({ indexed: 1, missing: 1 })
+    expect(answer.coverage.status).not.toBe('covered')
+  }, 30_000)
+
+  it('the shared index writers do nothing on a read-only connection', async () => {
+    const ref = savedBody(dir, '{"n":"alpha one"}')
+    savedResponse('one', { response_body_ref: ref })
+    search('alpha')
+    const before = shared()
+    expect(before.mark).toBeTruthy()
+    reader = await openFrozenReader(dir, 'project')
+    await reader.call('pruneHttpBodyIndex', ref.sha256, dir)
+    await reader.call('pruneSavedFileIndex', path.join(dir, 'artifacts', 'none'), dir)
+    await reader.call('linkHttpBodyEvent', { id: 'ghost', data: { subtype: 'http_response', response_body_ref: savedBody(dir, '{"n":"ghost"}') } }, dir)
+    expect(shared()).toEqual(before)
+  }, 30_000)
+
+  it('is opened by the function export-worker.ts opens the project with', () => {
+    const worker = fs.readFileSync(path.join(__dirname, '../src/main/services/export-worker.ts'), 'utf8')
+    expect(worker).toMatch(/openFrozenProjectDB\(task\.project\.path, task\.project\.id\)/)
+    expect(worker).not.toMatch(/openReadonlyProjectDB|initDB\(|exec\('BEGIN'\)/)
+  })
+
   it('a replaced database: the reader answers its own rows and writes nothing; main rebuilds', async () => {
     for (let i = 0; i < 5; i++) savedResponse(`gone-${i}`, { response_body_ref: savedBody(dir, `{"n":"alpha gone${i}"}`) })
     search('alpha')

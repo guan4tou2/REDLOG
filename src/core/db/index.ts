@@ -556,6 +556,14 @@ export function openReadonlyProjectDB(projectDir: string, engagementId: string):
   generation++
 }
 
+/** How an export worker opens the project: read-only, inside one read
+ *  transaction it holds for the whole export, so every read sees the same
+ *  rows (export-worker.ts). The caller ends it with `ROLLBACK`. */
+export function openFrozenProjectDB(projectDir: string, engagementId: string): void {
+  openReadonlyProjectDB(projectDir, engagementId)
+  getDB().exec('BEGIN')
+}
+
 export function getDB(): Database.Database {
   if (!db) throw new Error('Database not initialized')
   return db
