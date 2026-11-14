@@ -61,7 +61,7 @@ describeDB('Search query migration corpus', () => {
   })
   afterEach(() => {
     // `closeDB()` leaves `http-body-index.db` open — the search path opens it
-    // lazily via `searchHttpBodyEventIds`. Windows answers EBUSY on rmSync
+    // lazily via `searchHttpBodyTermIds`. Windows answers EBUSY on rmSync
     // while it is open, so close it first (same reason as search-pagination).
     closeHttpBodyIndex()
     closeDB()

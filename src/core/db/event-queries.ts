@@ -15,9 +15,10 @@ import { compareEventOrder, eventOrderBy } from '../event-order'
 import type { ExportSnapshot } from '../export-plan'
 import type { StreamSegments } from '../stream-completion'
 import { evaluateScope, type ScopePolicy } from '../scope-evaluator'
-import { bodySearchCoverage, type BodySearchCoverage, searchHttpBodyEventIds, rawTranscriptFiltersUnsupported } from '../http-body-index'
+import { bodySearchCoverage, type BodySearchCoverage, searchHttpBodyTermIds, rawTranscriptFiltersUnsupported } from '../http-body-index'
 import type { ParsedQuery, QueryCondition } from '../query/contract'
 import { toFtsMatch } from '../query/fts-match'
+import { compareCodeUnits } from '../code-unit-order'
 import { builtinTerminalRecordingSql } from '../ingest/builtin-terminal'
 
 /** Operator-selected predicates shared by investigation surfaces. Scope rules
@@ -439,8 +440,12 @@ interface PreparedQuery {
   conditions: QueryCondition[]
   /** FTS MATCH expression for the free text, or null when there is none. */
   match: string | null
-  /** Event ids whose indexed HTTP body matches the text, as JSON. */
+  /** Event ids with an indexed saved body that matches any term, as JSON. */
   bodyIdsJson: string | null
+  /** Each term of the text: its FTS phrase, and the events with a body
+   *  document holding it (JSON). An event matches when every term is in its
+   *  own data or in one of its bodies. */
+  terms: Array<{ match: string; bodyIdsJson: string }>
   toolSession?: ToolSessionResolution
 }
 
@@ -464,8 +469,10 @@ function prepareQuery(db: ReturnType<typeof getReadonlyDB>, parsed: ParsedQuery,
     }
   }
   const match = parsed.text.trim() ? toFtsMatch(parsed.text) : null
-  const bodyIdsJson = match ? JSON.stringify(searchHttpBodyEventIds(parsed.text, undefined, rawTranscriptFiltersUnsupported(conditions,filter),snapshot)) : null
-  return { conditions, match, bodyIdsJson, ...(toolSession ? { toolSession } : {}) }
+  const bodyTerms = match ? searchHttpBodyTermIds(parsed.text, undefined, rawTranscriptFiltersUnsupported(conditions,filter),snapshot) : []
+  const terms = bodyTerms.map(t => ({ match: t.term, bodyIdsJson: JSON.stringify(t.eventIds) }))
+  const bodyIdsJson = match ? JSON.stringify([...new Set(bodyTerms.flatMap(t => t.eventIds))].sort(compareCodeUnits)) : null
+  return { conditions, match, bodyIdsJson, terms, ...(toolSession ? { toolSession } : {}) }
 }
 
 interface TierWhereInput {
@@ -490,9 +497,13 @@ function buildTierWhere(tier: 'chained' | 'logged', input: TierWhereInput): { wh
   const q = input.query
   if (q?.match) {
     const ftsTable = tier === 'chained' ? 'events_fts' : 'events_logged_fts'
-    parts.push(`(e.rowid IN (SELECT rowid FROM ${ftsTable} WHERE ${ftsTable} MATCH ?)
+    // Per term, not per document: a term found in the event's own data or in
+    // any of its bodies counts, so "a body word and a URL word" matches.
+    for (const term of q.terms) {
+      parts.push(`(e.rowid IN (SELECT rowid FROM ${ftsTable} WHERE ${ftsTable} MATCH ?)
                  OR e.id IN (SELECT value FROM json_each(?)))`)
-    params.push(q.match, q.bodyIdsJson)
+      params.push(term.match, term.bodyIdsJson)
+    }
   }
   if (q) appendConditions(q.conditions, parts, params, tier)
   appendEventFilter(input.filter ?? {}, parts, params, tier, 'e', input.ids)

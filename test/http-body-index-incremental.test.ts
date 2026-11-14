@@ -5,7 +5,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { initDB, closeDB, getDB } from '../src/core/db/index'
-import { searchHttpBodyEventIds, bodySearchCoverage, closeHttpBodyIndex, linkHttpBodyEvent, pruneHttpBodyIndex, pruneSavedFileIndex, eventIdsReferencingBody } from '../src/core/http-body-index'
+import { searchHttpBodyEventIds } from './helpers/body-search'
+import { bodySearchCoverage, closeHttpBodyIndex, linkHttpBodyEvent, pruneHttpBodyIndex, pruneSavedFileIndex, eventIdsReferencingBody } from '../src/core/http-body-index'
 import type { ExportSnapshot } from '../src/core/export-plan'
 
 // #695: a text search used to re-walk every content-ref row and re-open and

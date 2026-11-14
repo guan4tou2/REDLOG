@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createHash } from 'node:crypto'
 import { requires } from './helpers/requires'
 import { runAddonRequests } from './helpers/addon-request-payload'
+import { searchHttpBodyEventIds } from './helpers/body-search'
 import { parseQuery } from '../src/core/query/contract'
 import { decodeJsonEscapes } from '../src/core/json-escape-text'
 import Database from 'better-sqlite3'
@@ -29,9 +30,9 @@ let closeDB: typeof import('../src/core/db').closeDB
 let getDB: typeof import('../src/core/db').getDB
 let ingest: typeof import('../src/core/ingest').ingest
 let executeEventQuery: typeof import('../src/core/db/event-queries').executeEventQuery
+let countEvents: typeof import('../src/core/db/event-queries').countEvents
 let closeHttpBodyIndex: typeof import('../src/core/http-body-index').closeHttpBodyIndex
 let pruneHttpBodyIndex: typeof import('../src/core/http-body-index').pruneHttpBodyIndex
-let searchHttpBodyEventIds: typeof import('../src/core/http-body-index').searchHttpBodyEventIds
 let bodySearchCoverage: typeof import('../src/core/http-body-index').bodySearchCoverage
 let available = false
 if (requires('better-sqlite3').ok) {
@@ -41,9 +42,9 @@ if (requires('better-sqlite3').ok) {
   const queries = await import('../src/core/db/event-queries')
   initDB = db.initDB; closeDB = db.closeDB; getDB = db.getDB
   ingest = ing.ingest
-  executeEventQuery = queries.executeEventQuery
+  executeEventQuery = queries.executeEventQuery; countEvents = queries.countEvents
   closeHttpBodyIndex = idx.closeHttpBodyIndex; pruneHttpBodyIndex = idx.pruneHttpBodyIndex
-  searchHttpBodyEventIds = idx.searchHttpBodyEventIds; bodySearchCoverage = idx.bodySearchCoverage
+  bodySearchCoverage = idx.bodySearchCoverage
   available = true
 }
 const describeDB = available ? describe : describe.skip
@@ -86,7 +87,7 @@ function found(query: string, which: Which) {
 }
 
 /** An http_response event as the addon's response hook sends it. */
-function response(text: string | Buffer, contentType: string, flowId: string): string {
+function response(text: string | Buffer, contentType: string, flowId: string, url = 'http://10.0.0.5:8080/api/items'): string {
   const bytes = Buffer.isBuffer(text) ? text : Buffer.from(text)
   const asText = !Buffer.isBuffer(text)
   const body = {
@@ -95,13 +96,13 @@ function response(text: string | Buffer, contentType: string, flowId: string): s
   }
   const preview = asText ? (text.length > 4096 ? `${text.slice(0, 4096)}...[truncated, ${text.length} total]` : text) : ''
   return post({
-    subtype: 'http_response', flow_id: flowId, method: 'POST', url: 'http://10.0.0.5:8080/api/items', status: 200,
+    subtype: 'http_response', flow_id: flowId, method: 'POST', url, host: new URL(url).hostname, status: 200,
     content_length: bytes.length, content_type: contentType, response_headers: [['Content-Type', contentType]],
     ...(preview ? { response_preview: preview } : {}), response_body: body
   })
 }
-function request(contentType: string, body: Buffer, flowId: string): string {
-  const { results, python } = runAddonRequests([{ contentType, body }])
+function request(contentType: string, body: Buffer, flowId: string, url?: string): string {
+  const { results, python } = runAddonRequests([{ contentType, body, ...(url ? { url } : {}) }])
   const sent = results[0]
   if (!('data' in sent)) throw new Error(`addon (python ${python}): ${sent.error}`)
   return post({ ...sent.data, flow_id: flowId })
@@ -351,3 +352,60 @@ function getIndexRows(): Array<{ event_id: string; status: string; file: string 
   try { return db.prepare('SELECT event_id,status,file FROM body_event_refs').all() as Array<{ event_id: string; status: string; file: string }> }
   finally { db.close() }
 }
+
+describeDB('a query of several words matches an event when each word is somewhere in it', () => {
+  beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-multiterm-')); initDB(dir) })
+  afterEach(() => { closeHttpBodyIndex(); closeDB(); fs.rmSync(dir, { recursive: true, force: true }) })
+
+  // Each body holds BODYWORD as stated; URLWORD is in its URL path, HOSTWORD
+  // its host, HDRWORD a header value. Before, the body words of the escaped
+  // and the past-the-preview bodies were only in the body index, so a query
+  // pairing one with an event word found nothing (for requests it used to,
+  // through params.body_json).
+  const bodies: Array<[string, (word: string) => string]> = [
+    ['inline, escaped', w => asciiEscaped(JSON.stringify({ w: `${w}詞` }))],
+    ['inline, plain', w => JSON.stringify({ w })],
+    ['saved, escaped, past the preview', w => asciiEscaped(JSON.stringify({ pad: 'p'.repeat(6000), w: `${w}詞` }))],
+    ['saved, plain, past the preview', w => JSON.stringify({ pad: 'p'.repeat(6000), w })]
+  ]
+  const wordOf = (kind: string, n: number) => `${kind.replace(/[^a-z]/g, '').slice(0, 6)}w${n}`
+  for (const side of ['request', 'response'] as const) {
+    bodies.forEach(([label, make], n) => {
+      it(`${side}, ${label}: body word + URL word, + host word, + header value`, () => {
+        const body = wordOf(side, n), word = make(body)
+        const query = (w: string) => surface(w)
+        const url = `http://host${side}${n}.test/path${side}${n}x/items`
+        const header = `application/json; profile=hdr${side}${n}x`
+        const id = side === 'request' ? request(header, Buffer.from(word), `mt-${side}-${n}`, url) : response(word, header, `mt-${side}-${n}`, url)
+        const bodyTerm = label.includes('escaped') ? `${body}詞` : body
+        expect(query(bodyTerm)).toContain(id)
+        expect(query(`${bodyTerm} path${side}${n}x`)).toContain(id)
+        expect(query(`${bodyTerm} host${side}${n}`)).toContain(id)
+        expect(query(`hdr${side}${n}x ${bodyTerm}`)).toContain(id)
+        expect(query(`${bodyTerm} nowhereq${n}`)).toEqual([])
+      })
+    })
+  }
+
+  it('two words in one body, and a word missing everywhere', () => {
+    const id = response(asciiEscaped(JSON.stringify({ a: '第一詞', b: '第二詞' })), 'application/json', 'two-words')
+    expect(surface('第一詞 第二詞')).toEqual([id])
+    expect(surface('第一詞 不存在詞')).toEqual([])
+  })
+
+  it('pages and counts a multi-word query the same way', () => {
+    const ids = Array.from({ length: 7 }, (_, i) => response(asciiEscaped(JSON.stringify({ w: '分頁詞' })), 'application/json', `page-${i}`, `http://pages.test/pagewordq/${i}`))
+    response(asciiEscaped(JSON.stringify({ w: '分頁詞' })), 'application/json', 'page-other', 'http://pages.test/elsewhere')
+    const outcome = parseQuery('分頁詞 pagewordq')
+    if (!outcome.ok) throw new Error(outcome.reason)
+    const seen: string[] = []
+    let cursor: string | null = null
+    do {
+      const page = executeEventQuery({ parsed: outcome.parsed, filter: {}, limit: 3, cursor })
+      seen.push(...page.items.map(e => e.id))
+      cursor = page.hasMore ? page.nextCursor : null
+    } while (cursor)
+    expect(seen.sort()).toEqual([...ids].sort())
+    expect(countEvents({ parsed: outcome.parsed, filter: {} })).toBe(7)
+  })
+})

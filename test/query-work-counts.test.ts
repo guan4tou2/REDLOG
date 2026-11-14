@@ -157,9 +157,9 @@ function readsFor(fx: ReturnType<typeof seed>): Array<[name: string, run: () => 
 
 /** [read, work at 10k rows, work at 100k rows], each [statements, rows, udfCalls, jsonParse, lstat, open, scans]. */
 const PINNED: Array<[name: string, small: Tuple, large: Tuple]> = [
-  ['events:runQuery text, cold', [1027, 671, 0, 429, 1003, 200, 12], [10027, 6400, 0, 4101, 10003, 2000, 12]],
-  ['events:runQuery text, warm', [225, 673, 0, 229, 203, 0, 12], [2025, 6402, 0, 2101, 2003, 0, 12]],
-  ['events:runQuery coverage only', [209, 406, 0, 200, 0, 0, 6], [2009, 4006, 0, 2000, 0, 0, 6]],
+  ['events:runQuery text, cold', [1028, 473, 0, 229, 1003, 200, 13], [10028, 4402, 0, 2101, 10003, 2000, 13]],
+  ['events:runQuery text, warm', [26, 475, 0, 29, 203, 0, 12], [26, 4404, 0, 101, 2003, 0, 12]],
+  ['events:runQuery coverage only', [10, 208, 0, 0, 0, 0, 6], [10, 2008, 0, 0, 0, 0, 6]],
   ['events:runQuery conditions only', [9, 109, 0, 100, 0, 0, 4], [9, 109, 0, 100, 0, 0, 4]],
   ['events:activityPage first page', [62, 109, 30000, 30250, 0, 0, 7], [62, 109, 300000, 300250, 0, 0, 7]],
   ['events:activityPage next page', [63, 113, 0, 251, 0, 0, 7], [63, 113, 0, 251, 0, 0, 7]],

@@ -9,7 +9,7 @@ import type { RedLogEvent } from './db/events'
 import type { ExportSnapshot } from './export-plan'
 import type { EventFilter } from './db/event-queries'
 import type { ParsedQuery } from './query/contract'
-import { toFtsMatch, ftsTerms } from './query/fts-match'
+import { ftsTerms } from './query/fts-match'
 import { BODY_REF_FIELDS, type BodyRef } from './http-body-store'
 import { withVerifiedBody, withVerifiedSavedFile, savedFileRefs, withInlineBase64, ContentAccessError, type ByteSource, type SavedFileRef } from './body-source'
 const INDEX_CHUNK_BYTES = 1024 * 1024
@@ -556,9 +556,15 @@ export function rawTranscriptFiltersUnsupported(conditions: readonly {field:stri
   return conditions.some(c=>['tool','transcript','event','operator','source'].includes(c.field)) || Boolean(filter &&
     (filter.targetId || filter.since != null || filter.before != null || filter.inScopeOnly || filter.hidePersonal || filter.tier))
 }
-export function searchHttpBodyEventIds(query: string, projectDir = getProjectDir(), excludeAiRaw = false,snapshot?:ExportSnapshot): string[] {
-  const match = toFtsMatch(query)
-  if (!match)
+/** For each term of `query` (as ftsTerms quotes it: a phrase, the last one a
+ *  prefix), the events that have a body document containing it. A term is
+ *  matched within one document; different terms may sit in different
+ *  documents or bodies of an event, or in the event's own data (the caller
+ *  combines these with the events index per term). Each list is bounded by
+ *  the events the body index holds documents for. */
+export function searchHttpBodyTermIds(query: string, projectDir = getProjectDir(), excludeAiRaw = false,snapshot?:ExportSnapshot): Array<{ term: string; eventIds: string[] }> {
+  const terms = ftsTerms(query)
+  if (!terms.length)
     return []
   // Another writer of the index (the export worker, mid-walk) held it past
   // the busy timeout: answer from the index as it stands. Coverage reads the
@@ -568,18 +574,9 @@ export function searchHttpBodyEventIds(query: string, projectDir = getProjectDir
   const db = getIndex(projectDir)
   // Failed references have already lost their FTS rows. Report them through
   // coverage without withholding unrelated, verified matches.
-  // AND remains scoped to one saved body even when its terms occur in
-  // different chunks. A term must never be assembled across unrelated refs.
-  const terms = ftsTerms(query)
-  let matches: Map<string, string> | undefined
-  for (const quoted of terms) {
-    const rows = stmt(db, `SELECT DISTINCT d.event_id,d.sha256 FROM body_fts JOIN body_docs d ON d.doc=body_fts.rowid WHERE body_fts MATCH ?
-      ${excludeAiRaw ? "AND EXISTS(SELECT 1 FROM body_event_refs r WHERE r.event_id=d.event_id AND r.sha256=d.sha256 AND r.kind<>'ai-raw')" : ''}`).all(quoted) as {event_id:string;sha256:string}[]
-    const current = new Map(rows.map(row => [JSON.stringify([row.event_id,row.sha256]),row.event_id]))
-    matches = matches ? new Map([...matches].filter(([key])=>current.has(key))) : current
-    if (!matches.size) break
-  }
-  return [...new Set(matches?.values() ?? [])]
+  const find = stmt(db, `SELECT DISTINCT d.event_id FROM body_fts JOIN body_docs d ON d.doc=body_fts.rowid WHERE body_fts MATCH ?
+      ${excludeAiRaw ? "AND EXISTS(SELECT 1 FROM body_event_refs r WHERE r.event_id=d.event_id AND r.sha256=d.sha256 AND r.kind<>'ai-raw')" : ''}`)
+  return terms.map(term => ({ term, eventIds: (find.all(term) as { event_id: string }[]).map(row => row.event_id) }))
 }
 export interface BodySearchCoverage {
   projectId?:string|null

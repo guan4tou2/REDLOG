@@ -70,9 +70,15 @@ typed text
 4. **Text.** Each whitespace-separated term is matched as an FTS phrase, so
    `10.0.0.5`, `-sV` and `/etc/passwd` match as typed. The last term is
    prefix-matched, so a half-typed word still matches. Terms combine with AND
-   and need not be adjacent — including the words inside one quoted run. Text
-   matches stored event content, or indexed saved content the Event references
-   (body, text artifact, or a confirmed AI raw prefix; see Coverage).
+   and need not be adjacent — including the words inside one quoted run. An
+   Event matches when every term is found somewhere in it: in its stored
+   content (the events index) or in any indexed saved content it references
+   (body, text artifact, or a confirmed AI raw prefix; see Coverage) — each
+   term on its own. So a body word and a URL, host or header word match
+   together, and two words in two different bodies of one Event match (before
+   2026-11-14 every term had to be in one document of one index). One term is
+   still matched within one document: the tokens of `10.0.0.5` must be
+   adjacent in the same body or in the Event's own data.
    Event, HTTP body and recording search share this translation
    (`src/core/query/fts-match.ts`), so every typed input is valid MATCH syntax.
    Event indexes tokenize decoded JSON values and property names, not JSON
@@ -141,17 +147,23 @@ typed text
   for content search. Small inline base64 uses the Reader's decoded bytes;
   encoded data over 16 KiB requires a saved reference and reports limited.
 - Request, response, WebSocket and TCP bodies, inline or saved, are also
-  searchable with JSON `\uXXXX` escapes decoded (surrogate pairs combined),
-  whatever their content type: a word an encoder wrote escaped matches as the
-  word. The body is never parsed for this, and text that only shows an escape
-  literally matches the character it names. Bytes that are not UTF-8 are text
-  when the event declares a charset (content type) that decodes them without
-  a NUL or a replacement character; otherwise they stay binary. Big5 caveat:
-  the app's runtime (Electron 45, ICU 78) rejects invalid Big5, but Node 24.12
-  (ICU 77) drops invalid Big5 bytes with no error, so under that Node an
-  invalid Big5 body is indexed with those bytes missing and counted as
-  indexed. The decoded text shares its saved body's status, pruning and
-  coverage.
+  indexed with JSON `\uXXXX` escapes decoded (surrogate pairs combined),
+  whatever their content type: a term matches a body whose escaped text
+  decodes to it, by rule 4. The body is never parsed for this, and text that
+  only shows an escape literally matches the character it names.
+- Bytes that are not valid UTF-8 are indexed as text only when the body's
+  media type is textual (the capture addon's TEXT_CONTENT_TYPES: json, html,
+  text, xml, javascript, css, csv, yaml, svg, form data) and they decode,
+  without a NUL, in the charset its content type declares (UTF-8 when none).
+  Anything else stays binary. A body cut short at capture
+  (`REDLOG_MAX_BODY`), or whose declared charset stops decoding at its end, is
+  indexed as far as it goes and counted `partial`, never as covered.
+- Known limits: under Node 24.12 (ICU 77) an invalid Big5 body is decoded
+  with its invalid bytes dropped and counted indexed; the app's runtime
+  (Electron 45, ICU 78) rejects it, and it stays binary. ISO-2022-JP and
+  UTF-7 bodies are 7-bit, so they are saved as text and indexed in their
+  encoded form: their words are not found, and coverage still says covered.
+- The decoded text shares its saved body's status, pruning and coverage.
 - AI raw search admits only the latest `transcript_snapshot` prefix per saved
   project file within the query dataset, with matching cumulative size/hash.
   Opening an older snapshot still reads that confirmed prefix. Capture-start

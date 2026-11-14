@@ -84,8 +84,11 @@ describeDB('HTTP body search', () => {
     expect(searchPage({query:'TAILONLY',limit:10}).items.map(e=>e.id)).toEqual([event.id])
     const head=storeBody({data:'HEADONLY',encoding:'text',size:8,sha256:''})!
     const tail=storeBody({data:'TAILONLY',encoding:'text',size:8,sha256:''})!
-    insertEvent('shell',{stdout_ref:head,stderr_ref:tail},{engagementId:'eng',operatorId:'op'})
-    expect(searchPage({query:'HEADONLY TAILONLY',limit:10}).items.map(e=>e.id)).toEqual([event.id])
+    const split = insertEvent('shell',{stdout_ref:head,stderr_ref:tail},{engagementId:'eng',operatorId:'op'})!
+    // Every term must be somewhere in the event, not in one body: two words in
+    // two saved outputs of one event match (they did not before the
+    // event-wide rule, docs/domain/SPEC-search-query-semantics.md rule 4).
+    expect(searchPage({query:'HEADONLY TAILONLY',limit:10}).items.map(e=>e.id).sort()).toEqual([event.id, split.id].sort())
     expect(searchPage({query:'漢字',limit:10}).items.map(e=>e.id)).toEqual([event.id])
     fs.writeFileSync(path.join(dir,'http-bodies',ref.file), 'changed')
     expect(searchPage({query:'TAILONLY',limit:10}).items.map(e=>e.id)).not.toContain(event.id)
