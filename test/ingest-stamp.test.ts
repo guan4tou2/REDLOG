@@ -285,19 +285,35 @@ sqlite.describe('the engagement of a new row is the open database\'s (FR-007, T0
     expect(engagementForWrite(undefined)).toBe('eng-bound')
   })
 
-  // KNOWN GAP, pinned on purpose. FR-007 says a new row's engagement is always
-  // the bound database's, and T021's task text says "沒有綁定 DB 時拋錯" — throw
-  // whenever no database is bound. This slice is lenient instead: a database
-  // opened WITHOUT a binding (tests and tools; production binds right after
-  // initDB, src/main/index.ts startProject) takes the engagement the caller
-  // names. Making it strict means changing this test — and binding in the ~120
-  // test files that open a database without one. Decided 2026-11-13: lenient
-  // for now.
-  it('KNOWN GAP (FR-007 / T021): a database opened without a binding takes the caller\'s engagement', () => {
+  // An unbound database exists only outside the app. The one production open
+  // (src/main/index.ts startProject) calls initDB and bindDBEngagement in the
+  // same synchronous block, and the export worker's openFrozenProjectDB binds
+  // as it opens (db/index.ts); everything else that opens a database without
+  // binding is a test or a tool. So FR-007's "no bound database: nothing is
+  // written" holds for every production write, and in an unbound database the
+  // caller's named engagement is used: making that throw would change ~115
+  // test files and no production path (Spec 071 T021, 2026-11-15).
+  it('outside the app, a database opened without a binding takes the caller\'s engagement', () => {
     expect(dbMod.dbEngagement()).toBeNull()
     const ev = events.insertEvent('system', { subtype: 'session_start' }, { engagementId: 'eng-named', operatorId: 'op' })!
     expect(ev.engagementId).toBe('eng-named')
     expect(engagementForWrite('eng-named')).toBe('eng-named')
+  })
+
+  it('every production open binds the database it opens', () => {
+    const src = path.join(__dirname, '../src')
+    const callers = (fs.readdirSync(src, { recursive: true }) as string[])
+      .filter((f) => /\.tsx?$/.test(f) && /(?<!function )\binitDB\(\w/.test(fs.readFileSync(path.join(src, f), 'utf8')))
+      .map((f) => f.split(path.sep).join('/'))
+    expect(callers).toEqual(['main/index.ts'])
+    const main = fs.readFileSync(path.join(src, 'main/index.ts'), 'utf8')
+    expect(main.match(/(?<!function )\binitDB\(\w/g)).toHaveLength(1)
+    const start = main.slice(main.indexOf('function startProject('), main.indexOf('function startProjectResources('))
+    expect(start.indexOf('initDB(projectDir)')).toBeGreaterThan(0)
+    expect(start.indexOf('bindDBEngagement(config.engagement.id)')).toBeGreaterThan(start.indexOf('initDB(projectDir)'))
+    const db = fs.readFileSync(path.join(__dirname, '../src/core/db/index.ts'), 'utf8')
+    const ro = db.slice(db.indexOf('export function openReadonlyProjectDB('))
+    expect(ro.slice(0, ro.indexOf('\n}\n'))).toMatch(/boundEngagement = engagementId/)
   })
 
   it('with nothing bound and no engagement named, nothing is written: it throws `no-project`', () => {
