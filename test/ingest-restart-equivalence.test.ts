@@ -8,7 +8,7 @@
 //
 // SC-003 names what must be identical: `target_id`, `_causes`, `engagement_id`,
 // `operator_id` and `_ingest.target_via`. `target_via` does not exist yet
-// (T023/T024); the other four are compared for every row, primary and derived,
+// (T023/T024, FR-010); the other four are compared for every row, primary and derived,
 // `_causes` by the position of the row each id names (ids are minted per row).
 // Live against restart — the same door — is compared on the whole row except
 // what a row's identity, its place in the chain and its receipt make
@@ -125,13 +125,13 @@ sqlite.describe('restart equivalence (SC-003)', () => {
     expect(new Set(b.map((r) => r.row.session_id)).size, 'the restart opened a second session').toBe(2)
   }, SLOW)
 
-  // KNOWN GAP (SC-003, owned by T024): what links an end to its start is held
-  // in memory (causes-resolver.ts: command_id, terminal+pid+command, flow_id),
-  // so a restart between a command's start and its end loses the link. T024
-  // moves the `command` lookup to persistent data; until then this pins
-  // exactly what differs — the one end row's `_causes`, and the companion it
+  // KNOWN GAP (SC-003): what links an end to its start is held in memory
+  // (causes-resolver.ts: command_id, terminal+pid+command, flow_id), so a
+  // restart between a command's start and its end loses the link. Persisting
+  // the causal link belongs to O18, which spec.md says has no FR or task yet;
+  // no task here will turn this. It pins exactly what differs — the one end row's `_causes`, and the companion it
   // derives, which cites it and so moves with it in no other way.
-  it('KNOWN GAP (T024): restarted inside a command, its end loses its `_causes`, and nothing else differs', async () => {
+  it('KNOWN GAP (O18, no task yet): restarted inside a command, its end loses its `_causes`, and nothing else differs', async () => {
     const a = await live(ITEMS)
     const b = await live(ITEMS, [5]) // between ITEMS[4] and ITEMS[5], sshuttle's start and end
     const lost = (r: ReturnType<typeof sc003>[number]): boolean => r.kind === 'events:shell.command_end' && r.command === ITEMS[5].data.command

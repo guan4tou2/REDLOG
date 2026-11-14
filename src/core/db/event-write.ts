@@ -559,7 +559,7 @@ function insertChainedEvent(
     const cmd = String(data.command)
     const subtype = data.subtype != null ? String(data.subtype) : ''
     // FR-011: the new row's terminal is the one its stamp will carry, and a
-    // stored row's is its stamp's (stamp.ts terminalIdentity / rowTerminal).
+    // stored row's is its stamp's (ingest/terminal.ts terminalIdentity / rowTerminal).
     const terminalId = terminalIdentity(data) ?? ''
     const pid = data.pid != null ? String(data.pid) : ''
     const twoSecondsAgo = now - 2000

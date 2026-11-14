@@ -49,7 +49,8 @@
 - [ ] T024 [US1] 建立 `terminal_targets` 表，寫入路徑在 commit 交易內同步寫入；**不在本規格回填**：含 071 之前事件的專案，在 Spec 074 的回填完成前不套用 `terminal-last`、寫 `none`（FR-010），先 RED 斷言這一點；回填由 074 T052 實作。`command` 的承接改從持久資料查；移除 `ingest.ts:251-255` 的自動套用（app 內操作依 O16）。Spec 072 T043（`identity.target`）同一個 PR。
 - [x] T025 [P] [US1] `_ingest.terminal` 單一正規值；`causes-resolver.ts:83` 與 `event-write.ts:479` 改讀同一個函式（FR-011）。
   - 函式在 `src/core/ingest/terminal.ts`（`terminalIdentity`、讀已存列的 `rowTerminal`）；`ingest.ts` 的 cast 範圍與輸出尾段也改讀它。`test/ingest-terminal-identity.test.ts`。
-  - 未改：讀已存列做投影、匯出與查詢的 `activity-projection.ts:59`、`operation-pair-key.ts:9`、`export-attachments.ts:182,198,209`、`event-queries.ts:1216`（只讀 `data.terminalId`），屬 Spec 074 的讀者；`main/terminal-manager.ts:199,225` 在 core 之外，只處理內建終端機自己送的 `terminalId`。
+  - 正規形式：存入的形式（JSON 字串的 UTF-8）在 128 bytes 以內就原樣保留；超過時取在字元邊界切下的前綴、`#`、整個 id 的 UTF-8 位元組 sha256 前 16 個 hex，總長仍在 128 bytes 內。不同的 id 不會合併。值是送出者自己的，不是接收端判定的。
+  - 未改：讀已存列做投影、匯出與查詢的 `activity-projection.ts:59`、`operation-pair-key.ts:9`、`export-attachments.ts:182,198,209`、`event-queries.ts:1217`（只讀 `data.terminalId`），屬 Spec 074 的讀者；`api-server.ts:682` 與 `ipc/terminal.ts:44,71,106` 只檢查已存列有沒有終端機 id；`main/terminal-manager.ts:199,225` 在 core 之外，只處理內建終端機自己送的 `terminalId`。
 - [ ] T026 [P] 帶 `_ingest` 的列，其存取與信任判斷改讀 `_ingest.producer`：`/api/terminal/replay`、`ipc/terminal.ts` 的 castPath（FR-012）。
   - 已做：castPath 只取 `_ingest.producer` 為 `in-process` 的 session 列（沒有 `_ingest` 的舊列照舊讀 `data.source`），涵蓋 `/api/terminal/replay`、IPC 的 `terminal:replay`、`replaySession`、`replayAtTime` 與重開時的孤兒復原（`src/core/ingest/builtin-terminal.ts`，`test/builtin-terminal-producer.test.ts`）。
   - 未做：replay 對 `command_end` 的判斷、`ingest.ts` 的 cast 範圍、`terminal-manager.ts` 的 lifecycle 仍讀 `data.source`。pane 內的 hook 用共用 token 經 API 送指令列，蓋章的 producer 是 `legacy`，分不出內建終端機；要等 T044 給它自己的憑證。
@@ -58,14 +59,15 @@
 - [x] T031 [P] [US5] 新列的 golden 向量 `test/fixtures/provenance-vectors/`，兩個 verifier 都要接受。
 - [ ] T032 [US1] 重啟等價測試：即時、中途重啟、全部經交接，三者一致（SC-003）。
   - 測試在 `test/ingest-restart-equivalence.test.ts`：即時與全部經交接、即時與在兩個指令之間重啟，SC-003 的欄位一致。
-  - 未成立：在一個指令的起訖之間重啟，結束列失去 `_causes`（連結只在記憶體），以 KNOWN GAP 釘住，由 T024 改從持久資料查之後翻正。`_ingest.target_via` 尚不存在（T023／T024）。
+  - 未成立：在一個指令的起訖之間重啟，結束列失去 `_causes`（連結只在記憶體），以 KNOWN GAP 釘住。把連結改存在持久資料是 O18 的範圍，O18 尚未展開成 FR 或任務（spec「O18 是起草後才做的決定」），目前沒有任務會翻正它。`_ingest.target_via` 尚不存在（T023／T024）。
 - [ ] T033 [US1] FTS 排除 `$._ingest`。只替換 trigger、不重建；用 10 萬列的 fixture 斷言開啟時沒有重建（FR-025）。
   - 2026-11-14 對帳（PR #765）：`db/index.ts:443-459` 只替換兩個 insert trigger，`test/fts-excludes-ingest.test.ts` 斷言以舊 trigger 建立的專案開啟時沒有重建語句、索引列數與每列 token 大小不變、新列找不到 stamp 的字。未達成：該測試只用 80 列（檔頭：10 萬列的量測留給 T091／CI），沒有 10 萬列的 fixture。
 - [x] T034 [P] 檢查 064 的 contract coverage 與其他依 `data` 鍵集合判斷的讀者（plan「其他讀者」），斷言隨變更一起修改。
 - [ ] T035 [US1] `chain-anchor.ts` 與 `redlog-verify.py` 新增來源狀態報告（已證明、自述、無法判斷；FR-022–024）；用共用向量斷言兩者一致；結束碼不變。
 - [ ] T036 [US1] 入口等價測試（FR-093）。
   - 測試在 `test/ingest-door-equivalence.test.ts`，比對 in-process、legacy-api、legacy-handoff。
-  - 未成立，以 KNOWN DIVERGENCE 釘住：`_ingest.producer`（`in-process`／`legacy`／`legacy-handoff`）；欄位 `source`、`mapper`（雜湊外）；交接列 data 多 `recovered_from_spool: true`（雜湊內，Timeline 讀它）；交接檔不讀 body 的 `target_id`（目前沒有來源會交接帶它的項目）。要改哪些需要擁有者決定。
+  - 未成立，以 KNOWN DIVERGENCE 釘住：`_ingest.producer`（`in-process`／`legacy`／`legacy-handoff`）；欄位 `source`、`mapper`（雜湊外）；交接列 data 多 `recovered_from_spool: true`（雜湊內，Timeline 讀它）。要改哪些需要擁有者決定。
+  - 已修正：交接檔原本不讀 body 的 `target_id`，而 `pcap-agent.py` 在 POST 失敗時會整筆交接帶它的項目；現在兩個入口以同一個函式讀它（`src/core/ingest/body-target.ts`）。
 - [ ] T037 遷移 31 處直接呼叫（下列分組依起草時的清單；確切位置以 T006 量得的清單為準），每個 PR 只遷移一個檔案群，T006 的基準值逐次下降；與 Spec 072 T045（型別化入口）同一批：
   - [ ] T037a `main/index.ts`（11 處）
   - [ ] T037b `retention.ts`（5）

@@ -81,9 +81,9 @@ function commandIdOf(data: Record<string, unknown>): string | null {
 }
 
 function shellKey(data: Record<string, unknown>): string | null {
-  // FR-011: the terminal the row's stamp names, not this module's own reading
-  // of the two fields (it used to take `terminal_id` first, the duplicate
-  // window `terminalId` first).
+  // FR-011: derived from `data` by the one function the stamp's `terminal` is
+  // written by, not by this module's own reading of the two fields (it used to
+  // take `terminal_id` first, the duplicate window `terminalId` first).
   const tid = terminalIdentity(data) ?? ''
   const pid = data.pid != null ? String(data.pid) : ''
   const cmd = data.command != null ? String(data.command) : ''
