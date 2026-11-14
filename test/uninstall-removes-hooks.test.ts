@@ -30,9 +30,18 @@ describe('removing every enrolled hook on uninstall', () => {
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
     restorePlatform = () => Object.defineProperty(process, 'platform', desc)
     vi.resetModules()
+    // Ask PowerShell nothing: where it reads its profile comes from the registry
+    // on a machine whose Documents folder is a literal path or redirected, not
+    // from the USERPROFILE set above, so without this the install would write to
+    // the operator's real profile. The product falls back to the conventional path.
+    vi.doMock('../src/core/powershell-policy', async (orig) => ({
+      ...(await orig<typeof import('../src/core/powershell-policy')>()),
+      readProfilePath: () => null
+    }))
     hooks = await import('../src/core/hooks-manager')
   })
   afterEach(() => {
+    vi.doUnmock('../src/core/powershell-policy')
     restorePlatform()
     restoreEnv()
     fs.rmSync(home, { recursive: true, force: true })
