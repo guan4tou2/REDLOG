@@ -91,13 +91,74 @@ def _extended_length(path: str, windows: bool = os.name == "nt") -> str:
 # ---------------------------------------------------------------------------
 # canonicalStringify — byte-for-byte port of src/core/db/events.ts
 # ---------------------------------------------------------------------------
+def _reject_constant(name: str) -> Any:
+    raise ValueError(f"{name} is not JSON")
+
+
+def _json_loads(text: str) -> Any:
+    """json.loads as JSON.parse reads it: NaN, Infinity and -Infinity are not
+    JSON, and JSON.parse refuses them. Python accepts them by default, so a
+    `NaN` written over a value would parse here and nowhere else."""
+    return json.loads(text, parse_constant=_reject_constant)
+
+
+_MAX_SAFE_INTEGER = 2 ** 53
+
+
+def _js_number(v: Any) -> str:
+    """JSON.stringify of a number, as the JS writer and JSON.parse see it.
+
+    JSON.parse reads every number as an IEEE double, and Number::toString
+    (ECMA-262 §6.1.6.1.20) prints its shortest round-trip digits in plain
+    notation from 1e-7 up to 1e21 and in exponent notation (`1e-7`, `1e+21`,
+    no exponent padding) outside it. Python's repr has the same digits but
+    switches to exponents below 1e-4 and pads them (`1e-05`), and keeps
+    integers exact where a double cannot: `0.00001` and an integer literal past
+    2^53 hashed differently here than in the writer."""
+    if isinstance(v, int):
+        if -_MAX_SAFE_INTEGER <= v <= _MAX_SAFE_INTEGER:
+            return str(v)
+        try:
+            v = float(v)
+        except OverflowError:
+            return "null"
+    if v != v or v in (float("inf"), float("-inf")):
+        return "null"  # JSON.stringify(NaN / Infinity)
+    if v == 0:
+        return "0"  # -0 too
+    sign = "-" if v < 0 else ""
+    # repr gives the shortest digits that round-trip, as Number::toString does.
+    mantissa, _, exp = repr(abs(v)).partition("e")
+    whole, _, frac = mantissa.partition(".")
+    raw = whole + frac
+    digits = raw.lstrip("0")
+    # ECMA-262's k and n: digits s of length k, value = s × 10^(n−k), so n is
+    # how many digits stand before the decimal point.
+    n = len(whole) + (int(exp) if exp else 0) - (len(raw) - len(digits))
+    digits = digits.rstrip("0")
+    k = len(digits)
+    if k <= n <= 21:
+        return sign + digits + "0" * (n - k)
+    if 0 < n <= 21:
+        return sign + digits[:n] + "." + digits[n:]
+    if -6 < n <= 0:
+        return sign + "0." + "0" * (-n) + digits
+    e = n - 1
+    exp_text = ("+" if e >= 0 else "-") + str(abs(e))
+    return sign + digits[0] + ("." + digits[1:] if k > 1 else "") + "e" + exp_text
+
+
 def _js_encode_scalar(v: Any) -> str:
     """Match JSON.stringify(v) for scalars (null / bool / number / string).
 
-    Python's json.dumps with ensure_ascii=False + default separators produces
-    the same output for these types (booleans lowercased, null lowercased,
-    numbers via repr, strings JSON-escaped with the mandatory set).
+    Booleans and null come out of json.dumps the same as in JS; numbers go
+    through _js_number. Strings: json.dumps with ensure_ascii=False escapes
+    the same set JSON.stringify does (`"`, `\\`, \\b \\f \\n \\r \\t, other
+    controls below U+0020 as lowercase \\u00xx) and leaves `/`, U+007F and
+    U+2028/U+2029 alone, as JSON.stringify does.
     """
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return _js_number(v)
     out = json.dumps(v, ensure_ascii=False, separators=(",", ":"))
     if isinstance(v, str):
         # JSON.stringify escapes a lone surrogate as \udXXX (a pair arrives
@@ -107,17 +168,30 @@ def _js_encode_scalar(v: Any) -> str:
     return out
 
 
+def _utf16_order(key: str) -> bytes:
+    """A key's sort position in the writer: Array.prototype.sort compares
+    UTF-16 code units. Python's sorted() compares code points, which puts a
+    key outside the BMP (two code units starting 0xD8–0xDB) after one in
+    U+E000–U+FFFF, where the writer puts it before. Big-endian code units
+    compare bytewise in code-unit order; surrogatepass keeps a lone
+    surrogate (\\udXXX in the JSON) as the one code unit it is in JS."""
+    return key.encode("utf-16-be", "surrogatepass")
+
+
 def canonical_stringify(v: Any) -> str:
     """Port of canonicalStringify from src/core/db/events.ts.
 
     Rules:
       - null / non-object / non-array → JSON.stringify(v)
       - array → '[' + items.map(canonicalStringify).join(',') + ']'
-      - object → keys sorted, values with `undefined` dropped, joined as
-        `"key":value` with commas.
+      - object → keys sorted by UTF-16 code units (Array.prototype.sort),
+        values with `undefined` dropped, joined as `"key":value` with commas.
+        A key is escaped as JSON.stringify escapes any string.
 
     Python note: parsed-JSON dicts never contain `undefined`; the drop-
     undefined rule is a no-op here. `null` is a real value and is kept.
+    test/fixtures/canonical-vectors.json holds the cases where the two
+    languages differ by default; both verifiers are run over it.
     """
     if v is None or isinstance(v, bool) or isinstance(v, (int, float, str)):
         return _js_encode_scalar(v)
@@ -125,8 +199,8 @@ def canonical_stringify(v: Any) -> str:
         return "[" + ",".join(canonical_stringify(x) for x in v) + "]"
     if isinstance(v, dict):
         parts = []
-        for k in sorted(v.keys()):
-            parts.append(json.dumps(k, ensure_ascii=False) + ":" + canonical_stringify(v[k]))
+        for k in sorted(v.keys(), key=_utf16_order):
+            parts.append(_js_encode_scalar(k) + ":" + canonical_stringify(v[k]))
         return "{" + ",".join(parts) + "}"
     # Anything else (bytes, custom classes) — fall back to json.dumps.
     return _js_encode_scalar(v)
@@ -173,7 +247,7 @@ def _parsed_data(row: Dict[str, Any]) -> Any:
     data_field = row.get("data")
     if isinstance(data_field, str):
         try:
-            return json.loads(data_field)
+            return _json_loads(data_field)
         except Exception:
             return data_field
     return data_field
@@ -302,7 +376,7 @@ def _load_operators(bundle_dir: Path) -> Dict[str, Optional[str]]:
     if not p.exists():
         return {}
     try:
-        rows = json.loads(p.read_text(encoding="utf-8"))
+        rows = _json_loads(p.read_text(encoding="utf-8"))
         return {row["id"]: row.get("signerPubKey") for row in rows if "id" in row}
     except Exception:
         return {}
@@ -329,8 +403,8 @@ def _iter_lines(path: Path):
             if not line:
                 continue
             try:
-                yield lineno, start, json.loads(line)
-            except json.JSONDecodeError as e:
+                yield lineno, start, _json_loads(line)
+            except ValueError as e:  # JSONDecodeError, or a NaN/Infinity literal
                 raise SystemExit(f"malformed {path.name} at line {lineno}: {e}")
 
 
@@ -368,7 +442,7 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False, hash_only: bool = Fal
         return 2
 
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest = _json_loads(manifest_path.read_text(encoding="utf-8"))
         if not isinstance(manifest, dict):
             raise ValueError("not an object")
     except Exception as e:
@@ -397,7 +471,7 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False, hash_only: bool = Fal
     v4 = bundle_version >= 4
     seal_id: Optional[str] = None
     if v4:
-        unknown = sorted(k for k in manifest if k not in V4_MANIFEST_KEYS)
+        unknown = sorted((k for k in manifest if k not in V4_MANIFEST_KEYS), key=_utf16_order)
         if unknown:
             print(f"UNSUPPORTED: manifest field(s) this verifier does not understand: "
                   f"{', '.join(unknown)}; nothing was verified", file=sys.stderr)
@@ -796,7 +870,7 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False, hash_only: bool = Fal
     omitted_declared: List[Tuple[str, str]] = []
     missing_undeclared: List[str] = []
     file_mismatch_paths = set()
-    for rel in sorted(refs_by_path):
+    for rel in sorted(refs_by_path, key=_utf16_order):
         refs = refs_by_path[rel]
         target_file = bundle_dir / rel
         if not target_file.is_file():
@@ -832,12 +906,12 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False, hash_only: bool = Fal
             bound.append(rel)
         else:
             bound_unverified.append(rel)
-    unbound = sorted(rel for rel in listed if rel.startswith(ATTACHMENT_DIRS) and rel not in refs_by_path)
+    unbound = sorted((rel for rel in listed if rel.startswith(ATTACHMENT_DIRS) and rel not in refs_by_path), key=_utf16_order)
     unlisted: List[str] = []
     for d in ATTACHMENT_DIRS:
         p = bundle_dir / d
         if p.is_dir():
-            for name in sorted(os.listdir(p)):
+            for name in sorted(os.listdir(p), key=_utf16_order):
                 rel = d + name
                 if rel not in listed and rel not in refs_by_path:
                     unlisted.append(rel)
@@ -896,7 +970,7 @@ def verify_bundle(bundle_dir: Path, verbose: bool = False, hash_only: bool = Fal
             print(f"  no pubkey       : {signed_no_pubkey} (operator missing signerPubKey)")
     if unsigned:
         print(f"Unsigned events  : {unsigned}")
-    for op_id, fp in sorted(signers.items()):
+    for op_id, fp in sorted(signers.items(), key=lambda kv: _utf16_order(kv[0])):
         print(f"Signer           : {op_id}  sha256:{fp}")
     if signers:
         print("  compare these fingerprints with the operator out of band;")
