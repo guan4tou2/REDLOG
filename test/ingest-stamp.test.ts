@@ -148,7 +148,8 @@ describe('the stamp (FR-005, FR-006)', () => {
       const many = Array.from({ length: 40 }, (_, i) => ({ pluginId: `${String.fromCharCode(97 + (i % 26))}${'q'.repeat(60)}${i}`, contentHash: 'e'.repeat(64) }))
       const s = ingestStamp(TYPICAL_ENTRANCE, {
         tier: 'chained', now: Date.now(), stripped: [...RESERVED_DATA_KEYS],
-        // A 20 MB body holds at most ~7 million collapsible containers (`[],` each).
+        // A 20 MiB body holds at most ~4.2 million wrapped containers (the
+        // smallest is `[[]]`, 5 bytes with its comma); 9,999,999 has a digit more.
         collapsed: 9_999_999,
         item: { ...TYPICAL, claimed: { producer: 'p'.repeat(400), operator: 'o'.repeat(400) }, rules: many, rulesPartial: true }
       })

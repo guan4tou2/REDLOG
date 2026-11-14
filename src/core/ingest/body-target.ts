@@ -7,6 +7,10 @@
 // keys, unvalidated. pcap-agent.py sets it to the packet's destination and
 // mitmproxy-addon.py to the request's host.
 
+import { fieldText } from './field-text'
+
 export function bodyTargetId(body: Record<string, unknown>): string | undefined {
-  return (body.target_id || body.targetId || undefined) as string | undefined
+  // A target that is not a scalar is no target (./field-text.ts): a nested
+  // array here was stringified recursively further on.
+  return fieldText(body.target_id || body.targetId || undefined)
 }

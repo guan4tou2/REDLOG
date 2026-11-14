@@ -206,7 +206,11 @@ describe('every writer the API reaches is reached under the legacy-api entrance 
     queryEvents: 'reads', queryEventById: 'reads', queryBuiltinTerminalSessionStart: 'reads', getEventCount: 'reads', executeEventQuery: 'reads',
     PAUSE_EXEMPT_AGENT_TYPES: 'a constant', listAnchors: 'reads', verifyLatestAnchor: 'reads', getAnchorById: 'reads', buildOtsBundle: 'builds bytes',
     getCaptureHealth: 'reads', getCaptureError: 'reads', noteDbError: 'records an error in memory', LEGACY_API: 'the entrance itself',
-    isExternalEventAllowed: 'a predicate', resolveIncomingCauses: 'settles runtime pairs', noteStartEvent: 'notes an id in memory'
+    isExternalEventAllowed: 'a predicate', resolveIncomingCauses: 'settles runtime pairs', noteStartEvent: 'notes an id in memory',
+    committedEventOf: 'reads the row an error carries',
+    // RedLog's own record of a refusal, written in-process as the spool's gap
+    // rows are (test/ingest-depth-doors.test.ts checks its door).
+    noteNestingRefusal: 'writes RedLog\'s own gap row, in-process'
   }
   const INJECTED = ['lootDetectorRef.scan', 'screenshotAgentRef.captureNow', 'bundleExporterRef']
 

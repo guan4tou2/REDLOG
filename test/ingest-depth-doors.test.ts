@@ -2,19 +2,23 @@
 // handler, no port bound) and a handoff spool file drained as main drains it
 // (test/helpers/ingest-delivery.ts). Both store an over-deep item bounded —
 // the container at depth 64 replaced by `{"_collapsed": <its JSON text>}` and
-// `_ingest.collapsed` set — in both tiers, up to 100,000 levels (JSON.parse
-// takes it; JSON.stringify could not write it in Node). The API door used to
-// answer such a body 400 and record nothing; the owner decided (2026-11-14)
-// 「收下並摺疊」. A body over the 20 MiB cap is still refused. Door equivalence
-// for an over-deep item is in test/ingest-door-equivalence.test.ts.
+// `_ingest.collapsed` set — in both tiers, up to a body 100,000 levels deep
+// (JSON.parse takes it; JSON.stringify could not write it in Node). The API
+// door used to answer such a body 400 and record nothing; the owner decided
+// (2026-11-14) 「收下並摺疊」. One level past that ceiling the event is refused
+// before it is parsed and the refusal is a capture gap (owner 2026-11-14,
+// 「事件 API 超過十萬層就拒絕並記缺口，可以嗎？」「可以」): 413 from the API,
+// quarantine from the spool. A body over the 20 MiB cap is still refused.
+// Door equivalence for an over-deep item is in
+// test/ingest-door-equivalence.test.ts.
 
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterAll, afterEach, beforeEach, expect } from 'vitest'
+import { afterAll, afterEach, beforeEach, expect, vi } from 'vitest'
 import { requires } from './helpers/requires'
 import { ENG, OP, interceptHttp, openRuntime, storedRows, type Item, type StoredRow } from './helpers/ingest-delivery'
-import { COLLAPSED_KEY, MAX_DATA_DEPTH, restoreDataDepth } from '../src/core/ingest/depth'
+import { COLLAPSED_KEY, EVENT_NESTING_CEILING, MAX_DATA_DEPTH, restoreDataDepth } from '../src/core/ingest/depth'
 
 const sqlite = requires('better-sqlite3')
 const SLOW = 60_000
@@ -66,10 +70,11 @@ sqlite.describe('the outside doors store an over-deep item bounded (FR-097)', ()
   beforeEach(() => { interceptHttp() })
   afterEach(() => { for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true }) })
 
-  // `data.deep` holds L arrays, so `data` is L + 1 deep. 62 and 63 stay as
-  // sent (the container at 64 holds only a string); 64 and beyond are wrapped.
-  sqlite.it('POST /api/events: `data` 63 and 64 deep stays; 65, 1,000 and 100,000 deep is stored, wrapped, in both tiers', async () => {
-    for (const [levels, wrapped] of [[62, false], [63, false], [64, true], [999, true], [99_999, true]] as const) {
+  // `data.deep` holds L arrays, so `data` is L + 1 deep and the body L + 2.
+  // 62 and 63 stay as sent (the container at 64 holds only a string); 64 and
+  // beyond are wrapped, up to a body exactly at the ceiling.
+  sqlite.it('POST /api/events: `data` 63 and 64 deep stays; 65, 1,000 and 99,999 deep (a body of 100,000) is stored, wrapped, in both tiers', async () => {
+    for (const [levels, wrapped] of [[62, false], [63, false], [64, true], [999, true], [EVENT_NESTING_CEILING - 2, true]] as const) {
       const dir = tmp(`api-${levels}`)
       const rt = await openRuntime(dir)
       try {
@@ -107,7 +112,7 @@ sqlite.describe('the outside doors store an over-deep item bounded (FR-097)', ()
     expect(await storedRows(dir)).toEqual([])
   }, SLOW)
 
-  sqlite.it('a handoff spool file: both tiers, and a 100,000-level file', async () => {
+  sqlite.it('a handoff spool file: both tiers, and a file exactly 100,000 levels deep', async () => {
     const dir = tmp('spool')
     const rt = await openRuntime(dir)
     try { rt.spool(ITEMS, tmp('spool-files')) } finally { await rt.close() }
@@ -115,8 +120,66 @@ sqlite.describe('the outside doors store an over-deep item bounded (FR-097)', ()
 
     const dir2 = tmp('spool-huge')
     const rt2 = await openRuntime(dir2)
-    try { rt2.spool([shellBody(99_999, true), dnsBody(99_999, true)], tmp('spool-files-huge')) } finally { await rt2.close() }
+    try { rt2.spool([shellBody(EVENT_NESTING_CEILING - 2, true), dnsBody(EVENT_NESTING_CEILING - 2, true)], tmp('spool-files-huge')) } finally { await rt2.close() }
     expectBounded(await storedRows(dir2), 'legacy-handoff', true)
+  }, SLOW)
+
+  /** The capture_gap rows of a project, oldest first. */
+  const gapsOf = (rows: StoredRow[]): Array<Record<string, unknown>> => rows.filter((r) => r.data.subtype === 'capture_gap').map((r) => r.data)
+
+  sqlite.it('POST /api/events: one level past the ceiling is refused 413 naming the reason, nothing of it is stored, and a capture gap says so', async () => {
+    const dir = tmp('api-ceiling')
+    const rt = await openRuntime(dir)
+    const text = shellBody(EVENT_NESTING_CEILING - 1)
+    try {
+      await rt.api(text, 413)
+      await rt.api(ITEMS[1], 201)
+    } finally { await rt.close() }
+    const rows = await storedRows(dir)
+    expect(rows.filter((r) => r.row.agent_type === 'shell')).toEqual([])
+    const [gap, ...more] = gapsOf(rows)
+    expect(more).toEqual([])
+    expect(gap).toMatchObject({
+      subtype: 'capture_gap', source: 'api', door: 'legacy-api', reason: 'nested-too-deep', intentional: false,
+      skipped_units: 1, bytes: Buffer.byteLength(text), max_nesting: EVENT_NESTING_CEILING
+    })
+    expect(gap.gap_started_at).toBe(gap.gap_ended_at)
+    // RedLog's own record, as the spool's gap rows are: in-process.
+    expect(gap._ingest).toMatchObject({ door: 'in-process', producer: 'in-process' })
+    expect(String(gap.description)).toMatch(/1 event\(s\) refused by the API: nested more than 100,000 levels deep/)
+  }, SLOW)
+
+  sqlite.it('POST /api/events: refusals within a minute of the first are one more gap row, written when the minute is up', async () => {
+    const dir = tmp('api-ceiling-coalesce')
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    const rt = await openRuntime(dir)
+    const text = dnsBody(EVENT_NESTING_CEILING - 1)
+    try {
+      await rt.api(text, 413)
+      for (let i = 0; i < 4; i++) { vi.advanceTimersByTime(1_000); await rt.api(text, 413) }
+      // 58 s after the first: only the first is on the record.
+      vi.advanceTimersByTime(54_000)
+      expect(gapsOf(await storedRows(dir)).map((g) => g.skipped_units)).toEqual([1])
+      vi.advanceTimersByTime(2_000)
+    } finally { await rt.close(); vi.useRealTimers() }
+    const gaps = gapsOf(await storedRows(dir))
+    expect(gaps.map((g) => g.skipped_units)).toEqual([1, 4])
+    expect(gaps[1].bytes).toBe(4 * Buffer.byteLength(text))
+    expect(Number(gaps[1].gap_ended_at) - Number(gaps[1].gap_started_at)).toBe(3_000)
+  }, SLOW)
+
+  sqlite.it('a spool file one level past the ceiling is set aside unparsed, and counted in the drain pass\'s gap row', async () => {
+    const dir = tmp('spool-ceiling')
+    const rt = await openRuntime(dir)
+    let run
+    try { run = rt.spool([shellBody(EVENT_NESTING_CEILING - 1, true), dnsBody(EVENT_NESTING_CEILING - 1, true), ITEMS[1]], tmp('spool-files-ceiling'), 1) } finally { await rt.close() }
+    expect(run!.outcomes).toEqual({ '0000.json': 'quarantined', '0001.json': 'quarantined', '0002.json': 'ingested' })
+    const rows = await storedRows(dir)
+    expect(rows.filter((r) => r.row.agent_type === 'shell')).toEqual([])
+    const gaps = gapsOf(rows)
+    expect(gaps).toHaveLength(1)
+    expect(gaps[0]).toMatchObject({ source: 'hook-spool', reason: 'nested-too-deep', intentional: false, skipped_units: 2, quarantined: 2, files: ['0000.json', '0001.json'] })
+    expect(String(gaps[0].description)).toMatch(/2 spooled event\(s\) not recorded: nested more than 100,000 levels deep; kept in/)
   }, SLOW)
 
   sqlite.it('a resend of an over-deep command inside the 2 s window is a duplicate, through the API (409) and through a spool file', async () => {

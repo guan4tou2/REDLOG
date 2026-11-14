@@ -485,3 +485,75 @@ sqlite.describe('the write path bounds every row, both tiers (FR-097)', () => {
     expect(search('huge')).toEqual([dns.id])
   })
 })
+
+// Spec 071 FR-097, third review: what the rule leaves alone, and the limits of
+// "stored `data` never nests deeper than 64" (src/core/ingest/depth.ts).
+describe('the depth bound: what it leaves alone, and its stated limits', () => {
+  it('depths 1 to 63, and a leaf container at 64: the same object, JSON.stringify\'s bytes, nothing counted', () => {
+    const cases: Array<[string, Record<string, unknown>]> = [['depth 1', { subtype: 'x', n: 1, s: 'leaf' }]]
+    for (let d = 2; d <= 63; d++) {
+      cases.push([`array at ${d}`, dataWithLeafAt(d, ['leaf', d])])
+      cases.push([`object at ${d}`, dataWithLeafAt(d, { k: 'leaf', d })])
+      // Holding one container more, so the deepest container sits at d + 1 ≤ 64.
+      cases.push([`array holding a leaf at ${d + 1}`, dataWithLeafAt(d, [['leaf']])])
+    }
+    cases.push(['leaf array at 64', dataWithLeafAt(64, [1, 'two', null, true])])
+    cases.push(['leaf object at 64', dataWithLeafAt(64, { a: 1, b: 'two', c: null })])
+    cases.push(['empty array and object at 64', { subtype: 'x', a: nest(62, []), o: nest(62, {}) }])
+    for (const [label, data] of cases) {
+      const before = JSON.stringify(data)
+      const r = boundDataDepth(data)
+      expect(r.data, label).toBe(data)
+      expect(r.collapsed, label).toBe(0)
+      expect(JSON.stringify(r.data), label).toBe(before)
+      expect(restoreDataDepth(r.data), label).toBe(r.data)
+    }
+  })
+
+  it('values JSON cannot express: a Buffer at 64 is a leaf here and stores at 65; a toJSON returning a deep value stores at its depth', () => {
+    const buf = dataWithLeafAt(64, Buffer.from([1, 2, 3]))
+    const a = boundDataDepth(buf)
+    expect(a.data).toBe(buf)
+    expect(a.collapsed).toBe(0)
+    expect(depthOf(JSON.parse(JSON.stringify(a.data)))).toBe(65)
+
+    const deepJson = { subtype: 'x', v: { toJSON: () => nest(200, 'leaf') } }
+    const b = boundDataDepth(deepJson)
+    expect(b.data).toBe(deepJson)
+    expect(b.collapsed).toBe(0)
+    expect(depthOf(JSON.parse(JSON.stringify(b.data)))).toBe(201)
+  })
+
+  it('a container at 64 whose toJSON never stops nesting throws RangeError at a million levels instead of growing without limit', () => {
+    function Endless(this: { toJSON?: unknown }) { /* instance */ }
+    Endless.prototype.toJSON = function (this: object) { return { self: this } }
+    // Holding a container, so it is wrapped and its text written.
+    const node = Object.assign(new (Endless as unknown as new () => object)(), { inner: [1] })
+    const t0 = performance.now()
+    expect(() => boundDataDepth(dataWithLeafAt(64, node))).toThrow(RangeError)
+    expect(performance.now() - t0).toBeLessThan(10_000)
+    // JSON.stringify throws RangeError too, from its own stack.
+    expect(() => JSON.stringify(node)).toThrow(RangeError)
+  })
+
+  it('restoreDataDepth: a wrapper whose string is not JSON is left as stored, not thrown on', () => {
+    for (const bad of ['', '{', '[1,', 'undefined', '\'x\'']) {
+      const stored = dataWithLeafAt(64, wrapper(bad))
+      const back = restoreDataDepth(stored)
+      expect(at(back, pathTo(64)), JSON.stringify(bad)).toEqual(wrapper(bad))
+    }
+    // A good wrapper beside a bad one is still expanded.
+    const mixed = { subtype: 'x', a: nest(62, wrapper('[1,')), b: nest(62, wrapper('[[2]]')) }
+    const back = restoreDataDepth(mixed)
+    expect(at(back, ['a', ...Array<number>(62).fill(0)])).toEqual(wrapper('[1,'))
+    expect(at(back, ['b', ...Array<number>(62).fill(0)])).toEqual([[2]])
+  })
+
+  it('restoreDataDepth: a wrapper-shaped object at depth 10 or 65 is not expanded; only 64 is the writer\'s', () => {
+    for (const d of [10, 63, 65]) {
+      const stored = dataWithLeafAt(d, wrapper('[[1]]'))
+      expect(restoreDataDepth(stored), String(d)).toBe(stored)
+    }
+    expect(at(restoreDataDepth(dataWithLeafAt(64, wrapper('[[1]]'))), pathTo(64))).toEqual([[1]])
+  })
+})

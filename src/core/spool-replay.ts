@@ -1,4 +1,6 @@
 import { bodyTargetId } from './ingest/body-target'
+import { EVENT_NESTING_CEILING, NESTED_TOO_DEEP } from './ingest/depth'
+import { jsonDepthExceeds } from './api-request'
 import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
@@ -42,7 +44,7 @@ export interface SpoolReplayEvent {
 }
 
 /** Why a file was set aside or dropped (Spec 071 FR-050 / FR-066). */
-export type QuarantineReason = 'malformed' | 'kind-not-allowed' | 'no-project' | 'legacy-bad' | 'failed' | 'pause-end-unknown'
+export type QuarantineReason = 'malformed' | 'kind-not-allowed' | 'no-project' | 'legacy-bad' | 'failed' | 'pause-end-unknown' | 'nested-too-deep'
 
 /** What became of one replayed event, as the emitter reports it.
  *
@@ -171,7 +173,7 @@ const INTENTIONAL_REASONS = new Set(['paused', 'terminal-not-recording'])
 /** Kept in quarantine once counted. `pause-end-unknown` among them: observed
  *  after a pause whose end the record does not show, so not written to the
  *  record, but kept, and counted as a loss rather than as a pause. */
-const QUARANTINE_REASONS = new Set<string>(['malformed', 'kind-not-allowed', 'no-project', 'legacy-bad', 'failed', 'pause-end-unknown'])
+const QUARANTINE_REASONS = new Set<string>(['malformed', 'kind-not-allowed', 'no-project', 'legacy-bad', 'failed', 'pause-end-unknown', NESTED_TOO_DEEP])
 
 function countedOf(options: SpoolReplayOptions): (name: string) => boolean {
   const countedAs = options.countedAs
@@ -589,6 +591,15 @@ export function replaySpoolDirectory(
       text = fs.readFileSync(file, 'utf8')
     } catch {
       retryLater(file, name, (held?.attempts ?? 0) + 1)
+      continue
+    }
+    // Past the doors' ceiling a file is not parsed: set aside and counted, as
+    // the API refuses the same body (FR-097; ingest/nesting-ceiling.ts). Whose
+    // it is comes from the identity the hook wrote, read from the text.
+    if (jsonDepthExceeds(text, EVENT_NESTING_CEILING)) {
+      const named = engagementInText(text)
+      if (named && named !== active.engagementId) { result.deferred++; defer(name); continue }
+      setAside(file, name, stat.size, NESTED_TOO_DEEP, `nested more than ${EVENT_NESTING_CEILING} levels deep`, named ? 'this' : 'unknown', clock())
       continue
     }
     let payload: { agent_type?: unknown; data?: unknown; target_id?: unknown; targetId?: unknown }

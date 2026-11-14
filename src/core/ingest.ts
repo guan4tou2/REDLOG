@@ -34,6 +34,7 @@ import { linkHttpBodyEvent } from './http-body-index'
 import { noteDbError } from './capture-health'
 import { DERIVED, currentEntrance, stripReserved, withEntrance, type IngestEntrance } from './ingest/stamp'
 import { terminalIdentity } from './ingest/terminal'
+import { fieldNumber, fieldText } from './ingest/field-text'
 
 // ── Injected collaborators ──────────────────────────────────────────────────
 // core/ cannot import main/, so the pieces that live there are handed in.
@@ -186,8 +187,9 @@ export function ingest(input: IngestInput): IngestResult {
   // whole mixed batch conservatively, before any sidecar or derivation.
   const outputAt = data.subtype === 'command_end' && data.output_streamed !== true
     ? data.output_started_at : data.source_timestamp
-  const delayedCapture = (agentType === 'shell' && ['command_output', 'session_output', 'command_end'].includes(String(data.subtype)))
-    || (agentType === 'scanner' && ['http_response_chunk', 'ws_message', 'tcp_message'].includes(String(data.subtype)))
+  const subtypeText = fieldText(data.subtype) ?? ''
+  const delayedCapture = (agentType === 'shell' && ['command_output', 'session_output', 'command_end'].includes(subtypeText))
+    || (agentType === 'scanner' && ['http_response_chunk', 'ws_message', 'tcp_message'].includes(subtypeText))
   // The spool drain has already judged its file against the recorded pause
   // intervals (core/spool-drain.ts); this "older than the last resume" rule
   // is what left a command_end observed before a pause stuck there forever.
@@ -306,46 +308,65 @@ export function ingest(input: IngestInput): IngestResult {
   }
 
   function afterCommit(event: RedLogEvent): IngestResult {
-  if (agentType === 'shell' && !input.derived) terminalLifecycle?.recorded(event)
-  if (agentType === 'shell' && !input.derived && data.subtype === 'command_output' && (data.late === true || data.streamed === true)
-      && typeof data.command_id === 'string' && typeof data.seq === 'number') {
-    let seen = lateChunkSeen.get(data.command_id)
-    if (!seen) {
-      if (lateChunkSeen.size >= LATE_TARGET_MAX) lateChunkSeen.delete(lateChunkSeen.keys().next().value as string)
-      seen = new Set()
-      lateChunkSeen.set(data.command_id, seen)
-    }
-    seen.add(data.seq)
-  }
-  if (agentType === 'shell' && !input.derived && typeof data.command_id === 'string') {
-    if (data.subtype === 'command_start' || (data.subtype === 'command_end' && (data.late_output === true || data.output_streamed === true))) {
-      if (lateTargetByCommand.size >= LATE_TARGET_MAX) lateTargetByCommand.delete(lateTargetByCommand.keys().next().value as string)
-      lateTargetByCommand.set(data.command_id, targetId ?? null)
-    } else if (data.subtype === 'command_output' && data.final === true) {
-      lateTargetByCommand.delete(data.command_id)
-      lateChunkSeen.delete(data.command_id)
+  // Each step on its own: one that throws is reported and the rest still run,
+  // and the row — committed — is still the answer. A caller must never be told
+  // a written row failed (it would resend it, or record a gap for it).
+  const step = (name: string, run: () => void): void => {
+    try { run() } catch (error) {
+      console.error(`[ingest] a step after the commit failed (${name}); the row is written:`, error)
+      noteDbError('ingest-post-commit', error)
     }
   }
+  step('terminal lifecycle', () => {
+    if (agentType === 'shell' && !input.derived) terminalLifecycle?.recorded(event)
+  })
+  step('late-output bookkeeping', () => {
+    if (agentType === 'shell' && !input.derived && data.subtype === 'command_output' && (data.late === true || data.streamed === true)
+        && typeof data.command_id === 'string' && typeof data.seq === 'number') {
+      let seen = lateChunkSeen.get(data.command_id)
+      if (!seen) {
+        if (lateChunkSeen.size >= LATE_TARGET_MAX) lateChunkSeen.delete(lateChunkSeen.keys().next().value as string)
+        seen = new Set()
+        lateChunkSeen.set(data.command_id, seen)
+      }
+      seen.add(data.seq)
+    }
+    if (agentType === 'shell' && !input.derived && typeof data.command_id === 'string') {
+      if (data.subtype === 'command_start' || (data.subtype === 'command_end' && (data.late_output === true || data.output_streamed === true))) {
+        if (lateTargetByCommand.size >= LATE_TARGET_MAX) lateTargetByCommand.delete(lateTargetByCommand.keys().next().value as string)
+        lateTargetByCommand.set(data.command_id, targetId ?? null)
+      } else if (data.subtype === 'command_output' && data.final === true) {
+        lateTargetByCommand.delete(data.command_id)
+        lateChunkSeen.delete(data.command_id)
+      }
+    }
+  })
 
   if (agentType === 'scanner') {
     try { linkHttpBodyEvent(event) } catch (error) { noteDbError('http-body-index', error) }
   }
 
   // 6. Publish — once, here, for every producer.
-  eventBus.publish(event, { bypassPause: input.bypassPause })
-  noteStartEvent(agentType, data, event.id)
-  // Record pid → this command_start so later traffic on that pid's sockets can
-  // cite it (docs/design/DESIGN-traffic-attribution.md §2.3).
-  if (agentType === 'shell' && data.subtype === 'command_start') {
-    noteCommandPid(data.pid as number | undefined, event.id)
-  }
+  step('publish', () => {
+    eventBus.publish(event, { bypassPause: input.bypassPause })
+  })
+  step('causal links', () => {
+    noteStartEvent(agentType, data, event.id)
+    // Record pid → this command_start so later traffic on that pid's sockets can
+    // cite it (docs/design/DESIGN-traffic-attribution.md §2.3).
+    if (agentType === 'shell' && data.subtype === 'command_start') {
+      noteCommandPid(data.pid as number | undefined, event.id)
+    }
+  })
 
   // 7. Scope dispatch, after the insert so the violation cites this row.
-  if (alertRuntimeRef) {
-    const hit = scopeSignalFor(agentType, data)
-    // A scope_violation is derived from this row (external-event-policy.ts).
-    if (hit) withEntrance(DERIVED, () => alertRuntimeRef!.dispatchTargetHit({ ...hit, sourceEventId: event.id }))
-  }
+  step('scope dispatch', () => {
+    if (alertRuntimeRef) {
+      const hit = scopeSignalFor(agentType, data)
+      // A scope_violation is derived from this row (external-event-policy.ts).
+      if (hit) withEntrance(DERIVED, () => alertRuntimeRef!.dispatchTargetHit({ ...hit, sourceEventId: event.id }))
+    }
+  })
 
   // 8. Companions. Each goes back through ingest as `derived`, so it gets a
   //    raw ref and an envelope like any row, and never enriches further.
@@ -361,11 +382,13 @@ export function ingest(input: IngestInput): IngestResult {
     } catch { /* companions are additive; the primary row already landed */ }
   }
 
-  if (plan.pendingLootMatches.length > 0 && lootDetectorRef?.emit) {
-    // Loot is derived from this row, like the companions below.
-    const loot = lootDetectorRef
-    withEntrance(DERIVED, () => loot.emit!(plan.pendingLootMatches, { targetId, source: data.command as string, causeEventId: event.id }))
-  }
+  step('loot', () => {
+    if (plan.pendingLootMatches.length > 0 && lootDetectorRef?.emit) {
+      // Loot is derived from this row, like the companions below.
+      const loot = lootDetectorRef
+      withEntrance(DERIVED, () => loot.emit!(plan.pendingLootMatches, { targetId, source: fieldText(data.command), causeEventId: event.id }))
+    }
+  })
   if (plan.pivot) {
     const p = plan.pivot
     emitCompanion('pivot', {
@@ -483,14 +506,16 @@ function emptyPlan(): Plan {
 function enrich(agentType: string, data: Record<string, unknown>, targetId: string | undefined): Plan {
   const plan = emptyPlan()
 
-  if (agentType === 'shell' && data.command) {
-    const cmd = data.command as string
+  // A `command` that is not a scalar is not a command (./ingest/field-text.ts).
+  const commandText = fieldText(data.command)
+  if (agentType === 'shell' && data.command && commandText !== undefined) {
+    const cmd = commandText
     const isStart = data.subtype === 'command_start'
     // A command_end for a foreground pivot (ssh -D until Ctrl-C) is the
     // closest signal that the tunnel shut. The duration guard skips
     // backgrounded `-fN` / `&` variants that exit at once while the tunnel
     // keeps running.
-    const isEnd = data.subtype === 'command_end' && Number(data.duration_sec ?? 0) >= 2
+    const isEnd = data.subtype === 'command_end' && fieldNumber(data.duration_sec ?? 0) >= 2
     if (isEnd) plan.pivotClose = detectPivot(cmd)
 
     // Bracket this command's output by byte range in the session .cast. The
@@ -609,11 +634,14 @@ function enrich(agentType: string, data: Record<string, unknown>, targetId: stri
   }
 
   if (agentType === 'scanner') {
+    // Read before the bodies move to their sidecars, so nothing that can still
+    // fail runs after a sidecar file is written for a row that may not be.
+    // It reads headers and `request_body_preview`, which do not move.
+    if (data.subtype === 'http_request_start') plan.httpCred = detectHttpCredential(data)
     extractBodyToSidecar(data, 'request_body')
     extractBodyToSidecar(data, 'response_body')
     extractBodyToSidecar(data, 'ws_body')
     extractBodyToSidecar(data, 'tcp_body')
-    if (data.subtype === 'http_request_start') plan.httpCred = detectHttpCredential(data)
   }
 
   return plan
@@ -644,11 +672,19 @@ const KNOWN_AUTH_SCHEMES: Record<string, { method: string; detail: string }> = {
 }
 
 function detectHttpCredential(data: Record<string, unknown>): Plan['httpCred'] {
-  const host = String(data.host ?? '')
-  const reqHeaders = data.request_headers as string[][] | Record<string, string> | undefined
-  const headerList: [string, string][] = Array.isArray(reqHeaders)
-    ? reqHeaders as [string, string][]
-    : reqHeaders ? Object.entries(reqHeaders) : []
+  const host = fieldText(data.host) ?? ''
+  const reqHeaders = data.request_headers
+  // A header is a pair of scalars; anything else in the list is not one, and
+  // is passed over rather than coerced (./ingest/field-text.ts).
+  const pairs: unknown[] = Array.isArray(reqHeaders)
+    ? reqHeaders
+    : reqHeaders !== null && typeof reqHeaders === 'object' ? Object.entries(reqHeaders) : []
+  const headerList: [string, string][] = []
+  for (const pair of pairs) {
+    if (!Array.isArray(pair)) continue
+    const name = fieldText(pair[0]), value = fieldText(pair[1])
+    if (name !== undefined && value !== undefined) headerList.push([name, value])
+  }
   let found: Plan['httpCred'] = null
   for (const [name, value] of headerList) {
     const ln = name.toLowerCase()
@@ -687,7 +723,9 @@ function detectRedactions(data: Record<string, unknown>, lootValues: string[]): 
     if (typeof v === 'string' && v) {
       const result = redact(v, rules)
       if (result.redacted.length > 0) {
-        const redactions = (data.redactions as unknown[] | undefined) ?? []
+        // A sender's `redactions` that is not a list is replaced by the spans
+        // (spreading it would throw).
+        const redactions = Array.isArray(data.redactions) ? data.redactions as unknown[] : []
         data.redactions = [...redactions, ...result.redacted.map((r) => ({ ...r, field }))]
       }
     }

@@ -11,6 +11,7 @@ import { ENVELOPE_SCHEMA_VERSION } from './event-types'
 import { currentEntrance, engagementForWrite, ingestStamp, stripReserved, type IngestEntrance } from '../ingest/stamp'
 import { rowTerminal, terminalIdentity } from '../ingest/terminal'
 import { boundDataDepth } from '../ingest/depth'
+import { fieldText } from '../ingest/field-text'
 
 interface InsertOpts {
   engagementId?: string
@@ -542,7 +543,8 @@ function insertChainedEvent(
   const db = getDB()
   const now = Date.now()
 
-  if ((agentType === 'shell' || agentType === 'agent') && data.command) {
+  // A `command` that is not a scalar is no command to match on (field-text.ts).
+  if ((agentType === 'shell' || agentType === 'agent') && data.command && fieldText(data.command) !== undefined) {
     // Dedup real duplicates (same subtype + same command within 2s) — but *never*
     // collapse a command_start/command_end pair into one. The previous
     // implementation `LIKE '%"command":"..."%'` matched on the raw JSON blob
@@ -557,12 +559,12 @@ function insertChainedEvent(
     // (command, pid) match across types within 2s, whichever fires second is
     // dropped. Kept subtype-sensitive so a `command_end` from either source can
     // still land after a `command_start`.
-    const cmd = String(data.command)
-    const subtype = data.subtype != null ? String(data.subtype) : ''
+    const cmd = fieldText(data.command) ?? ''
+    const subtype = fieldText(data.subtype) ?? ''
     // FR-011: the new row's terminal is the one its stamp will carry, and a
     // stored row's is its stamp's (ingest/terminal.ts terminalIdentity / rowTerminal).
     const terminalId = terminalIdentity(data) ?? ''
-    const pid = data.pid != null ? String(data.pid) : ''
+    const pid = fieldText(data.pid) ?? ''
     const twoSecondsAgo = now - 2000
     const candidates = prepared(db,
       `SELECT id, agent_type, data FROM events WHERE agent_type IN ('shell','agent') AND timestamp >= ? ORDER BY timestamp DESC LIMIT 20`
@@ -570,10 +572,10 @@ function insertChainedEvent(
     for (const row of candidates) {
       let d: Record<string, unknown> = {}
       try { d = JSON.parse(row.data) } catch { continue }
-      const rowSubtype = d.subtype != null ? String(d.subtype) : ''
-      const rowCmd = d.command != null ? String(d.command) : ''
+      const rowSubtype = fieldText(d.subtype) ?? ''
+      const rowCmd = fieldText(d.command) ?? ''
       const rowTerminalId = rowTerminal(d) ?? ''
-      const rowPid = d.pid != null ? String(d.pid) : ''
+      const rowPid = fieldText(d.pid) ?? ''
       if (rowSubtype !== subtype) continue
       if (rowCmd !== cmd) continue
       if (row.agent_type === agentType) {

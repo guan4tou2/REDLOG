@@ -102,7 +102,7 @@ describe('the two copies in the fixture still match main (source pins)', () => {
 
   it('POST /api/events calls ingest() with the legacy-api entrance and the identity-mapper api envelope the fixture uses', () => {
     expect(read('src/core/api-server.ts')).toMatch(
-      /const result = ingest\(\{\s*agentType, data, operatorId: operator\.id, engagementId, targetId, entrance: LEGACY_API,\s*envelope: \{ source: 'api', mapper: \{ id: 'identity', version: '1' \} \}\s*\}\)/)
+      /result = ingest\(\{\s*agentType, data, operatorId: operator\.id, engagementId, targetId, entrance: LEGACY_API,\s*envelope: \{ source: 'api', mapper: \{ id: 'identity', version: '1' \} \}\s*\}\)/)
   })
 
   it('addHudMarker writes insertEvent(\'marker\', redactFields({ title, notes, severity, category, source_timestamp, source }, MARKER_TEXT_FIELDS), open)', () => {

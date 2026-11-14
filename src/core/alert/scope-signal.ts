@@ -11,6 +11,8 @@
 // a recompute can find candidate targets without hydrating and JSON-parsing
 // every row; a test asserts it derives exactly what `scopeSignalFor` derives.
 
+import { fieldText } from '../ingest/field-text'
+
 /** The (agentType, subtype) pairs a live scope verdict was ever produced for.
  *
  *  Deliberately NOT every row carrying a host. `scanner/connection`,
@@ -52,37 +54,39 @@ export function scopeSignalFor(
   agentType: string,
   data: Record<string, unknown>
 ): { target: string; source: 'shell' | 'dns' | 'http' | 'scanner' | 'agent_tool'; action: string } | null {
+  // Every field read as a scalar or not at all (ingest/field-text.ts): a
+  // template literal on a nested array recursed, after the commit.
   if (agentType === 'shell' && data.subtype === 'command_start') {
-    const target = (data.detectedTarget as string | undefined) ?? null
+    const target = fieldText(data.detectedTarget) ?? null
     if (!target) return null
-    return { target, source: 'shell', action: (data.command as string) ?? '' }
+    return { target, source: 'shell', action: fieldText(data.command) ?? '' }
   }
   if (agentType === 'scanner' && data.subtype === 'http_request_start') {
-    const target = (data.host as string | undefined) ?? null
+    const target = fieldText(data.host) ?? null
     if (!target) return null
     return {
       target,
       source: 'http',
-      action: `${(data.method as string) ?? 'GET'} ${(data.url as string) ?? ''}`.trim()
+      action: `${fieldText(data.method) ?? 'GET'} ${fieldText(data.url) ?? ''}`.trim()
     }
   }
   if (agentType === 'scanner' && (data.subtype === 'ws_message' || data.subtype === 'tcp_message')) {
-    const target = (data.host as string | undefined) ?? null
+    const target = fieldText(data.host) ?? null
     if (!target) return null
     return {
       target,
       source: 'scanner',
-      action: `${data.subtype === 'ws_message' ? 'WS' : 'TCP'} ${data.direction ?? ''} ${(data.url as string) ?? target}`.trim()
+      action: `${data.subtype === 'ws_message' ? 'WS' : 'TCP'} ${fieldText(data.direction) ?? ''} ${fieldText(data.url) ?? target}`.trim()
     }
   }
   if (agentType === 'dns' && data.subtype === 'dns_query') {
-    const target = (data.query_name as string | undefined) ?? null
+    const target = fieldText(data.query_name) ?? null
     // Bare `.` shows up on some resolvers as a root-query artifact — skip.
     if (!target || target === '.') return null
     return {
       target: target.replace(/\.$/, ''),  // strip trailing dot from FQDN form
       source: 'dns',
-      action: `${(data.query_type as string) ?? 'A'} ${target}`
+      action: `${fieldText(data.query_type) ?? 'A'} ${target}`
     }
   }
   return null

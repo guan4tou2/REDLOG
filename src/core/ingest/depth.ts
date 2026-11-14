@@ -23,7 +23,18 @@
 // the stored row: at depth 64, parse each wrapper's string and put the result
 // in its place. A marker-shaped object shallower than 64 is the sender's and
 // is never read as a wrapper. The stamp counts the wrappers
-// (`_ingest.collapsed`). Stored `data` never nests deeper than 64.
+// (`_ingest.collapsed`).
+//
+// For a value JSON can express — what JSON.parse makes, which is all an
+// outside door can send — stored `data` never nests deeper than 64. The rule
+// walks the value as it is, not what `toJSON` makes of it, so an in-process
+// value whose `toJSON` writes containers can store deeper: a Buffer at 64 is a
+// leaf here and `{"type":"Buffer","data":[…]}` (65) in the row, and a `toJSON`
+// that returns a deep value is stored at that value's depth. A container at 64
+// that is wrapped is written by its `toJSON`, as JSON.stringify would; one
+// whose `toJSON` never stops nesting (`toJSON() { return { self: this } }`)
+// throws RangeError at JSON_TEXT_MAX_DEPTH. The bytes stay JSON.stringify's in
+// every case (test/ingest-depth-bound.test.ts pins each).
 //
 // 64 against what is measured (2026-11-14; spec 071 plan.md D13): the deepest
 // `data` any fixture or golden in this repository holds is 3; the deepest AI
@@ -40,6 +51,13 @@
 export const MAX_DATA_DEPTH = 64
 /** The one key of the wrapper that holds a collapsed container's JSON text. */
 export const COLLAPSED_KEY = '_collapsed'
+
+/** Nesting, counted over a whole request body or spool file (its root is
+ *  level 1), past which an outside door refuses the event before parsing it
+ *  and records a capture gap (FR-097; ./nesting-ceiling.ts). */
+export const EVENT_NESTING_CEILING = 100_000
+/** The capture_gap and quarantine reason for that refusal, and the API's. */
+export const NESTED_TOO_DEEP = 'nested-too-deep'
 
 type Container = Record<string, unknown> | unknown[]
 
@@ -117,12 +135,17 @@ export function boundDataDepth(data: Record<string, unknown>): { data: Record<st
  * The inverse, from a stored row's `data` alone: every marker-shaped object at
  * depth 64 is a wrapper the writer made, and is replaced by what JSON.parse
  * makes of its string. Shallower marker-shaped objects are the sender's and are
- * left alone. For a row with no wrapper, the same object is returned.
+ * left alone, and so is anything below 64, which the writer never stores. A
+ * wrapper whose string is not JSON was not written by the writer — the row was
+ * changed after it was stored, which the chain says — and is left as it is
+ * stored rather than thrown on, so a reader still shows the row. For a row
+ * with no wrapper, the same object is returned.
  */
 export function restoreDataDepth(stored: Record<string, unknown>): Record<string, unknown> {
-  return walk(stored, (node) => isMarkerShaped(node)
-    ? JSON.parse((node as Record<string, string>)[COLLAPSED_KEY]) as unknown
-    : node)
+  return walk(stored, (node) => {
+    if (!isMarkerShaped(node)) return node
+    try { return JSON.parse((node as Record<string, string>)[COLLAPSED_KEY]) as unknown } catch { return node }
+  })
 }
 
 // ── JSON text without recursion ─────────────────────────────────────────────
@@ -160,11 +183,18 @@ export function jsonStringify(value: unknown): string | undefined {
  *  millions of single brackets is not held as millions of pieces. */
 const CHUNK = 4096
 
+/** The deepest path jsonText follows. Past it, it throws RangeError as
+ *  JSON.stringify does past its stack, instead of growing without limit. Ten
+ *  times the doors' ceiling (EVENT_NESTING_CEILING): what reaches here deeper
+ *  is RedLog's own producer, and no row of a million levels is evidence. */
+const JSON_TEXT_MAX_DEPTH = 1_000_000
+
 /**
  * What JSON.stringify writes for `root` held under `key` (so a `toJSON`
- * receives the key it would there), byte for byte, without recursion: the path is kept in
- * three arrays instead of the call stack, so a container nested 10,000,000
- * levels is written where JSON.stringify would throw RangeError. A cycle is
+ * receives the key it would there), byte for byte, without recursion: the path
+ * is kept in three arrays instead of the call stack, so a container nested up
+ * to JSON_TEXT_MAX_DEPTH levels is written where JSON.stringify throws
+ * RangeError at a few thousand. A cycle is
  * found by Brent's method on the path (the node at each depth compared with the
  * node at the last power of two above it), which needs no set of visited
  * nodes: a cycle reached by descent repeats with its period, and is found
@@ -180,19 +210,21 @@ function jsonText(root: Container, key: string, prepared = false): string {
   // `prepared`: `root` is already what SerializeJSONProperty made of the value.
   const first = prepared ? { node: root } : property(root, key)
   if (!('node' in first)) return first.text ?? 'null'
+  // Per level of the path: the container, its keys (null for an array), and
+  // `2 × next index + (1 if anything is written yet)`.
   const nodes: Container[] = []
   const keyLists: Array<string[] | null> = []
-  const index: number[] = []
-  const written: number[] = []
+  const state: number[] = []
   const open = (node: Container): void => {
     const depth = nodes.length
+    if (depth >= JSON_TEXT_MAX_DEPTH) throw new RangeError(`JSON text deeper than ${JSON_TEXT_MAX_DEPTH} levels`)
     if (depth > 0) {
       const mark = 1 << (31 - Math.clz32(depth))
       if (nodes[mark - 1] === node || nodes[depth - 1] === node) throw new TypeError('Converting circular structure to JSON')
     }
     const keys = Array.isArray(node) ? null : Object.keys(node)
     emit(keys ? '{' : '[')
-    nodes.push(node); keyLists.push(keys); index.push(0); written.push(0)
+    nodes.push(node); keyLists.push(keys); state.push(0)
   }
   open(first.node)
   while (nodes.length > 0) {
@@ -200,17 +232,18 @@ function jsonText(root: Container, key: string, prepared = false): string {
     const node = nodes[top]
     const keys = keyLists[top]
     const n = keys ? keys.length : (node as unknown[]).length
-    const i = index[top]
+    const at = state[top]
+    const i = Math.floor(at / 2)
     if (i >= n) {
       emit(keys ? '}' : ']')
-      nodes.pop(); keyLists.pop(); index.pop(); written.pop()
+      nodes.pop(); keyLists.pop(); state.pop()
       continue
     }
-    index[top] = i + 1
     const key = keys ? keys[i] : String(i)
     const p = property((node as Record<string, unknown>)[key], key)
-    if ('text' in p && p.text === undefined && keys) continue
-    if (written[top]++ > 0) emit(',')
+    if ('text' in p && p.text === undefined && keys) { state[top] = at + 2; continue }
+    state[top] = (i + 1) * 2 + 1
+    if (at % 2 === 1) emit(',')
     if (keys) emit(JSON.stringify(key) + ':')
     if ('node' in p) open(p.node)
     else emit(p.text ?? 'null')

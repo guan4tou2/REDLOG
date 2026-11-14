@@ -330,6 +330,10 @@
       "class": "app",
       "reason": "WeakMap/WeakSet keyed by the database handle: entries die with the handle and hold no project id."
     },
+    "src/core/ingest/nesting-ceiling.ts#windows": {
+      "class": "app",
+      "reason": "WeakMap keyed by the database handle: the open refusal window of each project, gone with the handle."
+    },
     "src/core/db/index.ts#db": {
       "class": "project-legacy",
       "reason": "The open project database."

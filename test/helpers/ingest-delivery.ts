@@ -18,6 +18,7 @@ import { Readable } from 'node:stream'
 import fs from 'node:fs'
 import path from 'node:path'
 import { expect, vi } from 'vitest'
+import type { SpoolReplayResult } from '../../src/core/spool-replay'
 
 export const ENG = 'eng-equiv'
 export const OP = 'op-equiv'
@@ -53,7 +54,7 @@ export interface Runtime {
   /** Spool `items` as the hooks do and drain them as main does: door
    *  legacy-handoff. A string is the file's text as written, `_identity`
    *  included. */
-  spool(items: Array<Item | string>, dir: string): void
+  spool(items: Array<Item | string>, dir: string, replayed?: number): SpoolReplayResult | null
   close(): Promise<void>
 }
 
@@ -98,12 +99,13 @@ export async function openRuntime(dir: string): Promise<Runtime> {
       const r = ingest.ingest({ agentType: item.agent_type, data: item.data, engagementId: ENG, operatorId: OP, ...(item.target_id ? { targetId: item.target_id } : {}) })
       expect(r.event, JSON.stringify(item)).not.toBeNull()
     },
-    spool(items, spoolDir) {
+    spool(items, spoolDir, replayed = items.length) {
       fs.mkdirSync(spoolDir, { recursive: true })
       items.forEach((item, i) => fs.writeFileSync(path.join(spoolDir, `${String(i).padStart(4, '0')}.json`),
         typeof item === 'string' ? item : JSON.stringify({ ...item, _identity: { engagementId: ENG, operatorId: OP } })))
       const run = drain.drainSpoolAsMain(spoolDir, { engagementId: ENG, operatorId: OP })
-      expect(run?.replayed, JSON.stringify(run)).toBe(items.length)
+      expect(run?.replayed, JSON.stringify(run)).toBe(replayed)
+      return run
     },
     async close() {
       api.stopApiServer()
