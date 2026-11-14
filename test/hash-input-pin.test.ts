@@ -75,8 +75,7 @@ sqlite.describe('hash input of a chained row', () => {
     pubKey = op.signerPubKey!
     events.insertEvent('system', { subtype: 'session_start' }, { engagementId: 'eng-pin', operatorId: 'op-pin' })
     const ev = events.insertEvent('shell', { subtype: 'command_start', command: 'id', terminalId: 't1' }, {
-      engagementId: 'eng-pin', operatorId: 'op-pin', targetId: '10.0.0.1',
-      envelope: { source: 'api', mapper: { id: 'identity', version: '1' } }
+      engagementId: 'eng-pin', operatorId: 'op-pin', targetId: '10.0.0.1'
     })
     expect(ev).not.toBeNull()
     returned = ev as unknown as Record<string, unknown>
@@ -113,9 +112,9 @@ sqlite.describe('hash input of a chained row', () => {
   })
 
   it('the writer: columns outside the key set (envelope, subtype, signature) are stored but not hashed', () => {
-    // The envelope columns are filled here, so the claim is not vacuous.
-    expect(row.source).toBe('api')
-    expect(row.mapper).toBe(JSON.stringify({ id: 'identity', version: '1' }))
+    // `source` and `mapper` stay in the schema for older rows; a new row
+    // leaves them NULL (Spec 071 T036), so they are in this list as columns.
+    expect([row.source, row.mapper]).toEqual([null, null])
     expect(row.subtype).toBe('command_start')
     const unhashed = Object.keys(row).filter((c) => !['agent_type', 'created_at', 'data', 'engagement_id', 'hostname', 'id',
       'monotonic_ns', 'ntp_offset_ms', 'operator_id', 'prev_hash', 'session_id', 'source_ip', 'target_id', 'timestamp', 'hash'].includes(c)).sort()

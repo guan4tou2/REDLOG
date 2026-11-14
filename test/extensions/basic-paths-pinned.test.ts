@@ -15,8 +15,8 @@
 //
 // How the run is built, and what each source goes through, is in
 // basic-paths-fixture.ts. Three things this file says plainly:
-//   - the shell hook step calls ingest() with the envelope POST /api/events
-//     builds; the real route is exercised in the `listen` test below, which
+//   - the shell hook step calls ingest() as POST /api/events does; the real
+//     route is exercised in the `listen` test below, which
 //     compares its rows with the same record. A machine that cannot bind a port
 //     skips that one test and says so.
 //   - addHudMarker lives in main/index.ts and cannot be imported. The fixture
@@ -100,9 +100,9 @@ sqlite.describe('the basic paths, as they are written today (Spec 076 T002)', ()
 describe('the two copies in the fixture still match main (source pins)', () => {
   const read = (rel: string): string => fs.readFileSync(path.join(ROOT, rel), 'utf8')
 
-  it('POST /api/events calls ingest() with the legacy-api entrance and the identity-mapper api envelope the fixture uses', () => {
+  it('POST /api/events calls ingest() with the legacy-api entrance and no envelope, as the fixture does', () => {
     expect(read('src/core/api-server.ts')).toMatch(
-      /result = ingest\(\{\s*agentType, data, operatorId: operator\.id, engagementId, targetId, entrance: LEGACY_API,\s*envelope: \{ source: 'api', mapper: \{ id: 'identity', version: '1' \} \}\s*\}\)/)
+      /result = ingest\(\{\s*agentType, data, operatorId: operator\.id, engagementId, targetId, entrance: LEGACY_API\s*\}\)/)
   })
 
   it('addHudMarker writes insertEvent(\'marker\', redactFields({ title, notes, severity, category, source_timestamp, source }, MARKER_TEXT_FIELDS), open)', () => {

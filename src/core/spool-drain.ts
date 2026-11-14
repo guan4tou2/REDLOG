@@ -252,8 +252,7 @@ export function drainSpoolOnce(
     try {
       result = ingest({
         agentType, data, engagementId: spoolEngagement, operatorId: spoolOperator, targetId, spoolJudged: true,
-        entrance: LEGACY_HANDOFF,
-        envelope: { source: 'spool', mapper: { id: 'identity', version: '1' } }
+        entrance: LEGACY_HANDOFF
       })
     } catch (e) {
       // The row is in; a step after the commit threw. Retrying would write it

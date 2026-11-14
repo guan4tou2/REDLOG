@@ -10,12 +10,12 @@
       {
         "id": "00000000-0000-4000-8000-000000000006",
         "hash": "66bf846cf8955316ce0bbb2b44260379f6f92277094cf97a87e5471775a60c9e",
-        "sha256": "4078db15336810f281f5328e970af41babbe413b354a72a18d8706807fab9f04"
+        "sha256": "ce190cc793cf47bde7166197bc25c28b473247532e2d08ec17e1e4286f608dc7"
       },
       {
         "id": "00000000-0000-4000-8000-000000000008",
         "hash": "aa1d0fcf26b1f00636bdc12e6d4c82889efba2939fed1e91f785ee1f4097c8c4",
-        "sha256": "cbbe1a6db9b25b6ff30d920e4cf847c8eb3411c3d6b97d194f4b1f968669724e"
+        "sha256": "98db197a1d19a7bfb585eadfd3853e09514eca133d64a797205dc0d101bc05cc"
       },
       {
         "id": "00000000-0000-4000-8000-000000000012",
@@ -29,29 +29,29 @@
       },
       {
         "id": "00000000-0000-4000-8000-000000000016",
-        "hash": "127712005251dc263c80c20248cab95f2ff847610235da7ffab67474d415745f",
-        "sha256": "79769a3391e2b152929ce396ebe3650b1fca9c6e3cdfc8247566e36accc0abb2"
+        "hash": "8902b4d0626da45fd3f83050385ed355b48316da664eb6875a7710db4f3c6ece",
+        "sha256": "3a5038f0216cea7f478fd1ad4622edfa9d132b0297fde26ca9735e43808ad7b3"
       },
       {
         "id": "00000000-0000-4000-8000-000000000018",
-        "hash": "126197d4cf36480db2f650fb85b44889bac8e39bd01819af9059efaee0bb89f3",
-        "sha256": "b8377652723a8f73f87c73575e3ea7bb2fa9efade753e6ef015ed1c610ecbb29"
+        "hash": "180e5e6794c3c32a1a1b9d745ecede456b29e0b839a0145ec5c5e937c9dbe8c5",
+        "sha256": "90dc291c85c4821ca240a6095cfe7cac897ee1d0f7865481f46786da37656ae8"
       },
       {
         "id": "00000000-0000-4000-8000-000000000021",
-        "hash": "67764f405fdc131ceb8a6b37f6344389af9f9f5e005ffab101a185a8a6cd76bb",
-        "sha256": "8bc8c8de46ed51ef25ec328e5b013a2e40c77f2ee85fc4f9393dc3341e840202"
+        "hash": "c664ddf649b68ac7cf659695719a688815bc9f9f9b2144f28a9f63de4662d9be",
+        "sha256": "1af06fee8edc5c0b62e9a0f46f78f54fb761243eed403bf3131e1ca85861fccf"
       }
     ],
     "events_logged": [
       {
         "id": "00000000-0000-4000-8000-000000000009",
         "hash": null,
-        "sha256": "7641e5dfa85cdb2dcae7298db294910fbd2f3c26a1b7ff1308f2cd598253e52c"
+        "sha256": "e0185aa613ca0e394a5495b1a1fd3236fa5f2b6a6183ed860d423be53fae68e2"
       }
     ]
   },
-  "rowsSha256": "6129c5904184b76ace57e30be378ba01f280e00a05df2091339273d6fde86281",
+  "rowsSha256": "7d3be6247911818c553df2fd5a1fbb22f9915ce521af672034973c6447167924",
   "collapsed": {
     "events:command_start:curl -d @deep.json http://10.0.0.5/api": 1,
     "events:command_start:echo markers": 1,
@@ -63,7 +63,7 @@
     "walked": 8,
     "brokenAtEventId": null,
     "brokenReason": null,
-    "currentHead": "6eec08c18484c4009f4735fad38570909fff5be3330af8f20f74b33026c6476d",
+    "currentHead": "3332cb5a5471a849f72e62f603d6832d1fc5001393f0c30c42ab4b9df723ae3f",
     "anchorMatchesWalkedHead": false,
     "clockAnomalies": [],
     "signedCount": 8,

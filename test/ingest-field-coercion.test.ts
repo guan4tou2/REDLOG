@@ -157,7 +157,7 @@ sqlite.describe('a field that is not the scalar the pipeline expects (FR-097, re
       }
       for (const [n, v] of VARIANTS.entries()) {
         const label = `${c.field} ${v.name}`
-        const hit = rows.filter((r) => r.data.recovered_from_spool === true && r.data.tag === `v${n}`)
+        const hit = rows.filter((r) => (r.data._ingest as { door?: string } | undefined)?.door === 'legacy-handoff' && r.data.tag === `v${n}`)
         expect(hit.length, label).toBeGreaterThan(0)
         const stored = storedValue(c, hit[0])
         if (c.field === 'target_id' && v.name !== 'string') expect(stored, label).toBeNull()

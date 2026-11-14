@@ -293,8 +293,8 @@ Only files whose `_identity.engagementId` matches the active project are
 drained. A mismatch remains unchanged on disk and is retried when its owning
 project opens; it is never inserted into the active database. RedLog also scans
 the legacy `~/.redlog/quarantined/` directory so files moved there by v0.15.1
-remain recoverable. Recovered events are stamped with
-`recovered_from_spool: true`; identity-less legacy files are additionally
+remain recoverable. A recovered event carries the receiver's stamp
+`_ingest.door: legacy-handoff` (no key in its own data); identity-less legacy files are additionally
 marked `spool_attribution: unattributed`.
 
 ## Configuration

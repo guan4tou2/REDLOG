@@ -139,7 +139,7 @@ sqlite.describe(`the pause property (${WORLDS * ITEMS} seeded cases)`, () => {
         switch (item.door) {
           case 'api':
           case 'api-bad-time':
-            ingestMod.ingest({ agentType: 'shell', data: { ...data, source_timestamp: item.door === 'api' ? item.observed : badTime }, ...id, envelope: { source: 'api', mapper: { id: 'identity', version: '1' } } })
+            ingestMod.ingest({ agentType: 'shell', data: { ...data, source_timestamp: item.door === 'api' ? item.observed : badTime }, ...id })
             break
           case 'in-process':
             ingestMod.ingestEvent('shell', { ...data, source_timestamp: item.observed }, id)
@@ -174,7 +174,7 @@ sqlite.describe(`the pause property (${WORLDS * ITEMS} seeded cases)`, () => {
         const key = r.type === 'marker' ? String(r.data.title) : String(r.data.command).replace(/^true /, '')
         written.set(key, (written.get(key) ?? 0) + 1)
         if (r.type === 'shell' && inside(r.createdAt, closed)) failures.push(`world ${w}: shell row ${key} received at ${r.createdAt - BASE}, inside a pause`)
-        if (r.type === 'shell' && r.data.recovered_from_spool === true && typeof r.data.source_timestamp === 'number'
+        if (r.type === 'shell' && (r.data._ingest as { door?: string } | undefined)?.door === 'legacy-handoff' && typeof r.data.source_timestamp === 'number'
           && r.data.source_timestamp > 1.4e12 && inside(r.data.source_timestamp, closed)) {
           failures.push(`world ${w}: spooled row ${key} observed at ${r.data.source_timestamp - BASE}, inside a recorded pause`)
         }

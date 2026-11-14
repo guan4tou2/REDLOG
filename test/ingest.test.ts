@@ -247,7 +247,7 @@ describeDB('ingest', () => {
     const r = ingestMod.ingest({
       ...base, agentType: 'scanner',
       data: { subtype: 'connection', proto: 'tcp', remote_addr: '10.0.0.9', remote_port: 445 },
-      envelope: { raw: rawBytes, source: 'connection-monitor', mapper: { id: 'identity', version: '1' } }
+      envelope: { raw: rawBytes }
     })
     expect(r.event).not.toBeNull()
     const stored = r.event!.data._raw as { sha256: string } | undefined

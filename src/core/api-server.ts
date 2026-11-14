@@ -424,13 +424,11 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       // loot scan / scanner body sidecar / HTTP-cred detection / redaction /
       // insert / publish / scope dispatch / companion events — now lives in
       // ingest(), so a command means the same thing whether it arrives here or
-      // from an in-process producer. `identity` mapper: the posted body IS the
-      // envelope's {agent_type, data}.
+      // from an in-process producer.
       // A step after the commit that fails does not fail this call: ingest
       // isolates each one and returns the written row (ingest.ts afterCommit).
       const result = ingest({
-        agentType, data, operatorId: operator.id, engagementId, targetId, entrance: LEGACY_API,
-        envelope: { source: 'api', mapper: { id: 'identity', version: '1' } }
+        agentType, data, operatorId: operator.id, engagementId, targetId, entrance: LEGACY_API
       })
       if (!result.event) {
         // A deliberate pause/unrecorded interval is acknowledged so the hook
@@ -559,8 +557,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         severity: body.severity || 'info',
         category: body.category || 'external'
       }, engagementId, operatorId: operator.id,
-      targetId: (body.target_id || body.targetId) as string | undefined, entrance: LEGACY_API,
-      envelope: { source: 'api', mapper: { id: 'identity', version: '1' } } }).event
+      targetId: (body.target_id || body.targetId) as string | undefined, entrance: LEGACY_API }).event
       json(res, 201, event && withoutRowId(event))
       return
     }

@@ -221,10 +221,10 @@ describeDB('ingest characterization (R2-0a)', () => {
       // Unchanged but for the receiver's stamp (Spec 071 FR-005), which names
       // the spool as the door it came in by (test/ingest-stamp-doors.test.ts).
       const { _ingest: stamp, ...stored } = row.data as Record<string, unknown>
-      expect(stored).toEqual({ ...data, recovered_from_spool: true })
+      expect(stored).toEqual(data)
       expect(stamp).toMatchObject({ v: 1, door: 'legacy-handoff', producer: 'legacy-handoff', auth: 'none' })
       expect(row.data.overlaps_pause).toBeUndefined()
-      expect(row.source).toBe('spool')
+      expect(row.source).toBeNull()
     })
 
     it('is done with a gap wholly inside a pause: no row, file consumed', () => {
@@ -346,7 +346,7 @@ describeDB('ingest characterization (R2-0a)', () => {
       // writes the row twice.
       const hourAgo = Date.now() - 3_600_000
       const replay = (): ReturnType<typeof shell> =>
-        shell({ ...start('id', { terminal_id: 's-t1', pid: 900 }), source_timestamp: hourAgo, recovered_from_spool: true })
+        shell({ ...start('id', { terminal_id: 's-t1', pid: 900 }), source_timestamp: hourAgo })
       const first = replay()
       const second = replay()
       expect(first.event).not.toBeNull()
