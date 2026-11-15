@@ -32,10 +32,12 @@ const sqlite = requires('better-sqlite3')
 let dbMod: typeof import('../src/core/db/index')
 let ingestMod: typeof import('../src/core/ingest')
 let stampMod: typeof import('../src/core/ingest/stamp')
+let bodyIndex: typeof import('../src/core/http-body-index')
 if (sqlite.ok) {
   dbMod = await import('../src/core/db/index')
   ingestMod = await import('../src/core/ingest')
   stampMod = await import('../src/core/ingest/stamp')
+  bodyIndex = await import('../src/core/http-body-index')
 }
 
 const who = { engagementId: ENG, operatorId: OP }
@@ -68,6 +70,9 @@ sqlite.describe('target_via', () => {
   })
   afterEach(() => {
     unloadBuiltinTargetExtractors()
+    // An HTTP row opens the body index beside the database; Windows refuses to
+    // delete a directory holding an open file, so both are closed before it goes.
+    bodyIndex.closeHttpBodyIndex()
     dbMod.closeDB()
     fs.rmSync(dir, { recursive: true, force: true })
   })
