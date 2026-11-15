@@ -135,9 +135,11 @@ describeDB('ingest', () => {
     }
   })
 
-  it('uses active target only when producer and enrichment have no target', () => {
-    ingestMod.configureIngest({ activeTarget: '10.10.11.24' })
-    const fallback = ingestMod.ingest({
+  // The engagement's selected target is not applied by ingest to anything: a
+  // row has the target its writer handed it or the extractor read from its
+  // command (Spec 071 `_ingest.target_via`, test/target-via.test.ts).
+  it('a row has the target its writer gave it or its command names; nothing else gives one', () => {
+    const none = ingestMod.ingest({
       ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'id' }
     }).event!
     const detected = ingestMod.ingest({
@@ -153,23 +155,23 @@ describeDB('ingest', () => {
       ...base, agentType: 'system', data: { subtype: 'capture_health' }
     }).event!
 
-    expect(fallback.targetId).toBe('10.10.11.24')
+    expect(none.targetId).toBeNull()
     expect(detected.targetId).toBe('10.10.11.99')
     expect(explicit.targetId).toBe('manual.example')
-    expect(screenshot.targetId).toBe('10.10.11.24')
+    expect(screenshot.targetId).toBeNull()
     expect(system.targetId).toBeNull()
   })
 
-  it('files the operator adds by hand follow the active target; detected transfers do not', () => {
-    ingestMod.configureIngest({ activeTarget: '10.10.11.24' })
+  it('a file the operator adds takes the target the app hands it; one RedLog detects has none', () => {
     const added = ingestMod.ingest({
-      ...base, agentType: 'file_transfer',
+      ...base, agentType: 'file_transfer', targetId: '10.10.11.24', targetVia: 'operator-selected',
       data: { subtype: 'artifact_added', source: 'operator', path: '/tmp/a-added.xml', stored: 'artifacts/aa-a-added.xml', sha256: 'aa', size: 1, mtime: 1 }
     }).event!
     const detected = ingestMod.ingest({
       ...base, agentType: 'file_transfer', data: { direction: 'upload', filename: 'seen-by-watcher.bin' }
     }).event!
     expect(added.targetId).toBe('10.10.11.24')
+    expect((added.data._ingest as { target_via: string }).target_via).toBe('operator-selected')
     expect(detected.targetId).toBeNull()
   })
 
@@ -177,26 +179,15 @@ describeDB('ingest', () => {
   // terminal pane declares nothing, and neither does an external shell — what
   // host a command touched is read from the command itself, and the sequence
   // in the pane's own events carries the rest.
-  it('ignores a declared session_target and falls back to the global one', () => {
-    ingestMod.configureIngest({ activeTarget: '10.10.11.99' })
+  it('ignores a declared session_target; a host-less command has no target', () => {
     const declared = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'pwd -s041a', pid: 4242, session_target: '10.10.11.8' } }).event!
     const pane = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'uname -s041b', terminalId: 'pane-1' } }).event!
-    // A host named in the command still outranks the fallback.
     const named = ingestMod.ingest({ ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'curl http://10.10.11.200/', terminalId: 'pane-1' } }).event!
 
-    expect(declared.targetId).toBe('10.10.11.99')
-    expect(pane.targetId).toBe('10.10.11.99')
+    expect(declared.targetId).toBeNull()
+    expect(pane.targetId).toBeNull()
     expect(pane.data.target_source).toBeUndefined()
     expect(named.targetId).toBe('10.10.11.200')
-  })
-
-  it('clearing active target stops fallback attribution', () => {
-    ingestMod.configureIngest({ activeTarget: '10.10.11.24' })
-    ingestMod.configureIngest({ activeTarget: null })
-    const event = ingestMod.ingest({
-      ...base, agentType: 'shell', data: { subtype: 'command_start', command: 'whoami' }
-    }).event!
-    expect(event.targetId).toBeNull()
   })
 
   it('stores cwd correlation as candidates without changing explicit causes', () => {

@@ -8,7 +8,7 @@ import { signEvent } from '../signing'
 import { storeRaw, type RawRef } from '../raw-store'
 import type { RedLogEvent, EnvelopeInput, StoredEnvelope } from './event-types'
 import { ENVELOPE_SCHEMA_VERSION } from './event-types'
-import { currentEntrance, engagementForWrite, ingestStamp, stripReserved, type IngestEntrance } from '../ingest/stamp'
+import { currentEntrance, engagementForWrite, ingestStamp, stripReserved, type IngestEntrance, type TargetVia } from '../ingest/stamp'
 import { rowTerminal, terminalIdentity } from '../ingest/terminal'
 import { boundDataDepth } from '../ingest/depth'
 import { fieldText } from '../ingest/field-text'
@@ -17,6 +17,11 @@ interface InsertOpts {
   engagementId?: string
   operatorId?: string
   targetId?: string
+  /** How `targetId` was decided (Spec 071 `_ingest.target_via`). Absent: a
+   *  target the caller passed is `explicit`, no target is `none`. Only the
+   *  in-process door may write `operator-selected`: from another door it is
+   *  recorded as `explicit`. */
+  targetVia?: TargetVia
   bypassPause?: boolean
   envelope?: EnvelopeInput
   occurredAt?: number
@@ -26,6 +31,16 @@ interface InsertOpts {
   entrance?: IngestEntrance
   /** Receiver-owned keys the door already removed from the producer's data. */
   stripped?: readonly string[]
+}
+
+/** The `target_via` a row is stamped with: what the caller said, held to what
+ *  the row and its door allow. */
+function targetViaOf(opts: InsertOpts, entrance: IngestEntrance): TargetVia {
+  if (!opts.targetId) return 'none'
+  const via = opts.targetVia
+  if (via === undefined || via === 'none') return 'explicit'
+  if (via === 'operator-selected' && entrance.door !== 'in-process') return 'explicit'
+  return via
 }
 
 /** Store the raw bytes (if any) and fold their digest into `data` so the hash
@@ -632,7 +647,8 @@ function insertChainedEvent(
   // receiver's own keys, since `_source_time_rejected.value` is the producer's.
   const bounded = boundDataDepth(dataForChain)
   // Last of the receiver's keys, and like them before the hash (FR-020).
-  dataForChain = { ...bounded.data, _ingest: ingestStamp(opts?.entrance ?? currentEntrance(), { tier: 'chained', now, stripped: opts?.stripped, collapsed: bounded.collapsed, terminal: terminalIdentity(data) }) }
+  const entranceOf = opts?.entrance ?? currentEntrance()
+  dataForChain = { ...bounded.data, _ingest: ingestStamp(entranceOf, { tier: 'chained', now, targetVia: targetViaOf(opts, entranceOf), stripped: opts?.stripped, collapsed: bounded.collapsed, terminal: terminalIdentity(data) }) }
 
   const event: RedLogEvent = {
     id: crypto.randomUUID(),
@@ -765,7 +781,7 @@ function insertLoggedEvent(
     targetId: opts.targetId ?? null,
     // Stamped like a chained row (FR-005). Not hashed here: this tier has no
     // per-row hash, and the export's logged digest covers it (FR-024).
-    data: { ...bounded.data, _ingest: ingestStamp(opts.entrance ?? currentEntrance(), { tier: 'logged', now, stripped: opts.stripped, collapsed: bounded.collapsed, terminal: terminalIdentity(data) }) },
+    data: { ...bounded.data, _ingest: ingestStamp(opts.entrance ?? currentEntrance(), { tier: 'logged', now, targetVia: targetViaOf(opts, opts.entrance ?? currentEntrance()), stripped: opts.stripped, collapsed: bounded.collapsed, terminal: terminalIdentity(data) }) },
     createdAt: now,
     // Deliberately absent — see the block above.
     hash: undefined,

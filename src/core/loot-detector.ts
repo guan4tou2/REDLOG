@@ -5,6 +5,7 @@ import { noteDbError } from './capture-health'
 import { DETECT_AS_LOOT, SECRET_SHAPES, compileShape } from './secret-patterns'
 import { runBoundedRules, PLUGIN_RULES_BUDGET_MS, _shutdownBoundedRegex } from './bounded-regex'
 import type { ProjectIdentity } from './project-runtime'
+import type { TargetVia } from './ingest/stamp'
 
 interface LootMatch {
   /** Stable rule identity, the key a rule is switched off by: the built-in's
@@ -235,7 +236,7 @@ export class LootDetector {
    * is reported to capture health, and nothing is marked seen, so the next
    * sighting records it instead of the loot being silently lost.
    */
-  emit(matches: LootMatch[], opts: { targetId?: string; source?: string; causeEventId?: string }): boolean {
+  emit(matches: LootMatch[], opts: { targetId?: string; targetVia?: TargetVia; source?: string; causeEventId?: string }): boolean {
     const identity = this.identity
     if (!identity?.operatorId) return false
     const fresh: LootMatch[] = []
@@ -284,7 +285,8 @@ export class LootDetector {
       }, {
         engagementId: identity.engagementId,
         operatorId: identity.operatorId,
-        targetId: opts.targetId
+        targetId: opts.targetId,
+        targetVia: opts.targetVia
       })
       if (!evt) return false
       for (const k of kept) this.detectedHashes.add(k)

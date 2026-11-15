@@ -16,6 +16,7 @@
 
 import { insertEvent, queryEventById, type RedLogEvent } from './db/events'
 import { redactFields } from './redaction'
+import type { TargetVia } from './ingest/stamp'
 
 /** Must equal MARKER_SEVERITIES in src/renderer/src/lib/markerFold.ts. The two
  *  bundles share no module graph, so the list is written twice and a test reads
@@ -107,7 +108,10 @@ export function amendMarker(
     operatorId: opts.operatorId,
     // Inherited so an amendment is filtered, exported and scoped with the
     // marker it belongs to rather than escaping a target-scoped export.
-    targetId: original.targetId ?? undefined
+    targetId: original.targetId ?? undefined,
+    // ...and how the marker got it. A marker written before the stamp carried
+    // `target_via` has none to hand on: the amendment's own target is explicit.
+    targetVia: (original.data._ingest as { target_via?: TargetVia } | undefined)?.target_via
   })
   if (!event) return { ok: false, error: 'invalid-changes', detail: 'insert refused (duplicate window)' }
   return { ok: true, event }

@@ -151,8 +151,8 @@ function runStep(step: ConfigApplyStep, ctx: StepContext, deps: ConfigApplyDeps)
     case 'terminal':
       deps.configureTerminal({ identity: ctx.identity, maxCastBytes: cfg.terminal?.maxCastBytes })
       return
-    case 'ingestActiveTarget':
-      deps.configureIngest({ ...(open ? deps.ingestCollaborators() : {}), activeTarget: cfg.engagement.activeTarget ?? null })
+    case 'ingestCollaborators':
+      if (open) deps.configureIngest(deps.ingestCollaborators())
       return
     case 'audit':
       if (ctx.diskPrev) ctx.configChangedId = deps.logConfigDiff(ctx.diskPrev, cfg)

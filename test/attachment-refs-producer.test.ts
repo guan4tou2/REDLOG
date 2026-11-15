@@ -30,7 +30,7 @@ const sqlite = requires('better-sqlite3')
 const python = requires('python-cryptography')
 
 const SHA = 'a'.repeat(64)
-const stamped = (e: IngestEntrance) => ingestStamp(e, { tier: 'chained', now: Date.UTC(2026, 10, 14) })
+const stamped = (e: IngestEntrance) => ingestStamp(e, { tier: 'chained', targetVia: 'none', now: Date.UTC(2026, 10, 14) })
 const segmentsEnd = { subtype: 'session_end', source: 'builtin-terminal', castSegments: [{ path: '/p/casts/r1.cast', bytes: 10, sha256: SHA }] }
 const singleEnd = { subtype: 'session_end', source: 'builtin-terminal', castPath: '/p/casts/r2.cast', castSha256: SHA, castBytes: 5 }
 

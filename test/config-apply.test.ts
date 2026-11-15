@@ -28,7 +28,7 @@ const GOLDEN_OPEN = [
   'configureAgentTailer'
 ]
 const GOLDEN_SAVE = [
-  'configureIngest', 'logConfigDiff', 'showWifiName', 'publishLink', 'broadcastIPStatus', 'alertRuntime.configure',
+  'logConfigDiff', 'showWifiName', 'publishLink', 'broadcastIPStatus', 'alertRuntime.configure',
   'screenshotAgent.configure', 'configureCaptureHealth', 'stopManagedHttpCapture', 'startManagedHttpCapture',
   'scheduleScopeRecompute', 'configureTerminal', 'lootDetector.configure',
   'configureFileWatcher', 'configureConnectionMonitor', 'configureProcessMonitor',
@@ -142,7 +142,8 @@ describe('config apply plan: the dependency map', () => {
     ['VPN adapters', (c) => { c.network.vpnAdapters = [] }, ['vpnAdapters']],
     ['redaction', (c) => { c.redaction.minLength = 8 }, ['redaction']],
     ['max cast bytes', (c) => { c.terminal.maxCastBytes = 1 }, ['terminal']],
-    ['the current target', (c) => { c.engagement.activeTarget = 't.test' }, ['ingestActiveTarget']]
+    // The selection is read by main when an in-app action writes a row; ingest applies it to nothing.
+    ['the current target', (c) => { c.engagement.activeTarget = 't.test' }, []]
   ]
   for (const [name, mut, expected] of cases) {
     it(`changing ${name} plans exactly ${expected.join(', ') || 'no subsystem'}`, () => {
@@ -196,10 +197,10 @@ describe('config apply plan: the dependency map', () => {
     expect(steps(planConfigApply(input(cfg()), input(cfg()), 'hook-config'))).toEqual(['agentTailer'])
   })
 
-  it('a new project seed plans nothing; the current target plans ingest only', () => {
+  it('a new project seed plans nothing; the current target plans no subsystem but the capture-health snapshot', () => {
     expect(steps(planConfigApply(input(cfg()), input(cfg((c) => { c.scope.targets = ['x'] })), 'create'))).toEqual([])
     expect(steps(planConfigApply(input(cfg()), input(cfg((c) => { c.engagement.activeTarget = 't' })), 'target-context')))
-      .toEqual(['ingestActiveTarget', 'captureHealth'])
+      .toEqual(['captureHealth'])
   })
 
   it('every step has a dependency entry', () => {

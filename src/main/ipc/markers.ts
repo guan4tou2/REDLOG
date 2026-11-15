@@ -9,6 +9,7 @@ import { insertEvent, queryEventById, queryMarkerAmendments, type RedLogEvent } 
 import { ingestEvent } from '../../core/ingest'
 import { getProjectDir } from '../../core/project-manager'
 import { loadConfig } from '../../core/config'
+import { operatorSelectedTarget } from './target-context'
 import { redactFields } from '../../core/redaction'
 import { amendMarker } from '../../core/marker-amend'
 import { resolveContainedFile } from '../../core/contained-file'
@@ -124,7 +125,12 @@ export function registerMarkersIpc(
       ...(causes.length > 0 ? { _causes: causes } : {})
     }, MARKER_TEXT_FIELDS), {
       engagementId: config.engagement.id, operatorId: config.operator.id, bypassPause: true,
-      ...(typeof data.targetId === 'string' && data.targetId.trim() ? { targetId: data.targetId.trim().slice(0, 253) } : {})
+      // A step picked in the transcript brings its own target (explicit); a
+      // marker made anywhere else is the operator's act on the target they have
+      // selected now.
+      ...(typeof data.targetId === 'string' && data.targetId.trim()
+        ? { targetId: data.targetId.trim().slice(0, 253) }
+        : operatorSelectedTarget(config))
     })
     return event
   })
@@ -144,11 +150,14 @@ export function registerMarkersIpc(
   ipcMain.handle('marker:amendments', (_e, ids: string[]) =>
     ctx.getActiveProject() && Array.isArray(ids) ? queryMarkerAmendments(ids.map(String)) : [])
 
-  ipcMain.handle('screenshot:capture', (_e, causeEventId?: string, opts?: { heldFrame?: unknown; hideOwnWindows?: unknown }) =>
-    screenshotAgent.captureNow('manual', typeof causeEventId === 'string' ? causeEventId : undefined, {
+  ipcMain.handle('screenshot:capture', (_e, causeEventId?: string, opts?: { heldFrame?: unknown; hideOwnWindows?: unknown }) => {
+    const proj = ctx.getActiveProject()
+    return screenshotAgent.captureNow('manual', typeof causeEventId === 'string' ? causeEventId : undefined, {
       heldFrame: typeof opts?.heldFrame === 'string' ? opts.heldFrame : undefined,
-      hideOwnWindows: opts?.hideOwnWindows === true
-    }))
+      hideOwnWindows: opts?.hideOwnWindows === true,
+      targetId: proj ? operatorSelectedTarget(loadConfig(getProjectDir(proj))).targetId : undefined
+    })
+  })
 
   ipcMain.handle('screenshot:deleteFile', (_e, eventId: string, filePath: string) => {
     try {

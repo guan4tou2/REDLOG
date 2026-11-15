@@ -35,6 +35,10 @@ export interface CaptureOptions {
   heldFrame?: string
   /** Take RedLog's windows (main and HUD) off the screen for the capture. */
   hideOwnWindows?: boolean
+  /** The operator's selected target, passed by the in-app capture. Used for a
+   *  `manual` capture only: a timer, the idle watcher, a command's end or
+   *  `POST /api/screenshot` has no operator act behind it and records none. */
+  targetId?: string
 }
 
 export class ScreenshotAgent {
@@ -294,7 +298,8 @@ export class ScreenshotAgent {
       }, {
         engagementId: identity.engagementId,
         operatorId: identity.operatorId,
-        bypassPause: deliberate
+        bypassPause: deliberate,
+        ...(trigger === 'manual' && opts.targetId ? { targetId: opts.targetId, targetVia: 'operator-selected' as const } : {})
       }) } catch (e) {
         // The picture is on disk but no event points at it: a file nothing in
         // the project accounts for. Remove it rather than leave one behind.

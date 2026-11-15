@@ -66,8 +66,9 @@ function stampsOf(where: string, ...args: unknown[]): Array<{ agent_type: string
     WHERE ${where} ORDER BY t, r`).all(...args) as Array<{ agent_type: string; subtype: string | null; data: string }>
   return rows.map((r) => ({ agent_type: r.agent_type, subtype: r.subtype, stamp: (JSON.parse(r.data) as { _ingest: Stamp })._ingest }))
 }
-/** The stamp without its per-row id, for comparing doors. */
-const door = (s: Stamp): Stamp => { const { event_id: _id, ...rest } = s; return rest }
+/** The stamp without its per-row id and `target_via`, for comparing doors: how a
+ *  row got its target belongs to the row, not the door (test/target-via.test.ts). */
+const door = (s: Stamp): Stamp => { const { event_id: _id, target_via: _via, ...rest } = s; return rest }
 
 sqlite.describe('the in-process doors and the spool', () => {
   let dir = ''

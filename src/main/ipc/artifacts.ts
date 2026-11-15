@@ -12,6 +12,7 @@ import type { ProjectMeta } from '../../core/project-manager'
 import { ingestEvent } from '../../core/ingest'
 import { getProjectDir } from '../../core/project-manager'
 import { loadConfig } from '../../core/config'
+import { operatorSelectedTarget } from './target-context'
 import { queryEvents } from '../../core/db/event-queries'
 import { addArtifact, artifactRelatedCommands, type ArtifactAddOutcome, type ArtifactAddResponse } from '../../core/artifacts'
 
@@ -42,7 +43,7 @@ function addFiles(proj: ProjectMeta, files: string[]): ArtifactAddOutcome[] {
       mtime: r.mtime,
       ...(r.duplicate ? { duplicate: true } : {}),
       ...(related.length > 0 ? { related_commands: related } : {})
-    }, { engagementId: config.engagement.id, operatorId: config.operator.id, bypassPause: true })
+    }, { engagementId: config.engagement.id, operatorId: config.operator.id, bypassPause: true, ...operatorSelectedTarget(config) })
     results.push({ ...r, eventId: ev?.id ?? null, relatedCommands: related.length })
   }
   return results

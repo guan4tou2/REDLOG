@@ -16,8 +16,9 @@
 //
 // TABLES — the 31 kind-keyed tables of plan.md 「表的清點」, each recognised by
 // the declaration that IS the table, so a rename or a fold is noticed. Folding
-// one (Phases 3-6) means deleting its declaration, adding its id to FOLDED, and
-// lowering TABLE_BASELINE by one in the same change.
+// one (Phases 3-6) means deleting its declaration and adding its id to FOLDED.
+// TABLE_BASELINE stays 31: the assertion is `live === TABLE_BASELINE -
+// FOLDED.length`, so lowering it as well would count the fold twice.
 //
 // Lowering AGENT_BASELINE / SUBTYPE_BASELINE: delete a comparison (ask the
 // registry instead), run this file once with the baseline at 0 to read the new
@@ -63,8 +64,12 @@ const ROOT = path.join(__dirname, '..', '..')
 //   tools/redlog-verify.py states the same comparison in Python, where no
 //   registry can reach; the rule's other comparisons in that file
 //   (attachmentRefs) are of the same kind.
-const AGENT_BASELINE = 282
-const SUBTYPE_BASELINE = 310
+// 2026-11-15, Spec 071 `_ingest.target_via`: ingest no longer gives a file the
+//   operator adds the global target, which was `agentType === 'file_transfer'
+//   && data.subtype === 'artifact_added'` in ingest.ts: agent -1, subtype -1.
+//   The in-app call sites that now pass the selected target compare no kind.
+const AGENT_BASELINE = 281
+const SUBTYPE_BASELINE = 309
 const TABLE_BASELINE = 31
 
 type Counter = 'agent' | 'subtype'
@@ -192,8 +197,11 @@ const TABLES: Array<{ id: number; file: string; anchor: RegExp; what: string }> 
   { id: 33, file: 'src/renderer/src/components/ScopeStatus.tsx', anchor: /const SCOPE_SUBTYPES = new Set\(/, what: 'scope/config changed sets' }
 ]
 
-/** Table ids folded into the registry. Add the id here and lower TABLE_BASELINE when a fold lands. */
-const FOLDED: number[] = []
+/** Table ids folded into the registry, or deleted with the behaviour they served.
+ *  Add the id here when the declaration goes; TABLE_BASELINE stays the plan's 31.
+ *  #4 ACTIVE_TARGET_FALLBACK_TYPES: Spec 071 removed the global active target
+ *  from ingest, so no row's target is decided by its kind any more. */
+const FOLDED: number[] = [4]
 
 describe('kind-keyed tables (Spec 072 T005)', () => {
   const live = TABLES.filter((t) => fs.existsSync(path.join(ROOT, t.file)) && t.anchor.test(fs.readFileSync(path.join(ROOT, t.file), 'utf8')))

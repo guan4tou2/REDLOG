@@ -4,54 +4,54 @@
     "events": [
       {
         "id": "00000000-0000-4000-8000-000000000004",
-        "hash": "5f847c1747ee57ffa2daec138d0115bd460040b6b97a3b4ec6bcd13a61b7a949",
-        "sha256": "e97868997dc195b3cb1c893708cd7282f1a2ae74c6cda7f01400bce7aafaa42e"
+        "hash": "42d72e4f393fbb4ab0542d0a15ac26f802692edc5729fc439287fe15d63d02f0",
+        "sha256": "18ed8bfee7637b073534df48ac01c25b26983afed46a351034bfdb2d3e73ccd7"
       },
       {
         "id": "00000000-0000-4000-8000-000000000006",
-        "hash": "66bf846cf8955316ce0bbb2b44260379f6f92277094cf97a87e5471775a60c9e",
-        "sha256": "ce190cc793cf47bde7166197bc25c28b473247532e2d08ec17e1e4286f608dc7"
+        "hash": "c2a97de054580f65c05df46856dcddd4d507310e479f6aa58a8dce51041a8bef",
+        "sha256": "88c759ff8f0bc07820d207cc2784104e84ccb2fe67507c591981d75e5c3b93d0"
       },
       {
         "id": "00000000-0000-4000-8000-000000000008",
-        "hash": "aa1d0fcf26b1f00636bdc12e6d4c82889efba2939fed1e91f785ee1f4097c8c4",
-        "sha256": "98db197a1d19a7bfb585eadfd3853e09514eca133d64a797205dc0d101bc05cc"
+        "hash": "bec2e4e3f90aca9e07863170f9da5892b6345aedadfedd5a3160598a7a5dd7b8",
+        "sha256": "11e51985c92f0a0ff9dc85926e07505e52d65360200da884f3680e5f2b6bc6a6"
       },
       {
         "id": "00000000-0000-4000-8000-000000000012",
-        "hash": "50365dcb51a829efff41ef0ac1ca36539ca42576d52b92789c98c530c0d17f19",
-        "sha256": "74096089430925db13538f5bda84d764dfea27938bc5413149a3c3ac0b4cc294"
+        "hash": "77e973ac5bb2b15cb6d7aa51b2341f23a1329aae3faf42fe76573f315e2385f1",
+        "sha256": "da8173591a936a08ef05d1943a4de8822764dd65861a2088cd678e6877e94eda"
       },
       {
         "id": "00000000-0000-4000-8000-000000000014",
-        "hash": "d94c4316bcabe0dbac00fc2ca9d0614fc95a0b8468686668786e5793026ce70e",
-        "sha256": "35b67b56254dcba0bb06aaf156578beb37b0113c5124ff1c08c4f9638e32abc5"
+        "hash": "30e734c73bd2282b252f664aac052d509c0a3b5b6c2851d41c4c1ae59f0e2bbe",
+        "sha256": "c8d58ee06d627b805263dee2a89cad26def16fdb4216a48d9941e0f139203d02"
       },
       {
         "id": "00000000-0000-4000-8000-000000000016",
-        "hash": "8902b4d0626da45fd3f83050385ed355b48316da664eb6875a7710db4f3c6ece",
-        "sha256": "3a5038f0216cea7f478fd1ad4622edfa9d132b0297fde26ca9735e43808ad7b3"
+        "hash": "8a0c44cad55785282c8762f3748fa300d42f0b44af3ce6aa3e24f243cb0bc9f6",
+        "sha256": "b7c99c512f98375aec17146ef226cd02da085fd926e9d8a51f013e9fd830baab"
       },
       {
         "id": "00000000-0000-4000-8000-000000000018",
-        "hash": "180e5e6794c3c32a1a1b9d745ecede456b29e0b839a0145ec5c5e937c9dbe8c5",
-        "sha256": "90dc291c85c4821ca240a6095cfe7cac897ee1d0f7865481f46786da37656ae8"
+        "hash": "d7ab4fcdc5fd243ac21c4fb168fdd88eb943eff63bec63a101765cd52216b431",
+        "sha256": "f5629288541619b2faa53ebde0ac77186e25cd7520ce74935e3695beec1163d2"
       },
       {
         "id": "00000000-0000-4000-8000-000000000021",
-        "hash": "c664ddf649b68ac7cf659695719a688815bc9f9f9b2144f28a9f63de4662d9be",
-        "sha256": "1af06fee8edc5c0b62e9a0f46f78f54fb761243eed403bf3131e1ca85861fccf"
+        "hash": "535633f910c89b91e6d65b56de8c21c483397332ef4a3f597bdcb50787aa5352",
+        "sha256": "8d334bde375df0b86a4c42d34bfbf6a0912f5985cec0a1ccbee87487084740c3"
       }
     ],
     "events_logged": [
       {
         "id": "00000000-0000-4000-8000-000000000009",
         "hash": null,
-        "sha256": "e0185aa613ca0e394a5495b1a1fd3236fa5f2b6a6183ed860d423be53fae68e2"
+        "sha256": "c14b3cb401a7690d400989a2a95e7f4845f443e669772035c72ecfb62be5bfed"
       }
     ]
   },
-  "rowsSha256": "7d3be6247911818c553df2fd5a1fbb22f9915ce521af672034973c6447167924",
+  "rowsSha256": "8d3987660cca6f86dcd1591d50f6509168be972b6ae255eb5c026b5cfca859b6",
   "collapsed": {
     "events:command_start:curl -d @deep.json http://10.0.0.5/api": 1,
     "events:command_start:echo markers": 1,
@@ -63,7 +63,7 @@
     "walked": 8,
     "brokenAtEventId": null,
     "brokenReason": null,
-    "currentHead": "3332cb5a5471a849f72e62f603d6832d1fc5001393f0c30c42ab4b9df723ae3f",
+    "currentHead": "66fbd5db4aa14d54ca04ace4e72a1617c6e2e3f6c4012fb35501c97041b4d481",
     "anchorMatchesWalkedHead": false,
     "clockAnomalies": [],
     "signedCount": 8,

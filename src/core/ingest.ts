@@ -33,7 +33,7 @@ import { redact, getRules } from './redaction'
 import { extractBodyToSidecar, extractTextToSidecar } from './http-body-store'
 import { linkHttpBodyEvent } from './http-body-index'
 import { noteDbError, notePipelineWarning } from './capture-health'
-import { DERIVED, currentEntrance, stripReserved, withEntrance, type IngestEntrance } from './ingest/stamp'
+import { DERIVED, currentEntrance, stripReserved, withEntrance, type IngestEntrance, type TargetVia } from './ingest/stamp'
 import { terminalIdentity } from './ingest/terminal'
 import { fieldNumber, fieldText } from './ingest/field-text'
 
@@ -52,7 +52,7 @@ export interface LootMatchLike {
 export interface LootDetectorLike {
   findMatches?: (text: string) => LootMatchLike[]
   scan: (text: string, targetId?: string, source?: string, causeEventId?: string) => LootMatchLike[]
-  emit?: (matches: LootMatchLike[], opts: { targetId?: string; source?: string; causeEventId?: string }) => boolean
+  emit?: (matches: LootMatchLike[], opts: { targetId?: string; targetVia?: TargetVia; source?: string; causeEventId?: string }) => boolean
 }
 
 export interface AlertRuntimeLike {
@@ -66,19 +66,16 @@ export type CastProbe = (terminalId: string) => { castPath: string; offset: numb
 let lootDetectorRef: LootDetectorLike | null = null
 let alertRuntimeRef: AlertRuntimeLike | null = null
 let castProbe: CastProbe | null = null
-let activeTarget: string | null = null
 export interface TerminalLifecycle {
   prepare: (data: Record<string, unknown>, engagementId: string) => boolean
   recorded: (event: RedLogEvent) => void
 }
 let terminalLifecycle: TerminalLifecycle | null = null
-const ACTIVE_TARGET_FALLBACK_TYPES = new Set(['shell', 'marker', 'screenshot'])
 
-export function configureIngest(opts: { lootDetector?: LootDetectorLike | null; alertRuntime?: AlertRuntimeLike | null; castProbe?: CastProbe | null; activeTarget?: string | null; terminalLifecycle?: TerminalLifecycle | null }): void {
+export function configureIngest(opts: { lootDetector?: LootDetectorLike | null; alertRuntime?: AlertRuntimeLike | null; castProbe?: CastProbe | null; terminalLifecycle?: TerminalLifecycle | null }): void {
   if (opts.lootDetector !== undefined) lootDetectorRef = opts.lootDetector
   if (opts.alertRuntime !== undefined) alertRuntimeRef = opts.alertRuntime
   if (opts.castProbe !== undefined) castProbe = opts.castProbe
-  if (opts.activeTarget !== undefined) activeTarget = opts.activeTarget?.trim() || null
   if (opts.terminalLifecycle !== undefined) terminalLifecycle = opts.terminalLifecycle
 }
 
@@ -94,6 +91,11 @@ export interface IngestInput {
   operatorId: string
   engagementId: string
   targetId?: string
+  /** `operator-selected`: `targetId` is the operator's currently selected
+   *  target, passed by an in-app action (Spec 071 `_ingest.target_via`). Taken
+   *  from the in-process door only; any other door's target is `explicit`.
+   *  A derived row's writer passes the via its target came with. */
+  targetVia?: TargetVia
   bypassPause?: boolean
   /** Envelope: raw bytes / ref, producer timestamp. */
   envelope?: EnvelopeInput
@@ -115,6 +117,12 @@ export interface IngestInput {
    *  recorded pause intervals before it got here (Spec 071 FR-082 as revised
    *  2026-11-13). The pause in effect now still refuses it. */
   spoolJudged?: boolean
+}
+
+/** `_ingest.target_via` of a row that landed. */
+function storedTargetVia(event: RedLogEvent): TargetVia {
+  const stamp = event.data._ingest as { target_via?: TargetVia } | undefined
+  return stamp?.target_via ?? 'none'
 }
 
 /** The row an error was thrown after: ingest committed it, then a step after
@@ -142,7 +150,7 @@ export interface IngestResult {
 export function ingestEvent(
   agentType: string,
   data: Record<string, unknown>,
-  opts: { engagementId: string; operatorId: string; targetId?: string; bypassPause?: boolean; envelope?: EnvelopeInput; occurredAt?: number }
+  opts: { engagementId: string; operatorId: string; targetId?: string; targetVia?: TargetVia; bypassPause?: boolean; envelope?: EnvelopeInput; occurredAt?: number }
 ): RedLogEvent | null {
   return ingest({ agentType, data, ...opts }).event
 }
@@ -281,25 +289,29 @@ export function ingest(input: IngestInput): IngestResult {
     return { event: null, skipped: 'dedup', companions: [] }
   }
 
+  // 3. Enrichment stamps + what the companions will need. Only for primary
+  //    rows: a companion is already the product of enrichment.
+  //
+  //    How the row got its target (`_ingest.target_via`), first non-empty
+  //    wins: the writer's own (explicit, or operator-selected from an in-app
+  //    action — in-process only), then a host the extractor read from the
+  //    command, then the target a background job's command was filed under.
+  //    Nothing else gives a row a target: not the terminal it came from, not
+  //    the engagement's selected target.
+  let targetVia: TargetVia = 'none'
+  if (targetId) {
+    const claimed = input.targetVia
+    const believed = claimed !== undefined && claimed !== 'none'
+      && (input.derived || (claimed === 'operator-selected' && entrance.door === 'in-process'))
+    targetVia = believed ? claimed : 'explicit'
+  }
+  const plan = input.derived ? emptyPlan() : enrich(agentType, data, targetId)
+  if (plan.targetId && !targetId) { targetId = plan.targetId; targetVia = 'extracted' }
   // 2b. A background job's late output has no command text to read a target
   //     from, and must not get one by reading its bytes. The command it belongs
   //     to was filed under a target when it ended; the chunk goes to the same.
-  if (late?.filed && !targetId) {
-    targetId = late.target ?? undefined
-  }
-
-  // 3. Enrichment stamps + what the companions will need. Only for primary
-  //    rows: a companion is already the product of enrichment.
-  const plan = input.derived ? emptyPlan() : enrich(agentType, data, targetId)
-  if (plan.targetId && !targetId) targetId = plan.targetId
-  // A file the operator adds by hand is their act, like a marker or a
-  // screenshot, so it belongs to the target they are working on. Transfers RedLog
-  // detects itself are not: nothing says which target they were for.
-  const operatorAct = ACTIVE_TARGET_FALLBACK_TYPES.has(agentType)
-    || (agentType === 'file_transfer' && data.subtype === 'artifact_added')
-  if (!targetId && operatorAct && activeTarget) {
-    targetId = activeTarget
-  }
+  //     A command filed under none gives a chunk none.
+  if (!targetId && late?.filed && late.target) { targetId = late.target; targetVia = 'command' }
 
   // 4. Redaction spans (docs/redaction-design.md layer 2). Detect only; the
   //    bytes stay so the chain closes over the true text. UI masks, export
@@ -308,7 +320,7 @@ export function ingest(input: IngestInput): IngestResult {
 
   // 5. Write. insertEvent stores the raw bytes and hashes the envelope.
   const event = insertEvent(agentType, data, {
-    engagementId, operatorId, targetId, bypassPause: input.bypassPause, envelope: input.envelope,
+    engagementId, operatorId, targetId, targetVia, bypassPause: input.bypassPause, envelope: input.envelope,
     occurredAt: input.occurredAt, entrance, stripped
   })
   if (!event) return { event: null, skipped: 'dedup', companions: [] }
@@ -323,6 +335,11 @@ export function ingest(input: IngestInput): IngestResult {
   }
 
   function afterCommit(event: RedLogEvent): IngestResult {
+  // What the row's target is as STORED: the late-output bookkeeping, the
+  // companions and the loot below read it from the row that landed, so what
+  // they carry is what a restart finds again (restoreLateState reads the same
+  // columns), not a local variable that insertEvent never saw.
+  const landed = { target: event.targetId ?? null, via: storedTargetVia(event) }
   // Each step on its own: one that throws is reported and the rest still run,
   // and the row — committed — is still the answer. A caller must never be told
   // a written row failed (it would resend it, or record a gap for it).
@@ -343,10 +360,10 @@ export function ingest(input: IngestInput): IngestResult {
       // came before its start is forgotten here, so its resend after the start
       // is stored again; keeping it would take a lookup at every start to
       // agree after a restart. The reader keeps one row per number.)
-      remember(commandId, { filed: true, target: targetId ?? null, seen: new Set() })
+      remember(commandId, { filed: true, target: landed.target, seen: new Set() })
     } else if (data.subtype === 'command_end' && (data.late_output === true || data.output_streamed === true)) {
       const entry = lateByCommand.get(commandId)
-      if (entry) { entry.filed = true; entry.target = targetId ?? null } else remember(commandId, { filed: true, target: targetId ?? null, seen: new Set() })
+      if (entry) { entry.filed = true; entry.target = landed.target } else remember(commandId, { filed: true, target: landed.target, seen: new Set() })
     } else if (lateCommandId && data.final === true) {
       lateByCommand.delete(commandId)
     } else if (lateCommandId && !late?.transient && (data.late === true || data.streamed === true) && typeof data.seq === 'number') {
@@ -386,11 +403,13 @@ export function ingest(input: IngestInput): IngestResult {
   // 8. Companions. Each goes back through ingest as `derived`, so it gets a
   //    raw ref and an envelope like any row, and never enriches further.
   const companions: RedLogEvent[] = []
+  // A companion takes its source row's target and how it got it; a host the
+  // detector itself names (`tid`) is explicit.
   const emitCompanion = (type: string, d: Record<string, unknown>, tid?: string): void => {
     try {
       const r = ingest({
         agentType: type, data: { ...d, _causes: [event.id] }, operatorId, engagementId,
-        targetId: tid ?? targetId, derived: true
+        targetId: tid ?? landed.target ?? undefined, targetVia: tid ? 'explicit' : landed.via, derived: true
       })
       if (r.event) companions.push(r.event)
     } catch { /* companions are additive; the primary row already landed */ }
@@ -400,7 +419,7 @@ export function ingest(input: IngestInput): IngestResult {
     if (plan.pendingLootMatches.length > 0 && lootDetectorRef?.emit) {
       // Loot is derived from this row, like the companions below.
       const loot = lootDetectorRef
-      withEntrance(DERIVED, () => loot.emit!(plan.pendingLootMatches, { targetId, source: fieldText(data.command), causeEventId: event.id }))
+      withEntrance(DERIVED, () => loot.emit!(plan.pendingLootMatches, { targetId: landed.target ?? undefined, targetVia: landed.via, source: fieldText(data.command), causeEventId: event.id }))
     }
   })
   if (plan.pivot) {
@@ -410,7 +429,7 @@ export function ingest(input: IngestInput): IngestResult {
       socks_port: p.socksPort, forward: p.forward, mitre_ttp: p.mitreTtp,
       command: data.command,
       description: `Pivot via ${p.tool}${p.via ? ` → ${p.via}` : ''}${p.route ? ` (${p.route})` : ''}`
-    }, p.via ?? targetId)
+    }, p.via)
   }
   if (plan.cleanup) {
     const c = plan.cleanup
@@ -433,14 +452,14 @@ export function ingest(input: IngestInput): IngestResult {
       subtype: 'closed', tool: p.tool, via: p.via, route: p.route, forward: p.forward,
       command: data.command, exit_code: data.exit_code, duration_sec: data.duration_sec,
       description: `Pivot closed [${p.tool}]${p.via ? ` → ${p.via}` : ''}`
-    }, p.via ?? targetId)
+    }, p.via)
   }
   if (plan.httpCred) {
     const c = plan.httpCred
     emitCompanion('credential_use', {
       subtype: c.method, url: data.url, host: data.host,
       description: `${c.detail} → ${c.target}`, mitre_ttp: 'T1078'
-    }, c.target || targetId)
+    }, c.target)
   }
   for (const cred of plan.commandCreds) {
     emitCompanion('credential_use', {
@@ -449,7 +468,7 @@ export function ingest(input: IngestInput): IngestResult {
       ...(cred.userContext ? { user_context: cred.userContext } : {}),
       ...(cred.scheme ? { scheme: cred.scheme } : {}),
       description: `credential in command (${cred.kind})`, mitre_ttp: 'T1078'
-    }, cred.destHost || targetId)
+    }, cred.destHost)
   }
 
   return { event, companions }
@@ -482,7 +501,7 @@ const sessionTail = new Map<string, string>()
  *  once, so a restart must too: SC-003). One map, so an entry is evicted
  *  whole: two maps bounded alike but filled by different rows lost one half and
  *  kept the other, and a chunk of a command 256 starts back was filed under
- *  the global target. Released at the relay's `final` row. */
+ *  none. Released at the relay's `final` row. */
 interface LateCommand {
   filed: boolean
   target: string | null
@@ -836,6 +855,5 @@ export function _resetIngest(): void {
   lootDetectorRef = null
   alertRuntimeRef = null
   castProbe = null
-  activeTarget = null
   terminalLifecycle = null
 }

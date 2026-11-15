@@ -39,9 +39,12 @@ vi.mock('../src/core/signing', async (actual) => {
 // words are hashed instead. Hashed that way, the index the previous layout
 // built (stored text, same rowids) gives this same digest, so only what is
 // hashed moved, not what is stored.
+// Re-recorded 2026-11-15 for Spec 071 `_ingest.target_via`: every new row says
+// how it got its target. With that one key held back the previous digest comes
+// out unchanged, so no target_id column and nothing else moved.
 const GOLDEN = {
-  rows: '53eb68cdf35dc63b0de2f7ca8d31bb542d644d3814d2df7abe401e66dce1bac9',
-  head: '039143cb03fcfec4c55c0f68ca92ec8b231313ab3aa7c67b607c465403cec9d8'
+  rows: '8cbd25c98f0b9f01d5645de40b43f4d5d0b1440cf0f88351d1c35122a97b3abc',
+  head: '23a44a1e7f5055765e1401d32db9ffb60063a2060f78f0102d9ed16ae5307714'
 }
 
 let dir: string

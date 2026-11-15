@@ -55,13 +55,12 @@ describeDB('ingest keeps one project from reaching the next', () => {
   }
 
   /** What stopProject does that ingest can see (src/main/index.ts): the
-   *  database closes, the causes resolver is reset, activeTarget is cleared.
+   *  database closes, the causes resolver is reset.
    *  Nothing here touches ingest's own maps. */
   const stopProject = (): void => {
     bodyIndex.closeHttpBodyIndex()
     dbMod.closeDB()
     causes.resetCausesResolver()
-    ingestMod.configureIngest({ activeTarget: null })
     bodies.resetBodiesDirCache()
     current = null
   }

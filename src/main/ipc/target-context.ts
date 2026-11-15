@@ -10,10 +10,20 @@ function cleanTarget(value: unknown): string | null {
   return target ? target.slice(0, 253) : null
 }
 
+/** The target the operator has selected in the open project, as the fields an
+ *  in-app action hands the writer: the row's target, and that it came from the
+ *  operator's selection (Spec 071 `_ingest.target_via`). Read from the config
+ *  at the moment of the action; nothing selected gives nothing, and the row has
+ *  no target. Not for a row a tool or a timer writes. */
+export function operatorSelectedTarget(config: { engagement: { activeTarget?: string | null } }): { targetId?: string; targetVia?: 'operator-selected' } {
+  const target = cleanTarget(config.engagement.activeTarget)
+  return target ? { targetId: target, targetVia: 'operator-selected' } : {}
+}
+
 export interface TargetContextDeps {
   /** Writes the open project's config and applies it (main/config-apply.ts:
-   *  a changed current target reaches ingest, nothing else). False when no
-   *  project is open. */
+   *  a changed current target has no subsystem to reach; in-app actions read it
+   *  when they write a row). False when no project is open. */
   commit: (next: RedLogConfig, prev: RedLogConfig) => boolean
 }
 
