@@ -1,7 +1,7 @@
 // Spec 071: a manual capture is the operator's act and carries the selected
-// target they hand the agent (`operator-selected`); a timed, idle or
-// command-end capture and POST /api/screenshot have no operator act behind them
-// and write no target, whatever the options say.
+// target they hand the agent (`operator-selected`); a `periodic`,
+// `command` or `api` capture (POST /api/screenshot) has no operator act behind
+// it and writes no target, whatever the options say.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
 import os from 'os'
@@ -61,7 +61,7 @@ describe('a capture\'s target', () => {
     expect(h.events[0].opts.targetVia).toBeUndefined()
   })
 
-  it.each(['periodic', 'idle', 'command', 'api'])('a %s capture writes none, even when handed a target', async (trigger) => {
+  it.each(['periodic', 'command', 'api'])('a %s capture writes none, even when handed a target', async (trigger) => {
     await agent.captureNow(trigger, undefined, { targetId: '10.10.11.24' })
     expect(h.events).toHaveLength(1)
     expect(h.events[0].opts.targetId).toBeUndefined()

@@ -25,7 +25,8 @@ import path from 'path'
 
 const ROOT = path.join(__dirname, '..')
 const ALLOWED = new Set(['src/core/config.ts', 'src/main/config-store.ts'])
-const BASELINE = 33
+// 32: targetContext:get reads the selection applied to the open project (Spec 071).
+const BASELINE = 32
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {

@@ -337,7 +337,7 @@ export async function runBasicPaths(opts: RunOptions = {}): Promise<BasicPathsRu
     agent.configure({ identity: { projectId: 'proj-basic', engagementId: ENG, operatorId: OP } })
     markers.registerMarkersIpc(fakeIpc, ctx, agent)
     step()
-    const ipcMarker = handlers.get('marker:create')!({}, { title: 'SSH exposed', notes: 'open on 10.0.0.5', severity: 'high', category: 'finding', causes: firstEnd ? [firstEnd] : [], targetId: '10.0.0.5' }) as { id: string } | null
+    const ipcMarker = handlers.get('marker:create')!({}, { title: 'SSH exposed', notes: 'open on 10.0.0.5', severity: 'high', category: 'finding', causes: firstEnd ? [firstEnd] : [] }) as { id: string } | null
     mark('marker-ipc')
 
     // 6. marker, HUD: addHudMarker in main/index.ts is not importable; this is its body from its exported parts.

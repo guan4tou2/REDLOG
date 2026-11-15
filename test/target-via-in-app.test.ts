@@ -65,15 +65,40 @@ describe('in-app actions pass the selected target', () => {
     fs.rmSync(loot, { recursive: true, force: true })
   })
 
-  it('marker:create with no target of its own takes the selected one; a transcript step keeps its own (explicit)', () => {
+  it('marker:create with nothing cited takes the selected target; a renderer-supplied targetId is not believed', () => {
     select('10.10.11.24')
     const create = handlers.get('marker:create')!
     create({}, { title: 'from the toolbar' })
-    create({}, { title: 'from a step', targetId: '10.0.0.5' })
+    create({}, { title: 'claims one', targetId: '10.0.0.5' })
     expect(stored('marker')).toEqual([
       { target: '10.10.11.24', via: 'operator-selected' },
-      { target: '10.0.0.5', via: 'explicit' }
+      { target: '10.10.11.24', via: 'operator-selected' }
     ])
+  })
+
+  it('a transcript step marker takes the cited row\'s target and how it was known, from the stored row', () => {
+    select('10.10.11.24')
+    const create = handlers.get('marker:create')!
+    const who = { engagementId: 'eng-1', operatorId: 'op-1', entrance: LEGACY_API }
+    const step = (n: number, opts: { targetId?: string; targetVia?: 'explicit' | 'extracted' | 'command' }): string =>
+      insertEvent('shell', { subtype: 'command', command: `echo ${n}` }, { ...who, ...opts })!.id
+    const ids = [
+      step(1, { targetId: '10.0.0.5', targetVia: 'explicit' }),
+      step(2, { targetId: 'web.example', targetVia: 'extracted' }),
+      step(3, { targetId: 'late.example', targetVia: 'command' }),
+      step(4, {})
+    ]
+    // The renderer's own claim of a target is not read.
+    for (const id of ids) create({}, { title: 'p', causes: [id, ids[0]], targetId: '9.9.9.9' })
+    expect(stored('marker')).toEqual([
+      { target: '10.0.0.5', via: 'explicit' },
+      { target: 'web.example', via: 'extracted' },
+      { target: 'late.example', via: 'command' },
+      { target: null, via: 'none' }
+    ])
+    // A cited id the project does not hold: the operator's act on the selection.
+    create({}, { title: 'p', causes: ['no-such-event'] })
+    expect(stored('marker')[4]).toEqual({ target: '10.10.11.24', via: 'operator-selected' })
   })
 
   it('marker:create with nothing selected has no target', () => {
@@ -104,6 +129,14 @@ describe('in-app actions pass the selected target', () => {
     expect(stored('file_transfer')).toEqual([{ target: '10.10.11.24', via: 'operator-selected' }])
   })
 
+  it('a file picked in the dialog takes the selected target, read when the picker returns', async () => {
+    const { dialog } = await import('electron')
+    vi.mocked(dialog.showOpenDialog).mockImplementation((async () => { select('10.10.11.24'); return { canceled: false, filePaths: [path.join(loot, 'hashes.txt')] } }) as never)
+    const r = await handlers.get('artifacts:add')!({}, 'title') as { results: Array<{ ok: boolean }> }
+    expect(r.results[0].ok).toBe(true)
+    expect(stored('file_transfer')).toEqual([{ target: '10.10.11.24', via: 'operator-selected' }])
+  })
+
   it('an added file with nothing selected has no target', async () => {
     await handlers.get('artifacts:addDropped')!({}, [path.join(loot, 'hashes.txt')], { title: 't', message: 'm', confirm: 'y', cancel: 'n' })
     expect(stored('file_transfer')).toEqual([{ target: null, via: 'none' }])
@@ -125,6 +158,9 @@ describe('in-app actions pass the selected target', () => {
     const shortcut = src.slice(src.indexOf('globalShortcut.register(QUICK_SHOT_ACCELERATOR'), src.indexOf('// --- Updates ---'))
     expect(shortcut).toContain('operatorSelectedTarget(selectedTarget())')
     expect(shortcut).toContain("captureNow('manual'")
+    // One source for the selection: the config applied to the open project, never the file.
+    expect(src).toMatch(/const selectedTarget = \(\): string \| null => selectedTargetOf\(projectRuntime\.current\(\), configApplier\.applied\(\)\)/)
+    expect(src).toContain('getSelectedTarget: selectedTarget,')
   })
 
   describe('rows no in-app action writes take no target from the selection', () => {

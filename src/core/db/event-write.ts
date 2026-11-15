@@ -36,6 +36,7 @@ interface InsertOpts {
 /** The `target_via` a row is stamped with: what the caller said, held to what
  *  the row and its door allow. */
 function targetViaOf(opts: InsertOpts, entrance: IngestEntrance): TargetVia {
+  // An empty string is no target: stored as NULL, stamped `none`.
   if (!opts.targetId) return 'none'
   const via = opts.targetVia
   if (via === undefined || via === 'none') return 'explicit'
@@ -660,7 +661,7 @@ function insertChainedEvent(
     agentType,
     hostname,
     sourceIP: null,
-    targetId: opts?.targetId ?? null,
+    targetId: opts?.targetId || null,
     data: dataForChain,
     prevHash,
     createdAt: now,
@@ -778,7 +779,7 @@ function insertLoggedEvent(
     agentType,
     hostname: os.hostname(),
     sourceIP: null,
-    targetId: opts.targetId ?? null,
+    targetId: opts.targetId || null,
     // Stamped like a chained row (FR-005). Not hashed here: this tier has no
     // per-row hash, and the export's logged digest covers it (FR-024).
     data: { ...bounded.data, _ingest: ingestStamp(opts.entrance ?? currentEntrance(), { tier: 'logged', now, targetVia: targetViaOf(opts, opts.entrance ?? currentEntrance()), stripped: opts.stripped, collapsed: bounded.collapsed, terminal: terminalIdentity(data) }) },

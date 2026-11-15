@@ -36,8 +36,8 @@ export interface CaptureOptions {
   /** Take RedLog's windows (main and HUD) off the screen for the capture. */
   hideOwnWindows?: boolean
   /** The operator's selected target, passed by the in-app capture. Used for a
-   *  `manual` capture only: a timer, the idle watcher, a command's end or
-   *  `POST /api/screenshot` has no operator act behind it and records none. */
+   *  `manual` capture only: the other triggers (`periodic`, `command`, `api`)
+   *  have no operator act behind them and record none. */
   targetId?: string
 }
 

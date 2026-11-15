@@ -41,9 +41,10 @@ export interface TargetContextDeps {
 
 export function registerTargetContextIpc(ipcMain: IpcMain, ctx: IpcContext, deps: TargetContextDeps): void {
   ipcMain.handle('targetContext:get', () => {
-    const project = ctx.getActiveProject()
-    if (!project) return null
-    return cleanTarget(loadConfig(getProjectDir(project)).engagement.activeTarget)
+    // What the in-app actions will use: the applied selection, not the file.
+    // Opening a project applies its config in the same synchronous run that
+    // begins it, so no request can see the project without it.
+    return ctx.getActiveProject() ? ctx.getSelectedTarget() : null
   })
 
   ipcMain.handle('targetContext:set', (_event, requested: unknown) => {
@@ -56,7 +57,10 @@ export function registerTargetContextIpc(ipcMain: IpcMain, ctx: IpcContext, deps
     const prev = loadConfig(projectDir)
     const previous = cleanTarget(prev.engagement.activeTarget)
     const target = cleanTarget(requested)
-    if (previous === target) return { ok: true, target }
+    // Both the file and the applied config must already say it: if they
+    // disagree (a hand edit, an apply that threw after the write) the switch
+    // commits and applies again.
+    if (previous === target && ctx.getSelectedTarget() === target) return { ok: true, target }
 
     const next = loadConfig(projectDir)
     next.engagement.activeTarget = target

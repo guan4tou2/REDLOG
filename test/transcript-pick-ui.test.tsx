@@ -54,7 +54,9 @@ describe('picking steps in the transcript', () => {
     fireEvent.click(screen.getAllByTestId('transcript-pick')[0])
     fireEvent.click(screen.getByTestId('transcript-pick-failed_attempt'))
     await waitFor(() => expect(markerCreate).toHaveBeenCalledTimes(1))
-    expect(markerCreate.mock.calls[0][0]).toMatchObject({ category: 'failed_attempt', causes: ['s2'], targetId: '10.0.0.5', atTimestamp: 2 })
+    expect(markerCreate.mock.calls[0][0]).toMatchObject({ category: 'failed_attempt', causes: ['s2'], atTimestamp: 2 })
+    // The target is not the renderer's to claim: main reads it from the cited row.
+    expect(markerCreate.mock.calls[0][0]).not.toHaveProperty('targetId')
 
     await screen.findByTestId('transcript-pick-badge')
     fireEvent.click(screen.getByTestId('transcript-picked-only'))

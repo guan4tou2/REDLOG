@@ -36,7 +36,8 @@ export type IngestAuth = 'bearer' | 'mac' | 'in-process' | 'none'
  *  an in-app action that passes the operator's selected target (in-process
  *  door only); `extracted` the target extractor found a host in a shell row's
  *  command; `command` a command_output chunk takes the target its command was
- *  filed under; `none` the row has no target. */
+ *  filed under, and so does a companion or loot row derived from such a
+ *  chunk; `none` the row has no target. */
 export type TargetVia = 'explicit' | 'operator-selected' | 'extracted' | 'command' | 'none'
 
 /** Who wrote a row, as the receiver decided it when the row came in — never

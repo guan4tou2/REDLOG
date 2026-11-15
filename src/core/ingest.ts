@@ -110,6 +110,11 @@ export interface IngestInput {
    *  derived row cannot derive further rows (no pivot-of-a-pivot). Stamped
    *  with the `derived` producer, whatever `entrance` says. */
   derived?: boolean
+  /** The writer hands on the target AND the `target_via` of a row it cites
+   *  (a marker picked from a transcript step, an amendment of a marker), so
+   *  the via it passes is believed as given. Any other non-derived writer may
+   *  claim `operator-selected` and nothing else. */
+  inheritsVia?: boolean
   /** Which door received the row, as that door authenticated it (Spec 071
    *  FR-005). Absent: the caller's (withEntrance), else in-process. */
   entrance?: IngestEntrance
@@ -120,7 +125,7 @@ export interface IngestInput {
 }
 
 /** `_ingest.target_via` of a row that landed. */
-function storedTargetVia(event: RedLogEvent): TargetVia {
+export function storedTargetVia(event: RedLogEvent): TargetVia {
   const stamp = event.data._ingest as { target_via?: TargetVia } | undefined
   return stamp?.target_via ?? 'none'
 }
@@ -150,7 +155,7 @@ export interface IngestResult {
 export function ingestEvent(
   agentType: string,
   data: Record<string, unknown>,
-  opts: { engagementId: string; operatorId: string; targetId?: string; targetVia?: TargetVia; bypassPause?: boolean; envelope?: EnvelopeInput; occurredAt?: number }
+  opts: { engagementId: string; operatorId: string; targetId?: string; targetVia?: TargetVia; inheritsVia?: boolean; bypassPause?: boolean; envelope?: EnvelopeInput; occurredAt?: number }
 ): RedLogEvent | null {
   return ingest({ agentType, data, ...opts }).event
 }
@@ -294,15 +299,17 @@ export function ingest(input: IngestInput): IngestResult {
   //
   //    How the row got its target (`_ingest.target_via`), first non-empty
   //    wins: the writer's own (explicit, or operator-selected from an in-app
-  //    action — in-process only), then a host the extractor read from the
+  //    action — in-process only, held by insertEvent), then a host the extractor read from the
   //    command, then the target a background job's command was filed under.
   //    Nothing else gives a row a target: not the terminal it came from, not
   //    the engagement's selected target.
   let targetVia: TargetVia = 'none'
   if (targetId) {
     const claimed = input.targetVia
-    const believed = claimed !== undefined && claimed !== 'none'
-      && (input.derived || (claimed === 'operator-selected' && entrance.door === 'in-process'))
+    // What a writer may claim: a derived row any via it inherited; any other
+    // writer only `operator-selected`. Which DOOR may claim it is insertEvent's
+    // rule (db/event-write.ts targetViaOf), which every writer passes through.
+    const believed = claimed !== undefined && claimed !== 'none' && (input.derived || input.inheritsVia || claimed === 'operator-selected')
     targetVia = believed ? claimed : 'explicit'
   }
   const plan = input.derived ? emptyPlan() : enrich(agentType, data, targetId)
@@ -404,12 +411,13 @@ export function ingest(input: IngestInput): IngestResult {
   //    raw ref and an envelope like any row, and never enriches further.
   const companions: RedLogEvent[] = []
   // A companion takes its source row's target and how it got it; a host the
-  // detector itself names (`tid`) is explicit.
+  // detector itself names (`tid`) is explicit. A detector that names none says
+  // `undefined` or `''` (an HTTP request with no host): both mean none named.
   const emitCompanion = (type: string, d: Record<string, unknown>, tid?: string): void => {
     try {
       const r = ingest({
         agentType: type, data: { ...d, _causes: [event.id] }, operatorId, engagementId,
-        targetId: tid ?? landed.target ?? undefined, targetVia: tid ? 'explicit' : landed.via, derived: true
+        targetId: tid || landed.target || undefined, targetVia: tid ? 'explicit' : landed.via, derived: true
       })
       if (r.event) companions.push(r.event)
     } catch { /* companions are additive; the primary row already landed */ }

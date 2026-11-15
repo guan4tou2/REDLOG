@@ -98,6 +98,27 @@ sqlite.describe('target_via', () => {
       expect(last('marker').via).toBe('explicit')
     })
 
+    // The two layers each hold a rule the other does not. insertEvent: the
+    // door (a legacy entrance cannot write operator-selected, whoever calls).
+    // ingest: the claim (a writer that is not derived may hand `operator-selected`
+    // and nothing else — it cannot say its target was extracted or a command's).
+    it('insertEvent alone: a legacy entrance claiming operator-selected is recorded explicit', async () => {
+      const events = await import('../src/core/db/events')
+      for (const entrance of [stampMod.LEGACY_API, stampMod.LEGACY_HANDOFF]) {
+        events.insertEvent('marker', { subtype: 'created', title: 'd' }, { ...who, targetId: 'sel.example', targetVia: 'operator-selected', entrance })
+        expect(last('marker')).toMatchObject({ target: 'sel.example', via: 'explicit' })
+      }
+      events.insertEvent('marker', { subtype: 'created', title: 'd' }, { ...who, targetId: 'sel.example', targetVia: 'operator-selected' })
+      expect(last('marker').via).toBe('operator-selected')
+    })
+
+    it('ingest alone: a writer that is not derived cannot claim extracted or command', () => {
+      for (const targetVia of ['extracted', 'command'] as const) {
+        ingestMod.ingest({ agentType: 'marker', data: { subtype: 'created', title: 'c' }, targetId: 'x.example', targetVia, ...who })
+        expect(last('marker')).toMatchObject({ target: 'x.example', via: 'explicit' })
+      }
+    })
+
     it('extracted: a host in a shell command', () => {
       start('curl http://10.0.0.9/')
       expect(last('shell')).toMatchObject({ target: '10.0.0.9', via: 'extracted' })
@@ -135,7 +156,7 @@ sqlite.describe('target_via', () => {
     it('rows that used the global target are none now: markers, screenshots, files', () => {
       ;(ingestMod.configureIngest as (o: object) => void)({ activeTarget: '10.10.11.24' })
       ingestMod.ingest({ agentType: 'marker', data: { subtype: 'created', title: 'm' }, ...who })
-      ingestMod.ingest({ agentType: 'screenshot', data: { trigger: 'timed', filename: 's.jpg' }, ...who })
+      ingestMod.ingest({ agentType: 'screenshot', data: { trigger: 'periodic', filename: 's.jpg' }, ...who })
       ingestMod.ingest({ agentType: 'file_transfer', data: { subtype: 'artifact_added', source: 'operator', path: '/tmp/a', stored: 'artifacts/a', sha256: 'aa', size: 1, mtime: 1 }, ...who })
       for (const agent of ['marker', 'screenshot', 'file_transfer']) expect(last(agent), agent).toMatchObject({ target: null, via: 'none' })
     })
@@ -172,6 +193,26 @@ sqlite.describe('target_via', () => {
       // ...and an operator-selected source gives an operator-selected companion.
       ingestMod.ingest({ agentType: 'shell', data: { subtype: 'command_start', command: 'curl -o /tmp/z http://10.0.0.6/c.sh', pid: 14 }, targetId: 'sel.example', targetVia: 'operator-selected', ...who })
       expect(last('file_transfer')).toMatchObject({ target: 'sel.example', via: 'operator-selected' })
+    })
+
+    // The detector's host is `''` when the request names none: that is "the
+    // detector named none", and the companion takes the source row's target and via.
+    it('a credential_use from a row with no host takes the row\'s target and via, never an empty one', () => {
+      const req = { subtype: 'http_request_start', url: 'https://x.test/', request_headers: [['Authorization', 'Basic YTpi']] }
+      ingestMod.ingest({ agentType: 'scanner', data: { ...req }, targetId: 'given.example', ...who })
+      expect(last('credential_use')).toMatchObject({ target: 'given.example', via: 'explicit' })
+      ingestMod.ingest({ agentType: 'scanner', data: { ...req, url: 'https://y.test/' }, ...who })
+      expect(last('credential_use')).toMatchObject({ target: null, via: 'none' })
+    })
+
+    it('an empty string is never stored as a target_id: it is NULL, and none', async () => {
+      const events = await import('../src/core/db/events')
+      ingestMod.ingest({ agentType: 'marker', data: { subtype: 'created', title: 'e' }, targetId: '', ...who })
+      expect(last('marker')).toMatchObject({ target: null, via: 'none' })
+      events.insertEvent('marker', { subtype: 'created', title: 'e2' }, { ...who, targetId: '' })
+      expect(last('marker')).toMatchObject({ target: null, via: 'none' })
+      events.insertEvent('scanner', { subtype: 'http_request_start', host: 'a.example' }, { ...who, targetId: '' })
+      expect(last('scanner')).toMatchObject({ target: null, via: 'none' })
     })
 
     it('loot from a row takes that row\'s target and via', async () => {
