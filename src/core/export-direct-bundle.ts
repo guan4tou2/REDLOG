@@ -1,9 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { getDB, getProjectDir } from './db/index'
-import { insertEvent } from './db/events'
+import { ingestEvent } from './ingest'
 import { getPrimaryOperator } from './db/operators'
-import { eventBus } from './event-bus'
 import type { EvidenceBundle } from './bundle-export'
 import type { ExportTask, ExportTaskResult } from './export-task'
 import type { ProjectMeta } from './project-manager'
@@ -65,7 +64,7 @@ async function exportDirectBundle(run: ExportTaskRunnerLike, activeProject: () =
   // The same event, under the same conditions, as exportBundle's direct path.
   const primary = getPrimaryOperator()
   if (loggedDigest.count > 0 && primary) {
-    const ev = insertEvent('system', {
+    ingestEvent('system', {
       subtype: 'logged_tier_digest',
       count: loggedDigest.count,
       sha256: loggedDigest.sha256,
@@ -74,7 +73,6 @@ async function exportDirectBundle(run: ExportTaskRunnerLike, activeProject: () =
       reason: 'export',
       description: `export: logged-tier snapshot — ${loggedDigest.count} row(s), sha256 ${loggedDigest.sha256.slice(0, 12)}…`
     }, { engagementId, operatorId: primary.id })
-    if (ev) eventBus.publish(ev)
   }
   const snapshot = { chainedMaxRowId: maxRowId('events'), loggedMaxRowId, takenAt: Date.now() }
 
