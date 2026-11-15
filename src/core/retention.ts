@@ -10,7 +10,7 @@
 import fs from 'fs'
 import path from 'path'
 import { getProjectDir, getDB } from './db/index'
-import { insertEvent } from './db/events'
+import { ingestEvent } from './ingest'
 import { deleteBookmarksOlderThan } from './db/bookmarks'
 import { eventBus } from './event-bus'
 import { noteDbError } from './capture-health'
@@ -97,7 +97,7 @@ function sweepDir(
         try{pruneSavedFileIndex(full)}catch(error){noteDbError('retention-transcript-index',error)}
       }
       try {
-        const ev = insertEvent('system', {
+        ingestEvent('system', {
           subtype: auditSubtype,
           path: full,
           bytes: stat.size,
@@ -105,7 +105,6 @@ function sweepDir(
           description: `pruned by retention policy (${keepDays}d)`,
           ...(causeId ? { _causes: [causeId] } : {})
         }, opts)
-        if (ev) eventBus.publish(ev)
       } catch (e) { noteDbError('retention-sweep', e) }
     } catch { /* file gone / permission — skip */ }
   }
@@ -187,7 +186,7 @@ export function sweepLoggedTier(
 
   const durationMs = Date.now() - started
   try {
-    const ev = insertEvent('system', {
+    ingestEvent('system', {
       subtype: 'retention_pruned_logged',
       count: deleted,
       bytes_freed: bytesFreed,
@@ -197,7 +196,6 @@ export function sweepLoggedTier(
       sweep_duration_ms: durationMs,
       description: `retention: pruned ${deleted} logged-tier row(s), freed ~${Math.round(bytesFreed / 1024 / 1024)} MB (${keepDays}d policy)`
     }, opts)
-    if (ev) eventBus.publish(ev)
   } catch (e) { noteDbError('retention-sweep-logged', e) }
 
   return {
@@ -286,11 +284,10 @@ export function sweepBookmarks(
   try { deleted = deleteBookmarksOlderThan(cutoff) } catch (e) { noteDbError('retention-bookmarks', e); return 0 }
   if (deleted > 0) {
     // Content is never in the audit row — only the fact that N notes aged out.
-    const ev = insertEvent('system', {
+    ingestEvent('system', {
       subtype: 'bookmarks_pruned', count: deleted, keep_days: keepDays,
       description: `Pruned ${deleted} bookmark(s) older than ${keepDays}d`
     }, { engagementId: opts.engagementId, operatorId: opts.operatorId })
-    if (ev) eventBus.publish(ev)
   }
   return deleted
 }
@@ -348,7 +345,7 @@ export function sweepBodyStore(
   //    wide assessment can evict thousands of bodies, and a per-file flood
   //    would bury the timeline it is meant to keep legible.
   try {
-    const ev = insertEvent('system', {
+    ingestEvent('system', {
       subtype: 'body_evicted',
       count: evicted,
       freed_bytes: freedBytes,
@@ -359,7 +356,6 @@ export function sweepBodyStore(
         ? `Evicted ${evicted} body file(s) under disk pressure; still ${plan.shortfallBytes} bytes over budget after evicting everything unpinned — pinned (in-scope) bodies were kept.`
         : `Evicted ${evicted} body file(s) under disk pressure (freed ${freedBytes} bytes; in-scope bodies kept).`
     }, opts)
-    if (ev) eventBus.publish(ev)
   } catch (e) { noteDbError('body-eviction', e) }
 
   return { evicted, freedBytes, shortfallBytes: plan.shortfallBytes }
@@ -512,7 +508,7 @@ export function sweepArtifactStore(
 
   const subtype = kind === 'cast' ? 'cast_evicted' : 'screenshot_evicted'
   try {
-    const ev = insertEvent('system', {
+    ingestEvent('system', {
       subtype,
       count: evicted,
       freed_bytes: freedBytes,
@@ -523,7 +519,6 @@ export function sweepArtifactStore(
         ? `Evicted ${evicted} ${kind} file(s) under disk pressure; still ${plan.shortfallBytes} bytes over budget after evicting everything unpinned — pinned (in-scope) ${kind}s were kept.`
         : `Evicted ${evicted} ${kind} file(s) under disk pressure (freed ${freedBytes} bytes; in-scope ${kind}s kept).`
     }, opts)
-    if (ev) eventBus.publish(ev)
   } catch (e) { noteDbError('artifact-eviction', e) }
 
   return { evicted, freedBytes, shortfallBytes: plan.shortfallBytes }
