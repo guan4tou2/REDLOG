@@ -207,7 +207,7 @@ authenticate(door) → validate → stamp → dedup → settle → gate → deri
 ```
 
 - `insertEvent` 只剩 `src/core/ingest/commit.ts` 可以呼叫；`test/**` 仍可直接匯入以佈置測試資料。
-- 31 處直接呼叫（#716 量得）依檔案遷移，由 ratchet gate 鎖住。
+- 30 處直接呼叫（#716 量得 31，#734 之後為 30）依檔案遷移，由 ratchet gate 鎖住。
 - `insertEvent` 內部的暫停與跨專案閘門改成會丟錯的斷言（FR-095）。
 - `commit` 回傳 `CommitReceipt {seq, chainedMaxRowId, loggedMaxRowId}`（FR-096）。`seq` 是 `commit.ts` 模組內、每次開啟歸零的計數；Spec 073 落地後它屬於 session 的 `project-state`，不是模組層變數。rowid 取自剛插入的列，不另查。
 - `postCommit` 依序：publish、scope 派送、companion 列、存活狀態更新，以及 Spec 074 落地後的 `queryService.notifyCommit(receipt)`、`topicsForCommit(rows, writes)` 與 HTTP body 索引連結（改送 074 的 `derived-op`，取代 `ingest.ts:290` 的直接寫入）。
@@ -237,7 +237,7 @@ authenticate(door) → validate → stamp → dedup → settle → gate → deri
 
 **套用點**：`insertEvent`（`event-write.ts`）的兩個層，在加上 `_ingest` 的那一行：chained 層在 `_clock_anomaly`、`_source_time_rejected` 之後、`canonicalStringify` 之前；logged 層在 `_raw` 之後。理由：
 
-- 每一列——API、交接、行程內、`derived`、尚未遷移的 31 處直接呼叫——都經過這裡，而且只有這裡同時決定雜湊輸入與存入的值；放在 `ingest()` 會漏掉直接呼叫，放在入口會有五個副本。
+- 每一列——API、交接、行程內、`derived`、尚未遷移的 30 處直接呼叫——都經過這裡，而且只有這裡同時決定雜湊輸入與存入的值；放在 `ingest()` 會漏掉直接呼叫，放在入口會有五個副本。
 - `ingest()` 在寫入前讀的都是頂層欄位（`command`、`stdout`、`subtype`、`flow_id`、`pid`、`_causes`、`mtime`、`path`），遮罩 span 也只看頂層的字串欄位；頂層欄位是第 1 層的值，不會被換掉。所以去重、`_causes`、目標擷取、loot、遮罩 span 看到的與先前相同。
 - `_source_time_rejected.value` 是來源的值，比 `data.source_timestamp` 深一層，所以在它加入之後才處理。
 

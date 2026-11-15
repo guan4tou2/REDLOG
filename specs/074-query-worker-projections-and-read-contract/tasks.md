@@ -37,7 +37,7 @@
 - [ ] T020 [US1] `src/core/read-contract.ts`：型別與 `stableKey`；無任何匯入（`test/read-contract-imports.test.ts` 斷言，同 `event-order.ts` 的規矩）。
 - [ ] T021 [US1] `src/main/services/query-worker.ts` 與 `query-service.ts`：兩條 worker（`interactive`、`heavy`），`open`／`req`／`cancel`／`close` 協定；以 `openReadonlyProjectDB` 的同一個函式開唯讀連線；實作 073 定義的 `ProjectResource`（073 T031i 之前以 `ProjectRuntime.onStop` 呼叫同一個 `stop`）。先 RED：`test/query-service.test.ts`（generation 不符的請求在送出前與回覆後被丟棄；A → B → A 的第一次 A 回覆不被採用；`stop()` 冪等）。
 - [ ] T022 [US1] 第一個 `kind`：`aggregateTargets` 經讀取服務；`events:aggregateTargets` 成為代理。等價測試：經 worker 與直接呼叫 deep-equal。順便改為分頁或上限（今天回傳全部目標），renderer 介面不變。
-- [ ] T023 [US2] 提交回執：在 `insertEvent` 的回傳點包一層產生 `CommitReceipt`（過渡；071 T038 落地後改由 commit 原語提供，071 FR-096）；派送者記 `lastCommitted`；寫入型 IPC 回傳 `seq`。先 RED：`test/read-your-writes.test.ts`（10,000 組隨機寫入→帶 `minSeq` 讀取，含讀取服務在中間重啟、排隊、generation 切換；`minSeq` 大於下一個序號回 `bad-request`）。
+- [ ] T023 [US2] 提交回執：由 commit 原語在每次 commit 後產生 `CommitReceipt`（071 FR-096；071 T038 不做它，沒有過渡包裝——DECISIONS 2026-11-15 §9）；`seq` 不得是模組層變數（以資料庫 handle 為鍵）；`events_logged` 沒有 AUTOINCREMENT，RED 要寫明保留期清除後水位的期望；派送者記 `lastCommitted`；寫入型 IPC 回傳 `seq`。先 RED：`test/read-your-writes.test.ts`（10,000 組隨機寫入→帶 `minSeq` 讀取，含讀取服務在中間重啟、排隊、generation 切換；`minSeq` 大於下一個序號回 `bad-request`）。
 - [ ] T024 [US1] FR-008：worker 每個請求一個讀取交易；`test/query-worker-no-held-txn.test.ts` 斷言請求之間沒有開著的交易。
 - [ ] T025 [US7] 崩潰與重啟：退避 1–30 秒、5 次／5 分鐘上限、`health()`；進行中請求以 `service-restarting` 失敗；主行程不回退執行（FR-010）。先 RED：`test/query-service-restart.test.ts`（終止 worker、啟動失敗、達上限）。
 - [ ] T026 [US1] 背壓與取代：佇列上限、`supersedes`、超過預算且被取代時終止 `heavy`。先 RED：`test/query-service-queue.test.ts`。

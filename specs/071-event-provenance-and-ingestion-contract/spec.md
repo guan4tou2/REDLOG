@@ -443,11 +443,12 @@
 
 - **FR-090** 每一列事件不論來源，都依序經過同一組階段：認證 → 驗證 → 蓋章 → 去重 → 結算執行期配對 → 政策（種類、暫停、未記錄的終端機、plumbing、同意、專案）→ 推導 → commit → 回執 → commit 後的工作。各入口只在「認證」不同。
 - **FR-091** 結果會寫進該列並被雜湊的推導（`_causes`、目標、標籤、cast 區段、loot 命中加入遮罩 denylist、遮罩 span、sidecar 參照）在 commit 前同步完成；本規格不把它們延後（02 §3）。commit 之後才做的：publish、HTTP body 索引連結、scope 派送、companion 列（以 `derived` 再走一次入口）、存活狀態更新。
-- **FR-092** 目前直接呼叫 `insertEvent` 的 31 處（Phase 1 量得，#716；系統生命週期、保留期稽核、錨定、匯出摘要、scope 重算、loot、alert、markers、plugins）改走入口，以 `system`／`derived` 身分略過「推導」，但不略過蓋章、政策、去重與 commit。之後新增的行程內寫入（Spec 072 的 `system.project_closed`、Spec 073 的 `session_start` 與當機補寫）同樣走入口。
+- **FR-092** 目前直接呼叫 `insertEvent` 的 30 處（Phase 1 量得 31，#716；#734 之後為 30；系統生命週期、保留期稽核、錨定、匯出摘要、scope 重算、loot、alert、markers、plugins）改走入口，以 `system`／`derived` 身分略過「推導」，但不略過蓋章、政策、去重與 commit。之後新增的行程內寫入（Spec 072 的 `system.project_closed`、Spec 073 的 `session_start` 與當機補寫）同樣走入口。
 - **FR-093** 入口等價：同一份內容不論經哪個入口進來，寫出的列除 `_ingest.door`／`auth`／`credential`、`_ingest.producer` 與收到時間外相同。例外 `_ingest.producer` 由入口與憑證決定（FR-012、FR-071 依賴它），各入口寫成相同會毀掉依它做的判斷；測試把它列為明示的例外並斷言各入口的值。`source`、`mapper` 兩欄新列不再寫（NULL；欄位與舊列不動），交接列的 data 不再帶 `recovered_from_spool`（時間軸徽章讀 `_ingest.door`）。
 - **FR-094** 正式程式碼中，commit 階段之外出現 DB 寫入原語的呼叫時，gate 失敗。基準值只能下降，最後為 0。
 - **FR-095** commit 原語不得靜默回報「什麼都沒寫」：它要嘛寫入，要嘛丟出錯誤。入口把錯誤對應為 `retry`，並記入 capture 狀態。
 - **FR-096** commit 階段在每次 commit 之後，於行程內回傳 `CommitReceipt = {seq, chainedMaxRowId, loggedMaxRowId}`（Spec 074 FR-020）：`seq` 是每次開啟從 1 起算、每次 commit 加一的記憶體內整數，一個交易只有一個；兩個 rowid 是該 commit 後兩層的最大 rowid。它只是回傳值與 commit 後工作的輸入，**不寫入任何列或表**，不進 `_ingest`、不進雜湊。commit 後的工作把它交給 Spec 074 的讀取服務（`notifyCommit`）與變更主題分類（`topicsForCommit`）。
+  > **修訂註記（2026-11-15，DECISIONS 2026-11-15 §9）**：本條的實作延到 Spec 074（074 T023），與它的第一個讀者一起落地；071 T038 不產生 `CommitReceipt`。條文內容不變。
 - **FR-097**（2026-11-14，DECISIONS 2026-11-14 §1、§2）寫入端限制 `data` 的巢狀深度。
   - **擁有者的話**（只有這三處；本條其餘各點是實作者的解讀，擁有者可以推翻）：
     - 對「過深的 `data` 怎麼處理」：「寫入端限制深度」（§1）。
