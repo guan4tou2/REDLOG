@@ -728,8 +728,7 @@ export default function TranscriptView({ onOpenInTimeline, active = true, readin
         severity: 'info',
         category,
         atTimestamp: b.ts,
-        causes: b.events.map((e) => e.id),
-        ...(b.events[0]?.targetId ? { targetId: b.events[0].targetId } : {})
+        causes: b.events.map((e) => e.id)
       })
       if (!ev) throw new Error('no-active-project')
       toast(t('transcript.picked', { kind: t(`marker.category.${category}`) }), 'success')

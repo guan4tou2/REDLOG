@@ -16,7 +16,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { requires } from './helpers/requires'
-import { IN_PROCESS, RESERVED_DATA_KEYS, engagementForWrite, ingestStamp, stripReserved } from '../src/core/ingest/stamp'
+import { DERIVED, IN_PROCESS, LEGACY_API, LEGACY_HANDOFF, RESERVED_DATA_KEYS, engagementForWrite, ingestStamp, stripReserved } from '../src/core/ingest/stamp'
 
 const sqlite = requires('better-sqlite3')
 
@@ -52,11 +52,11 @@ const TYPICAL = {
 const TYPICAL_ENTRANCE = { door: 'api', producer: 'shell', auth: 'bearer', credential: 'c4kq2x9a:1' } as const
 
 describe('the stamp (FR-005, FR-006)', () => {
-  it('an in-process row: v, door, producer, credential, auth and a receiver event_id; nothing else', () => {
+  it('an in-process row: v, door, producer, credential, auth, a receiver event_id and target_via; nothing else', () => {
     const now = Date.UTC(2026, 10, 13, 9, 30)
-    const s = ingestStamp(IN_PROCESS, { tier: 'chained', now }) as Record<string, unknown>
-    expect(Object.keys(s)).toEqual(['v', 'door', 'producer', 'credential', 'auth', 'event_id'])
-    expect(s).toMatchObject({ v: 1, door: 'in-process', producer: 'in-process', credential: null, auth: 'in-process' })
+    const s = ingestStamp(IN_PROCESS, { tier: 'chained', targetVia: 'none', now }) as Record<string, unknown>
+    expect(Object.keys(s)).toEqual(['v', 'door', 'producer', 'credential', 'auth', 'event_id', 'target_via'])
+    expect(s).toMatchObject({ v: 1, door: 'in-process', producer: 'in-process', credential: null, auth: 'in-process', target_via: 'none' })
     // D4: an item that brings no event_id gets a UUIDv7 from the receiver,
     // whose first 48 bits are the receipt time.
     expect(s.event_id).toMatch(UUID_V7)
@@ -65,13 +65,13 @@ describe('the stamp (FR-005, FR-006)', () => {
 
   it('two rows never share a receiver event_id', () => {
     const now = Date.now()
-    const ids = new Set(Array.from({ length: 200 }, () => ingestStamp(IN_PROCESS, { tier: 'chained', now }).event_id))
+    const ids = new Set(Array.from({ length: 200 }, () => ingestStamp(IN_PROCESS, { tier: 'chained', targetVia: 'none', now }).event_id))
     expect(ids.size).toBe(200)
   })
 
   it('every key it can carry is one FR-005 names, in the table\'s order, of the types FR-006 allows', () => {
     const s = ingestStamp(TYPICAL_ENTRANCE, {
-      tier: 'chained', now: Date.now(), stripped: ['_raw', '_ingest'], collapsed: 2, terminal: 't-ab12',
+      tier: 'chained', targetVia: 'extracted', now: Date.now(), stripped: ['_raw', '_ingest'], collapsed: 2, terminal: 't-ab12',
       item: { ...TYPICAL, rules: [{ pluginId: 'b', contentHash: 'f'.repeat(64) }, { pluginId: 'a', contentHash: '0'.repeat(64) }], rulesPartial: true }
     }) as Record<string, unknown>
     const keys = Object.keys(s)
@@ -79,7 +79,7 @@ describe('the stamp (FR-005, FR-006)', () => {
     expect(keys).toEqual(FR005_KEYS.filter((k) => keys.includes(k)))
     expect(typeViolations(s)).toEqual([])
     expect(s).toMatchObject({
-      door: 'api', producer: 'shell', credential: 'c4kq2x9a:1', auth: 'bearer',
+      door: 'api', producer: 'shell', credential: 'c4kq2x9a:1', auth: 'bearer', target_via: 'extracted',
       event_id: TYPICAL.eventId, instance: TYPICAL.instance, seq: 42, terminal: 't-ab12',
       claimed: { producer: 'zsh-hook@0.18.0+c1', operator: 'op-1' },
       // In RESERVED_DATA_KEYS order, whatever order they were found in.
@@ -92,19 +92,19 @@ describe('the stamp (FR-005, FR-006)', () => {
   })
 
   it('a logged row carries no `claimed` (plan, data shapes)', () => {
-    const s = ingestStamp(TYPICAL_ENTRANCE, { tier: 'logged', now: Date.now(), item: TYPICAL }) as Record<string, unknown>
+    const s = ingestStamp(TYPICAL_ENTRANCE, { tier: 'logged', targetVia: 'none', now: Date.now(), item: TYPICAL }) as Record<string, unknown>
     expect(s.claimed).toBeUndefined()
     expect(s.event_id).toBe(TYPICAL.eventId)
   })
 
   it('optional keys are omitted, not null, when there is nothing to say', () => {
-    const s = ingestStamp(IN_PROCESS, { tier: 'chained', now: Date.now(), stripped: [], collapsed: 0, item: { rules: [], rulesPartial: false } }) as Record<string, unknown>
+    const s = ingestStamp(IN_PROCESS, { tier: 'chained', targetVia: 'none', now: Date.now(), stripped: [], collapsed: 0, item: { rules: [], rulesPartial: false } }) as Record<string, unknown>
     for (const k of ['instance', 'seq', 'terminal', 'claimed', 'stripped', 'collapsed', 'rules', 'rules_partial']) expect(k in s, k).toBe(false)
   })
 
   it('a claimed value is a claim: bounded, and only identifier characters survive', () => {
     const s = ingestStamp(TYPICAL_ENTRANCE, {
-      tier: 'chained', now: Date.now(),
+      tier: 'chained', targetVia: 'none', now: Date.now(),
       item: { claimed: { producer: `evil"\n\u0000${'x'.repeat(500)}`, operator: '运营者' } }
     }) as { claimed: { producer: string; operator: string } }
     expect(s.claimed.producer).toMatch(/^[A-Za-z0-9._:@+/-]{1,32}$/)
@@ -116,21 +116,21 @@ describe('the stamp (FR-005, FR-006)', () => {
     const rule = (pluginId: string, seed: string) => ({ pluginId, contentHash: crypto.createHash('sha256').update(seed).digest('hex') })
 
     it('each item is `<pluginId>#<first 12 of the content hash>`, in lexicographic order', () => {
-      const s = ingestStamp(IN_PROCESS, { tier: 'chained', now: Date.now(), item: { rules: [rule('zeta', 'z'), rule('alpha', 'a')] } })
+      const s = ingestStamp(IN_PROCESS, { tier: 'chained', targetVia: 'none', now: Date.now(), item: { rules: [rule('zeta', 'z'), rule('alpha', 'a')] } })
       expect(s.rules).toEqual([`alpha#${rule('alpha', 'a').contentHash.slice(0, 12)}`, `zeta#${rule('zeta', 'z').contentHash.slice(0, 12)}`])
     })
 
     it('a plugin id is cut at 32 characters, so no item exceeds 45 bytes', () => {
-      const s = ingestStamp(IN_PROCESS, { tier: 'chained', now: Date.now(), item: { rules: [rule('p'.repeat(200), 'x')] } })
+      const s = ingestStamp(IN_PROCESS, { tier: 'chained', targetVia: 'none', now: Date.now(), item: { rules: [rule('p'.repeat(200), 'x')] } })
       expect(s.rules).toHaveLength(1)
       expect(s.rules![0]).toBe(`${'p'.repeat(32)}#${rule('', 'x').contentHash.slice(0, 12)}`)
       expect(Buffer.byteLength(s.rules![0])).toBe(45)
     })
 
     it('three plugins are listed whole; a fourth turns the third item into `+<the rest>`', () => {
-      const three = ingestStamp(IN_PROCESS, { tier: 'chained', now: Date.now(), item: { rules: [rule('c', '3'), rule('a', '1'), rule('b', '2')] } })
+      const three = ingestStamp(IN_PROCESS, { tier: 'chained', targetVia: 'none', now: Date.now(), item: { rules: [rule('c', '3'), rule('a', '1'), rule('b', '2')] } })
       expect(three.rules!.map((r) => r.split('#')[0])).toEqual(['a', 'b', 'c'])
-      const five = ingestStamp(IN_PROCESS, { tier: 'chained', now: Date.now(), item: { rules: ['e', 'c', 'a', 'd', 'b'].map((p) => rule(p, p)) } })
+      const five = ingestStamp(IN_PROCESS, { tier: 'chained', targetVia: 'none', now: Date.now(), item: { rules: ['e', 'c', 'a', 'd', 'b'].map((p) => rule(p, p)) } })
       expect(five.rules).toHaveLength(3)
       expect(five.rules!.slice(0, 2).map((r) => r.split('#')[0])).toEqual(['a', 'b'])
       expect(five.rules![2]).toBe('+3')
@@ -140,14 +140,20 @@ describe('the stamp (FR-005, FR-006)', () => {
   describe('size (FR-006, SC-009)', () => {
     it('a typical stamp is at most 320 bytes', () => {
       // plan.md's example row, which names its terminal (FR-011).
-      const s = ingestStamp(TYPICAL_ENTRANCE, { tier: 'chained', now: Date.now(), item: TYPICAL, terminal: 't-ab12' })
+      const s = ingestStamp(TYPICAL_ENTRANCE, { tier: 'chained', targetVia: 'none', now: Date.now(), item: TYPICAL, terminal: 't-ab12' })
       expect(bytes(s)).toBeLessThanOrEqual(320)
     })
 
+    // `target_via` is always present. The longest value the contract-1 `api`
+    // door can carry is `extracted` (`operator-selected` is in-process only), so
+    // this is that door's worst case. It names no `terminal`: a 128-byte
+    // terminal adds 142 bytes on top of this worst case, which is over the
+    // bound with or without target_via (measured 627 without, 637 with the
+    // longest door) — the next test measures what is reachable today.
     it('the worst the rules can do, with every reserved key stripped and claims at their bound, stays within 512 bytes', () => {
       const many = Array.from({ length: 40 }, (_, i) => ({ pluginId: `${String.fromCharCode(97 + (i % 26))}${'q'.repeat(60)}${i}`, contentHash: 'e'.repeat(64) }))
       const s = ingestStamp(TYPICAL_ENTRANCE, {
-        tier: 'chained', now: Date.now(), stripped: [...RESERVED_DATA_KEYS],
+        tier: 'chained', targetVia: 'extracted', now: Date.now(), stripped: [...RESERVED_DATA_KEYS],
         // A 20 MiB body holds at most ~4.2 million wrapped containers (the
         // smallest is `[[]]`, 5 bytes with its comma); 9,999,999 has a digit more.
         collapsed: 9_999_999,
@@ -156,6 +162,30 @@ describe('the stamp (FR-005, FR-006)', () => {
       expect(s.rules).toHaveLength(3)
       expect(bytes(s), JSON.stringify(s)).toBeLessThanOrEqual(512)
     })
+  })
+
+  // Reachable today: nothing writes an item's instance, seq, claims or rules
+  // before the contract-1 receiver, so a stamp is a door, a UUIDv7 event_id, a
+  // terminal (up to 128 bytes, ingest/terminal.ts), the four stripped keys, a
+  // collapsed count and a target_via. `operator-selected` only from in-process
+  // code and its derived rows; no legacy door can write it.
+  describe('every combination a writer can reach today stays within 512 bytes', () => {
+    const doors = [
+      ['in-process', IN_PROCESS, ['operator-selected', 'explicit', 'extracted', 'command', 'none']],
+      ['derived', DERIVED, ['operator-selected', 'explicit', 'extracted', 'command', 'none']],
+      ['legacy-api', LEGACY_API, ['explicit', 'extracted', 'command', 'none']],
+      ['legacy-handoff', LEGACY_HANDOFF, ['explicit', 'extracted', 'command', 'none']]
+    ] as const
+    for (const [name, entrance, vias] of doors) {
+      for (const via of vias) {
+        it(`${name} / ${via}, a 128-byte terminal, every key stripped, collapsed at its bound`, () => {
+          const s = ingestStamp(entrance, {
+            tier: 'chained', targetVia: via, now: Date.now(), stripped: [...RESERVED_DATA_KEYS], collapsed: 9_999_999, terminal: 't'.repeat(128)
+          })
+          expect(bytes(s), JSON.stringify(s)).toBeLessThanOrEqual(512)
+        })
+      }
+    }
   })
 
   it('the receiver-owned keys of `data` are exactly the four FR-005 names; `_causes` is not one of them', () => {

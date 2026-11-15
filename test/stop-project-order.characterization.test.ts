@@ -56,8 +56,10 @@ function record(): Recorded {
 }
 
 describe('project close and open order, as it is today (Spec 073 T004)', () => {
-  it('stopProject has 27 clean() steps, as the plan counts them', () => {
-    expect(countCleanSteps()).toBe(27)
+  // 27 until Spec 071 removed the global active target: the step that cleared
+  // it, `configureIngest({ activeTarget: null })`, went with it.
+  it('stopProject has 26 clean() steps', () => {
+    expect(countCleanSteps()).toBe(26)
   })
 
   it('records the same twice (no path, time, platform or locale in the record)', () => {

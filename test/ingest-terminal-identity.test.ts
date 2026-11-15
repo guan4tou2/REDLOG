@@ -94,10 +94,10 @@ describe('terminalIdentity (FR-011)', () => {
 
 describe('the stamp carries it (FR-005)', () => {
   it('`terminal` sits after `seq`, as FR-005\'s table orders it; omitted when there is none', () => {
-    const s = ingestStamp(IN_PROCESS, { tier: 'chained', now: Date.now(), terminal: 't-ab12', item: { seq: 3 } }) as Record<string, unknown>
-    expect(Object.keys(s)).toEqual(['v', 'door', 'producer', 'credential', 'auth', 'event_id', 'seq', 'terminal'])
+    const s = ingestStamp(IN_PROCESS, { tier: 'chained', targetVia: 'none', now: Date.now(), terminal: 't-ab12', item: { seq: 3 } }) as Record<string, unknown>
+    expect(Object.keys(s)).toEqual(['v', 'door', 'producer', 'credential', 'auth', 'event_id', 'seq', 'terminal', 'target_via'])
     expect(s.terminal).toBe('t-ab12')
-    expect('terminal' in ingestStamp(IN_PROCESS, { tier: 'chained', now: Date.now(), terminal: null })).toBe(false)
+    expect('terminal' in ingestStamp(IN_PROCESS, { tier: 'chained', targetVia: 'none', now: Date.now(), terminal: null })).toBe(false)
   })
 })
 

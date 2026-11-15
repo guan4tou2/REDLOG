@@ -30,6 +30,16 @@ import { dbEngagement } from '../db/index'
 export type IngestDoor = 'api' | 'handoff' | 'in-process' | 'legacy-api' | 'legacy-handoff'
 export type IngestAuth = 'bearer' | 'mac' | 'in-process' | 'none'
 
+/** How a row got its `target_id` (the receiver's account, never the producer's),
+ *  decided in this order, first non-empty target winning:
+ *  `explicit` the writer was handed a target; `operator-selected` the same, for
+ *  an in-app action that passes the operator's selected target (in-process
+ *  door only); `extracted` the target extractor found a host in a shell row's
+ *  command; `command` a command_output chunk takes the target its command was
+ *  filed under, and so does a companion or loot row derived from such a
+ *  chunk; `none` the row has no target. */
+export type TargetVia = 'explicit' | 'operator-selected' | 'extracted' | 'command' | 'none'
+
 /** Who wrote a row, as the receiver decided it when the row came in — never
  *  as the row says. */
 export interface IngestEntrance {
@@ -101,6 +111,7 @@ export interface IngestStamp {
   instance?: string
   seq?: number
   terminal?: string
+  target_via: TargetVia
   claimed?: { producer?: string; operator?: string }
   stripped?: string[]
   /** How many containers of `data` were nested too deep and are stored as
@@ -160,13 +171,15 @@ function uuidV7(now: number): string {
 /** The stamp for one new row. `stripped` is what stripReserved removed from
  *  the caller's data; `collapsed` is boundDataDepth's count (./depth.ts);
  *  `now` is the receipt time; `terminal` is the row's terminalIdentity
- *  (./terminal.ts). */
+ *  (./terminal.ts); `targetVia` is how the row got its target, required so no
+ *  writer can leave it out. */
 export function ingestStamp(
   entrance: IngestEntrance,
-  opts: { tier: 'chained' | 'logged'; now: number; stripped?: readonly string[]; collapsed?: number; item?: StampItem; terminal?: string | null }
+  opts: { tier: 'chained' | 'logged'; now: number; targetVia: TargetVia; stripped?: readonly string[]; collapsed?: number; item?: StampItem; terminal?: string | null }
 ): IngestStamp {
   const item = opts.item ?? {}
-  const stamp: IngestStamp = {
+  // `target_via` is set in its place in the key order below, after `terminal`.
+  const stamp: Omit<IngestStamp, 'target_via'> & { target_via?: TargetVia } = {
     v: 1,
     door: entrance.door,
     producer: entrance.producer,
@@ -178,6 +191,7 @@ export function ingestStamp(
   if (item.instance) stamp.instance = clip(item.instance, ID_MAX)
   if (typeof item.seq === 'number' && Number.isSafeInteger(item.seq)) stamp.seq = item.seq
   if (opts.terminal) stamp.terminal = opts.terminal
+  stamp.target_via = opts.targetVia
   // A logged row has no claims: the instance's own account is kept beside it
   // (plan, data shapes).
   if (opts.tier === 'chained' && item.claimed) {
@@ -192,7 +206,7 @@ export function ingestStamp(
   if (typeof opts.collapsed === 'number' && opts.collapsed > 0) stamp.collapsed = opts.collapsed
   if (item.rules && item.rules.length > 0) stamp.rules = boundedRules(item.rules)
   if (item.rulesPartial === true) stamp.rules_partial = true
-  return stamp
+  return stamp as IngestStamp
 }
 
 /** The engagement a new row is written under (FR-007): the one the open

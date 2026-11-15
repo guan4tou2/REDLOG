@@ -511,14 +511,15 @@ test.describe.serial('active-target-context: active target context', () => {
   // engagement, and Settings and the Targets page both already owned it. The
   // capability did not go with it: Targets ▸ "Work on this" sets it, and it
   // is read back through the bridge. So the semantics this spec exists for —
-  // persists per project, applies only as a fallback — are driven through
-  // the bridge rather than through a control that no longer exists.
+  // persists per project, and an in-app action (a marker) takes it while a
+  // row written by a tool does not — are driven through the bridge rather
+  // than through a control that no longer exists.
   const activeTarget = (): Promise<string | null> =>
     page.evaluate(() => (window as unknown as { redlog: RedLogAPI }).redlog.targetContext.get())
   const setActiveTarget = (t: string): Promise<unknown> =>
     page.evaluate((v) => (window as unknown as { redlog: RedLogAPI }).redlog.targetContext.set(v), t)
 
-  test('persists per project and applies only as a fallback', async () => {
+  test('persists per project; an in-app marker takes it, a host-less command does not', async () => {
     await setActiveTarget('10.10.11.24')
     await expect.poll(activeTarget).toBe('10.10.11.24')
 
@@ -527,7 +528,7 @@ test.describe.serial('active-target-context: active target context', () => {
       const marker = await bridge.marker.create({ title: 'active target marker' })
       const system = await bridge.events.query({ agentType: 'system', limit: 20, tier: 'all' })
       const changed = system.find((event) => event.data.subtype === 'active_target_changed')
-      return { markerTarget: marker?.targetId, changeTarget: changed?.data.active_target }
+      return { markerTarget: marker?.targetId, markerVia: (marker?.data._ingest as { target_via?: string } | undefined)?.target_via, changeTarget: changed?.data.active_target }
     })
     const post = async (data: Record<string, unknown>, targetId?: string): Promise<RedLogEvent> => {
       const response = await fetch(`${apiBase}/api/events/seed`, {
@@ -537,7 +538,8 @@ test.describe.serial('active-target-context: active target context', () => {
       })
       return await response.json() as RedLogEvent
     }
-    const fallback = await post({ subtype: 'command_start', command: 'id' })
+    // Nothing hands a host-less command the selected target: it has none.
+    const hostless = await post({ subtype: 'command_start', command: 'id' })
     const observed = await post({ subtype: 'command_start', command: 'curl http://10.10.11.99/' })
     const projectResult = await page.evaluate(async () => {
       const bridge = (window as unknown as { redlog: RedLogAPI }).redlog
@@ -550,8 +552,9 @@ test.describe.serial('active-target-context: active target context', () => {
     })
 
     expect(initialEvidence.markerTarget).toBe('10.10.11.24')
+    expect(initialEvidence.markerVia).toBe('operator-selected')
     expect(initialEvidence.changeTarget).toBe('10.10.11.24')
-    expect(fallback.targetId).toBe('10.10.11.24')
+    expect(hostless.targetId ?? null).toBeNull()
     expect(observed.targetId).toBe('10.10.11.99')
     expect(projectResult.inB).toBeNull()
     expect(projectResult.restoredA).toBe('10.10.11.24')

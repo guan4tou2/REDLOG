@@ -262,10 +262,10 @@
      `operator-selected`：不屬於任何終端機的 app 內操作，由 app 在操作當下明確帶入所選目標（O16）：標記對話框與 HUD 建的標記、手動截圖、加入的檔案（`artifact_added`）；
   2. `extracted`：從內容擷取（既有的 target extractor）；
   3. `command`：背景輸出承接它所屬指令的目標；指令沒有目標時，輸出是 `none`；
-  4. `none`：沒有主機的列不承接任何目標，`target_id` 為空。自動截圖（定時、閒置、指令結束時、`POST /api/screenshot`）與沒帶目標的 `/api/marker` 標記也是 `none`。
+  4. `none`：沒有主機的列不承接任何目標，`target_id` 為空。自動截圖（定時、指令結束時、`POST /api/screenshot`）與沒帶目標的 `/api/marker` 標記也是 `none`。
 
   `_ingest.target_via` 只有這五個值。不承接同一終端機上一次擷取到的目標，全域目前目標也不自動套用到任何列（O11；app 內操作見 O16）。決定只看項目本身，以及 `command` 所讀的、該指令已存的 `command_start`／`command_end` 列（`db/stored-links.ts`）；不論是否重啟、經哪個入口、何時送達，結果相同。
-  > **修訂註記（2026-11-15，DECISIONS 2026-11-15 §7）**：擁有者選了「改成只認連線」：沒有主機的列不承接目標。因此 `terminal-last` 這個值與 `terminal_targets` 表都不做；§5 第 1 項（該表不回填）不再有對象。哪些列算「自帶主機」（指令文字擷取得到主機、來源明示目標、這類指令的輸出）是實作者的解讀，不是擁有者的話（記錄中分開列出）。自動截圖與沒帶目標的 `/api/marker` 標記記 `none`，是 DECISIONS §6 第 4、5 項，仍然成立。
+  > **修訂註記（2026-11-15，DECISIONS 2026-11-15 §7）**：擁有者選了「改成只認連線」：沒有主機的列不承接目標。因此 `terminal-last` 這個值與 `terminal_targets` 表都不做；§5 第 1 項（該表不回填）不再有對象。哪些列算「自帶主機」（指令文字擷取得到主機、來源明示目標、這類指令的輸出）是實作者的解讀，不是擁有者的話（記錄中分開列出）。自動截圖與沒帶目標的 `/api/marker` 標記記 `none`，是 DECISIONS §6 第 4、5 項，仍然成立。設了範圍目標的專案，沒有目標的列在匯出的範圍遮蔽下屬於無法判定，輸出預設被遮蔽；擁有者知道這個結果並接受（DECISIONS §8）。
 - **FR-011** 新列的終端機身分只有一個正規值 `_ingest.terminal`：取 `observed.terminal`；舊入口依序取 `data.terminalId`、`data.terminal_id`。核心中需要新列終端機身分的地方一律讀這個值。
   > **實作註記（2026-11-14，T025）**：這個值是送出者自己給的值的正規形式，不是接收端判定的；讀者不得把它當成「這一列出自哪個終端機」的證明。正規形式：存入的形式（JSON 字串的 UTF-8）在 128 bytes 以內原樣保留；超過時為在字元邊界切下的前綴、`#`、整個 id 的 UTF-8 位元組 sha256 的前 16 個 hex，總長在 128 bytes 內，不同的 id 不會合併。
 - **FR-012** 接收端認定的來源只由憑證（或行程內呼叫者）決定。`producer.name`／`version` 只記錄、不用於信任。對帶 `_ingest` 的列，凡依「是否為內建終端機」做的存取或信任判斷（例如 `/api/terminal/replay` 讀取 cast），一律以 `_ingest.producer` 為準。純顯示用途不在本規格。

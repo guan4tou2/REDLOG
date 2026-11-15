@@ -3,7 +3,9 @@
 //
 // plan.md "表的清點" lists 33 tables; #11 (`TOOL_ACTIONS`, keyed on tool_name)
 // and #28 (capture-health probes, Spec 075's) are not kind tables and are not
-// here, which leaves the 31 below. Each has one of two shapes, because not
+// here, and #4 (`ACTIVE_TARGET_FALLBACK_TYPES`) went with the global active
+// target (Spec 071: ingest applies no engagement-wide target to any row), which
+// leaves the 30 below. Each has one of two shapes, because not
 // every table is a function a test can call:
 //
 //   evaluated — a function (or exported constant) that today's code exports is
@@ -185,7 +187,6 @@ export const TABLES: TableSpec[] = [
   { n: 1, name: 'LOGGED_TIER', location: 'src/core/db/event-write.ts', evaluate: (e) => classifyTier(e.row.agentType, dataOf(e)) },
   { n: 2, name: 'PAUSE_EXEMPT_AGENT_TYPES', location: 'src/core/db/event-write.ts', evaluate: (e) => PAUSE_EXEMPT_AGENT_TYPES.has(e.row.agentType) },
   { n: 3, name: 'delayedCapture', location: 'src/core/ingest.ts', extract: { delayedCapture: { file: 'src/core/ingest.ts', anchor: /const delayedCapture = / } } },
-  { n: 4, name: 'ACTIVE_TARGET_FALLBACK_TYPES', location: 'src/core/ingest.ts', extract: { ACTIVE_TARGET_FALLBACK_TYPES: { file: 'src/core/ingest.ts', name: 'ACTIVE_TARGET_FALLBACK_TYPES' } } },
   { n: 5, name: 'EXTERNAL_ALLOWED_AGENT_TYPES', location: 'src/core/external-event-policy.ts', evaluate: (e) => isExternalEventAllowed(e.row.agentType, dataOf(e)),
     extract: { EXTERNAL_ALLOWED_AGENT_TYPES: { file: 'src/core/external-event-policy.ts', name: 'EXTERNAL_ALLOWED_AGENT_TYPES' } } },
   { n: 6, name: 'causes-resolver kind judgements', location: 'src/core/causes-resolver.ts', extract: {

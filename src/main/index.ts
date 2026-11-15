@@ -122,7 +122,7 @@ import { registerOperatorsIpc } from './ipc/operators'
 import { registerEventsIpc } from './ipc/events'
 import { registerChainIpc } from './ipc/chain'
 import { registerMarkersIpc, MARKER_TEXT_FIELDS, hudMarkerFields, hudDraftBelongsHere } from './ipc/markers'
-import { registerTargetContextIpc } from './ipc/target-context'
+import { registerTargetContextIpc, operatorSelectedTarget, selectedTargetOf } from './ipc/target-context'
 import { registerArtifactsIpc } from './ipc/artifacts'
 import type { IpcContext } from './ipc/types'
 import { launchPolicy } from './launch-policy'
@@ -455,6 +455,9 @@ function triggerBookmark(): void {
   })
 }
 
+/** The selected target of the open project, from the config applied to it. */
+const selectedTarget = (): string | null => selectedTargetOf(projectRuntime.current(), configApplier.applied())
+
 // The HUD's "Add marker" form. Drops a marker straight into the chain without
 // raising the main window — a heads-up display should not pull the operator out
 // of what they are doing. The marker's time is `at`, taken when the operator
@@ -475,7 +478,7 @@ function addHudMarker(input: { title?: string; notes?: string; at?: number; bind
       category: 'custom',
       source_timestamp: f.source_timestamp,
       source: f.source
-    }, MARKER_TEXT_FIELDS), open)
+    }, MARKER_TEXT_FIELDS), { ...open, ...operatorSelectedTarget(selectedTarget()) })
     if (event) eventBus.publish(event, { bypassPause: true })
     return { ok: !!event, id: event?.id }
   } catch (e) {
@@ -1277,7 +1280,6 @@ function stopProject(): void {
   clean(closeDB)
   clean(resetBodiesDirCache)
   clean(resetCausesResolver)
-  clean(() => configureIngest({ activeTarget: null }))
   // With no project nothing is recorded, so nothing may say it is: the HUD's
   // REC and its frozen IP verdict go away (the next open shows it again per
   // autoShow) and the tray goes to its idle icon. The exposure is forgotten
@@ -1477,6 +1479,7 @@ app.whenReady().then(() => {
     getOverlayWindow: () => overlayWindow,
     getCurrentEngagementId: () => projectRuntime.current()?.engagementId ?? null,
     getCurrentOperatorId: () => projectRuntime.current()?.operatorId ?? null,
+    getSelectedTarget: selectedTarget,
     send,
     triggerBookmark,
     addHudMarker,
@@ -2019,7 +2022,10 @@ app.whenReady().then(() => {
   // another app already owns is not an error worth refusing to start over;
   // the palette and the title-bar button still capture.
   if (!globalShortcut.register(QUICK_SHOT_ACCELERATOR, () => {
-    void screenshotAgent.captureNow('manual', undefined, { hideOwnWindows: true })
+    void screenshotAgent.captureNow('manual', undefined, {
+      hideOwnWindows: true,
+      targetId: operatorSelectedTarget(selectedTarget()).targetId
+    })
       .then((file) => send(mainWindow, 'screenshot:shortcutResult', { ok: !!file }))
   })) console.warn(`[shortcuts] ${QUICK_SHOT_ACCELERATOR} is taken by another application`)
 

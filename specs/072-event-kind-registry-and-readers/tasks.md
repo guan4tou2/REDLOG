@@ -58,7 +58,7 @@
 - [ ] T040 tier：`classifyTier` 呼叫 `tierFor`；`LOGGED_TIER` 刪除；T010 的特徵化測試改為「每個登記種類的 tier = 登記表，差異只來自 `TIER_CHANGES`」；把 071 T027 的項目寫入 `TIER_CHANGES`。與 071 T027 是同一個 PR（071 FR-113 由此生效）。依 Q1 的答覆處理瀏覽器 console。
 - [ ] T041 暫停：`PAUSE_EXEMPT_AGENT_TYPES` 與 `delayedCapture` 改讀 `pause`；與 071 T015 同一個 PR。
 - [ ] T042 [US3] 寫入者：先 RED（F10：`credential_use` 經契約 1 入口應被拒）；071 的種類政策改讀 `writers`；`EXTERNAL_ALLOWED_AGENT_TYPES` 刪除；舊入口的狀態碼不變（071 T003 的特徵化不變）。依 Q2 的答覆。
-- [ ] T043 目標：不再有消費者。`ACTIVE_TARGET_FALLBACK_TYPES`（表 #4）由 071 T024 刪除，登記表不設 `identity.target`。本任務只剩把 #4 從摺疊清單拿掉：刪 `test/kinds/golden/04-ACTIVE-TARGET-FALLBACK-TYPES.json`、`test/kinds/golden-tables.ts` 的 `n: 4` 與 `test/kinds/kind-literal-ratchet.test.ts` 的 `id: 4`；與 071 T024 同一個 PR。
+- [x] T043 目標：不再有消費者。`ACTIVE_TARGET_FALLBACK_TYPES`（表 #4）由 071 T024 刪除，登記表不設 `identity.target`。本任務只剩把 #4 從摺疊清單拿掉：刪 `test/kinds/golden/04-ACTIVE-TARGET-FALLBACK-TYPES.json` 與 `test/kinds/golden-tables.ts` 的 `n: 4`，並在 `test/kinds/kind-literal-ratchet.test.ts` 把 4 加進 `FOLDED`（該檔的做法：`TABLES` 留著 #4 的錨點以確認宣告已不在，`TABLE_BASELINE` 維持 31）；與 071 T024 同一個 PR。
   > **Superseded（2026-11-15，DECISIONS 2026-11-15 §7）**：原任務（`identity.target`）不做；071 FR-010 沒有可套用到種類的目標規則。
 - [ ] T044 [P] 因果與範圍訊號：`causes-resolver.ts` 的起訖判斷讀 `INTERVALS`；`socket-attribution.ts:189` 讀 `cause`；`scopeSignalFor` 改為 `Record<ScopeSignalKind, …>`，鍵由 `scopeSignal` 導出。golden 不變。
 - [ ] T045 [US3] 型別化入口：`insertEvent`／`ingestEvent`／071 的行程內入口的種類參數改為登記表型別；推導器的 subtype 型別化；AI adapter 的 `subtypeFor` 回傳型別化；`test/kinds/untyped-kind-calls.test.ts` 的 ratchet 降到 0。與 071 T037 的檔案群同批。

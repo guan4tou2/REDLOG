@@ -124,7 +124,7 @@ describe('the predicate, in JS and in SQL, for every entrance there is', () => {
   it('only the in-process stamp, or no stamp at all, makes a session row the terminal\'s; the two forms agree', async () => {
     const stamp = await import('../src/core/ingest/stamp')
     const { isBuiltinTerminalRecording, builtinTerminalRecordingSql } = await import('../src/core/ingest/builtin-terminal')
-    const at = (entrance: typeof stamp.IN_PROCESS) => ({ source: 'builtin-terminal', _ingest: stamp.ingestStamp(entrance, { tier: 'chained', now: Date.now() }) })
+    const at = (entrance: typeof stamp.IN_PROCESS) => ({ source: 'builtin-terminal', _ingest: stamp.ingestStamp(entrance, { tier: 'chained', targetVia: 'none', now: Date.now() }) })
     const cases: Array<[string, Record<string, unknown>, boolean]> = [
       ['in-process', at(stamp.IN_PROCESS), true],
       ['derived', at(stamp.DERIVED), false],

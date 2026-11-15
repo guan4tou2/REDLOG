@@ -6,9 +6,11 @@ import { createHash } from 'crypto'
 import type { IpcMain } from 'electron'
 import type { IpcContext } from './types'
 import { insertEvent, queryEventById, queryMarkerAmendments, type RedLogEvent } from '../../core/db/events'
-import { ingestEvent } from '../../core/ingest'
+import { ingestEvent, storedTargetVia } from '../../core/ingest'
 import { getProjectDir } from '../../core/project-manager'
 import { loadConfig } from '../../core/config'
+import { operatorSelectedTarget } from './target-context'
+import type { TargetVia } from '../../core/ingest/stamp'
 import { redactFields } from '../../core/redaction'
 import { amendMarker } from '../../core/marker-amend'
 import { resolveContainedFile } from '../../core/contained-file'
@@ -92,6 +94,13 @@ export function deleteScreenshotFile(
   return { ok: true }
 }
 
+/** The target a new marker is recorded against: the cited step's, with the via
+ *  that step's row carries, else the operator's selection. */
+function markerTarget(cited: RedLogEvent | null, selected: string | null): { targetId?: string; targetVia?: TargetVia; inheritsVia?: boolean } {
+  if (!cited) return operatorSelectedTarget(selected)
+  return cited.targetId ? { targetId: cited.targetId, targetVia: storedTargetVia(cited), inheritsVia: true } : {}
+}
+
 export function registerMarkersIpc(
   ipcMain: IpcMain,
   ctx: IpcContext,
@@ -109,6 +118,13 @@ export function registerMarkersIpc(
     }
     const causes=markerCauses([...(Array.isArray(data.causes)?data.causes:[]),...(anchor?[anchor.ref.eventId]:[])])
     const at = data.atTimestamp
+    // A step picked in the transcript cites its events; the marker is about the
+    // first of them and takes that row's target and how it was known, read from
+    // the stored row (a renderer-supplied target is not believed). A step with
+    // no target gives none. A marker that cites nothing the project holds is the
+    // operator's act on the target selected now.
+    const citedId = markerCauses(data.causes)[0]
+    const cited = citedId ? queryEventById(citedId) : null
     const event = ingestEvent('marker', redactFields({
       ...(anchor ? { contentAnchor: {v:anchor.v,coordinate:anchor.coordinate,ref:{projectId:anchor.ref.projectId,eventId:anchor.ref.eventId,field:anchor.ref.field,version:anchor.ref.version},start:anchor.start,end:anchor.end,sha256:anchor.sha256} } : {}),
       title: capMarkerText(data.title, MARKER_TITLE_MAX),
@@ -124,7 +140,7 @@ export function registerMarkersIpc(
       ...(causes.length > 0 ? { _causes: causes } : {})
     }, MARKER_TEXT_FIELDS), {
       engagementId: config.engagement.id, operatorId: config.operator.id, bypassPause: true,
-      ...(typeof data.targetId === 'string' && data.targetId.trim() ? { targetId: data.targetId.trim().slice(0, 253) } : {})
+      ...markerTarget(cited, ctx.getSelectedTarget())
     })
     return event
   })
@@ -144,11 +160,14 @@ export function registerMarkersIpc(
   ipcMain.handle('marker:amendments', (_e, ids: string[]) =>
     ctx.getActiveProject() && Array.isArray(ids) ? queryMarkerAmendments(ids.map(String)) : [])
 
-  ipcMain.handle('screenshot:capture', (_e, causeEventId?: string, opts?: { heldFrame?: unknown; hideOwnWindows?: unknown }) =>
-    screenshotAgent.captureNow('manual', typeof causeEventId === 'string' ? causeEventId : undefined, {
+  ipcMain.handle('screenshot:capture', (_e, causeEventId?: string, opts?: { heldFrame?: unknown; hideOwnWindows?: unknown }) => {
+    const proj = ctx.getActiveProject()
+    return screenshotAgent.captureNow('manual', typeof causeEventId === 'string' ? causeEventId : undefined, {
       heldFrame: typeof opts?.heldFrame === 'string' ? opts.heldFrame : undefined,
-      hideOwnWindows: opts?.hideOwnWindows === true
-    }))
+      hideOwnWindows: opts?.hideOwnWindows === true,
+      targetId: proj ? operatorSelectedTarget(ctx.getSelectedTarget()).targetId : undefined
+    })
+  })
 
   ipcMain.handle('screenshot:deleteFile', (_e, eventId: string, filePath: string) => {
     try {

@@ -36,7 +36,6 @@ export type ConfigApplyReason =
   | 'target-context'
 
 export type ConfigApplyStep =
-  | 'ingestActiveTarget'
   | 'audit'
   | 'wifiName'
   | 'alertRuntime'
@@ -56,6 +55,9 @@ export type ConfigApplyStep =
   | 'agentTailer'
   | 'redaction'
   | 'vpnAdapters'
+  // Open only: hands ingest the collaborators that live in main (loot detector,
+  // alert runtime, cast probe, terminal lifecycle). Nothing in the config feeds it.
+  | 'ingestCollaborators'
   // Open only: the identity these sources record under. A save never changes
   // it (operator changes reach the sources through the shared `open` object).
   | 'powershellTranscriptIdentity'
@@ -84,7 +86,7 @@ export const OPEN_SEQUENCE: readonly ConfigApplyEntry[] = [
   { step: 'vpnAdapters' },
   { step: 'terminal' },
   { hook: 'wireTerminalIngest' },
-  { step: 'ingestActiveTarget' },
+  { step: 'ingestCollaborators' },
   { hook: 'startProjectServices' },
   { step: 'fileWatcherOptions' },
   { step: 'connectionMonitorOptions' },
@@ -101,7 +103,6 @@ export const OPEN_SEQUENCE: readonly ConfigApplyEntry[] = [
 /** Every later application, in the order config:save ran them. A plan is a
  *  subset of this, in this order. */
 export const APPLY_ORDER: readonly ConfigApplyStep[] = [
-  'ingestActiveTarget',
   'audit',
   'wifiName',
   'alertRuntime',
@@ -140,7 +141,6 @@ export const SCOPE_IN_FORCE = '@scopeInForce'
  *  reads; a change at, above or below one of them plans the step. `*` means
  *  "any change at all" (cheap cache refreshes that read the whole config). */
 export const CONFIG_DEPENDENCIES: Readonly<Record<ConfigApplyStep, readonly string[]>> = {
-  ingestActiveTarget: ['engagement.activeTarget'],
   // Writes the `config_changed` audit row when a security-relevant field moved
   // (diffSecurityConfig decides which). Planned on every changing save; it is
   // a no-op when nothing it audits changed.
@@ -176,6 +176,7 @@ export const CONFIG_DEPENDENCIES: Readonly<Record<ConfigApplyStep, readonly stri
   agentTailer: ['agentTailer'],
   redaction: ['redaction'],
   vpnAdapters: ['network.vpnAdapters'],
+  ingestCollaborators: [],
   powershellTranscriptIdentity: [],
   agentTailerHost: []
 }
@@ -184,6 +185,7 @@ export const CONFIG_DEPENDENCIES: Readonly<Record<ConfigApplyStep, readonly stri
  *  change to one of these plans nothing — and is not an unknown path. */
 export const NO_LIVE_EFFECT: Readonly<Record<string, string>> = {
   'engagement.id': 'immutable: the save keeps the stored id',
+  'engagement.activeTarget': 'the operator\'s selection: main reads it when an in-app action writes a row, and ingest applies it to nothing',
   'scope.personalDomains': 'read when exporting and querying, from the file',
   browser: 'read when the capture browser launches, from the file',
   'httpCapture.routeTerminals': 'read when a terminal spawns, from the file',

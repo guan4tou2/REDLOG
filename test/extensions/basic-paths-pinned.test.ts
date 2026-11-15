@@ -105,16 +105,25 @@ describe('the two copies in the fixture still match main (source pins)', () => {
       /result = ingest\(\{\s*agentType, data, operatorId: operator\.id, engagementId, targetId, entrance: LEGACY_API\s*\}\)/)
   })
 
-  it('addHudMarker writes insertEvent(\'marker\', redactFields({ title, notes, severity, category, source_timestamp, source }, MARKER_TEXT_FIELDS), open)', () => {
+  // Spec 071: both in-app actions also hand the writer the operator's selected
+  // target (`operator-selected`). The fixture selects none, so what it writes is
+  // what the copies below write; the copies do not repeat the lookup.
+  it('addHudMarker writes insertEvent(\'marker\', redactFields({ title, notes, severity, category, source_timestamp, source }, MARKER_TEXT_FIELDS), { ...open, ...operatorSelectedTarget(…) })', () => {
     const body = read('src/main/index.ts')
     const start = body.indexOf('function addHudMarker(')
     expect(start).toBeGreaterThan(-1)
     const fn = body.slice(start, body.indexOf('\nconst WINDOW_STATE_PATH', start))
     expect(fn).toMatch(/const f = hudMarkerFields\(input, Date\.now\(\)\)/)
-    expect(fn).toMatch(/insertEvent\('marker', redactFields\(\{\s*title: f\.title,\s*notes: f\.notes,\s*severity: 'info',\s*category: 'custom',\s*source_timestamp: f\.source_timestamp,\s*source: f\.source\s*\}, MARKER_TEXT_FIELDS\), open\)/)
+    expect(fn).toMatch(/insertEvent\('marker', redactFields\(\{\s*title: f\.title,\s*notes: f\.notes,\s*severity: 'info',\s*category: 'custom',\s*source_timestamp: f\.source_timestamp,\s*source: f\.source\s*\}, MARKER_TEXT_FIELDS\), \{ \.\.\.open, \.\.\.operatorSelectedTarget\(selectedTarget\(\)\) \}\)/)
   })
 
-  it('the screenshot shortcut calls captureNow(\'manual\', undefined, { hideOwnWindows: true })', () => {
-    expect(read('src/main/index.ts')).toMatch(/screenshotAgent\.captureNow\('manual', undefined, \{ hideOwnWindows: true \}\)/)
+  it('the selection an in-app action reads is the applied config\'s, through one accessor', () => {
+    const src = read('src/main/index.ts')
+    expect(src).toMatch(/const selectedTarget = \(\): string \| null => selectedTargetOf\(projectRuntime\.current\(\), configApplier\.applied\(\)\)/)
+    expect(src).toContain('getSelectedTarget: selectedTarget,')
+  })
+
+  it('the screenshot shortcut calls captureNow(\'manual\', undefined, { hideOwnWindows: true, targetId: <the selected target> })', () => {
+    expect(read('src/main/index.ts')).toMatch(/screenshotAgent\.captureNow\('manual', undefined, \{\s*hideOwnWindows: true,\s*targetId: operatorSelectedTarget\(selectedTarget\(\)\)\.targetId\s*\}\)/)
   })
 })

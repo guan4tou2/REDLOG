@@ -330,14 +330,14 @@ export async function runBasicPaths(opts: RunOptions = {}): Promise<BasicPathsRu
     const markers = await import('../../src/main/ipc/markers')
     const handlers = new Map<string, (...a: unknown[]) => unknown>()
     const proj = { id: ENG, name: 'Basic paths', path: projectDir, createdAt: 1, lastOpened: 1 }
-    const ctx = { getActiveProject: () => proj, getMainWindow: () => ({}) } as never
+    const ctx = { getSelectedTarget: () => null, getActiveProject: () => proj, getMainWindow: () => ({}) } as never
     const fakeIpc = { handle: (name: string, fn: (...a: unknown[]) => unknown) => handlers.set(name, fn) } as never
     const shotAgentMod = await import('../../src/main/services/screenshot-agent')
     const agent = new shotAgentMod.ScreenshotAgent(() => ({ state: 'ok' }) as never)
     agent.configure({ identity: { projectId: 'proj-basic', engagementId: ENG, operatorId: OP } })
     markers.registerMarkersIpc(fakeIpc, ctx, agent)
     step()
-    const ipcMarker = handlers.get('marker:create')!({}, { title: 'SSH exposed', notes: 'open on 10.0.0.5', severity: 'high', category: 'finding', causes: firstEnd ? [firstEnd] : [], targetId: '10.0.0.5' }) as { id: string } | null
+    const ipcMarker = handlers.get('marker:create')!({}, { title: 'SSH exposed', notes: 'open on 10.0.0.5', severity: 'high', category: 'finding', causes: firstEnd ? [firstEnd] : [] }) as { id: string } | null
     mark('marker-ipc')
 
     // 6. marker, HUD: addHudMarker in main/index.ts is not importable; this is its body from its exported parts.

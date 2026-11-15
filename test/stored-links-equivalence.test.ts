@@ -6,8 +6,9 @@
 // causes-resolver.ts emptied, the database left as it is — the same loss a
 // process restart is for these maps (test/ingest-restart-equivalence.test.ts
 // does the whole restart, a fresh module graph; this file needs hundreds of
-// rows in one transaction, which that cannot give). The engagement's current
-// target is set again after each, as main does when a project opens.
+// rows in one transaction, which that cannot give). A row's target is the one
+// its step hands the writer (`at`), or the host in its command: ingest applies
+// no engagement-wide target to anything.
 
 import fs from 'node:fs'
 import os from 'node:os'
@@ -29,19 +30,19 @@ const ENG = 'eng-links-eq'
 const OP = 'op-links-eq'
 
 type Step =
-  | { shell: Record<string, unknown> }
+  | { shell: Record<string, unknown>; at?: string }
   | { scanner: Record<string, unknown> }
-  | { target: string | null }
   | { pause: boolean }
   /** Let this much time pass: past insertEvent's 2 s duplicate window, say. */
   | { wait: number }
 
-interface Row { subtype: unknown; command_id: unknown; seq: unknown; target_id: unknown; unattributed: unknown; causes: string[] | undefined }
+interface Row { subtype: unknown; command_id: unknown; seq: unknown; target_id: unknown; target_via: unknown; unattributed: unknown; causes: string[] | undefined }
 
-const start = (command_id: unknown, command: string, extra: Record<string, unknown> = {}): Step =>
-  ({ shell: { subtype: 'command_start', command, terminalId: 't1', pid: 7, command_id, ...extra } })
-const end = (command_id: unknown, command: string, extra: Record<string, unknown> = {}): Step =>
-  ({ shell: { subtype: 'command_end', command, terminalId: 't1', pid: 7, command_id, exit_code: 0, ...extra } })
+/** `at`: the target the writer hands the row, as an in-process producer may. */
+const start = (command_id: unknown, command: string, extra: Record<string, unknown> = {}, at?: string): Step =>
+  ({ shell: { subtype: 'command_start', command, terminalId: 't1', pid: 7, command_id, ...extra }, ...(at ? { at } : {}) })
+const end = (command_id: unknown, command: string, extra: Record<string, unknown> = {}, at?: string): Step =>
+  ({ shell: { subtype: 'command_end', command, terminalId: 't1', pid: 7, command_id, exit_code: 0, ...extra }, ...(at ? { at } : {}) })
 const chunk = (command_id: unknown, seq: number, extra: Record<string, unknown> = {}): Step =>
   ({ shell: { subtype: 'command_output', command_id, late: true, seq, stdout: `${String(command_id)} ${seq}\n`, final: false, ...extra } })
 
@@ -66,17 +67,16 @@ sqlite.describe('memory and stored rows agree (SC-003)', () => {
     db.bindDBEngagement(ENG)
     ops.ensurePrimaryOperator(OP, 'Eq', ops.generateToken())
     ingestMod._resetIngest()
-    let target: string | null = null
     vi.useFakeTimers({ toFake: ['Date'], now: Date.UTC(2026, 10, 15, 9) })
     const skipped: Array<string | undefined> = []
     db.getDB().transaction(() => {
       for (const [i, step] of steps.entries()) {
-        if (restarts.includes(i)) { ingestMod._resetIngest(); ingestMod.configureIngest({ activeTarget: target }) }
-        if ('target' in step) { target = step.target; ingestMod.configureIngest({ activeTarget: target }); continue }
+        if (restarts.includes(i)) ingestMod._resetIngest()
         if ('pause' in step) { if (step.pause) bus.eventBus.pause(); else bus.eventBus.resume(); continue }
         if ('wait' in step) { vi.setSystemTime(Date.now() + step.wait); continue }
         const [agentType, data] = 'shell' in step ? ['shell', step.shell] : ['scanner', step.scanner]
-        skipped.push(ingestMod.ingest({ agentType, data, engagementId: ENG, operatorId: OP }).skipped)
+        const at = 'shell' in step ? step.at : undefined
+        skipped.push(ingestMod.ingest({ agentType, data, engagementId: ENG, operatorId: OP, ...(at ? { targetId: at } : {}) }).skipped)
       }
     })()
     const stored = [
@@ -87,7 +87,7 @@ sqlite.describe('memory and stored rows agree (SC-003)', () => {
     const rows = stored.map((r) => {
       const data = JSON.parse(r.data) as Record<string, unknown>
       return {
-        subtype: data.subtype, command_id: data.command_id, seq: data.seq, target_id: r.target_id, unattributed: data.unattributed,
+        subtype: data.subtype, command_id: data.command_id, seq: data.seq, target_id: r.target_id, target_via: (data._ingest as { target_via?: unknown }).target_via, unattributed: data.unattributed,
         causes: Array.isArray(data._causes) ? (data._causes as string[]).map((id) => at.get(id) ?? 'outside') : undefined
       }
     })
@@ -112,19 +112,18 @@ sqlite.describe('memory and stored rows agree (SC-003)', () => {
 
   // Review item 2. Both late-output maps are bounded at 256; the target map
   // gains an entry at every command_start, the seen-chunks map only at a late
-  // chunk, so 300 commands later only the target was gone, and live filed the
-  // next chunk under the global target.
+  // chunk, so 300 commands later only the target was gone and live filed the
+  // next chunk under none. The 300 commands between have targets of their own,
+  // so a chunk that took the newest command's target shows.
   it('a background command 300 commands back keeps its target, live as after a restart', () => {
     const steps: Step[] = [
-      { target: 'A' },
-      start('L', 'sleep 99 &'), end('L', 'sleep 99 &', { late_output: true }), chunk('L', 0),
-      ...Array.from({ length: 300 }, (_, i) => [start(`x${i}`, `true ${i}`, { pid: 1000 + i }), end(`x${i}`, `true ${i}`, { pid: 1000 + i })]).flat(),
-      { target: 'B' },
+      start('L', 'sleep 99 &', {}, 'A'), end('L', 'sleep 99 &', { late_output: true }, 'A'), chunk('L', 0),
+      ...Array.from({ length: 300 }, (_, i) => [start(`x${i}`, `true ${i}`, { pid: 1000 + i }, 'B'), end(`x${i}`, `true ${i}`, { pid: 1000 + i }, 'B')]).flat(),
       chunk('L', 1)
     ]
     const live = expectEquivalent(steps, [steps.length - 1])
     const last = live.rows[live.rows.length - 1]
-    expect([last.command_id, last.seq, last.target_id, last.causes]).toEqual(['L', 1, 'A', ['#0']])
+    expect([last.command_id, last.seq, last.target_id, last.target_via, last.causes]).toEqual(['L', 1, 'A', 'command', ['#0']])
   })
 
   // Review item 3: a row refused while paused was never recorded, so as far
@@ -249,8 +248,8 @@ sqlite.describe('memory and stored rows agree (SC-003)', () => {
     })
     it('late under B, then not late under C: the chunk is the command\'s, under B', () => {
       const live = expectEquivalent([
-        { target: 'A' }, start('G2', 'sleep 41 &'), { target: 'B' }, end('G2', 'sleep 41 &', { late_output: true }),
-        { target: 'C' }, { wait: 3000 }, end('G2', 'sleep 41 &', { exit_code: 1 }), chunk('G2', 0)
+        start('G2', 'sleep 41 &', {}, 'A'), end('G2', 'sleep 41 &', { late_output: true }, 'B'),
+        { wait: 3000 }, end('G2', 'sleep 41 &', { exit_code: 1 }, 'C'), chunk('G2', 0)
       ])
       const last = live.rows[live.rows.length - 1]
       expect(ends(live.rows), 'both ends are stored').toBe(2)
@@ -258,8 +257,8 @@ sqlite.describe('memory and stored rows agree (SC-003)', () => {
     })
     it('late under B, then late again under C: the chunk is the command\'s, under C, where the bookkeeping last filed it (as on main)', () => {
       const live = expectEquivalent([
-        { target: 'A' }, start('G4', 'sleep 46 &'), { target: 'B' }, end('G4', 'sleep 46 &', { late_output: true }),
-        { target: 'C' }, { wait: 3000 }, end('G4', 'sleep 46 &', { late_output: true, exit_code: 1 }), chunk('G4', 0)
+        start('G4', 'sleep 46 &', {}, 'A'), end('G4', 'sleep 46 &', { late_output: true }, 'B'),
+        { wait: 3000 }, end('G4', 'sleep 46 &', { late_output: true, exit_code: 1 }, 'C'), chunk('G4', 0)
       ])
       const last = live.rows[live.rows.length - 1]
       expect(ends(live.rows), 'both ends are stored').toBe(2)
@@ -294,8 +293,20 @@ sqlite.describe('memory and stored rows agree (SC-003)', () => {
   })
 
   it('a late chunk takes the target its command\'s late end was filed under, not its start\'s', () => {
-    const live = expectEquivalent([{ target: 'A' }, start('T', 'sleep 15 &'), { target: 'C' }, end('T', 'sleep 15 &', { late_output: true }), { target: 'B' }, chunk('T', 0)])
-    expect(live.rows.map((r) => r.target_id)).toEqual(['A', 'C', 'C'])
+    const live = expectEquivalent([start('T', 'sleep 15 &', {}, 'A'), end('T', 'sleep 15 &', { late_output: true }, 'C'), chunk('T', 0)])
+    expect(live.rows.map((r) => [r.target_id, r.target_via])).toEqual([['A', 'explicit'], ['C', 'explicit'], ['C', 'command']])
+  })
+
+  // Nothing but the command's own row gives a chunk its target: a command that
+  // has none gives its chunk none, and a chunk after the final row belongs to no command.
+  it('a chunk of a command with no target has none, and neither has one after the final row', () => {
+    const live = expectEquivalent([
+      start('V', 'sleep 19 &'), end('V', 'sleep 19 &', { late_output: true }), chunk('V', 0),
+      start('W', 'sleep 20 &', {}, 'A'), end('W', 'sleep 20 &', { late_output: true }, 'A'), chunk('W', 0, { final: true }), chunk('W', 1)
+    ])
+    expect(live.rows.filter((r) => r.subtype === 'command_output').map((r) => [r.command_id, r.target_id, r.target_via])).toEqual([
+      ['V', null, 'none'], ['W', 'A', 'command'], ['W', null, 'none']
+    ])
   })
 
   it('a resent chunk is kept once, before and after a restart and across the final row\'s boundary', () => {

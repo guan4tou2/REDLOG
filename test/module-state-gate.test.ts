@@ -112,12 +112,13 @@ describe('module state of today\'s src/core and src/main', () => {
   it('project-legacy is pinned at the count measured when Phase 1 landed', () => {
     // 320 declarations: 87 constant, 66 app, 25 machine, 1 test-seam, 141
     // project-legacy; 138 since the body index keeps its watermark in its own
-    // database (#779). The ratchet only goes down; Phase 3 moves each into the
+    // database (#779); 137 since ingest stopped holding the global active
+    // target (Spec 071). The ratchet only goes down; Phase 3 moves each into the
     // session. The class of an entry is a judgement made when it was
     // registered — read its reason before relying on it.
     const counts: Record<string, number> = {}
     for (const e of Object.values(allow.entries) as Array<{ class: string }>) counts[e.class] = (counts[e.class] ?? 0) + 1
     expect(counts['project-legacy']).toBe(allow.projectLegacyBaseline)
-    expect(allow.projectLegacyBaseline).toBe(138)
+    expect(allow.projectLegacyBaseline).toBe(137)
   })
 })

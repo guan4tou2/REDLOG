@@ -27,11 +27,11 @@ import { EXAMPLES } from './examples'
 
 const UPDATE = process.env.UPDATE_KIND_GOLDEN === '1'
 
-describe('the 31 kind-keyed tables (plan 「表的清點」)', () => {
-  it('are numbered as the plan numbers them, without #11 and #28', () => {
-    const want = Array.from({ length: 33 }, (_, i) => i + 1).filter((n) => n !== 11 && n !== 28)
+describe('the 30 kind-keyed tables (plan 「表的清點」)', () => {
+  it('are numbered as the plan numbers them, without #11 and #28, and without #4 (the global active target is gone)', () => {
+    const want = Array.from({ length: 33 }, (_, i) => i + 1).filter((n) => n !== 11 && n !== 28 && n !== 4)
     expect([...TABLE_NUMBERS]).toEqual(want)
-    expect(TABLE_NUMBERS).toHaveLength(31)
+    expect(TABLE_NUMBERS).toHaveLength(30)
   })
 })
 

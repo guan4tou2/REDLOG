@@ -7,8 +7,7 @@
 //   handoff   every item spooled while the app was down, then drained.
 //
 // SC-003 names what must be identical: `target_id`, `_causes`, `engagement_id`,
-// `operator_id` and `_ingest.target_via`. `target_via` does not exist yet
-// (T023/T024, FR-010); the other four are compared for every row, primary and derived,
+// `operator_id` and `_ingest.target_via`: all five are compared for every row, primary and derived,
 // `_causes` by the position of the row each id names (ids are minted per row).
 // Live against restart — the same door — is compared on the whole row except
 // what a row's identity, its place in the chain and its receipt make
@@ -59,26 +58,24 @@ const sc003 = (rows: StoredRow[]) => {
   return rows.map((r) => ({
     kind: `${r.table}:${String(r.row.agent_type)}.${String(r.data.subtype)}`, command: r.data.command,
     ...(r.data.subtype === 'command_output' ? { chunk: `${String(r.data.command_id)}#${String(r.data.seq)}`, unattributed: r.data.unattributed } : {}),
-    target_id: r.row.target_id, engagement_id: r.row.engagement_id, operator_id: r.row.operator_id, _causes: causes(r)
+    target_id: r.row.target_id, target_via: (r.data._ingest as { target_via?: unknown }).target_via, engagement_id: r.row.engagement_id, operator_id: r.row.operator_id, _causes: causes(r)
   }))
 }
 
 /** Background jobs: two commands whose end says a job keeps printing (one
- *  filed under the engagement's current target, one under the target its own
- *  text names), one whose end does not, then their late chunks — a resend and
- *  one after the final row among them. The current target changes from A to B
- *  before the first chunk, so a chunk filed by the global target instead of its
- *  command's shows. */
+ *  handed the target A by its writer, one under the target its own text names),
+ *  one whose end does not, then their late chunks — a resend and one after the
+ *  final row among them. Only a command's own rows give its chunks a target. */
 const bg = (command_id: string, seq: number, stdout: string, extra: Record<string, unknown> = {}): Item =>
   ({ agent_type: 'shell', data: { subtype: 'command_output', command_id, late: true, seq, stdout, final: false, captured_by: 'redlog-relay', ...extra } })
 const LATE_RAW: Item[] = [
-  { agent_type: 'shell', data: { subtype: 'command_start', command: 'sleep 30 &', terminalId: 't1', pid: 21, command_id: 'L1' } },
-  { agent_type: 'shell', data: { subtype: 'command_end', command: 'sleep 30 &', terminalId: 't1', pid: 21, command_id: 'L1', exit_code: 0, late_output: true } },
+  { agent_type: 'shell', target_id: 'A', data: { subtype: 'command_start', command: 'sleep 30 &', terminalId: 't1', pid: 21, command_id: 'L1' } },
+  { agent_type: 'shell', target_id: 'A', data: { subtype: 'command_end', command: 'sleep 30 &', terminalId: 't1', pid: 21, command_id: 'L1', exit_code: 0, late_output: true } },
   { agent_type: 'shell', data: { subtype: 'command_start', command: 'nmap -sV 10.0.0.9', terminalId: 't1', pid: 22, command_id: 'L2' } },
   { agent_type: 'shell', data: { subtype: 'command_end', command: 'nmap -sV 10.0.0.9', terminalId: 't1', pid: 22, command_id: 'L2', exit_code: 0, late_output: true } },
   { agent_type: 'shell', data: { subtype: 'command_start', command: 'id', terminalId: 't1', pid: 23, command_id: 'N1' } },
   { agent_type: 'shell', data: { subtype: 'command_end', command: 'id', terminalId: 't1', pid: 23, command_id: 'N1', exit_code: 0, stdout: 'uid=0\n' } },
-  bg('L1', 0, 'bg one\n'), // 6: the first chunk; the target is B from here
+  bg('L1', 0, 'bg one\n'), // 6: the first chunk
   bg('L2', 0, 'bg nmap\n'),
   bg('N1', 0, 'stray\n'), // its command did not say a job would keep printing
   bg('L1', 1, 'bg two\n'),
@@ -89,7 +86,6 @@ const LATE: Item[] = LATE_RAW.map((item, i) => ({ ...item, data: { ...item.data,
 /** The same chunk sent again, as a relay does when our answer was late. */
 const RESEND = 10
 LATE.splice(RESEND, 0, LATE[9])
-const LATE_TARGETS = { 0: 'A', 6: 'B' }
 
 const ROW_IDENTITY = ['id', 'hash', 'prev_hash', 'signature', 'monotonic_ns', 'created_at', 'session_id']
 /** The whole row, less what identity, chain position and receipt make different. */
@@ -120,9 +116,6 @@ sqlite.describe('restart equivalence (SC-003)', () => {
   interface Delivery {
     /** Restart the app before each of these indexes. */
     restartsBefore?: number[]
-    /** The engagement's current target, set before the item at each index (and
-     *  again on every restart, as main does when a project opens). */
-    targets?: Record<number, string>
     /** From this index on, the items wait in the handoff spool and are drained
      *  after one more restart. */
     spoolFrom?: number
@@ -138,18 +131,14 @@ sqlite.describe('restart equivalence (SC-003)', () => {
   async function live(items: Item[], opts: Delivery = {}): Promise<StoredRow[]> {
     const dir = opts.dir ?? tmp('live')
     let rt = await openRuntime(dir)
-    let target: string | null = null
     const spoolFrom = opts.spoolFrom ?? items.length
     for (const [i, item] of items.slice(0, spoolFrom).entries()) {
-      if (opts.restartsBefore?.includes(i)) { await rt.close(); rt = await openRuntime(dir); rt.activeTarget(target) }
-      if (opts.targets?.[i] !== undefined) { target = opts.targets[i]; rt.activeTarget(target) }
+      if (opts.restartsBefore?.includes(i)) { await rt.close(); rt = await openRuntime(dir) }
       vi.setSystemTime(at(i) + 50)
       await rt.api(item, opts.status?.[i])
     }
     if (spoolFrom < items.length) {
-      // The target the operator set while those items waited.
-      for (const [i, t] of Object.entries(opts.targets ?? {})) if (Number(i) >= spoolFrom) target = t
-      await rt.close(); rt = await openRuntime(dir); rt.activeTarget(target)
+      await rt.close(); rt = await openRuntime(dir)
       vi.setSystemTime(at(items.length) + 60_000)
       rt.spool(items.slice(spoolFrom), tmp('spool'))
     }
@@ -172,6 +161,7 @@ sqlite.describe('restart equivalence (SC-003)', () => {
     expect(sc003(a).filter((r) => r.target_id === '10.0.0.5')).not.toHaveLength(0)
     expect(sc003(a).filter((r) => r._causes)).not.toHaveLength(0)
     expect(sc003(a).map((r) => r.kind)).toContain('events:pivot.closed')
+    expect(new Set(sc003(a).map((r) => r.target_via)), 'target_via is there to compare').toEqual(new Set(['extracted', 'explicit', 'none']))
     expect(sc003(c)).toEqual(sc003(a))
   }, SLOW)
 
@@ -226,17 +216,17 @@ sqlite.describe('restart equivalence (SC-003)', () => {
     const chunks = (rows: StoredRow[]) => sc003(rows).filter((r) => r.kind === 'events:shell.command_output')
 
     it('live: each chunk is filed with its command and under its command\'s target; a resend is kept once', async () => {
-      const a = chunks(await live(LATE, { targets: LATE_TARGETS, status }))
-      expect(a.map((r) => [r.chunk, r.target_id, r.unattributed, r._causes])).toEqual([
-        ['L1#0', 'A', undefined, ['#0']],
-        ['L2#0', '10.0.0.9', undefined, ['#2']],
+      const a = chunks(await live(LATE, { status }))
+      expect(a.map((r) => [r.chunk, r.target_id, r.target_via, r.unattributed, r._causes])).toEqual([
+        ['L1#0', 'A', 'command', undefined, ['#0']],
+        ['L2#0', '10.0.0.9', 'command', undefined, ['#2']],
         // Not a command that said a job would keep printing: attributed to no
-        // command, yet filed under the target that command had, which is what
-        // live does (ingest.ts keeps a command's target from its start).
-        ['N1#0', 'A', true, undefined],
-        ['L1#1', 'A', undefined, ['#0']],
-        ['L1#2', 'A', undefined, ['#0']],
-        ['L1#3', 'B', true, undefined]
+        // command, and filed under the target that command had — none.
+        ['N1#0', null, 'none', true, undefined],
+        ['L1#1', 'A', 'command', undefined, ['#0']],
+        ['L1#2', 'A', 'command', undefined, ['#0']],
+        // After the final row it belongs to no command.
+        ['L1#3', null, 'none', true, undefined]
       ])
     }, SLOW)
 
@@ -247,14 +237,14 @@ sqlite.describe('restart equivalence (SC-003)', () => {
       ['between the final chunk and the one after it', [RESEND + 2]],
       ['after every row', [6, 7, 8, 9, RESEND, RESEND + 1, RESEND + 2]]
     ])('restarted %s: the same rows as live', async (_label, restartsBefore) => {
-      const a = await live(LATE, { targets: LATE_TARGETS, status })
-      const b = await live(LATE, { targets: LATE_TARGETS, status, restartsBefore })
+      const a = await live(LATE, { status })
+      const b = await live(LATE, { status, restartsBefore })
       expect(sc003(b)).toEqual(sc003(a))
     }, SLOW)
 
     it('the chunks waited in the handoff spool across a restart: the same rows as live', async () => {
-      const a = await live(LATE, { targets: LATE_TARGETS, status })
-      const b = await live(LATE.filter((_, i) => i !== RESEND), { targets: LATE_TARGETS, spoolFrom: 6 })
+      const a = await live(LATE, { status })
+      const b = await live(LATE.filter((_, i) => i !== RESEND), { spoolFrom: 6 })
       expect(sc003(b)).toEqual(sc003(a))
     }, SLOW)
   })

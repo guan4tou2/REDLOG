@@ -47,7 +47,7 @@ beforeEach(() => {
   bodyStore.resetBodiesDirCache()
   handlers = new Map()
   const ctx = {
-    getActiveProject: () => ({ id: 'eng-1', name: 'T', path: project, createdAt: 1, lastOpened: 1 }),
+    getSelectedTarget: () => null, getActiveProject: () => ({ id: 'eng-1', name: 'T', path: project, createdAt: 1, lastOpened: 1 }),
     getCurrentEngagementId: () => 'eng-1',
     getCurrentOperatorId: () => 'op-1'
   } as unknown as IpcContext

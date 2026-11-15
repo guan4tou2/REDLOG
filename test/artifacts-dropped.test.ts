@@ -35,7 +35,7 @@ describe('dropping files as evidence', () => {
     h.asked = []; h.answer = 0
     handlers = new Map()
     const ctx = {
-      getActiveProject: () => ({ id: 'eng-1', name: 'T', path: dir, createdAt: 1, lastOpened: 1 }),
+      getSelectedTarget: () => null, getActiveProject: () => ({ id: 'eng-1', name: 'T', path: dir, createdAt: 1, lastOpened: 1 }),
       getMainWindow: () => ({})
     } as unknown as IpcContext
     registerArtifactsIpc({ handle: (n: string, fn: Handler) => handlers.set(n, fn) } as never, ctx)

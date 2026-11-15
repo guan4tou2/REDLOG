@@ -42,9 +42,9 @@ sqlite.describe('stored links (SC-003)', () => {
     fs.rmSync(dir, { recursive: true, force: true })
   })
 
-  const put = (agentType: string, data: Record<string, unknown>) => ingestMod.ingest({ agentType, data, engagementId: ENG, operatorId: OP })
-  const start = (cid: string | null, n: number) => put('shell', { subtype: 'command_start', command: `sleep ${n} &`, terminalId: `t${n}`, pid: n, ...(cid ? { command_id: cid } : {}) })
-  const end = (cid: string | null, n: number, late = false) => put('shell', { subtype: 'command_end', command: `sleep ${n} &`, terminalId: `t${n}`, pid: n, exit_code: 0, ...(cid ? { command_id: cid } : {}), ...(late ? { late_output: true } : {}) })
+  const put = (agentType: string, data: Record<string, unknown>, targetId?: string) => ingestMod.ingest({ agentType, data, engagementId: ENG, operatorId: OP, ...(targetId ? { targetId } : {}) })
+  const start = (cid: string | null, n: number, targetId?: string) => put('shell', { subtype: 'command_start', command: `sleep ${n} &`, terminalId: `t${n}`, pid: n, ...(cid ? { command_id: cid } : {}) }, targetId)
+  const end = (cid: string | null, n: number, late = false, targetId?: string) => put('shell', { subtype: 'command_end', command: `sleep ${n} &`, terminalId: `t${n}`, pid: n, exit_code: 0, ...(cid ? { command_id: cid } : {}), ...(late ? { late_output: true } : {}) }, targetId)
   const chunk = (cid: string, seq: number) => put('shell', { subtype: 'command_output', command_id: cid, late: true, seq, stdout: `line ${seq}\n`, final: false })
 
   describe('every probe is an index seek', () => {
@@ -108,10 +108,8 @@ sqlite.describe('stored links (SC-003)', () => {
 
     // Second review F7: a lookup that fails costs the link, never the row.
     it('a stored lookup that throws: the row is stored unlinked, a warning is noted, and the next row asks again', () => {
-      ingestMod.configureIngest({ activeTarget: 'A' })
-      const s = start('t1', 1); end('t1', 1, true); chunk('t1', 0)
+      const s = start('t1', 1, 'A'); end('t1', 1, true, 'A'); chunk('t1', 0)
       ingestMod._resetIngest()
-      ingestMod.configureIngest({ activeTarget: 'B' })
       const conn = db.getDB()
       const prepare = conn.prepare.bind(conn)
       const spy = vi.spyOn(conn, 'prepare').mockImplementation(((sql: string) => {

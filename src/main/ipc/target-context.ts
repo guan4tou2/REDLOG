@@ -10,18 +10,41 @@ function cleanTarget(value: unknown): string | null {
   return target ? target.slice(0, 253) : null
 }
 
+/** The operator's selected target of the open project, from the config last
+ *  APPLIED to it (main/config-apply.ts `applied()`), not from the file: the
+ *  config the project is running with. Null when no project is open, nothing is
+ *  applied yet (the window inside a project open), or what is applied belongs
+ *  to another open (its generation differs): never a previous project's. */
+export function selectedTargetOf(
+  open: { generation: number } | null,
+  applied: { generation: number; input: { config: { engagement: { activeTarget?: string | null } } } } | null
+): string | null {
+  if (!open || !applied || applied.generation !== open.generation) return null
+  return cleanTarget(applied.input.config.engagement.activeTarget)
+}
+
+/** The fields an in-app action hands the writer for `selected` (from
+ *  IpcContext.getSelectedTarget): the row's target, and that it came from the
+ *  operator's selection (Spec 071 `_ingest.target_via`). Nothing selected gives
+ *  nothing, and the row has no target. Not for a row a tool or a timer writes. */
+export function operatorSelectedTarget(selected: string | null | undefined): { targetId?: string; targetVia?: 'operator-selected' } {
+  const target = cleanTarget(selected)
+  return target ? { targetId: target, targetVia: 'operator-selected' } : {}
+}
+
 export interface TargetContextDeps {
   /** Writes the open project's config and applies it (main/config-apply.ts:
-   *  a changed current target reaches ingest, nothing else). False when no
-   *  project is open. */
+   *  a changed current target has no subsystem to reach; in-app actions read it
+   *  when they write a row). False when no project is open. */
   commit: (next: RedLogConfig, prev: RedLogConfig) => boolean
 }
 
 export function registerTargetContextIpc(ipcMain: IpcMain, ctx: IpcContext, deps: TargetContextDeps): void {
   ipcMain.handle('targetContext:get', () => {
-    const project = ctx.getActiveProject()
-    if (!project) return null
-    return cleanTarget(loadConfig(getProjectDir(project)).engagement.activeTarget)
+    // What the in-app actions will use: the applied selection, not the file.
+    // Opening a project applies its config in the same synchronous run that
+    // begins it, so no request can see the project without it.
+    return ctx.getActiveProject() ? ctx.getSelectedTarget() : null
   })
 
   ipcMain.handle('targetContext:set', (_event, requested: unknown) => {
@@ -34,7 +57,10 @@ export function registerTargetContextIpc(ipcMain: IpcMain, ctx: IpcContext, deps
     const prev = loadConfig(projectDir)
     const previous = cleanTarget(prev.engagement.activeTarget)
     const target = cleanTarget(requested)
-    if (previous === target) return { ok: true, target }
+    // Both the file and the applied config must already say it: if they
+    // disagree (a hand edit, an apply that threw after the write) the switch
+    // commits and applies again.
+    if (previous === target && ctx.getSelectedTarget() === target) return { ok: true, target }
 
     const next = loadConfig(projectDir)
     next.engagement.activeTarget = target

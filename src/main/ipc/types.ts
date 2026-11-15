@@ -16,6 +16,9 @@ export interface IpcContext {
   getOverlayWindow: () => BrowserWindow | null
   getCurrentEngagementId: () => string | null
   getCurrentOperatorId: () => string | null
+  /** The operator's selected target of the open project, from the applied
+   *  config; null when none is selected or no config is applied to it. */
+  getSelectedTarget: () => string | null
   /** Safe send that ignores destroyed windows. */
   send: (win: BrowserWindow | null, channel: string, ...payload: unknown[]) => void
   /** Opens the marker dialog in the main window. */
