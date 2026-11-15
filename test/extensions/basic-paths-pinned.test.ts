@@ -114,10 +114,10 @@ describe('the two copies in the fixture still match main (source pins)', () => {
     expect(start).toBeGreaterThan(-1)
     const fn = body.slice(start, body.indexOf('\nconst WINDOW_STATE_PATH', start))
     expect(fn).toMatch(/const f = hudMarkerFields\(input, Date\.now\(\)\)/)
-    expect(fn).toMatch(/insertEvent\('marker', redactFields\(\{\s*title: f\.title,\s*notes: f\.notes,\s*severity: 'info',\s*category: 'custom',\s*source_timestamp: f\.source_timestamp,\s*source: f\.source\s*\}, MARKER_TEXT_FIELDS\), \{ \.\.\.open, \.\.\.operatorSelectedTarget\(loadConfig\(getProjectPath\(projectRuntime\.project\(\)!\)\)\) \}\)/)
+    expect(fn).toMatch(/insertEvent\('marker', redactFields\(\{\s*title: f\.title,\s*notes: f\.notes,\s*severity: 'info',\s*category: 'custom',\s*source_timestamp: f\.source_timestamp,\s*source: f\.source\s*\}, MARKER_TEXT_FIELDS\), \{ \.\.\.open, \.\.\.operatorSelectedTarget\(selectedTarget\(\)\) \}\)/)
   })
 
   it('the screenshot shortcut calls captureNow(\'manual\', undefined, { hideOwnWindows: true, targetId: <the selected target> })', () => {
-    expect(read('src/main/index.ts')).toMatch(/screenshotAgent\.captureNow\('manual', undefined, \{\s*hideOwnWindows: true,\s*targetId: project \? operatorSelectedTarget\(loadConfig\(getProjectPath\(project\)\)\)\.targetId : undefined\s*\}\)/)
+    expect(read('src/main/index.ts')).toMatch(/screenshotAgent\.captureNow\('manual', undefined, \{\s*hideOwnWindows: true,\s*targetId: operatorSelectedTarget\(selectedTarget\(\)\)\.targetId\s*\}\)/)
   })
 })

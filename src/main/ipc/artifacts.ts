@@ -20,7 +20,7 @@ const RELATED_WINDOW_MS = 24 * 60 * 60 * 1000
 /** A drop larger than this is almost certainly a mistake, not evidence. */
 const MAX_DROPPED = 50
 
-function addFiles(proj: ProjectMeta, files: string[]): ArtifactAddOutcome[] {
+function addFiles(proj: ProjectMeta, files: string[], selectedTarget: string | null): ArtifactAddOutcome[] {
   const projectDir = getProjectDir(proj)
   const config = loadConfig(projectDir)
   const results: ArtifactAddOutcome[] = []
@@ -43,7 +43,7 @@ function addFiles(proj: ProjectMeta, files: string[]): ArtifactAddOutcome[] {
       mtime: r.mtime,
       ...(r.duplicate ? { duplicate: true } : {}),
       ...(related.length > 0 ? { related_commands: related } : {})
-    }, { engagementId: config.engagement.id, operatorId: config.operator.id, bypassPause: true, ...operatorSelectedTarget(config) })
+    }, { engagementId: config.engagement.id, operatorId: config.operator.id, bypassPause: true, ...operatorSelectedTarget(selectedTarget) })
     results.push({ ...r, eventId: ev?.id ?? null, relatedCommands: related.length })
   }
   return results
@@ -78,7 +78,7 @@ export function registerArtifactsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     if (picked.canceled || picked.filePaths.length === 0) return { canceled: true, results: [] }
     // The project may have closed while the picker was open.
     if (ctx.getActiveProject()?.id !== proj.id) return null
-    return { canceled: false, results: addFiles(proj, picked.filePaths) }
+    return { canceled: false, results: addFiles(proj, picked.filePaths, ctx.getSelectedTarget()) }
   })
 
   // Files dropped on the window (UI/UX audit F8). The confirmation is shown by
@@ -105,6 +105,6 @@ export function registerArtifactsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     })
     if (answer.response !== 0) return { canceled: true, results: [] }
     if (ctx.getActiveProject()?.id !== proj.id) return null
-    return { canceled: false, results: addFiles(proj, files) }
+    return { canceled: false, results: addFiles(proj, files, ctx.getSelectedTarget()) }
   })
 }

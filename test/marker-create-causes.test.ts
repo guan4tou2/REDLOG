@@ -25,7 +25,7 @@ describe('marker:create with causes', () => {
     initDB(dir)
     _resetIngest()
     handlers = new Map()
-    const ctx = { getActiveProject: () => ({ id: 'eng-1', name: 'T', path: dir, createdAt: 1, lastOpened: 1 }) } as unknown as IpcContext
+    const ctx = { getSelectedTarget: () => null, getActiveProject: () => ({ id: 'eng-1', name: 'T', path: dir, createdAt: 1, lastOpened: 1 }) } as unknown as IpcContext
     registerMarkersIpc({ handle: (n: string, fn: Handler) => handlers.set(n, fn) } as never, ctx, {} as never)
   })
   afterEach(() => {

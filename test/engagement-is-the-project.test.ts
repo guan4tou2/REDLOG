@@ -78,7 +78,7 @@ function open(dir: string): string {
 function markerHandler(id: string, dir: string): Handler {
   const handlers = new Map<string, Handler>()
   const ctx = {
-    getActiveProject: () => ({ id, name: id, path: dir, createdAt: 1, lastOpened: 1 }),
+    getSelectedTarget: () => null, getActiveProject: () => ({ id, name: id, path: dir, createdAt: 1, lastOpened: 1 }),
     getMainWindow: () => ({})
   } as unknown as IpcContext
   registerMarkersIpc({ handle: (n: string, fn: Handler) => handlers.set(n, fn) } as never, ctx, {} as never)

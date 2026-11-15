@@ -19,7 +19,6 @@ import { initDB, closeDB, getDB } from '../src/core/db/index'
 import { insertEvent } from '../src/core/db/events'
 import { _resetIngest, ingest } from '../src/core/ingest'
 import { LEGACY_API } from '../src/core/ingest/stamp'
-import { loadConfig } from '../src/core/config'
 import { registerMarkersIpc } from '../src/main/ipc/markers'
 import { registerArtifactsIpc } from '../src/main/ipc/artifacts'
 import { operatorSelectedTarget } from '../src/main/ipc/target-context'
@@ -36,22 +35,24 @@ describe('in-app actions pass the selected target', () => {
   let loot: string
   let handlers: Map<string, Handler>
   const captures: Array<{ trigger: string; opts: Record<string, unknown> }> = []
-  const select = (target: string | null): void => {
-    fs.writeFileSync(path.join(dir, 'config.yaml'),
-      `engagement:\n  id: eng-1\n${target ? `  activeTarget: ${target}\n` : ''}operator:\n  id: op-1\n`)
-  }
+  // What main's `getSelectedTarget` answers from the applied config (the
+  // production wiring is tested in test/config-apply.test.ts).
+  let selected: string | null = null
+  const select = (target: string | null): void => { selected = target }
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-via-app-'))
     loot = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-via-loot-'))
     fs.writeFileSync(path.join(loot, 'hashes.txt'), 'admin:aad3b435')
-    select(null)
+    fs.writeFileSync(path.join(dir, 'config.yaml'), 'engagement:\n  id: eng-1\noperator:\n  id: op-1\n')
+    selected = null
     initDB(dir)
     _resetIngest()
     captures.length = 0
     handlers = new Map()
     const ctx = {
       getActiveProject: () => ({ id: 'eng-1', name: 'T', path: dir, createdAt: 1, lastOpened: 1 }),
-      getMainWindow: () => ({})
+      getMainWindow: () => ({}),
+      getSelectedTarget: () => selected
     } as unknown as IpcContext
     const ipc = { handle: (n: string, fn: Handler) => handlers.set(n, fn) } as never
     const agent = { captureNow: (trigger: string, _cause: unknown, opts: Record<string, unknown>) => { captures.push({ trigger, opts }); return Promise.resolve('/x.jpg') } }
@@ -80,7 +81,7 @@ describe('in-app actions pass the selected target', () => {
     expect(stored('marker')).toEqual([{ target: null, via: 'none' }])
   })
 
-  it('a selection read from the config at the moment of the action: change it and the next marker follows', () => {
+  it('a selection read at the moment of the action: change it and the next marker follows', () => {
     const create = handlers.get('marker:create')!
     select('a.example'); create({}, { title: '1' })
     select('b.example'); create({}, { title: '2' })
@@ -111,18 +112,18 @@ describe('in-app actions pass the selected target', () => {
   it('the HUD marker\'s insert, as main writes it, takes the selected target', () => {
     select('10.10.11.24')
     const open = { engagementId: 'eng-1', operatorId: 'op-1' }
-    insertEvent('marker', { title: 'HUD mark', severity: 'info', category: 'custom' }, { ...open, ...operatorSelectedTarget(loadConfig(dir)) })
+    insertEvent('marker', { title: 'HUD mark', severity: 'info', category: 'custom' }, { ...open, ...operatorSelectedTarget(selected) })
     select(null)
-    insertEvent('marker', { title: 'HUD mark 2', severity: 'info', category: 'custom' }, { ...open, ...operatorSelectedTarget(loadConfig(dir)) })
+    insertEvent('marker', { title: 'HUD mark 2', severity: 'info', category: 'custom' }, { ...open, ...operatorSelectedTarget(selected) })
     expect(stored('marker')).toEqual([{ target: '10.10.11.24', via: 'operator-selected' }, { target: null, via: 'none' }])
   })
 
   it('main\'s HUD marker and screenshot shortcut read the selection (source)', () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'index.ts'), 'utf8')
     const hud = src.slice(src.indexOf('function addHudMarker'), src.indexOf('const WINDOW_STATE_PATH'))
-    expect(hud).toContain('operatorSelectedTarget(')
+    expect(hud).toContain('operatorSelectedTarget(selectedTarget())')
     const shortcut = src.slice(src.indexOf('globalShortcut.register(QUICK_SHOT_ACCELERATOR'), src.indexOf('// --- Updates ---'))
-    expect(shortcut).toContain('operatorSelectedTarget(')
+    expect(shortcut).toContain('operatorSelectedTarget(selectedTarget())')
     expect(shortcut).toContain("captureNow('manual'")
   })
 

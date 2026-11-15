@@ -330,7 +330,7 @@ export async function runBasicPaths(opts: RunOptions = {}): Promise<BasicPathsRu
     const markers = await import('../../src/main/ipc/markers')
     const handlers = new Map<string, (...a: unknown[]) => unknown>()
     const proj = { id: ENG, name: 'Basic paths', path: projectDir, createdAt: 1, lastOpened: 1 }
-    const ctx = { getActiveProject: () => proj, getMainWindow: () => ({}) } as never
+    const ctx = { getSelectedTarget: () => null, getActiveProject: () => proj, getMainWindow: () => ({}) } as never
     const fakeIpc = { handle: (name: string, fn: (...a: unknown[]) => unknown) => handlers.set(name, fn) } as never
     const shotAgentMod = await import('../../src/main/services/screenshot-agent')
     const agent = new shotAgentMod.ScreenshotAgent(() => ({ state: 'ok' }) as never)

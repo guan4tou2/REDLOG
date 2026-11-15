@@ -130,7 +130,7 @@ export function registerMarkersIpc(
       // selected now.
       ...(typeof data.targetId === 'string' && data.targetId.trim()
         ? { targetId: data.targetId.trim().slice(0, 253) }
-        : operatorSelectedTarget(config))
+        : operatorSelectedTarget(ctx.getSelectedTarget()))
     })
     return event
   })
@@ -155,7 +155,7 @@ export function registerMarkersIpc(
     return screenshotAgent.captureNow('manual', typeof causeEventId === 'string' ? causeEventId : undefined, {
       heldFrame: typeof opts?.heldFrame === 'string' ? opts.heldFrame : undefined,
       hideOwnWindows: opts?.hideOwnWindows === true,
-      targetId: proj ? operatorSelectedTarget(loadConfig(getProjectDir(proj))).targetId : undefined
+      targetId: proj ? operatorSelectedTarget(ctx.getSelectedTarget()).targetId : undefined
     })
   })
 

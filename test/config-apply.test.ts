@@ -1,3 +1,4 @@
+import { selectedTargetOf } from '../src/main/ipc/target-context'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { DEFAULT_CONFIG, type RedLogConfig } from '../src/core/config'
 import {
@@ -388,5 +389,65 @@ describe('config apply: one path for every entry point', () => {
       expect(h.log).toEqual(GOLDEN_OPEN)
       expect(applier.applied()?.generation).toBe(2)
     })
+  })
+})
+
+// Spec 071: in-app actions take the operator's selection from the config last
+// applied to the open project (main/index.ts `selectedTarget`), not from the file.
+describe('the selected target, from the applied config', () => {
+  let h: ReturnType<typeof harness>
+  let applier: ConfigApplier
+  const withTarget = (t: string | null): RedLogConfig => cfg((c) => { c.engagement.activeTarget = t })
+  /** What main's `selectedTarget()` answers, for the project `current` is. */
+  const selected = (current: ProjectContext | null): string | null => selectedTargetOf(current, applier.applied())
+  beforeEach(() => {
+    h = harness()
+    applier = createConfigApplier(h.deps)
+  })
+
+  it('nothing applied (no project, or inside an open): none', () => {
+    const a = h.ctx(1)
+    h.current.add(1)
+    expect(selected(null)).toBeNull()
+    expect(selected(a)).toBeNull()
+  })
+
+  it('after the open, the selection the project opened with', () => {
+    const a = h.ctx(1)
+    h.current.add(1)
+    applier.apply({ reason: 'open', identity: a, next: withTarget('10.0.0.5'), hooks: HOOKS(h.log) })
+    expect(selected(a)).toBe('10.0.0.5')
+  })
+
+  it('apply is synchronous: right after a target-context switch returns, the new target; cleared, none', () => {
+    const a = h.ctx(1)
+    h.current.add(1)
+    const first = withTarget('10.0.0.5')
+    applier.apply({ reason: 'open', identity: a, next: first, hooks: HOOKS(h.log) })
+    applier.apply({ reason: 'target-context', identity: a, next: withTarget('10.0.0.9'), diskPrev: first })
+    expect(selected(a)).toBe('10.0.0.9')
+    applier.apply({ reason: 'target-context', identity: a, next: withTarget(null), diskPrev: first })
+    expect(selected(a)).toBeNull()
+  })
+
+  it('a config applied for a previous project is never used', () => {
+    const a = h.ctx(1), b = h.ctx(2)
+    h.current.add(1)
+    applier.apply({ reason: 'open', identity: a, next: withTarget('10.0.0.5'), hooks: HOOKS(h.log) })
+    // The next project is current but its open has not applied yet.
+    h.current.delete(1); h.current.add(2)
+    expect(selected(b)).toBeNull()
+    // Closed: forgotten.
+    h.current.delete(2)
+    applier.reset()
+    expect(selected(b)).toBeNull()
+  })
+
+  it('a switch refused because its project is no longer current changes nothing', () => {
+    const a = h.ctx(1), b = h.ctx(2)
+    h.current.add(2)
+    applier.apply({ reason: 'open', identity: b, next: withTarget('b.example'), hooks: HOOKS(h.log) })
+    expect(applier.apply({ reason: 'target-context', identity: a, next: withTarget('a.example'), diskPrev: withTarget(null) })).toBeNull()
+    expect(selected(b)).toBe('b.example')
   })
 })

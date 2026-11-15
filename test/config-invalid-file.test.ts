@@ -238,7 +238,7 @@ describe('writers refuse an invalid file instead of saving defaults over it', ()
     const handlers = new Map<string, Handler>()
     const commit = vi.fn(() => true)
     const ipc = {
-      getActiveProject: () => ({ id: 'eng-1', name: 'T', path: dir, createdAt: 1, lastOpened: 1 }),
+      getSelectedTarget: () => null, getActiveProject: () => ({ id: 'eng-1', name: 'T', path: dir, createdAt: 1, lastOpened: 1 }),
       getCurrentEngagementId: () => 'eng-1', getCurrentOperatorId: () => 'op-1',
       send: vi.fn(), getMainWindow: () => null, getOverlayWindow: () => null
     } as unknown as IpcContext
@@ -257,7 +257,7 @@ describe('nothing is recorded under the defaults\' identity', () => {
     _resetIngest()
     handlers = new Map()
     const ipc = {
-      getActiveProject: () => ({ id: 'eng-1', name: 'T', path: dir, createdAt: 1, lastOpened: 1 }),
+      getSelectedTarget: () => null, getActiveProject: () => ({ id: 'eng-1', name: 'T', path: dir, createdAt: 1, lastOpened: 1 }),
       getMainWindow: () => ({})
     } as unknown as IpcContext
     const reg = { handle: (n: string, fn: Handler) => handlers.set(n, fn) } as never
