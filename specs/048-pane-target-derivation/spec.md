@@ -23,6 +23,10 @@ With Spec 041 withdrawn, attribution at ingest is:
 explicit producer target > observed/enriched target > active-target fallback > null
 ```
 
+> **2026-11-15 (DECISIONS §7):** Spec 071 FR-010 removes this fallback: the active
+> target is never applied automatically, and a row with no host of its own gets no
+> target (`none`). The derivation proposed below remains undecided.
+
 A shell command whose text names no host gets the active target — whatever the
 operator last selected, which may be an unrelated machine. That covers nearly
 everything typed after the operator is already inside a box (`whoami`,

@@ -20,7 +20,7 @@
 
 **Primary Dependencies**：better-sqlite3、Node `crypto`、Python `hmac`／`hashlib`、.NET `HMACSHA256`。不新增套件。
 
-**Storage**：專案 DB 新增三張簿記表（`ingest_keys`、`ingest_instances`、`ingest_producers`）、一張可重建的 `terminal_targets` 與兩個可為 NULL 的去正規化欄位；新增機器層級的憑證登記檔；交接目錄。事件表結構、雜湊、觸發器都不變。
+**Storage**：專案 DB 新增三張簿記表（`ingest_keys`、`ingest_instances`、`ingest_producers`）、兩個可為 NULL 的去正規化欄位；新增機器層級的憑證登記檔；交接目錄。事件表結構、雜湊、觸發器都不變。
 
 **Testing**：Vitest（單元、整合、property、共用向量的驅動）；`tools/redlog-verify.py` 經 Vitest 呼叫；Playwright e2e 只在 ubuntu。真機驗收另列。
 
@@ -90,11 +90,9 @@
 
 - **專案**：取綁定的 DB（FR-007）。`ingest()` 與 `insertEvent` 的 `engagementId` 參數保留型別相容，但不再作為來源；與綁定值不同時回 `retry`／`foreign-project`。
 - **操作者**：見 FR-009，讀機器層級設定（O12）。
-- **時間**：沿用 `timestamp`（來源時間）與 `created_at`（收到時間）的雙時間設計。另記觀察時間 `observed_at`（OTel 的 Timestamp 與 ObservedTimestamp）。目標承接用觀察時間。暫停判斷**不**用觀察時間（修訂 2026-11-13）：即時入口依收到時間；交接目錄只在暫停結束後、以可用的來源時間對照已記錄的暫停區間（spec FR-082）。觀察時間是來源的自述；Phase 2 審查以 probe 證明信任它會在來源時鐘偏慢、relay chunk 延遲送出、系統時鐘倒退三種情況寫入暫停內容。
-- **目標**（O11）：`explicit` → `extracted` → `command` → `terminal-last` → `none`。
-  - `terminal-last` 與 `command` 改從持久資料查，取代 `ingest.ts:83,399` 只存在記憶體的 map（01-F5(a)(b)）。`command` 已做（2026-11-15，T032 的註記）：map 保留為快速路徑，查不到時讀指令已存的列（`db/stored-links.ts`）。
-  - 新增衍生、可重建的 `terminal_targets(terminal, observed_at, target)` 表，放在專案 DB，本規格擁有；寫入路徑在同一個 commit 交易內寫入（Spec 074 的投影執行器在此呼叫 `advanceInTransaction`）。
-  - **回填**（含 071 之前事件的專案）不在本規格做：由 Spec 074 的 `heavy` 執行緒以唯讀連線計算，分批交回主行程，由寫入者以小交易依序寫入（074 plan D5 的 `tt-backfill`）。回填完成前，這種專案的新列不套用 `terminal-last`，寫 `target_via: "none"`，永久（spec FR-010）。回填是否完成由 074 回報（`terminal_targets` 投影的狀態）；寫入路徑在記憶體中保存最近一次的回報，未知時（含 074 尚未落地）視為未完成。不需要回填的專案（沒有 071 之前的事件）視為已完成。
+- **時間**：沿用 `timestamp`（來源時間）與 `created_at`（收到時間）的雙時間設計。另記觀察時間 `observed_at`（OTel 的 Timestamp 與 ObservedTimestamp）。暫停判斷**不**用觀察時間（修訂 2026-11-13）：即時入口依收到時間；交接目錄只在暫停結束後、以可用的來源時間對照已記錄的暫停區間（spec FR-082）。觀察時間是來源的自述；Phase 2 審查以 probe 證明信任它會在來源時鐘偏慢、relay chunk 延遲送出、系統時鐘倒退三種情況寫入暫停內容。
+- **目標**（O11，2026-11-15 修訂，DECISIONS §7）：`explicit`／`operator-selected` → `extracted` → `command` → `none`。沒有主機的列不承接目標；沒有 `terminal-last` 值，也沒有 `terminal_targets` 表。
+  - `command` 改從持久資料查（指令已存的列，`db/stored-links.ts`），取代 `ingest.ts:83,399` 只存在記憶體的 map（01-F5(a)(b)）。已做（2026-11-15，T032 的註記）：map 保留為快速路徑，查不到時讀指令已存的列。
   - 不再套用 `ingest.ts:251-255` 的全域目前目標（app 內操作見 O16）。
 - **否決**：由來源在觀察當下宣告目標。那樣要把目前目標寫進 identity 檔，每次改目標都改變每個 shell 的 stamp（`shell-common.sh:334-341`），而且來源宣告的目標不可信。
 
@@ -412,9 +410,9 @@ RLI1 c4kq2… 1 hmac-sha256 3f9a…
 
 | 兄弟 | 本規格需要 | 本規格提供 |
 |---|---|---|
-| 072 種類登記表 | `tierFor`（D10）；`writers`（種類政策，T010）；`pause`（暫停豁免，T015）；`identity.target`（目標步驟，T024）；`KindId` 型別（行程內入口，072 T045） | 強制、時間基準、目標演算法、回執；`ProducerClass` 的值域（FR-071）；`system.project_closed` 經本入口寫入 |
+| 072 種類登記表 | `tierFor`（D10）；`writers`（種類政策，T010）；`pause`（暫停豁免，T015）；`KindId` 型別（行程內入口，072 T045） | 強制、時間基準、目標演算法、回執；`ProducerClass` 的值域（FR-071）；`system.project_closed` 經本入口寫入 |
 | 073 專案執行期 | session 的 token 與綁定的 engagement（FR-007）；機器層的目前操作者（FR-009）；AI 同意狀態（FR-07A）；安裝帳本（憑證檔，FR-072）；TS 一側的終端機綁定（FR-085） | `handoff-dir.ts` 的 RedLog 根目錄解析（073 FR-020）；FR-080 暫停狀態檔；relay 一側的綁定與 `capture_resumed`；共用 agreement 測試 |
-| 074 讀取服務與投影 | `notifyCommit`、`topicsForCommit`、`derived-op`（postCommit，D8）；`terminal_targets` 的回填（D2） | `CommitReceipt`（FR-096）；`terminal_targets` 表與同步寫入；`_ingest.terminal` 正規值（FR-011）；`_causes` 的指令 id（O18，FR 未展開，見 spec 的注記） |
+| 074 讀取服務與投影 | `notifyCommit`、`topicsForCommit`、`derived-op`（postCommit，D8） | `CommitReceipt`（FR-096）；`_ingest.terminal` 正規值（FR-011）；`_causes` 的指令 id（O18，FR 未展開，見 spec 的注記） |
 | 075 來源狀態 | 來源狀態 payload（FR-07B 的 `/api/whoami`）；`enabledForProject`（FR-07A）；外掛 `emits`（憑證範圍）與啟用時刻（發放時機） | FR-056 的事實（存活、第一次與最近一次接受、遺失帳本依 FR-050 原因名稱、停用後被拒、隔離、舊入口）；`_ingest.rules`／`rules_partial`；憑證登記狀態與發放、撤銷 |
 
 跨規格的實作順序只寫在 [specs/README.md](../README.md)「071–075 的跨規格順序」；下方是本規格自己的 Phase 順序。
@@ -501,7 +499,7 @@ docs/domain/SPEC-ingestion-contract.md   # 用戶端規格本文（T080）
 ```text
 src/core/ingest.ts → src/core/ingest/{index,stamp,dedup,gate,commit,receipt,ledger,liveness}.ts
 src/core/db/event-write.ts            # insertEvent 只供 commit；classifyTier 依 D10
-src/core/db/index.ts                  # ingest_keys、ingest_instances、ingest_producers、terminal_targets；FTS 例外
+src/core/db/index.ts                  # ingest_keys、ingest_instances、ingest_producers；FTS 例外
 src/core/api-server.ts                # /api/ingest；路由能力表；舊入口加欄位
 src/core/external-event-policy.ts     # 種類政策表（依來源類別）
 src/core/credentials.ts               # 登記、發放、輪替、撤銷、認證、MAC
