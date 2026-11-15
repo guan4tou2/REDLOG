@@ -57,7 +57,7 @@
 2. 平行、互不等待：071 Phase 2–3（封旁路、暫停區間、蓋章、單一入口、`CommitReceipt`；tier 照今天的 `classifyTier`）；072 Phase 2–3（登記表、純呈現的摺疊）；073 Phase 2–3（session 骨架與資源清單；`query-worker` 先是 no-op 資源）；074 Phase 2–4（讀取服務、移動讀取、`derived.db`；回執先用過渡包裝，資源先接 `ProjectRuntime.onStop`）；075 Phase 2（狀態模型進核心；071／073 尚未提供的事實缺席＝unknown）。
 3. 072 Phase 4 與 071 的對應任務同 PR：072 T040＝071 T027（071 FR-113 由此生效）、T041／071 T015、T042／071 T010、T043／071 T024、T045／071 T037。需要第 2 步的 071 Phase 3。
 4. 071 Phase 4（憑證與能力）→ 071 Phase 5（契約 1、存活、遺失帳本、第一次接受、`/api/whoami`；T051、T055 等 071 Q6 的答覆）。
-5. 平行：073 Phase 4（設定層級、`machine.yaml`）；074 Phase 5（`intervals`、`cause_counts`、`gapOverlaps`、`terminal_targets` 回填；需要 072 Phase 2 與 071 T024）；072 Phase 5 的 T051（`project_closed` 種類與過渡寫入點）→ 073 Phase 5（`lifecycle-records` 取代過渡寫入點）。072 T052 在 074 Phase 5 之後。
+5. 平行：073 Phase 4（設定層級、`machine.yaml`）；074 Phase 5（`intervals`、`cause_counts`、`gapOverlaps`；需要 072 Phase 2）；072 Phase 5 的 T051（`project_closed` 種類與過渡寫入點）→ 073 Phase 5（`lifecycle-records` 取代過渡寫入點）。072 T052 在 074 Phase 5 之後。
 6. 平行：075 Phase 3–6（各畫面改讀同一份狀態；讀第 4 步的事實）；074 Phase 6（讀取模型、變更主題；`config` 主題由 073 T043 發出）。
 7. 071 Phase 6（各來源換上契約 1），其中 071 T075 與 073 Phase 6（終端機綁定）配對。
 8. 075 Phase 7（manifest v2；用 072 Phase 2 的 `validatePluginKind`）→ 072 Phase 6（匯出與外掛的表）。

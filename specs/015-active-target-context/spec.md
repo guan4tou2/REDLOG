@@ -4,6 +4,12 @@
 **Created**: 2026-09-22
 **Status**: Verified
 
+> **Superseded fallback (Spec 071 FR-010, DECISIONS 2026-11-15 §7):** FR-004 and
+> FR-005 no longer hold. The active target is never applied automatically to any
+> row. Marker and screenshot actions taken in the app pass the selected target
+> (`operator-selected`); automatic screenshots and `/api/marker` markers sent
+> without a target get no target (`none`). The rest of this spec is unchanged.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Pin the host being worked (Priority: P1)

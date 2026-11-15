@@ -4,6 +4,11 @@
 > Invariant: Every target-oriented query MUST use the same canonical target identity semantics.
 > Status: Implemented — canonical identity and the active-target fallback share the ingest boundary; every target filter compares case-insensitively through one helper (Spec 038).
 
+> **Superseded fallback (Spec 071 FR-010, DECISIONS 2026-11-15 §7):** the
+> active-target fallback below is removed. The active target is never applied
+> automatically to any row; in-app marker and screenshot actions pass the
+> selected target, and rows with no host of their own get no target (`none`).
+
 ## Canonical Definition
 
 **Target identity** is the `target_id` column on `events` / `events_logged` tables.

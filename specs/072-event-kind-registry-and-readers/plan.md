@@ -54,7 +54,7 @@
 | 1 | `LOGGED_TIER` | `src/core/db/event-write.ts:45-82` | `tier` | 4 |
 | 2 | `PAUSE_EXEMPT_AGENT_TYPES` | `event-write.ts:380`（用於 `:452`） | `pause: 'exempt'` | 4 |
 | 3 | `delayedCapture` | `src/core/ingest.ts:162-163` | `pause: 'gated-by-observation'` | 4 |
-| 4 | `ACTIVE_TARGET_FALLBACK_TYPES` | `ingest.ts:71`、`:251-252` | `identity.target` | 4 |
+| 4 | `ACTIVE_TARGET_FALLBACK_TYPES` | `ingest.ts:71`、`:251-252` | 不摺：由 071 T024 刪除，沒有 `identity.target`（Superseded（2026-11-15，DECISIONS 2026-11-15 §7）） | 4 |
 | 5 | `EXTERNAL_ALLOWED_AGENT_TYPES` | `src/core/external-event-policy.ts:12-40` | `writers` | 4 |
 | 6 | 起訖的種類判斷 | `src/core/causes-resolver.ts:98-185` | `IntervalDef` 的 start／end／members；`cause`。記憶體中的配對狀態留在 ingest（071） | 4 |
 | 7 | 行程歸屬的種類 | `src/core/socket-attribution.ts:188-189` | `cause: 'socket'` | 4 |
