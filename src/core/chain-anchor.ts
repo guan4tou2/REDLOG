@@ -1,5 +1,6 @@
 import crypto from 'crypto'
-import { insertEvent } from './db/events'
+import { ingestEvent } from './ingest'
+import { engagementForWrite } from './ingest/stamp'
 import { getPrimaryOperator } from './db/operators'
 import https from 'https'
 import { URL } from 'url'
@@ -241,14 +242,14 @@ export async function anchorNow(calendars: string[] = DEFAULT_CALENDARS): Promis
     try {
       const opId = getPrimaryOperator()?.id
       if (opId) {
-        insertEvent('system', {
+        ingestEvent('system', {
           subtype: 'anchor_failed',
           headHash: head.hash,
           eventCount: head.eventCount,
           calendarsAttempted: calendars.length,
           receipts: receipts.map((r) => ({ calendar: r.calendar, ok: r.ok, error: r.error })),
           description: `OTS anchor failed across ${calendars.length} calendars`
-        }, { operatorId: opId })
+        }, { engagementId: engagementForWrite(undefined), operatorId: opId })
       }
     } catch { /* audit event best-effort; anchor row itself is the real record */ }
   }

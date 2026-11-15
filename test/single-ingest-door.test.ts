@@ -58,11 +58,11 @@ const ROOT = path.join(__dirname, '..')
 const DIRECT_INSERT: Record<string, number> = {
   'src/core/alert/surface.ts': 1,
 
-  'src/core/bundle-export.ts': 2,
+  'src/core/bundle-export.ts': 0,
 
-  'src/core/chain-anchor.ts': 1,
+  'src/core/chain-anchor.ts': 0,
 
-  'src/core/export-direct-bundle.ts': 1,
+  'src/core/export-direct-bundle.ts': 0,
 
   'src/core/loot-detector.ts': 1,
 
@@ -70,11 +70,11 @@ const DIRECT_INSERT: Record<string, number> = {
 
   'src/core/retention.ts': 0,
 
-  'src/core/sanitize.ts': 1,
+  'src/core/sanitize.ts': 0,
 
   'src/core/scope-recompute-run.ts': 3,
 
-  'src/core/update-anchor.ts': 2,
+  'src/core/update-anchor.ts': 0,
 
   'src/main/index.ts': 10,
 
@@ -86,19 +86,19 @@ const DIRECT_INSERT: Record<string, number> = {
 const HAND_PUBLISH: Record<string, number> = {
   'src/core/alert/surface.ts': 1,
 
-  'src/core/bundle-export.ts': 2,
+  'src/core/bundle-export.ts': 0,
 
-  'src/core/export-direct-bundle.ts': 1,
+  'src/core/export-direct-bundle.ts': 0,
 
   'src/core/loot-detector.ts': 1,
 
   'src/core/retention.ts': 0,
 
-  'src/core/sanitize.ts': 1,
+  'src/core/sanitize.ts': 0,
 
   'src/core/scope-recompute-run.ts': 1,
 
-  'src/core/update-anchor.ts': 2,
+  'src/core/update-anchor.ts': 0,
 
   'src/main/index.ts': 8,
 
