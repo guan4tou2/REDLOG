@@ -68,7 +68,7 @@ const DIRECT_INSERT: Record<string, number> = {
 
   'src/core/marker-amend.ts': 1,
 
-  'src/core/retention.ts': 5,
+  'src/core/retention.ts': 0,
 
   'src/core/sanitize.ts': 1,
 
@@ -92,7 +92,7 @@ const HAND_PUBLISH: Record<string, number> = {
 
   'src/core/loot-detector.ts': 1,
 
-  'src/core/retention.ts': 5,
+  'src/core/retention.ts': 0,
 
   'src/core/sanitize.ts': 1,
 
