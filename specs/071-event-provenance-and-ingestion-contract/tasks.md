@@ -80,13 +80,15 @@
   - 程式：`src/core/ingest/depth.ts`（`boundDataDepth`、`restoreDataDepth`、`jsonStringify`；容器文字以明確堆疊寫出，`toJSON` 收到所在的鍵，沿路複製保留原型與自有 `__proto__` 鍵，循環以 Brent 法偵測）；`event-write.ts` 兩層在加上 `_ingest` 時套用；`stamp.ts` 的 `collapsed`；`api-server.ts` 事件路由 `readJsonObject(..., { depthGate: false })`、`api-request.ts` `parseJsonObjectBody` 的 `depthGate`；`tailer-host.ts` 的 `deepRedactStrings` 改為不遞迴、大小檢查改用 `jsonStringify`；`operator-pii.ts` 的樣式在任何跳脫層數都相符。
   - 測試：`test/ingest-depth-bound.test.ts`（規則的邊界、`["[1]",[1]]` 等無法以數目區分的情形、來源的標記形狀物件在 63／64／包裝內、`JSON.stringify` 的特殊值與 `toJSON` 的鍵、原型、`__proto__`、循環、100,000 層、只用存入列還原的 property test、兩層與各寫入方式、去重、FTS 與其跳脫序列的限制、app 的 chain verifier）、`test/ingest-depth-doors.test.ts`（API 在 63／64／65／1,000／100,000 層與 5,000 層的 `params.body_json`、20 MiB 上限、交接目錄、兩個入口的重送去重）、`test/ingest-door-equivalence.test.ts`（過深項目在三個入口等價）、`test/api-route-guards.test.ts`（其他路由 10,000 層仍回 400）、`test/ingest-depth-tailer.test.ts`（80、40,000、100,000 層的 AI 工具輸入與其後一輪）、`test/tailer-redact-iterative.test.ts`（與舊的遞迴版本逐項相同）、`test/operator-pii.test.ts`（三種跳脫層數）、`test/depth-vectors.test.ts` 與 `test/fixtures/depth-vectors/`。`provenance-vectors`、`golden-pre071`、`ingest-golden` 未重錄。
   - 本任務之外仍會遺失過深觀察的地方（plan D13）：mitm addon 自己的 `json.loads`（Python 3.9 約 1,000 層 `RecursionError`，未驗證於 mitmproxy 內附的 Python）；AI 工具輸入超過 100 KiB 時只存鍵名（`MAX_FULL_BYTES`）；Codex adapter 的 `JSON.stringify(payload.output)` 在 Node 約 6,100 層時被吞掉；收到非 2xx 就丟棄的來源（`c2-tailers/follow.js`、`pcap-capture.js`、`redlog-relay.py`）。
-- [ ] T037 遷移 30 處直接呼叫（下列分組依起草時的清單；確切位置以 T006 量得的清單為準），每個 PR 只遷移一個檔案群，T006 的基準值逐次下降；與 Spec 072 T045（型別化入口）同一批：
-  - [ ] T037a `main/index.ts`（11 處）
+- [ ] T037 遷移 30 處直接呼叫（下列分組依起草時的清單；確切位置以 T006 量得的清單為準），每個 PR 只遷移一個檔案群，T006 的基準值逐次下降。Spec 072 T045（型別化入口）在本任務之後（`specs/README.md` 的跨規格順序；072 的登記表尚不存在）：
+  - 2026-11-15 前置（不改 `src/`）：`test/single-ingest-door.test.ts` 改為逐檔、要求完全相等的兩張表（直接呼叫 30 處、旁邊手寫的 `eventBus.publish` 25 處），各檔案群只把自己的項目改成 0；`test/in-process-door-equivalence.test.ts` 對 30 處的每一種列以兩種方式寫入並逐位元組比對（57 個案例，全部相同）。遷移的做法：一律走現有的 `ingestEvent`／`ingest`，只帶既有選項，不帶 `derived`；同一個 PR 刪掉旁邊手寫的發布；loot 與標記修訂帶 `inheritsVia`；scope 重算的三列在交易內，需要「一起寫入、交易成功後才發布」的函式。`session_start`、`opsec_airgap`、`anchor_failed` 今天不發布，遷移後各發布一次。
+  - [ ] T037a `main/index.ts`（10 處）
   - [ ] T037b `retention.ts`（5）
   - [ ] T037c `scope-recompute-run.ts`（3）
   - [ ] T037d [P] `update-anchor.ts`（2）、`chain-anchor.ts`、`export-direct-bundle.ts`、`bundle-export.ts`、`sanitize.ts`
   - [ ] T037e [P] `loot-detector.ts`、`alert/surface.ts`、`marker-amend.ts`、`ipc/markers.ts`、`ipc/plugins.ts`
-- [ ] T038 `insertEvent` 的內部閘門改為丟錯；commit 原語不再回傳 null（FR-095），改為回傳 `CommitReceipt`（FR-096，先 RED：每次 commit 一個遞增的 `seq`、rowid 水位正確、沒有任何列或表多出欄位）；T006 的基準值歸 0。Spec 074 T023 的過渡包裝在此被取代。
+- [ ] T038 `insertEvent` 的內部閘門改為丟錯；commit 原語不再回傳 null（FR-095）；T006 的基準值歸 0。2 秒去重是正常的政策結果，不是錯誤：先從 `insertEvent` 拆成入口在 commit 前呼叫的讀取，再改丟錯。
+  > **Superseded（2026-11-15，DECISIONS 2026-11-15 §9）**：`CommitReceipt`（FR-096）不在本任務做。它目前沒有讀者；擁有者決定延到 Spec 074，由 074 T023 在 commit 原語中直接產生，與第一個讀者一起落地。
 - [ ] T039 修訂 Spec 003（Verified）FR-004（不再允許例外），與 T038 同一個 PR。
 - **Gate**：五道 gate；T002 不變；T006 為 0；ubuntu e2e 全綠（capture 相關的 spec 在 PR 前於本機逐一執行）。
 
