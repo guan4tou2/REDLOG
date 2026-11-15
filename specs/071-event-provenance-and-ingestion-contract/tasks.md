@@ -82,6 +82,7 @@
   - 本任務之外仍會遺失過深觀察的地方（plan D13）：mitm addon 自己的 `json.loads`（Python 3.9 約 1,000 層 `RecursionError`，未驗證於 mitmproxy 內附的 Python）；AI 工具輸入超過 100 KiB 時只存鍵名（`MAX_FULL_BYTES`）；Codex adapter 的 `JSON.stringify(payload.output)` 在 Node 約 6,100 層時被吞掉；收到非 2xx 就丟棄的來源（`c2-tailers/follow.js`、`pcap-capture.js`、`redlog-relay.py`）。
 - [ ] T037 遷移 30 處直接呼叫（下列分組依起草時的清單；確切位置以 T006 量得的清單為準），每個 PR 只遷移一個檔案群，T006 的基準值逐次下降。Spec 072 T045（型別化入口）在本任務之後（`specs/README.md` 的跨規格順序；072 的登記表尚不存在）：
   - 2026-11-15 前置（不改 `src/`）：`test/single-ingest-door.test.ts` 改為逐檔、要求完全相等的兩張表（直接呼叫 30 處、旁邊手寫的 `eventBus.publish` 25 處），各檔案群只把自己的項目改成 0；`test/in-process-door-equivalence.test.ts` 對 30 處的每一種列以兩種方式寫入並逐位元組比對（57 個案例，全部相同）。遷移的做法：一律走現有的 `ingestEvent`／`ingest`，只帶既有選項，不帶 `derived`；同一個 PR 刪掉旁邊手寫的發布；loot 與標記修訂帶 `inheritsVia`；scope 重算的三列在交易內，需要「一起寫入、交易成功後才發布」的函式。`session_start`、`opsec_airgap`、`anchor_failed` 今天不發布，遷移後各發布一次。
+  - 逐處的清單、規則與各組要注意的事在 plan「T037 遷移清單（2026-11-15 盤點）」。進度（2026-11-15）：T037b 在 #803、T037d 在 #802，兩者合併後勾選；T037a、T037c、T037e 未開始。
   - [ ] T037a `main/index.ts`（10 處）
   - [ ] T037b `retention.ts`（5）
   - [ ] T037c `scope-recompute-run.ts`（3）

@@ -512,6 +512,70 @@ scripts/conformance-matrix.mjs
 
 **Structure Decision**：沿用 `src/core` 與 `hooks/` 的既有分層。`ingest.ts` 依階段拆成同一目錄下的模組，不搬動其他 `src/core` 檔案。
 
+## T037 遷移清單（2026-11-15 盤點）
+
+唯讀盤點依 `main@afc24e76` 逐處讀過 30 個直接呼叫 `insertEvent(` 的地方；行號是當時的，動手前以程式為準。`test/single-ingest-door.test.ts` 逐檔鎖住數目，`test/in-process-door-equivalence.test.ts` 對每一種列以兩種方式寫入並逐位元組比對（57 個案例全部相同）。
+
+### 規則
+
+- 每一處改成現有的 `ingestEvent(kind, data, opts)`，資料與選項原樣；只有需要 `entrance` 的那一處用 `ingest({...}).event`。不新增選項，不新增入口函式。
+- 永遠不帶 `derived: true`：它會把蓋章的 `producer` 改成 `derived`，對系統列是錯的。入口自己從當下的情境取得 entrance，與 `insertEvent` 今天的做法相同（API 路由內是 `legacy-api`，ingest 的 commit 後步驟內是 `derived`）。
+- 同一個 PR 刪掉旁邊手寫的 `eventBus.publish`（全 `src/` 在 `ingest.ts` 之外共 25 處）：入口在 commit 後發布一次，兩者並存就是發布兩次。
+- 把來源列的 `target_via` 交下去的寫入（loot、標記修訂）帶 `inheritsVia: true`，否則 `extracted`／`command` 會被記成 `explicit`。
+- 今天以 bypass 發布的地方帶 `bypassPause: true`。
+- 沒有傳 engagement 的呼叫端在原本的 `try` 內傳 `opts.engagementId ?? engagementForWrite(undefined)`（`ingest/stamp.ts`），沒有綁定專案時丟出與今天相同的錯誤。
+- 在交易內的寫入不能直接呼叫入口：入口在自己的寫入之後發布，外層交易回滾後事件仍會送出（對照測試有這個案例）。scope 重算的三列需要 `ingestTogether(build)`：在一個交易內執行 `build`，其中每次寫入的 commit 後步驟先排隊，交易成功後依序執行；失敗則丟掉佇列、重設鏈頭與事件數快取、把錯誤丟回呼叫端。
+
+### 30 處
+
+「要做」欄：R＝刪掉旁邊手寫的發布；B＝`bypassPause`；V＝`inheritsVia`；E＝需要 `entrance`；G＝engagement 依上面的規則；T＝放進 `ingestTogether`；P+＝今天不發布，遷移後發布一次。
+
+| # | 位置 | 列 | 何時執行 | 暫停時 | 要做 |
+|---|---|---|---|---|---|
+| 1 | `main/index.ts` `writeRecordingMarker` | system `recording_paused`／`recording_resumed` | 開專案、切換錄製（IPC／tray／API）、重試 timer | 照寫（設計如此） | E、B、R |
+| 2 | `main/index.ts` `addHudMarker` | marker | HUD 表單 | 照寫 | B、R |
+| 3 | `main/index.ts` `logConfigDiff` | system `config_changed` | 存設定；回傳的列 id 是 scope 重算的 cause | 照寫，發布被擋 | R |
+| 4 | `main/index.ts` | system `opsec_state_changed` | OPSEC monitor | 同上 | R |
+| 5 | `main/index.ts` | system `session_start` | 開專案 | 照寫 | P+ |
+| 6 | `main/index.ts` | system `opsec_airgap` | 開專案 | 照寫 | P+ |
+| 7、8 | `main/index.ts` | system `chain_sample_broken` | 開專案的首次抽樣；每 5 分鐘 | 照寫 | R |
+| 9 | `main/index.ts` | system `browser_launched` | IPC `browser:launch` | 照寫 | R |
+| 10 | `main/index.ts` | system `config_changed`（hook.*） | hooks 安裝／移除 | 照寫 | R |
+| 11 | `retention.ts` `sweepDir` | system `cast_pruned`、`screenshot_pruned`、`agent_transcript_pruned`、`http_body_pruned`（每刪一檔一列，帶 `_causes`） | 開專案 | 照寫，不發布 | R |
+| 12 | `retention.ts` | system `retention_pruned_logged` | 開專案與 interval | 不跑 | R |
+| 13 | `retention.ts` | system `bookmarks_pruned` | 開專案 | 不跑 | R |
+| 14 | `retention.ts` | system `body_evicted` | 開專案 | 照寫 | R |
+| 15 | `retention.ts` | system `cast_evicted`／`screenshot_evicted` | 開專案 | 照寫 | R |
+| 16 | `scope-recompute-run.ts` | system `scope_recomputed` | 存設定後的重算，**在交易內** | 照寫；commit 後以 bypass 發布 | T、B、R |
+| 17 | `scope-recompute-run.ts` | system `scope_violation`（回溯） | 同一交易 | 同上 | T、B |
+| 18 | `scope-recompute-run.ts` | system `scope_cleared` | 同一交易 | 同上 | T、B |
+| 19 | `update-anchor.ts` | system `update_pending` | 更新重啟前；沒寫成功就設 `localError`、重啟停下 | 照寫 | G、R |
+| 20 | `update-anchor.ts` | system `update_completed`／`update_not_applied` | 開專案；呼叫端依回傳值決定是否清掉 marker 檔 | 照寫 | R |
+| 21 | `chain-anchor.ts` | system `anchor_failed` | anchor loop、IPC、`POST /api/anchors` | 照寫 | P+、G |
+| 22 | `export-direct-bundle.ts` | system `logged_tier_digest` | API 匯出 bundle；寫完立刻讀 `maxRowId` | 照寫 | R |
+| 23 | `bundle-export.ts` `writeExportSeal` | system `export_sealed` | 每次 bundle 匯出的最後；以 id 讀回 | 照寫 | R |
+| 24 | `bundle-export.ts` | system `logged_tier_digest` | 行程內 `exportBundle`、沒有 snapshot 時 | 照寫 | R |
+| 25 | `sanitize.ts` | system `sanitized` | IPC 或 `POST /api/sanitize`；沒寫成功就拋錯 | 照寫 | R |
+| 26 | `loot-detector.ts` | loot `credential_detected` | ingest 的 commit 後步驟內，或 `/api/loot/scan` | 被拒（loot 不豁免） | V、R |
+| 27 | `alert/surface.ts` `ChainEmitter` | system `ip_verdict`、`scope_violation` | IP producer 的 timer；ingest 的 scope dispatch；agent tool_call | `ip_verdict` 照寫 | R |
+| 28 | `marker-amend.ts` | marker `amended` | IPC `marker:amend` | 照寫 | V、B、G、R（發布在 `ipc/markers.ts`，不在寫入旁邊） |
+| 29 | `ipc/markers.ts` | system `screenshot_deleted` | IPC，檔案刪除之後 | 照寫 | R |
+| 30 | `ipc/plugins.ts` | system `config_changed`（plugin.*） | plugin 相關 IPC | 照寫 | R |
+
+### 做各組時要注意的事
+
+- **T037a（`main/index.ts`）**：同時只能一人改（`DESIGN-project-runtime` §4）。#6 的呼叫名稱在 `test/fixtures/stop-project-order.golden.json` 出現三次，要重錄；HUD 標記的原始碼文字被 `test/extensions/basic-paths-pinned.test.ts` 釘住，`basic-paths-fixture.ts` 與 `test/target-via-in-app.test.ts` 各有一份副本，三者同一個 PR 改。把 `ProjectContext`（含 `signal`）展開進選項的呼叫端過不了入口較窄的型別。
+- **T037c（scope 重算）**：唯一要新增函式的一組。`ingestTogether` 用 `AsyncLocalStorage` 裝佇列，要登記在 `scripts/module-state-allowlist.json`（先例是 `stamp.ts` 的 `entranceScope`）。`build` 內的寫入仍寫成 `ingestEvent(`，`test/kinds/inventory.ts` 的掃描才認得。要逐項確認 `ingest()` 在 commit 前動到的記憶體狀態在外層回滾時怎麼處理；衍生列（companion）若在交易成功後才寫，要寫明。
+- **T037e（loot、警示、標記、plugins）**：`ingest.ts` 已經以值匯入經 `capture-health` → `plugins` 走到 `loot-detector.ts`，`loot-detector.ts` 匯入入口會形成真的執行期循環；要確認兩邊的使用都在呼叫時而不是模組載入時，兩種載入順序與建置後的檔案都要檢查。幾個測試以只含 `insertEvent` 的 factory mock 整個 events 模組（`loot-emit-dedup`、`extensions/hud-egress-pinned`、`plugins-ipc-audit`、`official-agent-plugins-ipc`）；遷移後入口讀不到其他匯出而丟錯、被呼叫端吞掉，測試可能在什麼都沒驗的情況下通過，要改成 mock 入口並以突變確認仍會變紅。
+- **匯出 worker**：`bundle-export.ts` 與 `chain-anchor.ts` 同時被匯出 worker 載入。T037d 之後 worker 的打包檔帶進整條寫入管線（`out/main/export-worker.js` 307,695 → 396,888 bytes，65 → 103 個模組）。worker 沒有寫入路徑（資料庫唯讀、直接匯出一定帶 snapshot、封存列由主行程的 `sealWriter` 寫），載入時的副作用不起作用。要讓 worker 不載入寫入管線，得把寫入從這兩個檔拆出去；沒有做，也沒有被決定。
+
+### 與本計畫其他段落不一致之處
+
+- D8 寫「`insertEvent` 只剩 `src/core/ingest/commit.ts` 可以呼叫」。`commit.ts` 不存在；唯一的呼叫在 `ingest.ts`，`test/single-ingest-door.test.ts` 也把 `ingest.ts` 當成那扇門。等到有第二個 commit 呼叫端時再拆。
+- D8 寫 `seq` 是「模組內計數」。模組層變數過不了 module-state gate；`CommitReceipt` 已延到 Spec 074（DECISIONS 2026-11-15 §9），做的時候以資料庫 handle 為鍵。
+- FR-092 的「以 `system`／`derived` 身分」：程式裡沒有 `system` 這個 producer。這些列今天就是由 in-process 入口寫的，確實由另一列推導出來的列才由情境給 `derived`；遷移不改變這一點。
+- FR-090 把去重排在推導之前，程式的 2 秒去重在推導之後（`event-write.ts`）。T038 把它拆成入口在 commit 前呼叫的讀取，位置不變；搬到推導之前會讓被拒的重複列不再寫 sidecar，是另一個行為改變。
+
 ## Complexity Tracking
 
 | 新增 | 解決的現存問題 | 較簡單做法為何不夠 |
