@@ -4,7 +4,7 @@
 
 ## Summary
 
-讀取離開主行程：每個開著的專案一個讀取服務，兩條 `worker_threads`（`interactive`、`heavy`），以唯讀連線讀 `timeline.db`。衍生資料改為由有序事件紀錄推進的投影，持久化在可丟棄的 `derived.db`（`terminal_targets` 例外，在寫入交易內推進），每個投影有版本、游標、重建規則與等價測試。寫入者留在主行程，每次 commit 回傳提交回執；讀取帶「至少到此」的序號。畫面以「問題」為鍵讀取，依 topic 失效，計數只有三種，導覽是堆疊，跨頁只帶專案、時間範圍與選中事件。每條規則有一個會失敗的閘門。
+讀取離開主行程：每個開著的專案一個讀取服務，兩條 `worker_threads`（`interactive`、`heavy`），以唯讀連線讀 `timeline.db`。衍生資料改為由有序事件紀錄推進的投影，持久化在可丟棄的 `derived.db`，每個投影有版本、游標、重建規則與等價測試。寫入者留在主行程，每次 commit 回傳提交回執；讀取帶「至少到此」的序號。畫面以「問題」為鍵讀取，依 topic 失效，計數只有三種，導覽是堆疊，跨頁只帶專案、時間範圍與選中事件。每條規則有一個會失敗的閘門。
 
 ## Technical Context
 
@@ -118,14 +118,11 @@
 
 | 檔 | 內容 | 寫入者 | 為何在這裡 |
 |---|---|---|---|
-| `timeline.db`（新表 `terminal_targets`） | 071 T024 | 主行程，在 commit 交易內 | 寫入路徑要同步讀它決定 `target_via = terminal-last`；放在別的檔就要跨檔交易 |
 | `derived.db`（新） | `activity_rows`、`activity_groups`、`intervals`、`cause_counts`、`kind_totals`、`target_totals`、`projection_state` | `heavy` | 一個檔、一個寫入者、一個版本表；整檔可刪 |
 | `http-body-index.db`（既有） | body FTS、`body_event_refs`、新增 `coverage_counts` | `heavy`（從主行程移過來） | 保留既有 `user_version` 機制與檔案，避免一次重建所有使用者的 body 索引 |
 | `cast-index.db`（既有） | cast FTS | `heavy` | 同上 |
 
-`terminal_targets` 的回填（舊專案第一次開啟）：`heavy` 以唯讀連線計算 `(terminal, observed_at, target, source_row_id)`，分批送回主行程，由主行程以小交易依序寫入；回填完成前，該專案的新列不套用 `terminal-last`，寫 `_ingest.target_via: "none"`，永久（071 FR-010 已採用此規則，2026-11-12 對帳）。回填完成時以 `projection` 訊息告知主行程，寫入路徑自此套用 `terminal-last`。表可整張刪除並重建；重建不改變已寫入列的 `target_via`。
-
-> **Superseded（2026-11-15，DECISIONS 2026-11-15 §5）**：上段的回填取消：不計算、不寫 `tt-backfill`、不以 `projection` 訊息通知「回填完成」。`terminal_targets` 從空的開始，只有新列填入（071 FR-010）。
+> **Superseded（2026-11-15，DECISIONS 2026-11-15 §7）**：`terminal_targets` 表不做，沒有它的存放、回填、`tt-backfill` 訊息或「回填完成」通知（071 FR-010）。
 
 **否決**：(a) 全部併進一個衍生檔——要合併兩個既有的 `user_version` 方案，第一次升級時重建所有使用者的 body 與 cast 索引；(b) 投影表放進 `timeline.db`——證據檔混入可丟棄的資料，讀取服務就成為證據檔的第二個寫入者；(c) Activity 留在 TEMP——每次開啟重算全專案（02 §2）。
 
@@ -220,8 +217,8 @@ type ListCompleteness = { kind: 'complete' } | { kind: 'more' } | { kind: 'cappe
 |---|---|---|---|---|
 | `src/core/read-contract.ts`（新，純型別與純函式，無匯入，同 `event-order.ts` 的規矩） | `QueryKey`、`ReadRequest`、`ReadResult<T>`、`CommitReceipt`（形狀由 071 FR-096 決定，此處只是型別的家）、`AsOf`、`Count`、`ListCompleteness`、`Topic`、`ProjectionStatus`、`stableKey(params)` | 型別 | 任何東西 | main、worker、renderer、api-server、071 的 `ingest/commit.ts` |
 | `src/core/projections/registry.ts`（新） | `PROJECTIONS: readonly Projection[]`、`projectionByName` | 投影清單 | `db/index`（不碰模組單例連線） | runner、測試 |
-| `src/core/projections/<name>.ts`（新：`activity`、`intervals`、`cause-counts`、`kind-totals`、`target-totals`、`body-coverage`、`terminal-targets`） | 實作 `Projection` | 各自的表 | `getDB`、`getReadonlyDB`、`src/main/**` | registry |
-| `src/core/projections/runner.ts`（新） | `advance(conns, receipt, budget)`、`checkOnOpen(conns)`、`lagOf(name)` | `projection_state` | `src/main/**` | `query-worker.ts`；`terminal-targets` 的推進由 071 的 commit 階段呼叫 `advanceInTransaction` |
+| `src/core/projections/<name>.ts`（新：`activity`、`intervals`、`cause-counts`、`kind-totals`、`target-totals`、`body-coverage`） | 實作 `Projection` | 各自的表 | `getDB`、`getReadonlyDB`、`src/main/**` | registry |
+| `src/core/projections/runner.ts`（新） | `advance(conns, receipt, budget)`、`checkOnOpen(conns)`、`lagOf(name)` | `projection_state` | `src/main/**` | `query-worker.ts` |
 | `src/core/change-topics.ts`（新） | `topicsForCommit(rows, writes): Topic[]` | topic 分類 | renderer | main 的 commit 後處理 |
 | `src/main/services/query-service.ts`（新） | `createQueryService(): ProjectResource & { query(req): Promise<ReadResult>; notifyCommit(r: CommitReceipt): void; health(): QueryHealth }` | 兩條 worker、佇列、退避、generation 檢查 | core 的讀取函式（只匯入 `read-contract`） | `src/main/index.ts`（經 073 的資源登記）、`ipc/register-handler.ts`、`api-server`（經注入的 `query` 函式） |
 | `src/main/services/query-worker.ts`（新，worker 入口） | 訊息協定 | 連線、投影執行、衍生檔寫入 | `electron` | 無（只由 `new Worker` 載入） |
@@ -237,7 +234,7 @@ type ListCompleteness = { kind: 'complete' } | { kind: 'more' } | { kind: 'cappe
 interface Projection {
   name: string
   version: number
-  store: 'derived' | 'body-index' | 'timeline'          // 'timeline' 只有 terminal_targets
+  store: 'derived' | 'body-index'
   tiers: ReadonlyArray<'chained' | 'logged'>          // 讀哪幾層
   createSchema(db: Database): void
   dropSchema(db: Database): void
@@ -293,7 +290,6 @@ interface ProjectResource {
 | 名稱 | 存放 | 來源 | 推進者 | 每列成本 | 「時間 T」怎麼回答 | retention | 版本／重建 |
 |---|---|---|---|---|---|---|---|
 | `activity` | `derived.db` | 兩層全部列 | `heavy` | 1 插入 + 1 群組 upsert | 不適用（以 rowid 界定的快照） | 依 `retention_pruned_logged` 刪 logged 列並重算受影響群組 | v2（v1 為 TEMP）；只重建本投影 |
-| `terminal_targets` | `timeline.db` | 有 `explicit`／`extracted` 目標的新列 | 主行程，commit 交易內；舊專案不回填（D5 的 Superseded） | ≤1 插入 | `(terminal, observed_at ≤ T)` 最新一列 | chained 不刪；logged 來源的列依 `created_at` 刪 | 表可整張刪除（不回填） |
 | `intervals` | `derived.db` | 072 註冊表宣告為 `start`／`end`／`state` 的種類 | `heavy` | ≤2 寫入（開一段或關一段） | `stateAt(ts[], keys[])`：`(kind, key, start_ts)` 索引上二分 | logged 來源的區間刪除；被切斷的區間 `end_basis` 不變 | 註冊表版本變更即重建本投影 |
 | `cause_counts` | `derived.db` | 每列 `_causes` 的 `caused` 參照 | `heavy` | 每參照 1 upsert（≤32） | 不適用 | 被刪的 effect 從計數扣除 | 重建本投影 |
 | `body_coverage` | `http-body-index.db` | `body_event_refs` 的狀態變更 | `heavy` | 每次狀態變更 2 次 upsert（舊狀態減、新狀態加） | 不適用 | `prune*` 時差量扣除 | `user_version` 8 |
@@ -323,7 +319,6 @@ type FromWorker =
   | { t: 'res'; id: number; ok: true; value: unknown; asOf: AsOf; completeness: ListCompleteness; work: WorkCount }
   | { t: 'res'; id: number; ok: false; error: 'superseded' | 'busy' | 'bad-request' | 'failed'; message?: string }
   | { t: 'projection'; status: ProjectionStatus }      // 推進或重建後
-  | { t: 'tt-backfill'; rows: TerminalTargetRow[]; done: boolean } // 已取消（D5 的 Superseded）
 ```
 
 `work` 是該請求的工作量計數（走訪列、語句、開檔、lstat），在測試與 dev 下收集，正式版只收集數字不記內容；FR-094 的測試讀它。
@@ -358,7 +353,7 @@ type FromWorker =
 
 | 規格 | 我需要 | 我提供 |
 |---|---|---|
-| 071 寫入契約 | (a) commit 原語在 commit 之後回傳 `CommitReceipt {seq, chainedMaxRowId, loggedMaxRowId}`（071 FR-096、T038；不寫入列）；(b) effect 與註記的 `_causes` 帶來源指令的事件 id（O18：`REDLOG_COMMAND_ID`／proxy userinfo）——**071 尚未展開為 FR 與任務**，未展開前 `cause_counts` 只依今天的 `_causes`；(c) `_ingest.terminal` 為正規終端 id（FR-011）；(d) commit 後處理呼叫 `queryService.notifyCommit(receipt)` 與 `topicsForCommit`（071 plan D8）；(e) `linkHttpBodyEvent` 從 ingest 移除，改送 `derived-op`（071 plan D8）；(f) `terminal_targets` 回填期間的 `target_via` 為 `none`、永久（071 FR-010） | `terminal_targets` 的投影契約（版本、等價測試、回填由 `heavy` 計算、回填完成的通知） |
+| 071 寫入契約 | (a) commit 原語在 commit 之後回傳 `CommitReceipt {seq, chainedMaxRowId, loggedMaxRowId}`（071 FR-096、T038；不寫入列）；(b) effect 與註記的 `_causes` 帶來源指令的事件 id（O18：`REDLOG_COMMAND_ID`／proxy userinfo）——**071 尚未展開為 FR 與任務**，未展開前 `cause_counts` 只依今天的 `_causes`；(c) `_ingest.terminal` 為正規終端 id（FR-011）；(d) commit 後處理呼叫 `queryService.notifyCommit(receipt)` 與 `topicsForCommit`（071 plan D8）；(e) `linkHttpBodyEvent` 從 ingest 移除，改送 `derived-op`（071 plan D8）；(f) `target_via` 只有 `explicit`、`operator-selected`、`extracted`、`command`、`none` 五個值，沒有 `terminal-last`（071 FR-010，2026-11-15） | — |
 | 072 種類註冊表 | `role`、`shape`、`family`、`housekeeping`、`counts.total`、`INTERVALS`（配對鍵 `key`／`fallbackKey`）、`STATES`（`groupBy` 全域／每終端）、`status: legacy`；`kindOf(row, plugins?)` 為純函式，worker 可匯入；`KIND_REGISTRY_VERSION`（變更即重建 `intervals`、`cause_counts`）；`project_closed` 種類 | topics 由註冊表推導；`intervals`／`cause_counts` 依註冊表的宣告建立；不自行定義任何角色；`gapOverlaps`（FR-048）給 072 的 `completenessOf`；（修訂 E1）FR-049 的重建函式與 `intervals` 投影版本號，供 072 的 bundle 附檔（072 T064） |
 | 073 專案執行期 | `ProjectResource`（073 的定義，見上）；`SessionToken` 的 generation 與 signal；設定存檔的唯一出口發出 `config` topic（073 FR-013、T043）；`project_closed` 由 073 在關閉時寫入（經 071） | `QueryService` 實作 `ProjectResource`；`health()` |
 | 075 來源狀態 | 不需要 | `kind_totals` 可回答「某種類最後一筆的時間」（若 075 要讀，經 `query`，不直接讀表）；`capture` topic 由 075 定義 |
@@ -373,7 +368,7 @@ type FromWorker =
 2. **Phase 2（需要 073 的資源介面；未定時以 `ProjectRuntime.onStop` 實作同形介面）**：讀取服務骨架、第一個 `kind`（`aggregateTargets`）、打包、崩潰與重啟、RYW（`seq` 先由主行程在 `insertEvent` 回傳點包一層；071 落地後改由 commit 原語提供）。
 3. **Phase 3**：依成本排名移動讀取；每移一個，白名單與匯入邊界的基準下降。
 4. **Phase 4**：`derived.db`、投影執行器、`activity`、`body_coverage`（併入 `work/1112-search`）、`kind_totals`、`target_totals`；衍生檔單一寫入者。
-5. **Phase 5（需要 072 的註冊表與 071 的 `_causes` 指令 id）**：`intervals`、`cause_counts`、`stateAt`；（舊專案的 `terminal_targets` 回填已取消）。072 未落地時 `intervals` 只處理今天已知的種類並以 `legacy` 清單標示，這份清單在 072 落地時刪除。
+5. **Phase 5（需要 072 的註冊表與 071 的 `_causes` 指令 id）**：`intervals`、`cause_counts`、`stateAt`。072 未落地時 `intervals` 只處理今天已知的種類並以 `legacy` 清單標示，這份清單在 072 落地時刪除。
 6. **Phase 6**：畫面讀取模型、topics、計數。
 7. **Phase 7**：導覽堆疊、各頁篩選（取代 038）。
 8. **Phase 8**：閘門收緊、文件、驗收。
@@ -417,7 +412,7 @@ specs/074-query-worker-projections-and-read-contract/
 ```text
 src/core/read-contract.ts                    # 新：型別與 stableKey
 src/core/change-topics.ts                    # 新：topicsForCommit
-src/core/projections/{registry,runner,activity,intervals,cause-counts,kind-totals,target-totals,body-coverage,terminal-targets}.ts
+src/core/projections/{registry,runner,activity,intervals,cause-counts,kind-totals,target-totals,body-coverage}.ts
 src/core/db/activity-queries.ts              # 改讀 derived.db；移除 TEMP 註冊
 src/core/db/dataset-snapshot.ts              # 移除每頁的 rowid 範圍 COUNT
 src/core/http-body-index.ts                  # coverage 計數；寫入只在 worker
@@ -442,7 +437,7 @@ src/renderer/src/lib/{returnTrail,keptOrigin,readState}.ts   # 逐步移除
 |---|---|---|
 | 第二條讀取執行緒 | 唯一能讓時間軸不排在長搜尋後面的方式 | 單一 worker 的優先佇列無法搶占執行中的語句 |
 | `derived.db` 第三個衍生檔 | 投影要持久、可整檔丟棄、單一寫入者 | 放 `timeline.db` 會讓讀取服務成為證據檔的寫入者；TEMP 每次開啟重算 |
-| 投影執行器與等價測試框架 | 七個投影共用推進、版本、retention、損毀規則 | 各寫一份正是今天 activity 與 body 索引各自發明水位的原因 |
+| 投影執行器與等價測試框架 | 六個投影共用推進、版本、retention、損毀規則 | 各寫一份正是今天 activity 與 body 索引各自發明水位的原因 |
 | 讀取登記表（renderer） | key、topic、可見性、節流在一處 | `useReadState` 已證明只解相位不解身分；逐頁修補是 03 列出的 9 次 |
 
 ## 來自 #722 的教訓

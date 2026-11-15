@@ -14,7 +14,7 @@
 ## Phase 0 — 工作流程前置
 
 - [ ] T001 依憲章對本功能執行 Clarify、Checklist、Analyze，結果記入 `verification.md`。本規格沒有自己的開放問題（spec 文末）；不因他規格的問題阻擋任何 Phase。（2026-11-13：Q1–Q5 已裁定，DECISIONS §9；Q2 的答覆與建議不同，見修訂 E2。新增的 Q6、Q7 答覆前，T076 依建議進行。）
-- [ ] T002 確認 plan「對相鄰規格」表中的每一項仍與兄弟規格一致（2026-11-12 已對帳：071 FR-096 提交回執、071 FR-010 回填期間 `none`（回填已取消，見 T052 的註記）、073 的 `ProjectResource` 照抄、072 的 `family`／`INTERVALS`／`kindOf(row, plugins?)`）；之後的差異記入 `verification.md`。
+- [ ] T002 確認 plan「對相鄰規格」表中的每一項仍與兄弟規格一致（2026-11-12 已對帳：071 FR-096 提交回執、073 的 `ProjectResource` 照抄、072 的 `family`／`INTERVALS`／`kindOf(row, plugins?)`）；之後的差異記入 `verification.md`。
 
 ## Phase 1 — 釘住今天的行為（只加測試與 gate，不改程式行為）
 
@@ -79,12 +79,12 @@
 - [ ] T050 [US3] `intervals` 投影、`stateAt(ts[], keys[])` 與 `gapOverlaps(rowIds[])`（FR-048）（皆 `interactive` 的 `kind`）。依 072 的 `INTERVALS`／`STATES` 宣告建立；072 未落地時只處理今天已知種類並列入 `legacy` 清單（072 落地時刪除）。結束依據四種（FR-043）。先 RED：`test/intervals.test.ts`（指令、終端 session、全域／每終端暫停、tunnel、IP／VPN、目前目標、專案開／關含 `project_closed{unclean}` 與「未知」段、缺口重疊）。`gapOverlaps` 落地後通知 072 移除閱讀器的過渡判斷（072 plan D5）。
 - [ ] T051 [US3] `cause_counts`：`caused` 與 `candidate` 分開、每列 32 個上限與 `truncated`、retention 扣除。先 RED：`test/cause-counts.test.ts`。
 - [ ] T052 [US3] `terminal_targets` 投影契約：071 T024 建表後，納入登記表與等價測試；舊專案的回填由 `heavy` 計算、`tt-backfill` 訊息交給主行程以小交易寫入；完成時通知寫入路徑開始套用 `terminal-last`。先 RED：回填期間寫入的列為 `target_via: "none"`，回填完成後新列為 `terminal-last`，已寫入的列不變（071 FR-010）。
-  > **Superseded（2026-11-15，DECISIONS 2026-11-15 §5）**：`terminal_targets` 的回填取消：不寫 `tt-backfill`，不通知寫入路徑「回填完成」，上面的回填 RED 不做。表只由新列填入（071 FR-010）。其餘不變：納入登記表，等價測試涵蓋 `terminal_targets`。
+  > **Superseded（2026-11-15，DECISIONS 2026-11-15 §7）**：不做。`terminal_targets` 表不建，沒有這個投影，也沒有回填（071 FR-010）。
 - [ ] T053 [US3] HUD 與 `pivots:getActive` 改讀 `intervals` 的 tunnel，移除 `active-pivots.ts` 的 30 分鐘猜測；呈現仍為「偵測於」（UX-005）。
-- [ ] T054 [P] 等價測試擴充到 `intervals`、`cause_counts`、`terminal_targets`（SC-004）。
+- [ ] T054 [P] 等價測試擴充到 `intervals`、`cause_counts`（SC-004）。
 - [ ] T055 [P] [real shell] 真實 zsh hook 與 mitmproxy：`ffuf … &` 加前景指令、暫停一分鐘、`ssh -L` tunnel；以 `stateAt` 與 `cause_counts` 讀回，與資料庫查詢對照。
 - [ ] T056 [US3] （修訂 E1）FR-049：`intervals` 的 `rebuild` 對任意一組列執行。先 RED：`test/intervals-subset.test.ts`：(a) 以 in-memory 資料庫對一個子集執行，不呼叫 `getDB`／`getReadonlyDB`、不開 `derived.db`（以替身斷言）；(b) 起點不在子集中的區間產生 `start_id = null` 的一行而不丟錯；終點不在子集中的區間 `end_basis = open`；(c) 對全部列執行的結果與 `derived.db` 的 `intervals` 表相同（等價測試的一組）。072 T064 依賴本任務。
-- **Gate**：五道 gate；七個投影都在登記表且有等價測試。
+- **Gate**：五道 gate；六個投影都在登記表且有等價測試。
 
 ## Phase 6 — 畫面的讀取模型、變更通知與計數
 

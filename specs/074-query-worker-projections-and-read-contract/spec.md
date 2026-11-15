@@ -29,8 +29,7 @@
 1. **寫入者留在主行程**；只有讀取與衍生資料移出。讀取服務是一個資源，擁有兩條讀取執行緒（`interactive`、`heavy`），`heavy` 是衍生資料庫唯一的寫入者（plan D1、D2）。
 2. 執行緒用 `worker_threads`，不用 `utilityProcess`：沿用匯出 worker 已證明可在三平台、asar 與現行 fuses 下載入原生模組的路徑（plan D3）。
 3. **提交序號**是寫入者在每次 commit 後遞增的記憶體內計數（每個開啟各自從 1 起算），與該次 commit 後兩層的 rowid 水位一起回傳；持久的游標一律用兩層 rowid 加游標所在列的 id（plan D4）。
-4. 衍生資料放在每個專案一個新的 `derived.db`；`http-body-index.db` 與 `cast-index.db` 保持原檔，但改守同一份投影契約；071 的 `terminal_targets` 因為寫入路徑要同步讀它，是唯一由寫入者推進、放在 `timeline.db` 的投影（plan D5）。表歸 071；本規格把它當成投影登記。
-   > **Superseded（2026-11-15，DECISIONS 2026-11-15 §5）**：本規格不回填舊專案的 `terminal_targets`；表從空的開始，只有新列填入（071 FR-010）。
+4. 衍生資料放在每個專案一個新的 `derived.db`；`http-body-index.db` 與 `cast-index.db` 保持原檔，但改守同一份投影契約；所有投影都放在這三個檔，沒有放在 `timeline.db` 的投影（2026-11-15 起；`terminal_targets` 表不做，見 FR-031 的註記）。
 5. 效應數與註記數由**同一個** `cause_counts` 投影提供，依 072 註冊表的角色分開（plan D7）。
 6. 讀取服務停擺時，主行程**絕不**改為自己執行查詢（plan D8）。
 7. 計數只有三種：`exact`、`atLeast`（顯示為「N+」）、`unknown`；清單的完整度另成一欄。全部畫面經同一個格式化函式（plan D11）。
@@ -227,20 +226,20 @@
 - **FR-031** 投影一覽（每一項的存放、推進者與「時間 T 的狀態」見 plan「投影」表）：
   1. `activity`：Activity 的投影列與群組彙總（今天的 TEMP `activity_projection_v1`／`activity_groups_v1`）。
   2. `terminal_targets`：每個終端在每個時間點最後擷取到的目標（071 T024），供 071 的 `target_via = terminal-last` 與「目前目標」狀態帶使用。
+  > **Superseded（2026-11-15，DECISIONS 2026-11-15 §7）**：不做。沒有 `terminal-last` 值（071 FR-010），沒有這張表。其餘六個投影不變；「目前目標」狀態帶由 `intervals` 的 `STATES` 回答。
   3. `intervals`：072 註冊表的 `INTERVALS`（`IntervalDef`：起訖、成員、配對鍵 `key`／`fallbackKey`、開放的意義）與 `STATES`（`StateDef`）所宣告的區間與階梯狀態，含缺口的資料範圍，含全域與每終端暫停、專案開／關、終端 session、tunnel、IP／VPN、目前目標、proxy 啟停、指令。
   4. `cause_counts`：每個來源列被多少列以 `caused` 指向，依 072 的角色（effect、annotation）與家族分開計數。
   5. `body_coverage`：body 與檔案搜尋的涵蓋計數（併入進行中的增量化，見 FR-046）。
   6. `kind_totals`：每層、每個種類、是否 housekeeping 的列數與首末時間；「已記錄總數」依 072 的 `counts.total` 加總，不另訂哪些種類計入。
   7. `target_totals`：每個正規化目標的列數、首末時間與顯示值（取代每次全表的 `aggregateTargets`）。
-- **FR-032** 存放：`terminal_targets` 在 `timeline.db` 的新表（由寫入者在同一個 commit 交易內推進）；`body_coverage` 在 `http-body-index.db`；其他全部在 `derived.db`。既有的證據表（`events`、`events_logged`、`sanitized_events`、`do_not_export`、`event_notes`、`chain_anchors`、`operators`、`bookmarks`）不加欄位、不加 trigger、不被投影寫入。
-  > **Superseded（2026-11-15，DECISIONS 2026-11-15 §5）**：`terminal_targets` 不回填舊專案，表只由新列填入（071 FR-010）；本條其餘不變。
+- **FR-032** 存放：`body_coverage` 在 `http-body-index.db`；其他全部在 `derived.db`。既有的證據表（`events`、`events_logged`、`sanitized_events`、`do_not_export`、`event_notes`、`chain_anchors`、`operators`、`bookmarks`）不加欄位、不加 trigger、不被投影寫入。
 - **FR-033** 每個衍生檔與衍生表都可整個刪除而不損失證據：刪除後在背景依序重建，結果與刪除前相同。`derived.db` 不進 bundle、NDJSON、HAR 或任何匯出，也不進打包資源（測試斷言）。
 - **FR-034** `derived.db` 有一張 `projection_state(name, version, chained_cursor, chained_cursor_id, logged_cursor, logged_cursor_id, status, rebuilt_at)`。開啟時：某投影的 `version` 不符 → 只丟棄並重建該投影；檔案的 `user_version` 不符或無法開啟 → 整檔刪除重建。
 - **FR-035** 推進：寫入者每次 commit 後把 `CommitReceipt` 送給讀取服務（同一輪事件迴圈內的多個合併為一個）。`heavy` 執行緒在請求之間以有界切片推進投影：每片最多處理 2000 列或一個交易，推進與 `projection_state` 更新在同一個交易內。切片不得讓 chained 層的範圍判定在它判定的 logged 層列之前定案（plan D6 第 6 步）。
 - **FR-036** 每個投影回報 `lag = (chainedMax − chainedCursor) + (loggedMax − loggedCursor)`。讀取依賴的投影 `lag > 0` 時：尾端不超過 5000 列就就地補算，結果為精確；超過就以已物化的部分回答，完整度為 `behind(lag)`，畫面顯示「索引中，落後 N 筆」。讀取絕不為了追上而同步走訪整個專案。
 - **FR-037** retention：處理到 chained 層的 `system.retention_pruned_logged` 列時，刪除 logged 層衍生、`created_at ≤ newest_pruned_at` 的投影列並重算受影響的群組與計數。另外，每次開啟時在背景比對兩層列數與游標所在列的 id；不符（包括 logged 層 rowid 被重用、retention 在寫摘要前當掉）時，重建依賴 logged 層的投影。`activity` 中依賴 logged 層的還包括 chained 層的列：併入 logged 層被判定列的乾淨範圍判定（064 [C1 §2](../064-recording-first-workspace/contracts/activity-projection.md)；HTTP、DNS 的判定在 chained，被判定的列在 logged）。被判定的列被刪除時，這筆判定改回自成 Activity——重新取鍵並重算兩邊的群組，不是刪除。
 - **FR-038** 損毀：`derived.db` 的任何語句回報 `SQLITE_CORRUPT` 或 `SQLITE_NOTADB` 時，讀取服務關閉該檔、刪除、重建，期間相關讀取為 `behind`。`http-body-index.db`、`cast-index.db` 同此規則。衍生檔的損毀不是證據事件，不寫入鏈；它出現在讀取服務的 `health()`。
-- **FR-039** 每個投影對每一列新事件的推進成本有上限，以工作量計數：`activity` 1 列插入加 1 次群組更新；`intervals` 至多 2 次寫入；`cause_counts` 每個 `caused` 參照 1 次 upsert（每列至多 32 個，超過的部分計入 `cause_counts_truncated`）；`kind_totals`、`target_totals` 各 1 次 upsert；`terminal_targets` 至多 1 次插入。`activity` 另對每一筆可併入的範圍判定列（064 C1 §2）做 1 次以 id 為鍵的索引查找，找它判定的列；其他列不增加成本，推進範圍以主鍵區間讀取，不掃描任何事件表。
+- **FR-039** 每個投影對每一列新事件的推進成本有上限，以工作量計數：`activity` 1 列插入加 1 次群組更新；`intervals` 至多 2 次寫入；`cause_counts` 每個 `caused` 參照 1 次 upsert（每列至多 32 個，超過的部分計入 `cause_counts_truncated`）；`kind_totals`、`target_totals` 各 1 次 upsert。`activity` 另對每一筆可併入的範圍判定列（064 C1 §2）做 1 次以 id 為鍵的索引查找，找它判定的列；其他列不增加成本，推進範圍以主鍵區間讀取，不掃描任何事件表。
 - **FR-040** 衍生檔各只有一個寫入者：`derived.db`、`http-body-index.db`、`cast-index.db` 都由 `heavy` 執行緒寫。主行程不再直接寫它們：ingest 的 `linkHttpBodyEvent`、retention 的 `pruneHttpBodyIndex`／`pruneSavedFileIndex`／`pruneCast`、終端的 `indexCast` 改為送訊息給讀取服務。
 - **FR-041** Activity 的投影從連線內 TEMP 表改為 `derived.db` 中的持久表，schema 與分頁游標語意不變（`within()` 以 rowid 界定）；每頁不再對兩層執行 `COUNT(*) … WHERE rowid <= ?`，資料快照的一致性改以游標所在列的 id 與 retention 世代判斷。
 - **FR-042** 「時間 T 的狀態」由 `intervals` 回答：`stateAt(timestamps[], keys[])` 一次查詢回傳每個時間點、每個鍵（全域或某終端）的狀態值與它的來源列 id；一頁 200 列一次呼叫。
@@ -336,7 +335,7 @@
 - **SC-001** e2e 全部 spec 在 ubuntu CI 上，事件迴圈延遲探針回報超過 500 ms 的停頓為 0（開專案後 2 秒除外）。
 - **SC-002** 主行程中 `service` 等級的讀取：基準為 plan 的盤點數，最後為 0（只剩薄代理）；匯入邊界違規數最後為 0。
 - **SC-003** 文字搜尋重複執行時，coverage 走訪的 body 參照數為 0（今天為全部）；Activity 每頁走訪的事件列數與專案大小無關。
-- **SC-004** 七個投影各通過至少 1,000 組隨機腳本的等價測試。
+- **SC-004** 六個投影各通過至少 1,000 組隨機腳本的等價測試。
 - **SC-005** 讀到自己的寫入：10,000 組隨機「寫入→帶 minSeq 讀取」（含讀取服務重啟）全部看到自己的寫入。
 - **SC-006** 「顯示 6 筆，共 5 筆」型的呈現在清單登記表的每個畫面上為 0（性質測試）。
 - **SC-007** 沒有新頁面、沒有新的路由；新增的介面字串每個語系不超過 8 個 key，且通過 `test/ui-copy.test.ts`；讀取失敗類的 i18n 鍵數只減不增。
@@ -380,7 +379,7 @@
 | `src/renderer/src/lib/returnTrail.ts:1-5` | 「This is not a history stack」，至多三步 | 換成深度 3 的導覽堆疊（FR-080） |
 | `src/renderer/src/lib/keptOrigin.ts:11-12` | 被保留的頁仍隨即時批次與共用篩選變更重讀 | 被保留的頁取消訂閱（FR-081） |
 | `docs/research/PRIOR-ART-D` S1 | 建議寫入者也在 worker | 寫入者留在主行程（決定 1）；研究不是需求 |
-| Spec 071 plan D2／tasks T024（起草時） | `terminal_targets` 開專案時回填、可中斷（未說在哪條執行緒） | 已於 2026-11-12 對帳時改寫 071：回填在本規格（`heavy` 計算，主行程以小交易依序寫入，plan D5、T052）；推進仍在 071 的 commit 交易內；回填完成前的新列 `target_via: "none"`、永久（071 FR-010）。**Superseded（2026-11-15，DECISIONS 2026-11-15 §5）**：回填已取消 |
+| Spec 071 plan D2／tasks T024（起草時） | `terminal_targets` 開專案時回填、可中斷（未說在哪條執行緒） | 已於 2026-11-12 對帳時改寫 071：回填在本規格（`heavy` 計算，主行程以小交易依序寫入，plan D5、T052）；推進仍在 071 的 commit 交易內；回填完成前的新列 `target_via: "none"`、永久（071 FR-010）。**Superseded（2026-11-15，DECISIONS 2026-11-15 §7）**：表不做，回填也就沒有 |
 | 憲章 IX（架構節制） | 新的層要有量測證據 | 證據為 02 的量測（比例）與本規格 Phase 1 的工作量基準；Phase 2 之前先產出 |
 | `src/renderer/src/components/Timeline.tsx:396-471,1095-1104`；`test/timeline-stored-query-arrival.test.tsx`、`test/timeline-search-live-burst.test.tsx`（修訂 E2） | 時間軸的查詢框、隱藏的泳道各以自己的鍵依專案保存；帶事件 id 抵達時，若該事件不符保存的查詢就先不套用查詢（「held query」） | 併入 FR-089 的同一份紀錄；抵達時保存的條件照常生效，被跳轉的事件依 FR-086 標示在篩選之外（T076） |
 | `src/renderer/src/lib/FilterContext.tsx`（修訂 E2） | 共用篩選存在記憶體，開專案時歸零 | 各頁持有（FR-085）且跨重開保存（FR-089） |

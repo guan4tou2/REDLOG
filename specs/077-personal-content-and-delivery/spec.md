@@ -97,7 +97,7 @@ R23、R24 沒有改變 F 段任何一條的文字：FR-050 已列出指令列的
 
 1. **交付狀態是投影，決定是註記**：操作者的每一個決定是一列上鏈的 `system:delivery_mark`，從不修改被指到的列；撤回是另一列（plan D1）。
 2. **優先序固定**：已清除 > 最新的明確註記 > 規則 > 範圍關係 > 待確認（plan D2）。
-3. **只有確定的目標承接算數**：071 的 `terminal-last` 不算；確定承接的封閉清單在 FR-022（plan D3）。
+3. **只有確定的目標承接算數**：沒有目標的列（`target_via: none`）不算；確定承接的封閉清單在 FR-022（plan D3）。
 4. **一張私人規則表、兩種動作**：`withhold`（記錄、不交付）與 `skip`（不記錄）是同一張機器層表的兩個動作（plan D4）；「一律交付」只在專案層（plan D5）。
 5. **規則在讀取時依生效時間評估**，不蓋進列（plan D6）。
 6. **Bundle 的唯一格式**以 stub 佔位：被扣下的列只留 `id`、`hash`、`prev_hash`、理由碼，交付範圍內每個鏈位置都在，連結照常驗證（plan D7、D8）。
@@ -128,7 +128,7 @@ R23、R24 沒有改變 F 段任何一條的文字：FR-050 已列出指令列的
 - **全文索引是 contentless 且允許以 rowid 刪除**（`db/index.ts:445-448`）。
 - **範圍分類只有一個**：`classifyScope`（`scope-evaluator.ts:229-259`）。有允許清單時，兩份清單都沒有的主機是 `out-of-scope`；沒有允許清單時是 `no-scope`，而它的 `distance` 是 `in_scope`（`:233-235,244`）——今天的匯出遮罩把「沒設範圍」當成範圍內。分類器不區分名稱與位址，也不使用任何名稱對應。
 - **目標擷取只看指令參數**，不看輸出（`target-extractor.ts:29-60`）。`sshHost` 取第一個 `@` 之後的字（`:31`），所以 `ssh -J jump@j user@target` 得到跳板；`sshuttle`、`chisel`、`ligolo` 取的是樞紐主機（`:57-59`）。
-- **今天的目標承接**：`ACTIVE_TARGET_FALLBACK_TYPES = shell, marker, screenshot` 承接全域目前目標（`ingest.ts:71,250-254`）；071 FR-010 已決定改為 `explicit`／`extracted`／`command`／`terminal-last`／`none` 並寫 `target_via`；O18 的確定因果尚未實作。
+- **今天的目標承接**：`ACTIVE_TARGET_FALLBACK_TYPES = shell, marker, screenshot` 承接全域目前目標（`ingest.ts:71,250-254`）；071 FR-010 已決定改為 `explicit`／`operator-selected`／`extracted`／`command`／`none` 五個值並寫 `target_via`（沒有 `terminal-last`）；O18 的確定因果尚未實作。
 - **`hooks/command-class.json` 不是工作／私人的分類**：它決定執行方式（`:46-47`；`ssh` 是 `pty`）；其 `wrappers`（`:87-88`）可用來解析真正的可執行檔名，只適合當分組的鍵。
 - **今天的 shell hook 不遵循歷史排除**：bash 在前導空白時退回 `$BASH_COMMAND` 照樣記錄（`hooks/shell-bash-hook.sh:358-379`）；zsh 的 `preexec` 收到整行（`hooks/shell-zsh-hook.zsh:424,687`）；沒有 hook 讀 `HISTIGNORE`／`HISTORY_IGNORE`。
 - **名稱解析的現況**：(a) RedLog 程式碼中唯一的 DNS 呼叫是出口位址檢查：`Resolver` 對 `208.67.222.222`、`216.239.32.10` 查 `myip.opendns.com`、`o-o.myaddr.l.google.com`（`src/main/services/producers/ip-signal-producer.ts:25-60`），`ipMode` 預設 `auto`、`offline` 預設 `false`（`src/core/config.ts:49,57,281-282`），offline 時拒絕（`ip-signal-producer.ts:222`）；**沒有任何目標或範圍的程式做 DNS 查詢**（`src/` 中 `dns` 模組的使用只有這一處）。(b) 被動的對應只在操作者以 mitmproxy 的 DNS 模式執行 addon 時存在：`dns_query`（`hooks/mitmproxy-addon.py:1659-1693`）與帶 `answers` 的 `dns_response`（`:1700-1730` 一帶）。(c) HTTP 列記錄 URL 主機、TLS 憑證的 SAN（`:1098-1125`），**不記錄連線的遠端位址**；只有 TCP 流記錄 `_tcp_peer`（`:747-757,1847,1921`）。(d) 沒有任何程式讀 hosts 檔（`/etc/hosts`、`drivers\etc\hosts`，grep 無結果）。
@@ -205,7 +205,7 @@ R23、R24 沒有改變 F 段任何一條的文字：FR-050 已列出指令列的
 
 **Acceptance Scenarios**：
 
-1. **Given** 一列 `target_via: terminal-last`，**Then** 在「待確認」中，依可執行檔分組；組的標籤附上該終端機最後的確定目標作為提示，不作判定。
+1. **Given** 一列 `target_via: none`（`cd`、`ls` 這類沒有主機的本機指令），**Then** 在「待確認」中，依可執行檔分組，不作判定。
 2. **Given** 對 `cd` 組選「交付」，**Then** 鏈上一列 `delivery_mark{decision:"deliver", reason:"answer", selector:{ids:[…]}}`，計畫重新解析；第二次匯出不再問這些列；新的 `cd` 列再問，除非勾了「以後一律」（成為專案層交付規則）。
 3. **Given** 未回答就匯出，**Then** 未回答的列不交付（stub `unanswered`）；匯出從不被擋。
 4. **Given** 一組太粗，**When** 選「依終端機分開」，**Then** 那一組在原處變成每個終端機一組。
@@ -423,12 +423,13 @@ E7、E8 是「範圍無法單獨決定」的典型：它們之所以從不自動
   | 標記、`system:*` | `deliver`／`in-scope` |
 - **FR-022** **確定的目標**是封閉清單（plan D3）：
   1. `target_via: explicit`、`extracted`、`operator-selected`（071 FR-010、O16）。
-  2. `target_via: command`：背景輸出承接它所屬的指令。
+  2. `target_via: command`：背景輸出承接它所屬的指令；指令沒有目標時，輸出是 `none`（071 FR-010），不屬於這一項。
   3. **工作階段指令的輸出**：開啟互動工作階段的指令（`ssh`、`evil-winrm`、`psexec.py` 等，擷取規則能從參數取出主機者）的整段互動是那一條指令的輸出列；它們承接該指令擷取的目標，`target_basis: session-command`。目標是**最終目的地**：`ssh -J`／`-o ProxyJump`／`ProxyCommand` 指名的主機是跳轉，不是目標（目標擷取的改動見 tasks）。互動中的巢狀跳轉（在遠端再 `ssh` 到另一台）仍屬外層指令的輸出，承接外層的目標；RedLog 不切開輸出。
   4. **經樞紐的工具**：`proxychains`、SOCKS 等包裝下的指令，以被包裝工具的參數擷取目標（`wrappers` 解析）；樞紐本身（`ssh -D`、`sshuttle -r`、`chisel client`、`ligolo -connect` 的主機）不是那些流量的目標，那一條指令自己的目標是樞紐主機。（修訂 S9）這些**樞紐建立指令**（`ssh -D`、`sshuttle -r`、`chisel client`、`ligolo -connect`；清單只隨目標擷取的樞紐規則改變，T061）的目標判為範圍外時不扣下而是 `ask`（FR-021 第 3 列）：樞紐主機多半是操作者自己的機器，是證據的一部分，不是被操作的對象（R17）。
   5. 推導列承接第一個 `_causes` 來源列；O18 的確定因果落地後，帶確定 `_causes` 的列依其來源。
   6. 遠端 hook 的列（`_ingest.producer = remote:*`）：依 1–5 擷取它自己的目標；遠端主機本身是操作者自己的機器（R12），從不作為目標。
-  **不是**確定的目標，因此進「詢問」：`terminal-last`；`none`；沒有目標參數的工作階段（`nc -lvnp` 收到的反向 shell、`msfconsole`、本機的 REPL）；只出現在輸出文字中的主機。
+  **不是**確定的目標，因此進「詢問」：`none`；沒有目標參數的工作階段（`nc -lvnp` 收到的反向 shell、`msfconsole`、本機的 REPL）；只出現在輸出文字中的主機。
+  > **修訂註記（2026-11-15，DECISIONS 2026-11-15 §7）**：071 沒有 `terminal-last` 值（沒有主機的列不承接目標），所以刪除該值的案例與它的問題組提示；第 2 項的 `command` 只在所屬指令有目標時出現，仍然確定。其餘不變。
 - **FR-023** 專案層交付規則：專案 `config.yaml` 的 `delivery.rules[]`，形狀同 FR-020，`action` 只有 `deliver`；只在該專案生效。沒有機器層的「一律交付」。
   > **修訂（2026-11-13 深夜，S10）**：同一張表也放專案層的排除規則：`action: 'deliver' | 'withhold'`。交付規則**只**在專案層——機器層的「一律交付」不存在，也不能以任何設定或答案產生（交付是對這一個客戶的承諾）；機器層只有排除規則（FR-020）。
 - **FR-024** 規則的增刪在受影響的專案鏈上寫 `system:delivery_rule{op:'add'|'remove', rule_id, scope:'machine'|'project', match_kind, pattern_sha256, action, since}`；機器層規則的原文從不寫進專案，專案層的寫 `pattern`。機器規則在專案關著時改變：下一次開專案時寫。
@@ -671,7 +672,7 @@ E7、E8 是「範圍無法單獨決定」的典型：它們之所以從不自動
 |---|---|---|
 | Q1 | 「遵循 shell 歷史排除」預設開或關？ | **關**。Ubuntu 等預設 `HISTCONTROL=ignoreboth`，從筆記貼上的指令常帶前導空白；預設開會讓攻擊指令無聲地不被記錄，違反 R2。開啟是機器層一個開關 **已裁定（2026-11-13，DECISIONS §9）**：不適用：「不記錄」已暫緩（DECISIONS §8 第 6 項），重新排入時再答 **2026-11-13 深夜（修訂 S6）**：不再適用：遵循 shell 歷史排除隨「不記錄」一併取消（擁有者確認） |
 | Q2 | 「不索引」：私人列要不要從全文索引實際移除？ | 不移除；讀取時排除（FR-007），實際移除只由清除內容。撤回時不需重建索引；「不被搜到」已達成；磁碟上不留內容是 R4 的工作 **已裁定（2026-11-13，DECISIONS §9）**：不移除，讀取時排除 **2026-11-13 深夜（修訂 S5，R20）**：答覆的「讀取時排除」被取代——被排除的列照常出現在搜尋中；「不從索引移除」不變 |
-| Q3 | `terminal-last` 承接的目標不算（FR-022），所以沒有目標的本機指令一律詢問。接受嗎？ | 接受。這是「只允許確定的承接」的直接結果；代價由分組（SC-003）吸收；O18 落地後自動改善 **已裁定（2026-11-13，DECISIONS §9）**：接受 |
+| Q3 | 沒有目標的本機指令（`target_via: none`）不算確定的目標（FR-022），所以一律詢問。接受嗎？（問題文字於 2026-11-15 依 DECISIONS §7 改寫：原問的是 `terminal-last`，該值已不存在；答覆不變） | 接受。這是「只允許確定的承接」的直接結果；代價由分組（SC-003）吸收；O18 落地後自動改善 **已裁定（2026-11-13，DECISIONS §9）**：接受 |
 | Q4 | 未回答就匯出時，待確認的列扣下還是交付？ | 扣下（stub `unanswered`），對話框寫數字，從不擋匯出。交付出去的無法收回，扣下的下一次可以補交 **已裁定（2026-11-13，DECISIONS §9）**：扣下 |
 | Q5 | 不在離線時，RedLog 查詢範圍內名稱（FR-105）預設開或關？ | **關**；範圍設定中一個「解析範圍內的名稱」動作，按一次查一次。理由見 plan D18：加入範圍項目的時刻常早於 VPN 或樞紐就緒，系統解析器會把客戶的名稱（含內部名稱）送到當時的 ISP、公司或公用解析器；被動的對應（代理、DNS 模式、hosts 檔）在大多數行動中已足夠，不足時操作者明確按一次，且每次都上鏈 **已裁定（2026-11-13，DECISIONS §9）**：關 |
 | Q6（2026-11-13 新增） | 擁有者的例子把「範圍外但相關的 DNS 查詢」列為**待確認**，R17 也把「建立代理連線」列為可能的證據；本規格的規則對兩者都給 `withhold`／`out-of-scope`（E4、E9：DNS 的查詢名稱、樞紐指令的樞紐主機都是確定的目標，FR-022、FR-101；R9 範圍外預設扣下）。哪一個為準？ (A) 維持本規格：確定的範圍外目標一律扣下；操作者以「這次包含」或「交付」註記改變。 (B) 依擁有者的表：`dns` 種類（`dns_query`、`dns_response`）與 FR-022 第 4 項的樞紐建立指令，目標判為範圍外時改為 `ask`，以 `host:` 分組；掃描、HTTP 等其他種類維持 R9 | **(B)**。這兩類列的目標是基礎設施（名稱查詢、操作者自己的跳板），不是被操作的對象，所以「範圍外」說的不是「與這次任務無關」（R17）；改為待確認後每個網域或跳板只問一次，並可「以後一律」；R9 的主要對象（對範圍外主機的掃描與請求）不受影響。代價是 SC-003 的問題數，以同一份 fixture 量測。答覆前 FR-021 依 (A) 撰寫 **已裁定（2026-11-13 深夜，擁有者）**：**(B)**，與建議相同：`dns` 種類與樞紐建立指令目標判為範圍外時待確認、依主機分組；掃描、HTTP 等其餘範圍外的列仍預設不交付；擁有者接受組變多的代價（R23；FR-021、FR-022、FR-025 已改寫） |

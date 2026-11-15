@@ -36,9 +36,11 @@
 | O17 | （原 Q5）外掛 Source 停用後才送達的積壓一律拒收，計為有意（`credential-revoked`） | E、G |
 | O18 | 因果歸屬不用猜的：指令 id 由環境變數 `REDLOG_COMMAND_ID` 帶給子行程，並在 proxy 位址的 userinfo 帶標記，兩者都做、userinfo 先上；都取不到時不寫 `_causes`（[擷取種類盤點](../../docs/records/2026-11-12/root-cause/10-capture-kinds-and-presentation.md) 問題 4；proxy userinfo 的可行性尚未實測） | 待併入 A、I 與 tasks |
 
+> **Superseded（2026-11-15，DECISIONS 2026-11-15 §7）**：O11 的後半（承接同一終端機最後擷取到的目標）取消，沒有 `terminal-last` 值，也沒有 `terminal_targets` 表；前半（不承接全域的目前目標）不變。沒有主機的列 `target_id` 為空、`target_via` 為 `none`（FR-010）。
+
 > 本檔與 plan、tasks 中仍寫作「開放問題 Q1–Q5」之處，分別對應 O13–O17，已決定。O18 是起草後才做的決定，FR 與 tasks 尚未為它展開，動工前需補上（Spec 074 Phase 5 的 `cause_counts` 依賴它，見 [specs/README.md](../README.md)「071–075 的跨規格順序」）。新的未決事項見文末「開放問題（需要擁有者）」。
 >
-> **2026-11-12 跨規格對帳（071–075）**：本規格依同批起草的 072–075 做了下列增補，均為新增、不改既有列的形狀：`_ingest.rules`／`rules_partial`（FR-005、FR-006，Spec 075 的 Processor 規則紀錄）；`/api/whoami` 回傳呼叫者來源的狀態（FR-07B，Spec 075）；`CommitReceipt`（FR-096，Spec 074）；`terminal_targets` 的回填歸屬（FR-010，Spec 074）；種類的 tier 改由 Spec 072 的登記表回答（FR-113）；每個來源在本專案的第一次與最近一次接受（FR-056，Spec 075）。另依 Phase 1 實作（#716）更正三處事實：直接呼叫 `insertEvent(` 為 31 處；`PRAGMA synchronous` 實為 NORMAL（其後依 Q6 改為 FULL）；relay 不重試 5xx。
+> **2026-11-12 跨規格對帳（071–075）**：本規格依同批起草的 072–075 做了下列增補，均為新增、不改既有列的形狀：`_ingest.rules`／`rules_partial`（FR-005、FR-006，Spec 075 的 Processor 規則紀錄）；`/api/whoami` 回傳呼叫者來源的狀態（FR-07B，Spec 075）；`CommitReceipt`（FR-096，Spec 074）；`terminal_targets` 的回填歸屬（FR-010，Spec 074；2026-11-15 起此表不存在，見 FR-010 的修訂註記）；種類的 tier 改由 Spec 072 的登記表回答（FR-113）；每個來源在本專案的第一次與最近一次接受（FR-056，Spec 075）。另依 Phase 1 實作（#716）更正三處事實：直接呼叫 `insertEvent(` 為 31 處；`PRAGMA synchronous` 實為 NORMAL（其後依 Q6 改為 FULL）；relay 不重試 5xx。
 
 ### 修訂（2026-11-13）
 
@@ -93,7 +95,7 @@
 **Acceptance Scenarios**：
 
 1. **Given** 一筆已寫入的事件，**When** 同一個 `event_id` 經任一入口再送 1000 次，**Then** 只有 1 列，每次回執都是 `duplicate` 並帶原列 id。
-2. **Given** 終端機 T 在 10:00 擷取到目標 10.0.0.5，操作者 10:05 把全域目前目標改成 10.0.0.9，**When** T 在 10:03 觀察到、10:30 才送達一筆沒有可擷取目標的事件，**Then** 該列 `target_id = 10.0.0.5`，`_ingest.target_via = "terminal-last"`。
+2. **Given** 指令 `nmap -sV 10.0.0.5` 在 10:00 起跑，操作者 10:05 把全域目前目標改成 10.0.0.9，**When** 該指令的背景輸出在 10:30 才送達，**Then** 該列 `target_id = 10.0.0.5`，`_ingest.target_via = "command"`；同一終端機上沒有主機的本機指令（`ls`）送達時 `target_id` 為空，`target_via = "none"`。
 3. **Given** 項目在專案 A 開著時被觀察，送達時開的是 B，**When** 送達，**Then** B 沒有任何列；項目留在 A 的交接目錄，A 開啟後寫入 A。
 4. **Given** 來源在 `data` 中自填 `_ingest` 與 `_clock_anomaly`，**When** 寫入，**Then** 列上的 `_ingest` 是接收端蓋的，來源自填的值不在列上，`_ingest.stripped` 記下被移除的鍵名。
 5. **Given** 同樣內容分別經 API、交接檔、行程內送入（不同 `event_id`），**Then** 三列除 `_ingest.door`／`auth`／`credential` 與收到時間外完全相同。
@@ -256,16 +258,14 @@
 - **FR-009** 列的操作者是觀察當下的操作者。`observed.operator` 是本專案已知且未撤銷的操作者時採用；否則採機器層級設定中的目前操作者（O12），來源的值記在 `_ingest.claimed.operator`。
   > **修訂註記（2026-11-13，修訂 A8）**：專案不可以覆寫 operator（Spec 073 FR-01D）。`observed.operator` 是觀察當下的機器層 operator（交接目錄延遲送達時，送達時的值可能已改）；「本專案已知」的集合只由機器層 operator 曾在本專案生效的值構成。專案 `config.yaml` 中的 `operator` 不是任何一步的來源。
 - **FR-010** 目標依以下順序決定，結果寫在 `target_id`，方法寫在 `_ingest.target_via`：
-  1. `explicit`：項目明示的目標；不屬於任何終端機的 app 內操作則為 `operator-selected`：操作當下由 app 明確帶入所選目標（O16）；
+  1. `explicit`：項目明示的目標；
+     `operator-selected`：不屬於任何終端機的 app 內操作，由 app 在操作當下明確帶入所選目標（O16）：標記對話框與 HUD 建的標記、手動截圖、加入的檔案（`artifact_added`）；
   2. `extracted`：從內容擷取（既有的 target extractor）；
-  3. `command`：背景輸出承接它所屬指令的目標；
-  4. `terminal-last`：同一終端機在觀察時間以前、最後一筆 `explicit` 或 `extracted` 列的目標；
-  5. `none`。
+  3. `command`：背景輸出承接它所屬指令的目標；指令沒有目標時，輸出是 `none`；
+  4. `none`：沒有主機的列不承接任何目標，`target_id` 為空。自動截圖（定時、閒置、指令結束時、`POST /api/screenshot`）與沒帶目標的 `/api/marker` 標記也是 `none`。
 
-  全部由持久化資料決定。不論是否重啟、經哪個入口、何時送達，結果相同。全域目前目標不再自動套用到任何列（O11；不屬於任何終端機的 app 內操作見 O16）。
-
-  `terminal-last` 讀專案資料庫中的 `terminal_targets` 表。這張表歸本規格：由寫入路徑在同一個 commit 交易內同步寫入。表從空的開始，只有新列填入它；不回填。含 071 之前事件的專案，某終端機在升級前擷取到的目標不被承接，直到該終端機下一筆能擷取目標（`explicit` 或 `extracted`）的列寫入；在那之前，沒有 `explicit`、`extracted`、`command` 可用的列寫 `target_via: "none"`。列永不改寫，所以這些 `none` 是永久的。
-  > **修訂註記（2026-11-15，DECISIONS 2026-11-15 §5）**：擁有者選了「不回填，表從空的開始」。原本「含 071 之前事件的專案在 Spec 074 回填完成前不套用第 4 步」的例外，與 074 T052 的回填，一併取消。升級前擷取的目標不被承接、直到該終端機下一筆能擷取目標的列，是實作者對此選項的解讀，不是擁有者的話（記錄中分開列出）。
+  `_ingest.target_via` 只有這五個值。不承接同一終端機上一次擷取到的目標，全域目前目標也不自動套用到任何列（O11；app 內操作見 O16）。決定只看項目本身，以及 `command` 所讀的、該指令已存的 `command_start`／`command_end` 列（`db/stored-links.ts`）；不論是否重啟、經哪個入口、何時送達，結果相同。
+  > **修訂註記（2026-11-15，DECISIONS 2026-11-15 §7）**：擁有者選了「改成只認連線」：沒有主機的列不承接目標。因此 `terminal-last` 這個值與 `terminal_targets` 表都不做；§5 第 1 項（該表不回填）不再有對象。哪些列算「自帶主機」（指令文字擷取得到主機、來源明示目標、這類指令的輸出）是實作者的解讀，不是擁有者的話（記錄中分開列出）。自動截圖與沒帶目標的 `/api/marker` 標記記 `none`，是 DECISIONS §6 第 4、5 項，仍然成立。
 - **FR-011** 新列的終端機身分只有一個正規值 `_ingest.terminal`：取 `observed.terminal`；舊入口依序取 `data.terminalId`、`data.terminal_id`。核心中需要新列終端機身分的地方一律讀這個值。
   > **實作註記（2026-11-14，T025）**：這個值是送出者自己給的值的正規形式，不是接收端判定的；讀者不得把它當成「這一列出自哪個終端機」的證明。正規形式：存入的形式（JSON 字串的 UTF-8）在 128 bytes 以內原樣保留；超過時為在字元邊界切下的前綴、`#`、整個 id 的 UTF-8 位元組 sha256 的前 16 個 hex，總長在 128 bytes 內，不同的 id 不會合併。
 - **FR-012** 接收端認定的來源只由憑證（或行程內呼叫者）決定。`producer.name`／`version` 只記錄、不用於信任。對帶 `_ingest` 的列，凡依「是否為內建終端機」做的存取或信任判斷（例如 `/api/terminal/replay` 讀取 cast），一律以 `_ingest.producer` 為準。純顯示用途不在本規格。
