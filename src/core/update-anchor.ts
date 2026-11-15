@@ -1,6 +1,7 @@
 import { anchorNow as realAnchorNow, computeChainHead as realComputeChainHead, type ChainAnchor, type AnchorSkipped } from './chain-anchor'
-import { insertEvent } from './db/events'
-import { eventBus } from './event-bus'
+import type { RedLogEvent } from './db/events'
+import { ingestEvent } from './ingest'
+import { engagementForWrite } from './ingest/stamp'
 import { getPrimaryOperator } from './db/operators'
 import { getProjectDir } from './db/index'
 
@@ -88,7 +89,7 @@ export async function anchorBeforeRestart(
   try {
     const primary = getPrimaryOperator()
     if (primary) {
-      const ev = insertEvent('system', {
+      const ev = ingestEvent('system', {
         subtype: 'update_pending',
         from_version: opts.fromVersion,
         to_version: opts.toVersion ?? null,
@@ -99,14 +100,14 @@ export async function anchorBeforeRestart(
         description: external === 'skipped'
           ? '準備更新重啟：air-gap 模式，未對外送出時間戳；重啟安裝期間會有數秒不記錄'
           : `準備更新重啟：鏈頭已錨定（${anchorStatus}）；重啟安裝期間會有數秒不記錄`
-      // No engagement named means the open database's: insertEvent writes the
-      // one it is bound to (Spec 071 FR-007). Spelling `default` out here
-      // named a foreign one, and a database bound to its project refuses that.
-      }, { engagementId: opts.engagementId, operatorId: primary.id })
+      // No engagement named means the open database's (Spec 071 FR-007), which
+      // the door is told here: with no project bound that throws no-project, and
+      // the catch below reports it. Spelling `default` out named a foreign one,
+      // and a database bound to its project refuses that.
+      }, { engagementId: opts.engagementId ?? engagementForWrite(undefined), operatorId: primary.id })
       // A null is a row that was not stored (a duplicate inside the window is
       // the only legitimate reason, and a marker is never identical twice).
       if (!ev) return { anchored: false, headHash, anchorStatus, external, localError: 'marker row was not stored' }
-      eventBus.publish(ev)
     }
   } catch (e) {
     return { anchored: false, headHash, anchorStatus, external, localError: `marker: ${(e as Error).message}` }
@@ -137,9 +138,9 @@ export interface UpdateOutcomeInput {
 export function recordUpdateOutcome(
   outcome: UpdateOutcomeInput,
   ctx: { engagementId: string; operatorId: string }
-): ReturnType<typeof insertEvent> {
+): RedLogEvent | null {
   const done = outcome.kind === 'completed'
-  const ev = insertEvent('system', {
+  return ingestEvent('system', {
     subtype: done ? 'update_completed' : 'update_not_applied',
     from_version: outcome.fromVersion,
     to_version: outcome.toVersion,
@@ -149,6 +150,4 @@ export function recordUpdateOutcome(
       ? `已更新到 ${outcome.actualVersion}（原 ${outcome.fromVersion}）；更新前開啟的終端與代理連線已結束，不會自動恢復`
       : `更新沒有完成：目前仍是 ${outcome.actualVersion}，預期 ${outcome.toVersion}`
   }, { engagementId: ctx.engagementId, operatorId: ctx.operatorId })
-  if (ev) eventBus.publish(ev)
-  return ev
 }

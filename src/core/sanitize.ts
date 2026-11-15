@@ -1,8 +1,8 @@
 import crypto from 'crypto'
 import type Database from 'better-sqlite3'
 import { getDB } from './db/index'
-import { insertEvent, RedLogEvent } from './db/events'
-import { eventBus } from './event-bus'
+import type { RedLogEvent } from './db/events'
+import { ingestEvent } from './ingest'
 import { maskText } from './redaction'
 
 // Layer 4 of the four-layer redaction model (docs/redaction-design.md):
@@ -121,7 +121,7 @@ export function sanitize(input: SanitizeInput): SanitizeResult {
   // Append the audit event FIRST so we can stamp its id onto the sanitized
   // rows — that way every row points back to the chained record proving the
   // sanitization happened.
-  const chained = insertEvent('system', {
+  const chained = ingestEvent('system', {
     subtype: 'sanitized',
     source_events: [...new Set(toWrite.map((r) => r.source_event_id))],
     fields: [...new Set(toWrite.map((r) => r.field))],
@@ -129,7 +129,6 @@ export function sanitize(input: SanitizeInput): SanitizeResult {
     replacements: toWrite.map((r) => ({ event: r.source_event_id, field: r.field, sha256: r.replacement_sha256 }))
   }, { engagementId: input.engagementId, operatorId: input.operatorId })
   if (!chained) throw new Error('Failed to append system.sanitized event')
-  eventBus.publish(chained)
 
   const db = getDB()
   const stmt = db.prepare(

@@ -4,9 +4,9 @@ import crypto from 'crypto'
 import os from 'os'
 import { getDB, getProjectDir } from './db/index'
 import { mkdirPrivate, restrictTree } from './private-fs'
-import { queryEvents, insertEvent, loggedTierDigest } from './db/events'
+import { queryEvents, loggedTierDigest } from './db/events'
+import { ingestEvent } from './ingest'
 import type { ExportCounts, ExportSnapshot, NormalizedExportRequest } from './export-plan'
-import { eventBus } from './event-bus'
 import { listAnchors, computeChainHead, chainHeadHash } from './chain-anchor'
 import { listOperators, getPrimaryOperator, getPrimaryOperatorTokenHash } from './db/operators'
 import { getSanitizedFields, countSanitizedEvents } from './sanitize'
@@ -103,9 +103,8 @@ export function writeExportSeal(engagementId: string, data: Record<string, unkno
   // seal is an unsigned row like the rest of its chain, so the bundle still
   // verifies as consistent and NOT AUTHENTICATED rather than as unsealed.
   const operatorId = getPrimaryOperator()?.id ?? UNATTRIBUTED_EXPORT_OPERATOR
-  const ev = insertEvent('system', data, { engagementId, operatorId })
+  const ev = ingestEvent('system', data, { engagementId, operatorId })
   if (!ev) throw new Error('Export seal could not be recorded')
-  eventBus.publish(ev)
   const row = getDB().prepare(`SELECT ${EXPORTED_EVENT_COLUMNS} FROM events WHERE id = ?`).get(ev.id) as Record<string, unknown> | undefined
   if (!row) throw new Error('Export seal could not be read back')
   return row
@@ -288,7 +287,7 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   if (opts.loggedDigest && !opts.snapshot) throw new Error('A precomputed logged-tier digest needs the snapshot it was taken under')
   const loggedDigest = opts.loggedDigest ?? loggedTierDigest(opts.snapshot?.loggedMaxRowId)
   if (!opts.snapshot && loggedDigest.count > 0 && primary) {
-    const ev = insertEvent('system', {
+    ingestEvent('system', {
       subtype: 'logged_tier_digest',
       count: loggedDigest.count,
       sha256: loggedDigest.sha256,
@@ -297,7 +296,6 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
       reason: 'export',
       description: `export: logged-tier snapshot — ${loggedDigest.count} row(s), sha256 ${loggedDigest.sha256.slice(0, 12)}…`
     }, { engagementId, operatorId: primary.id })
-    if (ev) eventBus.publish(ev)
   }
 
   // 1. events.jsonl (in insertion order)
