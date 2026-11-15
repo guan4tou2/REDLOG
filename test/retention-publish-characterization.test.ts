@@ -61,7 +61,12 @@ function shape(subtype: string): Array<Record<string, unknown>> {
   return events.queryEvents({ limit: 500 })
     .filter((e) => e.agentType === 'system' && e.data?.subtype === subtype)
     .map((e) => {
-      const data = JSON.parse(JSON.stringify(e.data).split(dir).join('<dir>')) as Record<string, unknown>
+      // The temp directory is different on every run, and on Windows its
+      // separators are backslashes, which JSON text doubles: match the
+      // directory as JSON writes it, then read what is left of each path
+      // with forward slashes, so one snapshot serves every platform.
+      const asJson = JSON.stringify(dir).slice(1, -1)
+      const data = JSON.parse(JSON.stringify(e.data).split(asJson).join('<dir>').replace(/\\\\/g, '/')) as Record<string, unknown>
       const stamp = { ...(data._ingest as Record<string, unknown>) }
       delete stamp.event_id
       return { agentType: e.agentType, targetId: e.targetId ?? null, data: { ...data, _ingest: stamp } }
