@@ -33,7 +33,7 @@
 ## 現況（程式碼確認，`origin/main@56c9fe6c`）
 
 - **開專案**：`startProject`（`src/main/index.ts:773-800`）→ `loadConfig` + `saveConfig`（:781-782）→ 若有開著的就 `stopProject`（:783）→ `projectRuntime.begin`（:784）→ `initDB`／`bindDBEngagement`（:786-788）→ `startProjectResources`（:802-1218，約 420 行）→ `writeSpoolIdentity`（:791）→ `activate`（:792）。失敗時 `stopProject`（:793-797）。
-- **關專案**：`stopProject`（:1220-1280）手寫 27 個步驟；`projectRuntime.close()` 先跑。
+- **關專案**：`stopProject`（:1220-1280）手寫 26 個步驟（071 T024 移除清掉全域目前目標的那一步之前是 27）；`projectRuntime.close()` 先跑。
 - **設定套用**（#702）：`config-apply-plan.ts` 是純決策（`OPEN_SEQUENCE`、`APPLY_ORDER`、`CONFIG_DEPENDENCIES`、`NO_LIVE_EFFECT`），`config-apply.ts` 執行；`config-store.ts` 是 `config.yaml` 唯一的寫入者，以檔案為基準套用 patch（`config-patch.ts`）。
 - **`ProjectRuntime`**（`src/core/project-runtime.ts`）：generation、signal、`setInterval`／`setTimeout`／`onStop`、`renameProject`、`setOperator`。`onStop` 正式碼使用 0 處。
 - **過時判斷四種**：
@@ -443,7 +443,7 @@ export function bindingState(e: TerminalEnrollment, openEngagementId: string | n
 
 | 順序 | 取代的東西 | 位置 | 由誰取代 | 計數 |
 |---|---|---|---|---|
-| 1 | `stopProject` 本體 | `index.ts:1220-1280` | 反向停止資源清單 | 27 個步驟 → 0 |
+| 1 | `stopProject` 本體 | `index.ts:1220-1280` | 反向停止資源清單 | 26 個步驟 → 0 |
 | 2 | `startProjectResources` 本體與 `OPEN_SEQUENCE` hooks | `index.ts:802-1218`；`config-apply-plan.ts:68-103` | 依序啟動資源清單 | 1 個 420 行函式 → 0 |
 | 3 | `ProjectRuntime` 類別 | `core/project-runtime.ts` | `ProjectSession` | 1 → 0 |
 | 4 | 顯式 reset | `resetBodiesDirCache`、`resetCausesResolver`、`configureIngest({activeTarget:null})`、`resetVisibilitySignalsCache`、`invalidateObservationCount`、`recomputePending=null`、`clearSampleBroken` | per-session 物件 | 7 → 0 |
