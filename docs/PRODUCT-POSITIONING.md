@@ -134,6 +134,7 @@ RedLog integrates with that job rather than competing for it.
 | Report writing (Ghostwriter / HackTheBox / Bugcrowd formats) | Downstream report generators | RedLog produces the *record*; the report is an opinionated narrative built from it. Coupling them would make the record answer to the narrative's schema. |
 | STIX 2.1 / VECTR / adversary-emulation-plan export | Downstream correlation tools | Same reason — these are interpretations of the log, not the log. |
 | Opinionated MITRE ATT&CK tagging | `commandTags` plugins / your SIEM | Tagging is per-shop opinion. RedLog ships none installed on purpose (`plugin-development.md`). |
+| Findings from tool output (is it a vulnerability, how severe, how to fix) | Downstream reporting / vulnerability management | RedLog may structure what a tool *reported* — host, port, state, service — because that is a fact about the output (owner's decision, `records/2026-11-16/DECISIONS.md`). Judging it is interpretation, and what counts as a finding is per-shop opinion. |
 | A central team server / shared DB | Each operator runs their own | Local-first is a positioning pillar, not a missing feature. A server is a different product with a different threat model. |
 | At-rest DB encryption | 1.x, not 1.0 | Worth doing; the threat model discloses the exposure honestly today (`ROADMAP.md`). |
 | Live C2 log parsing (Cobalt Strike beacon logs) | RedEye | RedLog captures at the operator's shell/agent, not by post-hoc parsing a C2's logs. Different capture model. |

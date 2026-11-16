@@ -205,6 +205,15 @@ stop: parsing nmap XML into structured findings is *interpretation*, the same
 shape as the opinionated ATT&CK tagging the positioning lists as a non-goal.
 What counts as a finding is per-shop opinion; what was on screen is not.
 
+> **Revised 2026-11-16** ([DECISIONS](../records/2026-11-16/DECISIONS.md) §1):
+> the owner moved this line from "no parsers" to "no judgement". Structuring
+> what a tool *reported* — host, port, state, service — may be built in, so
+> "list every open port this scan reported" becomes answerable. Deciding what
+> that means — vulnerability, severity, remediation — remains interpretation and
+> remains out. Nothing is built yet. A parsed reading is not primary capture:
+> under DESIGN-PRINCIPLES §3 it is labelled as parsed and attributable to its
+> parser; the raw output and the tool's own output file stay the evidence.
+
 Full-text search over `.cast` closes two gaps at once — it is also what makes
 an unstructured remote session (§2.2) findable — which makes it the
 highest-leverage single capability in this note.
