@@ -92,6 +92,13 @@ jobs:
         # install scripts, and `npm test` and electron-builder run on top of them.
         run: npm install --no-audit --no-fund
 
+      - name: Install cryptography (verifier signature checks)
+        # As in ci.yml. Without it the Python verifier runs hash-only, and
+        # test/evidence-vectors.test.ts expects the authenticated verdicts:
+        # v0.19.0's first release run failed all three builds on exactly this,
+        # on a commit whose CI was green.
+        run: python -m pip install --quiet cryptography
+
       - name: Run tests (Node ABI)
         run: npm test
 
