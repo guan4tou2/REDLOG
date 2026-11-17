@@ -5,6 +5,37 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+## v0.19.0 — 2026-11-17
+
+Release. Everything merged since v0.18.6 (#490–#804). The full Chinese notes
+are in `docs/RELEASE-v0.19.0.md`; the main lines are:
+
+- Interface rebuilt on the final Stitch designs (Spec 069): project picker,
+  dashboard, activity log and Reader, timeline (standard / swim-lane modes,
+  toolbar, density waveform with a draggable focus window, card rail, bottom
+  detail bar, click to select and double-click to open), evidence, terminal,
+  targets and scope, single-column settings and plugin management, sidebar.
+  Claims the data cannot support were replaced rather than copied (#579–#654,
+  #768–#774, #785).
+- Search and reading: recordings and AI transcripts are searched by default, a
+  multi-word search matches across one exchange, "events around this one", a
+  loot hit read in place, and the Reader says what happened to a command's
+  output (#682, #705, #718, #784, #788, #790).
+- Export and evidence: bundles are sealed and their attachments checked
+  against the chain (bundle v4; an older verifier rejects a v4 bundle, the new
+  one still verifies v3), scope masking covers params, headers, cookies, URL
+  queries and derived rows, the whole project is the default, and the heavy
+  work runs in the export worker (#683, #711, #775, #778, #783).
+- Capture and provenance: every new row records how it arrived and how it got
+  its target; same-millisecond events keep their recorded order; the shell
+  hooks install where the shell reads and print nothing at shell init (#708,
+  #717, #765, #773, #795–#803).
+- Durability and safety: the project writer runs `synchronous=FULL`, an
+  unreadable `config.yaml` stops the open instead of being replaced by
+  defaults, saves are atomic, and an exported profile carries only the scope
+  (an old-shape profile with `network:` is refused) (#721, #725, #751).
+- Platform: Electron 45, xterm 6 (#675, #714).
+
 - Removed `redlog-share-worker/`. Nothing in the app called it, and the
   Settings ▸ Cloud share page the README pointed to no longer exists.
 - Removed the bundled `transparent-proxy` plugin, which rewrote this host's
