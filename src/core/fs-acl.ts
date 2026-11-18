@@ -98,11 +98,12 @@ export function restrictToOwner(target: string): void {
 }
 
 /** Null when the identity cannot be told apart from another file's: a file
- *  system that reports no file index (0) cannot be memoised safely. */
+ *  system that reports no file index (0, or all ones) cannot be memoised
+ *  safely. */
 function identity(target: string): string | null {
   try {
     const s = fs.statSync(target, { bigint: true })
-    if (s.ino === 0n) return null
+    if (s.ino === 0n || s.ino === 0xFFFFFFFFFFFFFFFFn) return null
     return `${s.dev}:${s.ino}:${s.birthtimeNs}`
   } catch { return null }
 }

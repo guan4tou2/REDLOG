@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -234,6 +234,7 @@ describe('restrictToOwnerOnce', () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     Object.defineProperty(process, 'platform', realPlatform)
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
@@ -304,4 +305,19 @@ describe('restrictToOwnerOnce', () => {
     expect(icaclsRestricted()).toEqual([missing, missing])
   })
 
+  // A file system that reports a file index of all ones has none, as with 0:
+  // every file on it would share one identity.
+  it('runs every time for a file whose index is all ones', () => {
+    const f = path.join(tmpDir, 'api-token')
+    fs.writeFileSync(f, 'x')
+    const real = fs.statSync
+    vi.spyOn(fs, 'statSync').mockImplementation(((p: fs.PathLike, opts?: fs.StatSyncOptions) => {
+      const s = real(p, opts as never) as fs.BigIntStats | fs.Stats
+      if (opts && (opts as { bigint?: boolean }).bigint) return { ...s, ino: 0xFFFFFFFFFFFFFFFFn, isDirectory: () => false }
+      return s
+    }) as typeof fs.statSync)
+    restrictToOwnerOnce(f)
+    restrictToOwnerOnce(f)
+    expect(icaclsRestricted()).toEqual([f, f])
+  })
 })
