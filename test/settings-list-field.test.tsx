@@ -1,7 +1,5 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ScopePage from '../src/renderer/src/components/settings/ScopePage'
 import CaptureControlPage from '../src/renderer/src/components/settings/CaptureControlPage'
@@ -160,17 +158,4 @@ describe('ListField draft state', () => {
     expect(screen.getByTestId('list-field-rejected')).toBeTruthy()
     expect(screen.queryByTestId('list-field-draft')).toBeNull()
   })
-})
-
-describe('settings auto-save hint', () => {
-  // Engagement ID is read-only (main forces it back to the stored value on
-  // every save) and the operator ID applies live in the config handler, so
-  // nothing here needs a project reopen.
-  for (const lang of ['en', 'zh-TW']) {
-    it(`${lang} does not claim an ID change needs reopening the project`, () => {
-      const dict = JSON.parse(readFileSync(join(__dirname, '../src/renderer/src/i18n', `${lang}.json`), 'utf8')) as Record<string, string>
-      expect(dict['settings.autoSaveHint']).toBeTruthy()
-      expect(dict['settings.autoSaveHint']).not.toMatch(/reopen|重開|重新開啟/i)
-    })
-  }
 })

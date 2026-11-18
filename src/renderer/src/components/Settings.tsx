@@ -361,9 +361,10 @@ export default function Settings({ request = null }: { request?: { page: Setting
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* The right pane is a column: content scrolls, the save bar stays put. */}
-      <div ref={pane} data-testid="settings-content" data-page={tab ?? 'home'} className="flex-1 min-w-0 min-h-0 overflow-y-auto p-pad space-y-4 [overflow-wrap:anywhere]">
+    <div className="relative flex flex-col h-full">
+      {/* Content scrolls; its bottom padding leaves room for the save bar, so
+          the last field can be scrolled clear of it. */}
+      <div ref={pane} data-testid="settings-content" data-page={tab ?? 'home'} className="flex-1 min-w-0 min-h-0 overflow-y-auto p-pad pb-12 space-y-4 [overflow-wrap:anywhere]">
         {tab === null ? (
           <div className="space-y-4" data-testid="settings-home">
             <header>
@@ -459,26 +460,24 @@ export default function Settings({ request = null }: { request?: { page: Setting
         {tab === 'about' && <AboutPage t={t} />}
       </div>
 
-      {/* Plugins are enabled, installed and trusted through their own calls,
-          each answered at once; nothing on that page is a setting this form
-          saves. The bar still appears there for a save already in flight. */}
-      {(tab !== 'plugins' || saveState !== 'idle') && <div data-testid="settings-save-bar" className="px-4 py-2 border-t border-redlog-border shrink-0 flex flex-wrap items-center gap-x-3">
-        {tab !== 'plugins' && <span className="text-redlog-text-faint text-xs">{t('settings.autoSaveHint')}</span>}
-        {saveState !== 'idle' && (
-          <span
-            data-testid={`settings-save-${saveState}`}
-            role="status"
-            className={`text-xs ${saveState === 'failed' ? 'text-red-400' : saveState === 'saving' ? 'text-redlog-text-dim' : 'text-emerald-400'}`}
-          >
-            {t(`settings.save.${saveState}`)}
-            {saveState === 'failed' && (
-              <button
-                onClick={retry}
-                className="ml-2 underline hover:text-red-300"
-              >{t('settings.save.retry')}</button>
-            )}
-          </span>
-        )}
+      {/* The bar exists only while it has something to say: a write in
+          flight, one that landed, one that failed. It floats over the bottom
+          of the page rather than taking a row from the column, so the pane
+          does not shrink — and the page does not jump — when it appears. */}
+      {saveState !== 'idle' && <div data-testid="settings-save-bar" className="absolute inset-x-0 bottom-0 px-4 py-2 border-t border-redlog-border bg-redlog-surface flex flex-wrap items-center gap-x-3">
+        <span
+          data-testid={`settings-save-${saveState}`}
+          role="status"
+          className={`text-xs ${saveState === 'failed' ? 'text-red-400' : saveState === 'saving' ? 'text-redlog-text-dim' : 'text-emerald-400'}`}
+        >
+          {t(`settings.save.${saveState}`)}
+          {saveState === 'failed' && (
+            <button
+              onClick={retry}
+              className="ml-2 underline hover:text-red-300"
+            >{t('settings.save.retry')}</button>
+          )}
+        </span>
       </div>}
     </div>
   )

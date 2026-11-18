@@ -549,7 +549,6 @@
   "settings.scopeFile": "Scope File",
   "settings.scopeFileLabel": "Load targets from file (JSON or plain text, one per line)",
   "settings.scopeFileHint": "Absolute path to a scope file. Targets are merged with the list above.",
-  "settings.autoSaveHint": "Changes save automatically",
   "settings.listDraftHint": "Not saved yet — press Enter or + to add it to the list.",
   "settings.listDraftHintMulti": "Not saved yet — press + or Ctrl/⌘+Enter to add it to the list.",
   "settings.cdpConnected": "Connected: {{title}} — {{url}}",
