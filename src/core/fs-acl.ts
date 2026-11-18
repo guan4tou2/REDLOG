@@ -116,6 +116,10 @@ function identity(target: string): string | null {
  * file with a new index and the default ACL, and is restricted again. Only a
  * restriction that took effect is remembered; a failure throws as
  * restrictToOwner does and is retried on the next call.
+ *
+ * The memo is not a check of the ACL: if someone widens it while the app runs,
+ * it stays widened until the next app start, when the first call restricts it
+ * again.
  */
 export function restrictToOwnerOnce(target: string): void {
   if (process.platform !== 'win32') return
