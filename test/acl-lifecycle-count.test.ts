@@ -11,9 +11,7 @@ import { clearIcacls, icaclsRestricted, icaclsTargets, installIcaclsRecorder } f
 // up to 10 s for the three together. Project open used to
 // restrict the mirrored ~/.redlog/api-token every time although it is rewritten
 // in place and keeps its ACL; it now does that once per file identity
-// (src/core/fs-acl.ts restrictToOwnerOnce), and the project's own token the
-// same way, so the first open of a project in a process restricts it once.
-// The lists are exact, so a new call
+// (src/core/fs-acl.ts restrictToOwnerOnce). The lists are exact, so a new call
 // on these paths has to be added here on purpose, and a protected path that
 // stops being restricted fails here too.
 
@@ -109,18 +107,7 @@ sqlite.describe('icacls calls per lifecycle step on Windows', () => {
     expect(spawned(() => open(a))).toEqual([TOKEN])
   })
 
-  it('an existing project opened in a new process: its token and the mirror, once each', () => {
-    const a = project('existing')
-    open(a)
-    installIcaclsRecorder() // a new process
-    expect(spawned(() => open(a))).toEqual([path.join(a, 'api-token'), TOKEN])
-    expect(spawned(() => open(a))).toEqual([])
-  })
-
-  // An existing project's token was restricted when it was made, possibly by
-  // a version whose icacls call left other accounts' entries on it. The first
-  // open in each process restricts it again; later opens do not.
-  listen.it('app start restricts the token and the port; the first open of an existing project restricts its token, once', async () => {
+  listen.it('app start restricts the token and the port; the first open of an existing project then starts none', async () => {
     const a = project('start')
     open(a)
     installIcaclsRecorder() // a new process
@@ -129,7 +116,6 @@ sqlite.describe('icacls calls per lifecycle step on Windows', () => {
     try {
       expect(icaclsRestricted()).toEqual([TOKEN, PORT])
       expect(icaclsTargets()).toHaveLength(6)
-      expect(spawned(() => open(a))).toEqual([path.join(a, 'api-token')])
       expect(spawned(() => open(a))).toEqual([])
     } finally {
       api.stopApiServer()

@@ -964,10 +964,8 @@ export function onApiProjectOpen(): void {
     if (!token) {
       token = generateToken()
       fs.writeFileSync(projTokenPath, token, { mode: 0o600 })
+      try { restrictToOwner(projTokenPath) } catch { /* best-effort on win32 */ }
     }
-    // Also an existing token, once per process: one an earlier version
-    // restricted may still carry other accounts' entries.
-    try { restrictToOwnerOnce(projTokenPath) } catch { /* best-effort on win32 */ }
     primaryToken = token
     mkdirPrivate(path.dirname(TOKEN_PATH))
     fs.writeFileSync(TOKEN_PATH, token, { mode: 0o600 })

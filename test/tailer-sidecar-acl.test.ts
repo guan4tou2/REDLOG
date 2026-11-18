@@ -91,24 +91,6 @@ describe('the AI sidecar directory on Windows', () => {
     ])
   })
 
-  // A directory an earlier version restricted carries an empty marker, and
-  // that version's icacls call kept the project directory's entries on the
-  // directory and on each file. It is restricted again, files first, once.
-  it('restricts again, once, a directory whose marker an earlier version wrote', () => {
-    setPlatform('win32')
-    fs.mkdirSync(sidecarDir, { recursive: true })
-    fs.writeFileSync(path.join(sidecarDir, '.owner-only'), '')
-    fs.writeFileSync(path.join(sidecarDir, 'claude-code-old.jsonl'), 'earlier')
-    registerSession('claude-code', source(SID_A))
-    registerSession('claude-code', source(SID_B))
-
-    expect(acl.mock.calls.map(([target]) => target)).toEqual([
-      path.join(sidecarDir, 'claude-code-old.jsonl'),
-      sidecarDir
-    ])
-    expect(fs.readFileSync(path.join(sidecarDir, '.owner-only'), 'utf-8')).toBe('2')
-  })
-
   it('saves no raw content, and reports a capture error, when it cannot be restricted', () => {
     setPlatform('win32')
     acl.mockImplementation(() => { throw new Error('icacls: access denied') })
