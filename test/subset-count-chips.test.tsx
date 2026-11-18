@@ -71,10 +71,10 @@ describe('screenshot trigger chips', () => {
     install([shot(3, 'manual'), shot(2, 'manual'), shot(1, 'command')], true)
     render(<I18nProvider><ScreenshotsView /></I18nProvider>)
     await screen.findByTestId('screenshot-list')
-    await waitFor(() => expect(chipCounts()).toHaveLength(3))
-    const [all, ...triggers] = chipCounts()
-    expect(all).toMatch(/·3\+$/)
-    for (const c of triggers) expect(c, 'a trigger count of the first page read as the total').toMatch(/·\d+\+$/)
+    // "All" carries no count: the project's is on the Evidence tab, once.
+    await waitFor(() => expect(chipCounts()).toHaveLength(2))
+    expect(screen.getByRole('button', { name: /^All/ }).textContent).toBe('All')
+    for (const c of chipCounts()) expect(c, 'a trigger count of the first page read as the total').toMatch(/·\d+\+$/)
   })
 
   // The chips are counted from the first unfiltered page, so whether they
@@ -87,7 +87,7 @@ describe('screenshot trigger chips', () => {
       ? { items: all, hasMore: true, nextCursor: 'more' }
       : { items: all.filter((x) => (x.data as { trigger: string }).trigger === req.trigger), hasMore: false, nextCursor: null })
     render(<I18nProvider><ScreenshotsView /></I18nProvider>)
-    await waitFor(() => expect(chipCounts()).toHaveLength(3))
+    await waitFor(() => expect(chipCounts()).toHaveLength(2))
     const commandChip = [...screen.getByTestId('screenshots-toolbar').querySelectorAll('button[aria-pressed]')]
       .find((el) => (el.textContent ?? '').startsWith('after command')) as HTMLElement
     fireEvent.click(commandChip)
@@ -100,7 +100,7 @@ describe('screenshot trigger chips', () => {
     install([shot(3, 'manual'), shot(2, 'manual'), shot(1, 'command')], false)
     render(<I18nProvider><ScreenshotsView /></I18nProvider>)
     await screen.findByTestId('screenshot-list')
-    await waitFor(() => expect(chipCounts()).toHaveLength(3))
+    await waitFor(() => expect(chipCounts()).toHaveLength(2))
     for (const c of chipCounts()) expect(c).toMatch(/·\d+$/)
   })
 })
