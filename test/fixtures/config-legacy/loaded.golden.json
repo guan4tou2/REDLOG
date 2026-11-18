@@ -92,10 +92,7 @@
    "scopeFile": null
   },
   "screenshot": {
-   "quality": 85,
-   "intervalSec": 0,
-   "diffThreshold": 5,
-   "captureOnCommand": false
+   "quality": 85
   },
   "terminal": {
    "maxCastBytes": 52428800
@@ -262,10 +259,7 @@
    "scopeFile": null
   },
   "screenshot": {
-   "quality": 85,
-   "intervalSec": 0,
-   "diffThreshold": 5,
-   "captureOnCommand": false
+   "quality": 85
   },
   "terminal": {
    "maxCastBytes": 52428800
@@ -432,10 +426,7 @@
    "scopeFile": null
   },
   "screenshot": {
-   "quality": 85,
-   "intervalSec": 0,
-   "diffThreshold": 5,
-   "captureOnCommand": false
+   "quality": 85
   },
   "terminal": {
    "maxCastBytes": 52428800
@@ -604,10 +595,7 @@
    "scopeFile": null
   },
   "screenshot": {
-   "quality": 85,
-   "intervalSec": 0,
-   "diffThreshold": 5,
-   "captureOnCommand": false
+   "quality": 85
   },
   "terminal": {
    "maxCastBytes": 52428800
@@ -776,10 +764,7 @@
    "scopeFile": null
   },
   "screenshot": {
-   "quality": 85,
-   "intervalSec": 0,
-   "diffThreshold": 5,
-   "captureOnCommand": false
+   "quality": 85
   },
   "terminal": {
    "maxCastBytes": 52428800
@@ -951,10 +936,7 @@
    "scopeFile": null
   },
   "screenshot": {
-   "quality": 85,
-   "intervalSec": 0,
-   "diffThreshold": 5,
-   "captureOnCommand": false
+   "quality": 85
   },
   "terminal": {
    "maxCastBytes": 52428800
@@ -1120,10 +1102,7 @@
    "scopeFile": null
   },
   "screenshot": {
-   "quality": 85,
-   "intervalSec": 0,
-   "diffThreshold": 5,
-   "captureOnCommand": false
+   "quality": 85
   },
   "terminal": {
    "maxCastBytes": 52428800
@@ -1294,10 +1273,7 @@
    "scopeFile": null
   },
   "screenshot": {
-   "quality": 85,
-   "intervalSec": 0,
-   "diffThreshold": 5,
-   "captureOnCommand": false
+   "quality": 85
   },
   "terminal": {
    "maxCastBytes": 52428800
@@ -1473,10 +1449,7 @@
    "scopeFile": null
   },
   "screenshot": {
-   "quality": 85,
-   "intervalSec": 0,
-   "diffThreshold": 5,
-   "captureOnCommand": false
+   "quality": 85
   },
   "terminal": {
    "maxCastBytes": 52428800
@@ -1643,10 +1616,7 @@
    "scopeFile": null
   },
   "screenshot": {
-   "quality": 85,
-   "intervalSec": 0,
-   "diffThreshold": 5,
-   "captureOnCommand": false
+   "quality": 85
   },
   "terminal": {
    "maxCastBytes": 52428800

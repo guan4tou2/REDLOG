@@ -2,7 +2,6 @@ import { app, dialog, shell } from 'electron'
 import { anchorBeforeRestart } from '../../core/update-anchor'
 import { getProjectDir } from '../../core/db/index'
 import { writeUpdateMarker, readUpdateMarker, judgeUpdateOutcome, type UpdateOutcome } from './update-marker'
-import { isAutoCheckEnabled, setAutoCheckEnabled } from './update-prefs'
 import { allowQuit, quitDialog, defaultQuitText, type QuitImpact } from '../quit-guard'
 import { UpdateFlow } from './update-flow'
 import { UpdateStatusStore, hasInstallerFor, type UpdateStatus } from './update-status'
@@ -40,17 +39,11 @@ function store(): UpdateStatusStore {
     method: process.platform === 'win32' ? 'in-app' : 'download-page',
     packaged: app.isPackaged,
     currentVersion: app.getVersion(),
-    releaseUrl: RELEASES_PAGE,
-    autoCheck: isAutoCheckEnabled(app.getPath('userData'))
+    releaseUrl: RELEASES_PAGE
   })
 }
 export function getUpdateStatus(): UpdateStatus { return store().get() }
 
-export function autoCheckEnabled(): boolean { return store().get().autoCheck }
-export function setAutoCheck(on: boolean): void {
-  setAutoCheckEnabled(app.getPath('userData'), on)
-  store().patch({ autoCheck: on })
-}
 
 /** A manual update that was started and not finished stays visible until the
  *  running version says otherwise. Called once at launch. */

@@ -97,7 +97,7 @@ import { managedHttpProxy, readCaSpki, type ManagedProxyStatus } from './service
 import { managedProxyUrl, isManagedProxy, proxyAlreadyOn, type CaptureEndpoint } from '../core/managed-proxy-url'
 import { whoHoldsPort, reclaimOrphanProxy, recordProxyOwner, orphanDepsFor, proxyOwnerFile } from './services/port-holder'
 import { detectLink, linkForDisplay, type NetworkLink } from './services/network-info'
-import { checkForUpdates, setUpdaterAirgap, setUpdateImpactProvider, getUpdateStatus, onUpdateStatus, cancelUpdateDownload, installReadyUpdate, setUpdateOutcome, takeUpdateOutcome, autoCheckEnabled, setAutoCheck, restoreUnfinishedUpdate } from './services/updater'
+import { checkForUpdates, setUpdaterAirgap, setUpdateImpactProvider, getUpdateStatus, onUpdateStatus, cancelUpdateDownload, installReadyUpdate, setUpdateOutcome, takeUpdateOutcome, restoreUnfinishedUpdate } from './services/updater'
 import { readUpdateMarker, clearUpdateMarker, judgeUpdateOutcome } from './services/update-marker'
 import { recordUpdateOutcome } from '../core/update-anchor'
 import { contentSecurityPolicy } from '../core/csp'
@@ -1650,17 +1650,10 @@ app.whenReady().then(() => {
     }
     // keep the overlay + dashboard pivot views live — on new pivots, and on the
     // command_end that closes a foreground tunnel so it drops from the HUD at once.
-    const d = (event.data ?? {}) as Record<string, unknown>
     if (pivotsMayChange(event, lastPivots, projectRuntime.project()?.id ?? null)) {
       const p = getActivePivots()
       send(overlayWindow, 'pivots:changed', p)
       send(mainWindow, 'pivots:changed', p)
-    }
-    // 2b/OSCP: opt-in screenshot linked to a finished command (_causes → this
-    // event). No-op unless config.screenshot.captureOnCommand is on; the agent
-    // owns the flag and the perceptual-dedup skip.
-    if (event.agentType === 'shell' && d.subtype === 'command_end') {
-      screenshotAgent.onCommandEnd(event.id).catch(() => { /* best-effort */ })
     }
   })
   ipcMain.handle('pivots:getActive', () => getActivePivots())
@@ -2035,7 +2028,6 @@ app.whenReady().then(() => {
   ipcMain.handle('app:cancelUpdate', () => cancelUpdateDownload())
   ipcMain.handle('app:installUpdate', () => installReadyUpdate())
   ipcMain.handle('app:takeUpdateOutcome', () => takeUpdateOutcome())
-  ipcMain.handle('app:setAutoUpdateCheck', (_e, on: unknown) => { setAutoCheck(on === true); return getUpdateStatus() })
   onUpdateStatus((status) => send(mainWindow, 'app:updateStatusChanged', status))
   // --- Debug log (machine-wide switch; see core/debug-log.ts) ---
   ipcMain.handle('debug:status', () => ({ enabled: isDebugLogEnabled(), path: debugLogPath() }))
@@ -2070,10 +2062,10 @@ app.whenReady().then(() => {
       return { ok: false, error: (e as Error).message }
     }
   })
-  // Silent check shortly after launch (packaged builds only).
-  // The operator may have switched it off; air-gap overrides it either way.
+  // Ruling 7 (2026-11-12): RedLog does not look for an update by itself; the
+  // check runs when the operator presses it in About. A `update-check-off`
+  // flag file an older version left in userData is not read and not removed.
   restoreUnfinishedUpdate()
-  setTimeout(() => { if (autoCheckEnabled()) checkForUpdates().catch(() => {}) }, 5000)
 
   app.on('activate', () => {
     mainWindow?.show()

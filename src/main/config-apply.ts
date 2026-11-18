@@ -124,10 +124,7 @@ function runStep(step: ConfigApplyStep, ctx: StepContext, deps: ConfigApplyDeps)
     case 'screenshot':
       deps.screenshotConfigure({
         ...(open ? { identity: ctx.identity } : {}),
-        quality: cfg.screenshot.quality,
-        intervalSec: cfg.screenshot.intervalSec ?? 0,
-        diffThreshold: cfg.screenshot.diffThreshold ?? 5,
-        captureOnCommand: cfg.screenshot.captureOnCommand ?? false
+        quality: cfg.screenshot.quality
       })
       return
     case 'alertRuntime':

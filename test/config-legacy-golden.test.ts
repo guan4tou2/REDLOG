@@ -118,7 +118,8 @@ describe('config.yaml shapes in the field, as loadConfig reads them today (Spec 
     fs.mkdirSync(DIR, { recursive: true })
     for (const [name, patch] of Object.entries(WRITTEN)) fs.writeFileSync(path.join(DIR, `${name}.yaml`), writtenText(patch))
     for (const [name, text] of Object.entries(HAND)) fs.writeFileSync(path.join(DIR, `${name}.yaml`), text)
-    fs.writeFileSync(FROZEN, JSON.stringify(JSON.parse(JSON.stringify(DEFAULT_CONFIG)), null, 2) + '\n')
+    // The frozen v1 defaults are written once, not regenerated: see the last test.
+    if (!fs.existsSync(FROZEN)) fs.writeFileSync(FROZEN, JSON.stringify(JSON.parse(JSON.stringify(DEFAULT_CONFIG)), null, 2) + '\n')
     const golden: Record<string, RedLogConfig> = {}
     for (const name of NAMES) golden[name] = load(name)
     fs.writeFileSync(GOLDEN, JSON.stringify(golden, null, 1) + '\n')
@@ -159,6 +160,14 @@ describe('config.yaml shapes in the field, as loadConfig reads them today (Spec 
 
   it('legacy-v1-defaults.json is today\'s DEFAULT_CONFIG; change DEFAULT_CONFIG and this fails, which is the cue to keep the old copy alive in code', () => {
     const frozen = JSON.parse(fs.readFileSync(FROZEN, 'utf8'))
+    // Ruling 7 (2026-11-12, carried out 2026-11-18) removed timed and
+    // on-command screenshots. Their three defaults left DEFAULT_CONFIG after
+    // the freeze; the frozen copy keeps them as v1 had them, and nothing reads
+    // them any more (test/timed-capture-removed-main.test.ts). Any other
+    // difference is still the cue above.
+    const REMOVED_SINCE_FREEZE = ['intervalSec', 'diffThreshold', 'captureOnCommand']
+    expect(Object.keys(frozen.screenshot).filter((k) => REMOVED_SINCE_FREEZE.includes(k)).sort()).toEqual([...REMOVED_SINCE_FREEZE].sort())
+    for (const k of REMOVED_SINCE_FREEZE) delete frozen.screenshot[k]
     expect(JSON.parse(JSON.stringify(DEFAULT_CONFIG))).toEqual(frozen)
   })
 })

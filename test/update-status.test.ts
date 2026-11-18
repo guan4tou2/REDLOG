@@ -246,10 +246,9 @@ describe('the quit that an update ends with', () => {
     expect(branch).not.toContain('clearUpdateMarker')
   })
 
-  it('looks by itself at launch only when the operator has not switched it off', () => {
+  it('checks only when the operator presses the button (ruling 7)', () => {
     const index = fs.readFileSync(path.join(__dirname, '../src/main/index.ts'), 'utf8')
-    expect(index).toMatch(/if \(autoCheckEnabled\(\)\) checkForUpdates\(\)/)
-    // The switch is not consulted for a press of the button.
+    expect(index).not.toMatch(/autoCheckEnabled/)
     expect(index).toMatch(/ipcMain\.handle\('app:checkForUpdates', \(\) => checkForUpdates\(\{ manual: true \}\)\)/)
   })
 })

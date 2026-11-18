@@ -13,7 +13,7 @@ const t = (key: string, vars?: Record<string, string | number>): string =>
 const base: UpdateStatus = {
   stage: 'idle', method: 'download-page', packaged: true, currentVersion: '1.0.0', targetVersion: null,
   progress: null, result: null, checkedAt: null, releaseUrl: 'https://example.test/releases',
-  autoCheck: true, unfinished: false
+  unfinished: false
 }
 
 function draw(initial: Partial<UpdateStatus>, platform = 'darwin') {
