@@ -28,7 +28,7 @@ export function PackMember({
   /** The capture health id a link lands on this row by (#590). */
   sourceId?: string
   title: string
-  hint: string
+  hint?: string
   /** Shown in amber under the hint: what turning this one on costs. */
   warn?: string
   /** The health row for this member, when the snapshot has one. */
@@ -54,7 +54,7 @@ export function PackMember({
         inputTestId={`pack-member-${member}`}
         label={t('settings.packMemberRecord')}
       />
-      <p className="text-xs text-redlog-text-faint">{hint}</p>
+      {hint && <p className="text-xs text-redlog-text-faint">{hint}</p>}
       {/* When it last delivered. The switch says what was asked for; this says
           what arrived — the two are different questions and only one of them
           was answerable from this row before. */}

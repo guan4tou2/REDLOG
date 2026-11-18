@@ -161,7 +161,6 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.fileWatcherIgnorePlaceholder',
     'settings.fileWatcherIgnoreHint',
     'settings.processMonitorGroup',
-    'settings.processMonitorEnableHint',
     'settings.processMonitorIgnore',
     'settings.processMonitorIgnorePlaceholder',
     'settings.processMonitorIgnoreHint',

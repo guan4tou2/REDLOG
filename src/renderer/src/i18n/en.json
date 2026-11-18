@@ -455,7 +455,6 @@
   "settings.fileWatcherIgnorePlaceholder": "**/vendor/**",
   "settings.fileWatcherIgnoreHint": "Gitignore-style globs on top of the built-in defaults. One per line.",
   "settings.processMonitorGroup": "Process monitor (spawn tree)",
-  "settings.processMonitorEnableHint": "Emits process_spawn and process_exit for new processes. Windows is unsupported; RedLog's own processes are ignored.",
   "settings.processMonitorIgnore": "Extra commands to ignore",
   "settings.processMonitorIgnorePlaceholder": "cargo",
   "settings.processMonitorIgnoreHint": "Match by leading token (first word or basename). Case-sensitive.",

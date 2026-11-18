@@ -455,7 +455,6 @@
   "settings.fileWatcherIgnorePlaceholder": "**/vendor/**",
   "settings.fileWatcherIgnoreHint": "在內建預設之上加的 gitignore 樣式，一行一個。",
   "settings.processMonitorGroup": "程序監控（spawn tree）",
-  "settings.processMonitorEnableHint": "新程序出現或結束時發出 process_spawn / process_exit。Windows 尚未支援；RedLog 自己的程序會自動忽略。",
   "settings.processMonitorIgnore": "額外忽略的指令",
   "settings.processMonitorIgnorePlaceholder": "cargo",
   "settings.processMonitorIgnoreHint": "以首個 token（第一個字或 basename）比對。大小寫敏感。",
