@@ -40,4 +40,10 @@ describe.each(Object.keys(LOCALES) as (keyof typeof LOCALES)[])('copy facts (%s)
     expect(d['settings.scopeFileHint']).toBeUndefined()
     expect(d['settings.scopeFileLabel']).toMatch(loc === 'en' ? /[Aa]bsolute path/ : /絕對路徑/)
   })
+
+  it('activity reader heading does not claim verification, and the disclaimer row keys are gone', () => {
+    expect(d['activity.reader.integrity']).toBe(loc === 'en' ? 'Event hash and chain' : '事件雜湊與鏈')
+    expect(d['activity.reader.integrityNote']).toBeUndefined()
+    expect(d['activity.reader.recordState']).toBeUndefined()
+  })
 })
