@@ -1,5 +1,5 @@
 import { FIELD_FOCUS_RING } from '../Button'
-import { useEffect, useId, useState } from 'react'
+import { useId, useState } from 'react'
 import { SectionLabel } from '../SectionLabel'
 import { useI18n } from '../../i18n'
 import { IconButton } from '../IconButton'
@@ -165,7 +165,17 @@ export function NumberField({ label, value, min, max, onCommit, invalid, pending
 }): JSX.Element {
   const [draft, setDraft] = useState(String(value))
   const [error, setError] = useState<string | null>(null)
-  useEffect(() => { setDraft(String(value)); setError(null) }, [value, resetKey])
+  // The committed value changing under the field (a reload, another window)
+  // replaces the draft -- decided while rendering, not in an effect. An effect
+  // runs after the paint, so a keystroke that arrived first was put back to the
+  // saved value by it: React flushes a pending effect at the start of the next
+  // render, after the keystroke's own update was already queued.
+  const [shown, setShown] = useState({ value, resetKey })
+  if (shown.value !== value || shown.resetKey !== resetKey) {
+    setShown({ value, resetKey })
+    setDraft(String(value))
+    setError(null)
+  }
   const commit = (): void => {
     const n = Number(draft)
     if (!/^\d+$/.test(draft) || !Number.isInteger(n) || n < min || (max !== undefined && n > max)) {

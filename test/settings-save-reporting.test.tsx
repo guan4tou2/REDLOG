@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { useState } from 'react'
+import { NumberField } from '../src/renderer/src/components/settings/SettingsShared'
 import Settings, { type SettingsPage } from '../src/renderer/src/components/Settings'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import en from '../src/renderer/src/i18n/en.json'
@@ -100,5 +102,45 @@ describe('a number field commits when it is left, not per keystroke', () => {
     fireEvent.change(input, { target: { value: '70' } })
     fireEvent.blur(input)
     await waitFor(() => expect(ops).toHaveLength(1), { timeout: 3000 })
+  })
+})
+
+// The CI leg that found this was slower than a laptop. React runs a mounted
+// field's effects in a later task when the render that mounted it used up the
+// scheduler's slice, and a keystroke that arrives in between is processed
+// before them. A sibling that renders slowly makes that order happen every time.
+describe('a number field keeps the first keystroke after it appears', () => {
+  let show: (v: boolean) => void = () => {}
+  function Slow(): null {
+    const end = performance.now() + 25
+    while (performance.now() < end) { /* longer than one scheduler slice */ }
+    return null
+  }
+  function Host(): JSX.Element {
+    const [on, setOn] = useState(false)
+    show = setOn
+    return on ? <><Slow /><NumberField label="Interval" value={61} min={1} onCommit={() => {}} invalid="bad" /></> : <span />
+  }
+
+  it('shows what was typed, not the saved value put back', async () => {
+    render(<Host />)
+    const appeared = new Promise<HTMLInputElement>((resolve) => {
+      const seen = new MutationObserver(() => {
+        const el = screen.queryByLabelText('Interval')
+        if (el) { seen.disconnect(); resolve(el as HTMLInputElement) }
+      })
+      seen.observe(document.body, { childList: true, subtree: true })
+    })
+    // Outside act(), as a config read resolving is: act() would run the
+    // effects before handing back.
+    const env = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    env.IS_REACT_ACT_ENVIRONMENT = false
+    show(true)
+    const input = await appeared
+    env.IS_REACT_ACT_ENVIRONMENT = true
+    fireEvent.change(input, { target: { value: '' } })
+    expect(input.value).toBe('')
+    fireEvent.change(input, { target: { value: '4' } })
+    expect(input.value).toBe('4')
   })
 })
