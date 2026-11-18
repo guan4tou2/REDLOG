@@ -75,6 +75,9 @@ function harness(): { deps: ConfigApplyDeps; log: string[]; args: Array<[string,
     screenshotConfigure: rec('screenshotAgent.configure'),
     alertResetOnProjectSwitch: rec('alertRuntime.resetOnProjectSwitch'),
     alertConfigure: (c, _i, t) => { log.push('alertRuntime.configure'); args.push(['alertRuntime.configure', t]) },
+    setUpdaterAirgap: (on) => { log.push(`setUpdaterAirgap:${on}`) },
+    startOutboundLoops: rec('startOutboundLoops'),
+    stopOutboundLoops: rec('stopOutboundLoops'),
     lootConfigure: rec('lootDetector.configure'),
     configureCaptureHealth: rec('configureCaptureHealth'),
     configureRedaction: rec('configureRedaction'),
@@ -137,7 +140,7 @@ describe('config apply plan: the dependency map', () => {
     ['scope file', (c) => { c.scope.scopeFile = '/nope.txt' }, ['alertRuntime', 'scopeRecompute']],
     ['warn on violation', (c) => { c.scope.warnOnViolation = false }, ['alertRuntime', 'scopeRecompute']],
     ['the IP blacklist', (c) => { c.network.blacklist = ['1.2.3.4'] }, ['alertRuntime']],
-    ['air-gap', (c) => { c.network.offline = true }, ['alertRuntime']],
+    ['air-gap', (c) => { c.network.offline = true }, ['alertRuntime', 'airgap']],
     ['the operator name', (c) => { c.operator.name = 'Bob' }, ['alertRuntime']],
     ['show Wi-Fi name', (c) => { c.network.showWifiName = true }, ['wifiName']],
     ['VPN adapters', (c) => { c.network.vpnAdapters = [] }, ['vpnAdapters']],
@@ -266,6 +269,26 @@ describe('config apply: one path for every entry point', () => {
     const prev = cfg((c) => { c.connectionMonitor = { pollMs: 4000 } })
     save(prev, cfg((c) => { c.connectionMonitor = { pollMs: 4000 }; c.httpCapture.port = 7002 }))
     expect(h.log.filter((c) => CAPTURE_CALLS.has(c))).toEqual(['stopManagedHttpCapture', 'startManagedHttpCapture'])
+  })
+
+  // test/airgap-live.test.ts shows the same against the real loops and updater.
+  it('air-gap switched on stops the loops and the update check; off brings back what an open without it starts', () => {
+    const AIRGAP = new Set(['setUpdaterAirgap:true', 'setUpdaterAirgap:false', 'startOutboundLoops', 'stopOutboundLoops'])
+    const off = cfg()
+    const on = cfg((c) => { c.network.offline = true })
+    openWith(off)
+    h.log.length = 0
+    save(off, on)
+    expect(h.log.filter((c) => AIRGAP.has(c))).toEqual(['stopOutboundLoops', 'setUpdaterAirgap:true'])
+
+    // A save that plans every step but leaves air-gap where it was restarts nothing.
+    h.log.length = 0
+    save(on, cfg((c) => { c.network.offline = true; (c as unknown as Record<string, unknown>).brandNew = 1 }))
+    expect(h.log.filter((c) => AIRGAP.has(c))).toEqual([])
+
+    h.log.length = 0
+    save(on, off)
+    expect(h.log.filter((c) => AIRGAP.has(c))).toEqual(['setUpdaterAirgap:false', 'startOutboundLoops'])
   })
 
   it('turning the host monitors pack on reconfigures its three members and nothing else', () => {

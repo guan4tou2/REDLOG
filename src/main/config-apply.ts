@@ -41,6 +41,11 @@ export interface ConfigApplyDeps {
   screenshotConfigure(opts: Opts): void
   alertResetOnProjectSwitch(): void
   alertConfigure(config: RedLogConfig, identity: ProjectContext, scopeTargets: string[]): void
+  /** Air-gap's own senders. Open sets them in main/index.ts; a save, here. */
+  setUpdaterAirgap(on: boolean): void
+  /** The anchoring and NTP loops, as project open starts and close stops them. */
+  startOutboundLoops(): void
+  stopOutboundLoops(): void
   lootConfigure(opts: Opts): void
   configureCaptureHealth(config: Record<string, unknown>): void
   configureRedaction(redaction: RedLogConfig['redaction']): void
@@ -103,6 +108,8 @@ interface StepContext {
   identity: ProjectContext
   next: ConfigApplyInput
   diskPrev: RedLogConfig | null
+  /** What was in force for this project before this run; null after open. */
+  applied: RedLogConfig | null
   /** Shared by the steps of one run: the audit row's id for the recompute,
    *  and the plugin list, read once like applyCapturePacks read it. */
   configChangedId: string | null
@@ -133,6 +140,16 @@ function runStep(step: ConfigApplyStep, ctx: StepContext, deps: ConfigApplyDeps)
       if (open) deps.alertResetOnProjectSwitch()
       deps.alertConfigure(cfg, ctx.identity, [...ctx.next.scopeInForce])
       return
+    case 'airgap': {
+      // As a fresh open with this setting: on, nothing of RedLog's own goes
+      // out from now; off, the loops run again and the update check is
+      // allowed when pressed. Restarting the loops when air-gap did not move
+      // (a save that plans every step) would only send early.
+      const on = cfg.network?.offline === true
+      if (ctx.applied && (ctx.applied.network?.offline === true) === on) return
+      if (on) { deps.stopOutboundLoops(); deps.setUpdaterAirgap(true) } else { deps.setUpdaterAirgap(false); deps.startOutboundLoops() }
+      return
+    }
     case 'lootDetector':
       deps.lootConfigure({ ...(open ? { identity: ctx.identity } : {}), disabledRules: cfg.loot?.disabledRules ?? [] })
       return
@@ -292,7 +309,7 @@ export function createConfigApplier(deps: ConfigApplyDeps): ConfigApplier {
     const plan = open ? planConfigApply(null, next, 'open') : planFor(reasons, prev, next)
     const ctx: StepContext = {
       reason: open ? 'open' : (reasons.has('save') ? 'save' : [...reasons][0]),
-      identity, next, diskPrev: diskPrev ?? prev?.config ?? null, configChangedId: null, plugins: null
+      identity, next, diskPrev: diskPrev ?? prev?.config ?? null, applied: prev?.config ?? null, configChangedId: null, plugins: null
     }
     running = true
     try {
