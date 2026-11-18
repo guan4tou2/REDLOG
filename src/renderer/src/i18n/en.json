@@ -2087,6 +2087,8 @@
   "activity.commandResult": "Command result",
   "activity.result.failed": "failed {{code}}",
   "activity.result.ended": "ended · no exit code recorded",
+  "activity.result.unfinished": "not ended",
+  "activity.result.endedShort": "no exit code",
   "activity.matchLabel": "Match",
   "activity.contextLabel": "Context",
   "activity.clearFilter": "Clear conditions",

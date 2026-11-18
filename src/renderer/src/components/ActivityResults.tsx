@@ -15,7 +15,7 @@ import { narrowsEvents } from '../lib/filterNarrowing'
 
 /** time | kind | content | target | result | source (01-activity prototype).
  *  The list is the container; narrow, the target column goes first. */
-const ROW_GRID = 'grid grid-cols-[72px_16px_minmax(0,1fr)_96px_72px] @min-[720px]:grid-cols-[72px_16px_minmax(0,1fr)_132px_96px_72px] gap-x-3 items-center'
+const ROW_GRID = 'grid grid-cols-[72px_16px_minmax(0,1fr)_104px_72px] @min-[720px]:grid-cols-[72px_16px_minmax(0,1fr)_132px_104px_72px] gap-x-3 items-center'
 /** The kind of activity as one leading mark. Chosen by the projection's kind,
  *  not by event type: an HTTP exchange and an AI tool call are kinds already. */
 const KIND_GLYPH: Record<ActivityKind, string> = { command: '$', http: '→', tool: '◇', message: '◇', event: '·' }
@@ -180,7 +180,9 @@ function ActivityList({ request, onOpen, onClearQuery, active, statsSlot, locate
                 <span data-testid="activity-target" title={target ?? undefined} className="hidden @min-[720px]:block min-w-0 truncate font-mono text-xs text-redlog-text-dim">{target ?? ''}</span>
                 {/* A failure carries a word as well as its colour; success is the
                     code alone; a state not known shows nothing (lib/commandStatus). */}
-                <span data-testid="activity-result" className={`text-right font-mono text-xs leading-tight ${r?.tone === 'fail' ? 'font-medium text-red-300' : r?.tone === 'neutral' ? 'text-amber-300' : 'text-redlog-text-dim'}`}>{r?.text ?? ''}</span>
+                <span data-testid="activity-result" title={r?.title} className={`overflow-hidden text-ellipsis whitespace-nowrap text-right font-mono text-xs ${r?.tone === 'fail' ? 'font-medium text-red-300' : r?.tone === 'neutral' ? 'text-amber-300' : 'text-redlog-text-dim'}`}>
+                  {r && r.title && r.title !== r.text ? <><span aria-hidden="true">{r.text}</span><span className="sr-only">{r.title}</span></> : r?.text ?? ''}
+                </span>
                 <span data-testid="activity-row-source" title={source} className="min-w-0 truncate text-right text-xs text-redlog-text-faint">{source}</span>
               </>
             })()}

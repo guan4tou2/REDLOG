@@ -2087,6 +2087,8 @@
   "activity.commandResult": "執行結果",
   "activity.result.failed": "失敗 {{code}}",
   "activity.result.ended": "已結束 · 未記錄結束碼",
+  "activity.result.unfinished": "未結束",
+  "activity.result.endedShort": "無結束碼",
   "activity.matchLabel": "命中",
   "activity.contextLabel": "背景",
   "activity.clearFilter": "清除條件",

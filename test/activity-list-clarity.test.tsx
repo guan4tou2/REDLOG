@@ -164,3 +164,16 @@ it('offers no export scope in the expanded row, and keeps its four things', asyn
   expect(screen.getByTestId('activity-around-toggle')).toBeTruthy()
   expect(screen.getByTestId('activity-summary-meta').textContent).toBe('activity.summary.sources {"count":3}')
 })
+
+// A row keeps one height whatever its result says: the result cell cannot
+// wrap; a short word shows and the full sentence is its title and name.
+it('keeps the result on one line, with the full state as its title and accessible name', async () => {
+  mount([summary('a', { result: { exitCode: null } })])
+  await screen.findByTestId('activity-row')
+  const cell = screen.getByTestId('activity-result')
+  expect(cell.className).toContain('whitespace-nowrap')
+  expect(cell.className).not.toContain('leading-tight')
+  expect(cell.getAttribute('title')).toBe('activity.result.ended')
+  expect(cell.querySelector('[aria-hidden="true"]')?.textContent).toBe('activity.result.endedShort')
+  expect(cell.querySelector('.sr-only')?.textContent).toBe('activity.result.ended')
+})
