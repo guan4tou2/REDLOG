@@ -24,7 +24,7 @@ import { useI18n } from '../i18n'
 // `fix` is the part the artifact that prompted this got right and the app did
 // not: when one act answers the condition, the act belongs beside it. An
 // anchor that failed is answered by submitting again — one call, from here,
-// without walking to Settings ▸ Integrity to press a button that was already
+// without walking to the Evidence page to press a button that was already
 // going to be pressed.
 
 const FIX_LABEL: Record<IssueFix, string> = {

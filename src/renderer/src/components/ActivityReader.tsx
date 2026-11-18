@@ -86,10 +86,6 @@ function EventFacts({ event, t }: { event: RedLogEvent; t: T }): JSX.Element {
           <Row label={t('activity.reader.field.eventId')} value={event.id} />
           <Row label={t('activity.reader.field.hash')} value={event.hash ?? t('activity.reader.notChained')} />
           {event.hash && <Row label={t('activity.reader.field.prevHash')} value={event.prevHash ?? t('activity.reader.firstInChain')} />}
-          <div className="flex flex-wrap items-center justify-between gap-x-3 py-0.5">
-            <dt className="text-redlog-text-faint">{t('activity.reader.recordState')}</dt>
-            <dd className="m-0 text-right text-redlog-text-dim">{t('activity.reader.integrityNote')}</dd>
-          </div>
         </dl>
       </details>
     </>

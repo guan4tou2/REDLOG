@@ -110,7 +110,7 @@ it('locates the event being read in the Timeline, and keeps the Reader where it 
   expect(screen.getByTestId('activity-reader')).toBeTruthy()
 })
 
-it('shows the event as stored: its identifiers, and its hashes without claiming they were checked', async () => {
+it('shows the event as stored: its identifiers, and its hashes, under a heading that does not say they were verified', async () => {
   mount([summary('a')])
   await open()
   const info = await screen.findByTestId('reader-event-info')
@@ -119,7 +119,7 @@ it('shows the event as stored: its identifiers, and its hashes without claiming 
   expect(integrity.open).toBe(false)
   expect(integrity.textContent).toContain('hash-a')
   expect(integrity.textContent).toContain('prev-a')
-  expect(integrity.textContent).toContain('activity.reader.integrityNote')
+  expect(integrity.textContent).not.toContain('activity.reader.integrityNote')
   // A row outside the chain has no hash to show; it says so.
   cleanup()
   mount([summary('b', ev('b', { hash: null, prevHash: null }))])

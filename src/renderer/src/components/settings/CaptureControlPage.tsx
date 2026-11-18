@@ -112,7 +112,6 @@ export default function CaptureControlPage({
 
         <PackMember
           member="processMonitor" sourceId={MEMBER_HEALTH_ID.processMonitor} title={t('settings.processMonitorGroup')}
-          hint={t('settings.processMonitorEnableHint')}
           health={healthOf(MEMBER_HEALTH_ID.processMonitor)} packOn={config.packs?.hostMonitors === true}
           config={config} setConfig={setConfig} t={t}
         >

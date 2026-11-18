@@ -106,16 +106,13 @@ export default function Sidebar({ active, onNavigate, projectId }: SidebarProps)
   // prototype, colour and type stay the app's). Room for the longest label, a
   // count badge and the chord in its box ("⌘1", "Ctrl+1").
   return (
-    <nav className={`${collapsed ? 'w-[48px]' : 'w-[240px]'} bg-redlog-bg border-r border-redlog-border flex flex-col py-3 px-2 shrink-0 select-none overflow-hidden transition-[width] duration-150`}>
+    <nav aria-label={t('sidebar.workspaces')} className={`${collapsed ? 'w-[48px]' : 'w-[240px]'} bg-redlog-bg border-r border-redlog-border flex flex-col py-3 px-2 shrink-0 select-none overflow-hidden transition-[width] duration-150`}>
       {/* The rows scroll; the footer does not. With `overflow-hidden` on the
           nav and the footer pushed by `mt-auto`, turning every page on clipped
           Settings and the collapse toggle straight off the bottom — and which
           of the two carried `mt-auto` changed with the row count, so the
           footer moved as pages appeared. Three fixed bands instead: rows that
           scroll, then the hint, then the footer. */}
-      {!collapsed && (
-        <p className="px-2 pb-2 mb-2 border-b border-redlog-border-subtle text-xs font-semibold tracking-[0.18em] text-redlog-muted">{t('sidebar.workspaces')}</p>
-      )}
       <div className="flex-1 min-h-0 overflow-y-auto rl-thin-scroll space-y-0.5">
         {items.map((item) => {
           const isActive = primaryViewFor(active) === item.id

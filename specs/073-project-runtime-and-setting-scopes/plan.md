@@ -142,7 +142,7 @@ network: { blacklist: [], checkInterval: 60, providers: [], confirmations: 3, ip
 personalTraffic: []
 screenshot: { quality: 85 }   # diffThreshold 已依裁定 7 刪除（2026-11-18）
 terminal: { maxCastBytes: 52428800 }
-clipboard: { pollMs: 1500 }
+clipboard: { pollMs: 1500 }   # 剪貼簿監看已移除，此鍵不存在（2026-11-18 註記）
 browser: { binary: ..., proxy: ..., cdpPort: 9222, isolateProfile: true, ignoreCertErrors: false, extraArgs: [] }
 httpCapture: { port: 6661, listenHost: 127.0.0.1, routeTerminals: false }
 redaction: { allowlist: [], denylist: [], entropyThreshold: 4.5, minLength: 20 }
@@ -500,8 +500,7 @@ export function bindingState(e: TerminalEnrollment, openEngagementId: string | n
 | `screenshot.quality` | 機器 | ✔ | |
 | ~~`screenshot.diffThreshold`、`intervalSec`、`captureOnCommand`~~ | — | | 已依裁定 7 刪除（2026-11-18）；舊檔的值保留不讀 |
 | `terminal.maxCastBytes` | 機器 | ✔ | 本機磁碟預算 |
-| `clipboard.pollMs` | 機器 | ✔ | |
-| `clipboard.storePreview` | 專案 | | 隱私選擇屬於任務 |
+| ~~`clipboard.pollMs`、`clipboard.storePreview`~~ | — | | 剪貼簿監看已移除，鍵不存在（2026-11-18 註記） |
 | `browser.binary`、`proxy`、`cdpPort`、`isolateProfile`、`ignoreCertErrors`、`extraArgs` | 機器 | ✔ | |
 | `browser.startUrl` | 專案 | | 任務的起始頁 |
 | `httpCapture.port`、`listenHost` | 機器 | ✔ | 有即時效果（重啟 proxy，既有 `managedProxy` 步驟） |

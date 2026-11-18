@@ -24,7 +24,7 @@ const SAME_IN_BOTH = new Set([
   'settings.processMonitorIgnorePlaceholder', 'settings.cdp', 'toast.repeat', 'timeline.detail.stdout',
   'timeline.detail.stderr', 'toolCard.env.shell', 'toolCard.env.shellUnknown', 'toolCard.mode.pty',
   'capture.agentClaudeCode', 'capture.agentCodex', 'transcript.kind.shell', 'transcript.kind.http',
-  'sidebar.httpHistory', 'sidebar.http_history', 'timeline.detail.setCookies', 'marker.readonly.hash',
+  'sidebar.httpHistory', 'timeline.detail.setCookies', 'marker.readonly.hash',
   'screenshots.trigger.api', 'activity.reader.field.pid', 'loot.type.jwt',
   // Awaiting a wording decision: the capture-mode names are the values the
   // zh-TW capture text itself uses (`capture_mode native`, "relay"); the

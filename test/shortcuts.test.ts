@@ -15,7 +15,7 @@ import {
   formatAccelerator,
   timelineShortcuts
 } from '../src/renderer/src/lib/shortcuts'
-import { DEFAULT_ORDER, NUMBERED_SLOTS, shortcutNumberFor } from '../src/renderer/src/lib/sidebarOrder'
+import { DEFAULT_ORDER, NUMBERED_SLOTS, primaryLabelKey, shortcutNumberFor } from '../src/renderer/src/lib/sidebarOrder'
 import en from '../src/renderer/src/i18n/en.json'
 import zhTW from '../src/renderer/src/i18n/zh-TW.json'
 
@@ -215,7 +215,7 @@ describe('every nav label resolves, in both languages', () => {
 
   it('has one for every view in the order, numbered or not — ⌘K lists them all', () => {
     for (const view of DEFAULT_ORDER) {
-      const key = `sidebar.${view === 'screenshots' ? 'screens' : view}`
+      const key = primaryLabelKey(view)
       expect(en, `missing in en: ${key}`).toHaveProperty(key)
       expect(zhTW, `missing in zh-TW: ${key}`).toHaveProperty(key)
     }
@@ -225,7 +225,7 @@ describe('every nav label resolves, in both languages', () => {
     // `sidebar.search` used to read "Search (⌘/)" — a chord baked into a label
     // that every surface then printed its own hint beside.
     for (const view of DEFAULT_ORDER) {
-      const key = `sidebar.${view === 'screenshots' ? 'screens' : view}`
+      const key = primaryLabelKey(view)
       expect((en as Record<string, string>)[key]).not.toMatch(/⌘|Ctrl\+/)
       expect((zhTW as Record<string, string>)[key]).not.toMatch(/⌘|Ctrl\+/)
     }

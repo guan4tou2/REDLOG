@@ -62,13 +62,13 @@ it('counts the events that arrived since the page was read, and a refresh clears
   expect(screen.queryByTestId('activity-new-events')).toBeNull()
 })
 
-it('says the hash section is a stored snapshot, not a verification', async () => {
+it('labels the hash section by what it shows, with no row disclaiming verification', async () => {
   mount()
   fireEvent.click(await screen.findByTestId('activity-row'))
   fireEvent.click(await screen.findByTestId('activity-read'))
   const integrity = await screen.findByTestId('reader-integrity')
   expect(integrity.textContent).toContain('activity.reader.integrity')
-  expect(integrity.textContent).toContain('activity.reader.integrityNote')
+  expect(integrity.textContent).not.toContain('activity.reader.integrityNote')
   expect(integrity.textContent).toContain('hash-a')
   expect(integrity.textContent).toContain('a')
 })

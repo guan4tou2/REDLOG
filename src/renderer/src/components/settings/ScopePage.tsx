@@ -134,9 +134,6 @@ export default function ScopePage({
           value={config.scope.scopeFile || ''}
           onChange={(v) => setConfig({ ...config, scope: { ...config.scope, scopeFile: v } })}
         />
-        <p className="text-xs text-redlog-text-faint">
-          {t('settings.scopeFileHint')}
-        </p>
       </FieldGroup>
     </>
   )

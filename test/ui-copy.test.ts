@@ -184,8 +184,7 @@ describe('UI copy: no redundant descriptions', () => {
         'update.readyHint',
         'update.method.downloadPageMac',
         'plugins.consentBody',
-        'bookmarks.emptyReason',
-        'settings.rotationHint'
+        'bookmarks.emptyReason'
       ])
       for (const [k, v] of Object.entries(dict)) {
         if (!DESCRIPTIVE.test(k) || WARNINGS.has(k)) continue
