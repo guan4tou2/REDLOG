@@ -194,17 +194,12 @@ test.describe.serial('view-reachability', () => {
     await expect(viewRoot()).toHaveAttribute('data-view', 'screenshots')
   })
 
-  test('the terminal names itself, explains its two capture tracks, and shows the active pane\'s state line', async () => {
+  test('the terminal opens on its tab strip, with no page header or status row, and the tab carries the pane\'s state', async () => {
     await page.locator('nav [data-view-btn="terminal"]').first().click()
-    await expect(page.getByTestId('terminal-header').getByRole('heading', { level: 1 })).toHaveText('Terminal')
-    await expect(page.getByTestId('terminal-session-meta')).toBeVisible()
-    await expect(page.getByTestId('terminal-meta-screen')).toBeVisible()
-    await page.getByTestId('terminal-about-open').click()
-    const about = page.getByTestId('terminal-about')
-    await expect(about).toContainText('Screen recording (.cast)')
-    await expect(about).toContainText('Command events (shell hook)')
-    await page.keyboard.press('Escape')
-    await expect(about).toHaveCount(0)
+    await expect(page.getByTestId('terminal-tabs')).toBeVisible()
+    await expect(page.getByTestId('terminal-header')).toHaveCount(0)
+    await expect(page.getByTestId('terminal-session-meta')).toHaveCount(0)
+    await expect(page.getByTestId('terminal-tab-state').first()).toBeVisible()
   })
 
   test('the dashboard names itself, keeps shortcuts folded, and shows relay nodes only as a read of its own', async () => {
@@ -656,7 +651,8 @@ test.describe('uiux-convergence (terminal font shortcuts)', () => {
     await terminal.focus()
     await page.keyboard.press(`${mod}+=`)
     await expect.poll(() => page.evaluate(() => Number(localStorage.getItem('redlog-terminal-fontsize')))).toBe(14)
-    await page.getByRole('button', { name: 'Search buffer', exact: true }).click()
+    // Find is a shortcut, not a button on the strip.
+    await page.keyboard.press(`${mod}+f`)
     await page.getByPlaceholder('Search terminal buffer… Enter = next, Shift+Enter = previous', { exact: true }).focus()
     await page.keyboard.press(`${mod}+-`)
     expect(await page.evaluate(() => Number(localStorage.getItem('redlog-terminal-fontsize')))).toBe(14)
