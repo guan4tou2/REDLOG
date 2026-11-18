@@ -70,7 +70,8 @@ function ResultDetail({ r, t }: { r: FullVerifyResult; t: Translate }): JSX.Elem
   const verdict = verifyVerdict(r)
   const anchored = r.anchor != null
   return <ul data-testid="evidence-verify-detail" className="space-y-0.5 font-mono text-xs text-redlog-text-dim">
-    {r.signedCount !== undefined && (
+    {/* A broken walk counted signatures only up to the break. */}
+    {r.ok && r.signedCount !== undefined && (
       <li className={r.authentication === 'failed' ? 'text-amber-400' : undefined}>
         {t('settings.integrityFullSignatures', { signed: n(r.signedCount), unchecked: n((r.unsignedCount ?? 0) + (r.noPubKeyCount ?? 0)) })}
       </li>
@@ -202,8 +203,10 @@ export function EvidenceVerify(): JSX.Element {
     rereadAnchors()
   }
 
-  const len = chainLen.state.phase === 'loaded' ? chainLen.state.value : null
-  const anchorList = anchors.state.phase === 'loaded' ? anchors.state.value : null
+  // A re-read keeps the last value on screen; a failed one shows nothing it
+  // cannot stand behind.
+  const len = chainLen.state.phase === 'failed' ? null : chainLen.state.value
+  const anchorList = anchors.state.phase === 'failed' ? null : anchors.state.value
   const older = anchorList ? anchorList.slice(1) : []
 
   return <section data-testid="evidence-verify" aria-label={t('evidence.verify')} className="space-y-2">

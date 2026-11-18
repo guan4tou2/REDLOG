@@ -129,13 +129,16 @@ describe('the verification block', () => {
   })
 
   it('raises the chain issue, pointed at the Evidence page, when the walk breaks', async () => {
-    install({ ok: false, walked: 1, brokenAtEventId: 'e2', brokenReason: 'hash mismatch', anchor, anchorMatchesWalkedHead: false }, { length: 3 })
+    install({ ok: false, walked: 1, brokenAtEventId: 'e2', brokenReason: 'hash mismatch', anchor, anchorMatchesWalkedHead: false,
+      signedCount: 1, unsignedCount: 0, noPubKeyCount: 0, authentication: 'failed', authenticationReasons: [] }, { length: 3 })
     mount()
     await verify()
     expect(result().textContent).toContain('✗ Chain broken')
     // A broken walk does not claim the rest of the chain as "added since".
     expect(result().textContent).not.toContain('added since')
     expect(screen.getByText(/Broken at event/).textContent).toContain('e2')
+    // The walk counted signatures only up to the break; no count is offered as a result.
+    expect(screen.getByTestId('evidence-verify-detail').textContent).not.toMatch(/Signatures/)
     await waitFor(() => expect(chainIssue()?.view).toBe('screenshots'))
   })
 
