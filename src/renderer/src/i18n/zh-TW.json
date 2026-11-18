@@ -2377,5 +2377,6 @@
   "evidence.lengthFailed": "無法讀取證據鏈長度",
   "evidence.anchorsFailed": "無法讀取錨點",
   "evidence.sinceUnknownShort": "之後新增筆數不明",
-  "evidence.verdictMismatch": "錨點不符"
+  "evidence.verdictMismatch": "錨點不符",
+  "evidence.verifyAbandoned": "驗證已放棄：執行期間切換了專案"
 }

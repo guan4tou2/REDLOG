@@ -2377,5 +2377,6 @@
   "evidence.lengthFailed": "Chain length could not be read",
   "evidence.anchorsFailed": "Anchors could not be read",
   "evidence.sinceUnknownShort": "Additions since unknown",
-  "evidence.verdictMismatch": "Anchor mismatch"
+  "evidence.verdictMismatch": "Anchor mismatch",
+  "evidence.verifyAbandoned": "Verification abandoned: the project changed while it ran"
 }

@@ -111,15 +111,23 @@ const activeProjectId = (): Promise<string | null> =>
     .then((p) => (p && typeof p.id === 'string' ? p.id : null), () => null)
 
 /** Walk every event, recompute each hash and check the latest anchor. Returns
- *  the full result; the issue it implies is raised here. */
-export async function verifyChainWithFeedback(t: T): Promise<FullVerifyResult> {
+ *  the full result, or null when the walk was abandoned because the open
+ *  project changed while it ran; the issue it implies is raised here. */
+export async function verifyChainWithFeedback(t: T): Promise<FullVerifyResult | null> {
   const before = await activeProjectId()
   const r = await window.redlog.chain.verify()
   const after = await activeProjectId()
+  // A walk that straddles a project change compared one project's anchor
+  // with another's rows. Its verdict belongs to neither: it raises nothing,
+  // clears nothing and is not cached.
+  if (before !== after) {
+    toast(t('evidence.verifyAbandoned'), 'info')
+    return null
+  }
   // Published to the module-level cache, with the time and the project it was
   // walked on, so the Evidence page and a fresh Timeline mount show it
   // without another walk — and never on a different project.
-  setLastVerifyResult(r as CachedFullVerifyResult | null, { verifiedAt: Date.now(), projectId: before !== null && before === after ? before : null })
+  setLastVerifyResult(r as CachedFullVerifyResult | null, { verifiedAt: Date.now(), projectId: before })
   // A chain that will not verify is the most consequential condition the
   // app can be in, so it stays on the issue list until a verify passes (SS9).
   // Incomplete signatures are said on the card, not raised as a broken chain.
