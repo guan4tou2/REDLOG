@@ -94,6 +94,16 @@ describe('state skipping', () => {
     expect(nextSelection('nav-state-next', start, ctx(events))?.id).toBe(failed.id)
   })
 
+  it('stops on a failed command as the shell hooks record it (exit_code)', () => {
+    const hook = (ts: number, code: number) => ev('shell', ts, { subtype: 'command_end', command: 'ls', exit_code: code })
+    const start = ev('shell', 0)
+    const noise = Array.from({ length: 20 }, (_, i) => hook(10 + i, 0))
+    const failed = hook(500, 1)
+    expect(carriesState(failed)).toBe(true)
+    expect(carriesState(noise[0])).toBe(false)
+    expect(nextSelection('nav-state-next', start, ctx([start, ...noise, failed]))?.id).toBe(failed.id)
+  })
+
   it('goes backwards to the nearest one behind, not the first overall', () => {
     const a = ev('loot', 10)
     const b = ev('loot', 20)

@@ -55,7 +55,8 @@ export function carriesState(e: RedLogEvent): boolean {
   // amendment also trips the `severity` test — so amending one marker three
   // times would put three extra stops in the skip-to-what-changed walk.
   if (e.agentType === 'marker' && d.subtype === 'amended') return false
-  if (typeof d.exitCode === 'number' && d.exitCode !== 0) return true
+  // Commands record `exit_code`; a terminal's session_end records `exitCode`.
+  if ([d.exit_code, d.exitCode].some((c) => typeof c === 'number' && c !== 0)) return true
   if (d.severity === 'critical' || d.severity === 'important') return true
   if (d.violation === true || d.inScope === false) return true
   return ['loot', 'scope', 'marker', 'credential_use', 'c2_checkin'].includes(e.agentType)
