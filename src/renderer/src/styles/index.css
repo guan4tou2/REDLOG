@@ -272,12 +272,14 @@ html {
 @utility pl-pad { padding-left: var(--pad); }
 @utility pr-pad { padding-right: var(--pad); }
 @utility gap-gap { gap: var(--gap); }
-/* Room for the OS window buttons (lib/captionInsets). The two properties are
+/* Room for the OS window buttons (lib/captionInsets). The properties are
    published on the root, already divided by the body zoom, and are 0px where the
-   buttons are not on the page (macOS). `pt-caption` starts content below the
+   buttons are not on that side of the page. `pl-caption` clears the macOS traffic
+   lights; `pt-caption` starts content below the
    strip, never nearer the top than `--caption-floor` (the padding it replaces). */
 @utility pr-caption { padding-right: var(--wco-inset-right, 0px); }
 @utility mr-caption { margin-right: var(--wco-inset-right, 0px); }
+@utility pl-caption { padding-left: var(--wco-inset-left, 0px); }
 @utility pt-caption { padding-top: max(var(--caption-floor, 0px), var(--wco-height, 0px)); }
 /* A plain rule, not @utility: Tailwind rejects `>` in a utility name. */
 .space-y-section > :not([hidden]) ~ :not([hidden]) { margin-top: var(--section-gap); }

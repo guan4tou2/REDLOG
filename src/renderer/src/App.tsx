@@ -363,7 +363,7 @@ export default function App(): JSX.Element {
         className={`flex items-center gap-2 px-4 select-none shrink-0 border-b border-redlog-border bg-redlog-bg whitespace-nowrap ${narrow ? 'flex-wrap min-h-10 py-1' : 'h-10'}`}
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
-        <div className={`flex items-center gap-2 shrink-0 ${isMac ? 'pl-16' : ''}`}>
+        <div className="flex items-center gap-2 shrink-0 pl-caption">
           {/* Title-bar size is small, so the ring collapses to a solid dot
               (§4). Single wordmark — the old image + plain-text pair is gone. */}
           <Wordmark className="text-xs" dotOnly />

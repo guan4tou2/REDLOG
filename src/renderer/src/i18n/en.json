@@ -2309,7 +2309,6 @@
   "project.keyPress": "Press",
   "project.keyBrowse": "to browse",
   "project.keyOpen": "to open",
-  "project.openHint": "Double-click to open",
   "project.pageFooter": "REDLOG operation record · local-first storage",
   "project.storageLabel": "Storage location",
   "project.storageFolderNote": "The project folder is created in this directory; RedLog names it from the project name.",

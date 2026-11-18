@@ -10,21 +10,24 @@
 // The page is drawn at `body { zoom }` (lib/uiScale), so a length written in
 // the page is multiplied by the zoom on screen: the strip's 138 px must be
 // divided by the zoom to be 138 px of screen. That division happens here, once,
-// and the result is published as two custom properties on the root:
+// and the result is published as three custom properties on the root:
 //
 //   --wco-inset-right  how far the OS buttons reach in from the right edge
 //   --wco-height       how far down the strip reaches
+//   --wco-inset-left   how far the macOS traffic lights reach in from the left
 //
 // Components never ask which platform it is: they use the `pr-caption`,
-// `mr-caption` and `pt-caption` utilities (styles/index.css), which read them.
-// Both are 0px on macOS, where the buttons are on the left and handled by the
-// title bar's own `pl-16`.
+// `mr-caption`, `pt-caption` and `pl-caption` utilities (styles/index.css),
+// which read them. On macOS the right inset and height are 0px and the left
+// inset is the traffic lights; elsewhere the left inset is 0px.
 
 import { BASE_ZOOM } from './uiScale'
 
 export interface OverlayRect { x: number; y: number; width: number; height: number }
 
 export interface CaptionInsets {
+  /** From the left edge, in page pixels: the macOS traffic lights. */
+  left: number
   /** From the right edge, in page pixels (already divided by the zoom). */
   right: number
   /** From the top edge, in page pixels. */
@@ -43,7 +46,13 @@ export const FALLBACK_RIGHT_PX = 150
 /** The height `titleBarOverlay` is created with in windows.ts. */
 export const FALLBACK_HEIGHT_PX = 40
 
-export const NO_INSET: CaptionInsets = { right: 0, height: 0 }
+/** Right edge of the macOS traffic lights, screen pixels. Measured on macOS 27
+ *  with `titleBarStyle: 'hiddenInset'` at the default button position. */
+export const MAC_LIGHTS_REACH_PX = 72
+/** Gap kept between the lights and the first control, screen pixels. */
+export const MAC_LIGHTS_GAP_PX = 12
+
+export const NO_INSET: CaptionInsets = { left: 0, right: 0, height: 0 }
 
 function validZoom(zoom: number): number {
   return Number.isFinite(zoom) && zoom > 0 ? zoom : BASE_ZOOM
@@ -60,16 +69,16 @@ export function captionInsets(input: {
   viewportWidth: number
   zoom: number
 }): CaptionInsets {
-  if (input.isMac) return NO_INSET
   const zoom = validZoom(input.zoom)
+  if (input.isMac) return { ...NO_INSET, left: round((MAC_LIGHTS_REACH_PX + MAC_LIGHTS_GAP_PX) / zoom) }
   const { reading } = input
   if (reading?.visible) {
     const { x, y, width, height } = reading.rect
     const right = Math.max(0, input.viewportWidth - (x + width))
-    return { right: round(right / zoom), height: round(Math.max(0, y + height) / zoom) }
+    return { left: 0, right: round(right / zoom), height: round(Math.max(0, y + height) / zoom) }
   }
   if (reading && input.settled) return NO_INSET // reported, and nothing is drawn (full screen)
-  return { right: round(FALLBACK_RIGHT_PX / zoom), height: round(FALLBACK_HEIGHT_PX / zoom) }
+  return { left: 0, right: round(FALLBACK_RIGHT_PX / zoom), height: round(FALLBACK_HEIGHT_PX / zoom) }
 }
 
 function round(n: number): number { return Math.round(n * 100) / 100 }
@@ -96,7 +105,7 @@ function bodyZoom(): number {
   return BASE_ZOOM
 }
 
-/** Publish the two properties now and keep them current: the overlay moving
+/** Publish the three properties now and keep them current: the overlay moving
  *  (`geometrychange`: resize, maximise, OS scale), the window resizing, and the
  *  body zoom changing (Settings sets `--app-zoom`). Returns the cleanup. */
 export function installCaptionInsets(isMac: boolean): () => void {
@@ -105,9 +114,10 @@ export function installCaptionInsets(isMac: boolean): () => void {
   let settled = false
   const publish = (): void => {
     const reading = api ? { visible: api.visible, rect: api.getTitlebarAreaRect() } : null
-    const { right, height } = captionInsets({ isMac, reading, settled, viewportWidth: window.innerWidth, zoom: bodyZoom() })
+    const { left, right, height } = captionInsets({ isMac, reading, settled, viewportWidth: window.innerWidth, zoom: bodyZoom() })
     root.style.setProperty('--wco-inset-right', `${right}px`)
     root.style.setProperty('--wco-height', `${height}px`)
+    root.style.setProperty('--wco-inset-left', `${left}px`)
   }
   const onGeometry = (): void => { settled = true; publish() }
   publish()

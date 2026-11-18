@@ -226,16 +226,16 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
           {filtered.map(p => {
             const isSel = selected?.id === p.id
             return <div key={p.id} role="option" aria-selected={isSel} data-testid="project-row" data-selected={isSel || undefined}
-              onClick={() => setSelectedId(p.id)} onDoubleClick={() => void handleOpen(p.id)}
+              onClick={() => { setSelectedId(p.id); void handleOpen(p.id) }}
               className={`group flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-3 transition-colors ${isSel ? 'bg-redlog-elevated border-redlog-border' : 'border-transparent hover:bg-redlog-elevated/60 hover:border-redlog-border-subtle'}`}>
             <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${isSel ? 'bg-redlog-accent' : 'bg-redlog-accent/60 group-hover:bg-redlog-accent'}`} />
-            {renamingId === p.id ? <input autoFocus aria-label={t('project.rename')} value={renameValue} onChange={e => setRenameValue(e.target.value)} onClick={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()} onKeyDown={e => {
+            {renamingId === p.id ? <input autoFocus aria-label={t('project.rename')} value={renameValue} onChange={e => setRenameValue(e.target.value)} onClick={e => e.stopPropagation()} onKeyDown={e => {
               if (isComposing(e)) return
               if (e.key === 'Enter') { e.preventDefault(); void handleRenameCommit(p.id) }
               if (e.key === 'Escape') { e.preventDefault(); setRenamingId(null) }
             }} onBlur={() => void handleRenameCommit(p.id)} className="flex-1 min-w-0 bg-redlog-surface border border-redlog-border rounded px-2 py-1" /> :
             <button data-project-row={p.id} data-project-open type="button" disabled={!!opening} aria-label={p.name} tabIndex={isSel ? 0 : -1}
-              onFocus={() => setSelectedId(p.id)} title={t('project.openHint')}
+              onFocus={() => setSelectedId(p.id)}
               className="min-w-0 flex-1 text-left rounded py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-redlog-accent/40 disabled:opacity-60">
               <span className="flex min-w-0 items-center gap-2">
                 <span title={p.name} className="truncate font-mono text-xs font-medium text-redlog-text">{p.name}</span>
@@ -246,8 +246,8 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
             </button>}
             <span className="shrink-0 text-right font-mono text-xs text-redlog-text-dim">{p.dbSize != null ? formatSize(p.dbSize) : '—'}</span>
             <span className={`flex shrink-0 items-center ${isSel ? '' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'}`}>
-              <button disabled={!!opening} onClick={(e) => { e.stopPropagation(); setRenamingId(p.id); setRenameValue(p.name) }} onDoubleClick={e => e.stopPropagation()} aria-label={t('project.rename')} className="p-2 text-redlog-muted hover:text-redlog-text focus-visible:ring-2 focus-visible:ring-redlog-accent/40">✎</button>
-              <button disabled={!!opening} onClick={(e) => { e.stopPropagation(); void handleDelete(p.id) }} onDoubleClick={e => e.stopPropagation()} aria-label={t('project.delete')} className="p-2 text-redlog-muted hover:text-red-400 focus-visible:ring-2 focus-visible:ring-redlog-accent/40">✕</button>
+              <button disabled={!!opening} onClick={(e) => { e.stopPropagation(); setRenamingId(p.id); setRenameValue(p.name) }} aria-label={t('project.rename')} className="p-2 text-redlog-muted hover:text-redlog-text focus-visible:ring-2 focus-visible:ring-redlog-accent/40">✎</button>
+              <button disabled={!!opening} onClick={(e) => { e.stopPropagation(); void handleDelete(p.id) }} aria-label={t('project.delete')} className="p-2 text-redlog-muted hover:text-red-400 focus-visible:ring-2 focus-visible:ring-redlog-accent/40">✕</button>
             </span>
           </div>
           })}
