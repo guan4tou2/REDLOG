@@ -5,7 +5,6 @@ import { SectionLabel } from './SectionLabel'
 import { useI18n } from '../i18n'
 import { formatFreshness, formatDate, formatSize } from '../lib/time'
 import { confirmChainImpact } from './ConfirmDialog'
-import { Wordmark } from './Wordmark'
 import { toast } from './Toast'
 import { runMutation } from '../lib/mutation'
 import { Button } from './Button'
@@ -46,10 +45,6 @@ function summaryFor(answer: Record<string, ProjectScopeSummary> | null, id: stri
 
 interface ProjectPickerProps {
   onProjectOpen: (project: { id: string; name: string }) => void
-}
-
-function Kbd({ children }: { children: React.ReactNode }): JSX.Element {
-  return <kbd className="rounded border border-redlog-border bg-redlog-elevated px-1.5 py-0.5 font-mono text-xs text-redlog-text-dim">{children}</kbd>
 }
 
 export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JSX.Element {
@@ -205,10 +200,6 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       />
       <div className="flex-1 overflow-y-auto px-4 py-10 flex flex-col" style={{ justifyContent: 'safe center' }}>
-      <div className="shrink-0 mb-8 text-center select-none">
-        <Wordmark className="text-4xl" />
-        <p className="mt-1.5 font-mono text-xs tracking-[0.25em] text-redlog-text-dim">{t('project.tagline')}</p>
-      </div>
       <div className="w-full max-w-[740px] mx-auto bg-redlog-surface border border-redlog-border-subtle rounded-xl p-6 shadow-2xl flex flex-col">
         {bridgeMissing && <p role="alert" className="mb-3 text-red-300 text-xs">{t('project.bridgeMissing')}</p>}
         <div className="flex flex-wrap items-center justify-between gap-3 pb-4 mb-4 border-b border-redlog-border-subtle">
@@ -279,17 +270,13 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
           </div>
         )}
 
-        <div data-testid="project-picker-footer" className="mt-4 pt-4 border-t border-redlog-border-subtle flex flex-wrap items-center justify-between gap-2 font-mono text-xs text-redlog-text-faint">
-          <span className="min-w-0 truncate" title={root ?? undefined}>{root && <>{t('project.storageDir')}<span title={root} className="text-redlog-text-dim">{root}</span></>}</span>
-          {/* Only with a row to move to and open. */}
-          {hasRecent && <span className="flex items-center gap-3 whitespace-nowrap">
-            <span>{t('project.keyPress')} <Kbd>↑</Kbd><Kbd>↓</Kbd> {t('project.keyBrowse')}</span>
-            <span>{t('project.keyPress')} <Kbd>Enter</Kbd> {t('project.keyOpen')}</span>
-          </span>}
-        </div>
+        {/* Where projects live; left out when that read failed or main is
+            older than the call. */}
+        {root && <div data-testid="project-picker-footer" className="mt-4 pt-4 border-t border-redlog-border-subtle font-mono text-xs text-redlog-text-faint">
+          <p className="min-w-0 truncate" title={root}>{t('project.storageDir')}<span className="text-redlog-text-dim">{root}</span></p>
+        </div>}
       </div>
       </div>
-      <footer className="shrink-0 border-t border-redlog-border-subtle/60 py-4 text-center font-mono text-xs text-redlog-text-faint">{t('project.pageFooter')}</footer>
       </div>
       <CreateProjectModal open={createOpen} root={root} onClose={() => setCreateOpen(false)} onCreated={onProjectOpen} />
     </div>
