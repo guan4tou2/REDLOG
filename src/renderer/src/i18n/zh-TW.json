@@ -2407,7 +2407,6 @@
   "timeline.range.last1h": "最近 1 小時",
   "timeline.range.all": "全階段",
   "timeline.range.custom": "自訂區間",
-  "timeline.anchor.label": "當前錨點",
   "timeline.searchRange": "搜尋區間",
   "timeline.lanes.title": "多軌並行泳道",
   "timeline.lanes.active": "{{count}} 軌有事件",

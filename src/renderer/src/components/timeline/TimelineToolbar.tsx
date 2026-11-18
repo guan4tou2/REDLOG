@@ -4,7 +4,6 @@ import { TimeRangeFields } from '../TimeRangeFields'
 import { HighlightInput } from './TimelineStatusStrips'
 import { AttributionStatus } from './AttributionStatus'
 import { TypeLegend } from './TypeLegend'
-import { formatTime } from '../../lib/time'
 import type { TimeRange } from '../../lib/FilterContext'
 import type { TimelineMode } from '../../lib/timelineMode'
 import type { LaneId } from '../../lib/timelineDomain'
@@ -46,7 +45,7 @@ function Kbd({ k }: { k: string }): JSX.Element {
  *  badge and the panel's own view toggles come in as slots. */
 export function TimelineToolbar({
   t, timeRange, setTimeRange, hasMore, loadedCount, loadedSpanMs, projectSpanMs, total, onRetryTotal, onLoadMore,
-  zoom, onZoomOut, onZoomIn, onResetZoom, anchorTs,
+  zoom, onZoomOut, onZoomIn, onResetZoom,
   mode, onModeChange,
   filterQuery, onFilterQueryChange, searchInputRef,
   onHelp, attributionBlind, lanes, moreItems, followBadge
@@ -67,7 +66,6 @@ export function TimelineToolbar({
   onZoomOut: () => void
   onZoomIn: () => void
   onResetZoom: () => void
-  anchorTs: number | null
   mode: TimelineMode
   onModeChange: (mode: TimelineMode) => void
   filterQuery: string
@@ -172,12 +170,6 @@ export function TimelineToolbar({
           <Button size="compact" level="quiet" onClick={onLoadMore}>
             {t('timeline.loadMore')}
           </Button>
-        )}
-        {anchorTs != null && (
-          <span className="flex items-center gap-1.5 text-xs text-redlog-text-faint whitespace-nowrap">
-            <span>{t('timeline.anchor.label')}</span>
-            <span data-testid="timeline-anchor" className="font-mono tabular-nums text-redlog-text">{formatTime(anchorTs, { seconds: true })}</span>
-          </span>
         )}
         {/* v0.6.91 W1: the `/` highlight box. The input stays mounted so `/`
             and ⌘F can focus it; it is only drawn while it is open, has text,

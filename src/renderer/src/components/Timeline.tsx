@@ -1903,7 +1903,6 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
         onZoomOut={() => setZoom((z) => Math.max(MIN_ZOOM, z - 0.25))}
         onZoomIn={() => setZoom((z) => Math.min(maxZoom, z + 0.25))}
         onResetZoom={() => setZoom(1)}
-        anchorTs={selectedEvent?.timestamp ?? null}
         mode={timelineMode}
         onModeChange={setTimelineMode}
         filterQuery={filterQuery}

@@ -2407,7 +2407,6 @@
   "timeline.range.last1h": "Last 1 hour",
   "timeline.range.all": "Whole session",
   "timeline.range.custom": "Custom range",
-  "timeline.anchor.label": "Current anchor",
   "timeline.searchRange": "Search range",
   "timeline.lanes.title": "Parallel swim lanes",
   "timeline.lanes.active": "Lanes with events: {{count}}",

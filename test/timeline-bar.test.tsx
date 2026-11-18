@@ -11,6 +11,7 @@ import TimelinePanel from '../src/renderer/src/components/Timeline'
 import { FilterProvider } from '../src/renderer/src/lib/FilterContext'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { TimelineDetailBar } from '../src/renderer/src/components/timeline/TimelineDetailBar'
+import { eventTitle } from '../src/renderer/src/lib/eventTitle'
 import type { RedLogEvent } from '../src/core/db/event-types'
 import { installTimelineBridge, makeEvent, page, type TimelineBridge } from './helpers/timeline-bridge'
 
@@ -54,6 +55,13 @@ describe('bar facts', () => {
     expect(facts).toContain('4.2 s')
     expect(facts).not.toContain('PID')
     expect(facts).not.toContain('timeline.detail.target')
+  })
+
+  it('states the exit code once: in the facts, not again at the end of the title', () => {
+    setPolicy({ targets: [], excludeTargets: [] })
+    drawBar(ev('shell', { subtype: 'command_end', command: 'nmap -sV', exit_code: 3 }), { titleOf: (e) => eventTitle(e) })
+    expect(screen.getByTestId('timeline-bar-title').textContent).toBe('$ nmap -sV')
+    expect(screen.getByTestId('detail-exit').textContent).toBe('3')
   })
 
   it('shows PID only when the event records one', () => {
@@ -197,6 +205,17 @@ describe('click contract on the track', () => {
     expect(bar()).not.toBeNull()
     fireEvent.doubleClick(dot)
     await waitFor(() => expect(body()).not.toBeNull())
+  })
+
+  // One name per kind: the inspector's header names the kind the way the bar
+  // does, not by the raw stored agentType beside it.
+  it('the open body names the kind by its translated name, not the raw agentType', async () => {
+    await ready()
+    fireEvent.doubleClick(dots()[0])
+    await waitFor(() => expect(body()).not.toBeNull())
+    const texts = Array.from(body()!.querySelectorAll('span')).map((s) => s.textContent)
+    expect(texts).not.toContain('shell')
+    expect(texts).toContain('Shell')
   })
 
   it('a double-click opens the event the FIRST click landed on, even if the layout moved under the pointer', async () => {

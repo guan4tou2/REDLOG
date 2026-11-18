@@ -12,6 +12,7 @@ import type { RedLogEvent } from '../../../../core/db/event-types'
 import { formatTime } from '../../lib/time'
 import { LANE_LABEL_KEYS, toLane, type PluginEventType } from '../../lib/timelineDomain'
 import { hasContentReader } from '../../lib/timelineEvents'
+import { titleWithoutExit } from '../../lib/timelineCard'
 
 type Translate = (key: string, vars?: Record<string, string | number>) => string
 type ScopePolicy = { targets: string[]; excludeTargets: string[] }
@@ -74,6 +75,8 @@ export function TimelineDetailBar({
   const duration = event.data?.duration_sec
   const pid = event.data?.pid
   const stateKey = event.targetId ? scopeStateKey(event.targetId, policy) : null
+  // The exit code is a fact below; the title does not end with it again.
+  const title = titleWithoutExit(titleOf(event), exit)
   const facts: JSX.Element[] = []
   if (typeof exit === 'number') {
     facts.push(<span key="exit">{t('timeline.detail.exit')} <span data-testid="detail-exit" className={exit === 0 ? '' : 'text-amber-400'}>{exit}</span></span>)
@@ -94,10 +97,10 @@ export function TimelineDetailBar({
       className="shrink-0 border-t border-redlog-border/50 bg-redlog-surface/80 px-4 py-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5"
     >
       <div className="min-w-0 flex-1 basis-64 text-xs">
-        <p className="font-mono truncate" title={`${formatTime(event.timestamp, { seconds: true })} · ${t(LANE_LABEL_KEYS[lane])} · ${titleOf(event)}`}>
+        <p className="font-mono truncate" title={`${formatTime(event.timestamp, { seconds: true })} · ${t(LANE_LABEL_KEYS[lane])} · ${title}`}>
           <span className="tabular-nums text-redlog-text-dim">{formatTime(event.timestamp, { seconds: true })}</span>
           {SEP}<span className="text-redlog-text-dim">{t(LANE_LABEL_KEYS[lane])}</span>
-          {SEP}<span data-testid="timeline-bar-title" className="text-redlog-text">{titleOf(event)}</span>
+          {SEP}<span data-testid="timeline-bar-title" className="text-redlog-text">{title}</span>
         </p>
         {facts.length > 0 && (
           <p data-testid="timeline-bar-facts" className="mt-0.5 flex items-center gap-x-1.5 font-mono text-redlog-text-faint min-w-0">
