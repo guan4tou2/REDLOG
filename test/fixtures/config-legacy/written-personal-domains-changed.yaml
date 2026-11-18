@@ -63,9 +63,6 @@ scope:
   scopeFile: null
 screenshot:
   quality: 85
-  intervalSec: 0
-  diffThreshold: 5
-  captureOnCommand: false
 terminal:
   maxCastBytes: 52428800
 browser:

@@ -1198,10 +1198,6 @@
       "class": "constant",
       "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
     },
-    "src/main/services/screenshot-agent.ts#DELIBERATE_TRIGGERS": {
-      "class": "constant",
-      "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
-    },
     "src/main/services/tailer-host.ts#registeredAdapters": {
       "class": "app",
       "reason": "Adapters registered at startup."

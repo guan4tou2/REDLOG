@@ -8,7 +8,6 @@ import { toast } from './Toast'
 import { writeClipboard } from '../lib/clipboard'
 import { formatTime, useDisplayZone } from '../lib/time'
 import { useI18n } from '../i18n'
-import { settingsTarget } from '../lib/navigation'
 import { captureScreenshotWithFeedback } from '../lib/captureScreenshot'
 import { Modal } from './Modal'
 import { Button, FIELD_FOCUS_RING } from './Button'
@@ -155,7 +154,7 @@ function ShotCard({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Eleme
   </div>
 }
 
-export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => void }): JSX.Element {
+export function ScreenshotsView(): JSX.Element {
   const zone = useDisplayZone()
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -354,7 +353,6 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
             label: t('screenshots.captureNow'),
             onClick: () => { void captureScreenshotWithFeedback(t) }
           }}
-          secondary={{ label: t('screenshots.emptySettings'), onClick: () => onNavigate(settingsTarget('captureControl', { source: 'screenshot' })) }}
         />
       ) : (
         <>

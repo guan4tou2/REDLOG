@@ -156,7 +156,6 @@ interface RedLogAPI {
     updateStatus: () => Promise<import('../../main/services/update-status').UpdateStatus>
     cancelUpdate: () => Promise<boolean>
     installUpdate: () => Promise<void>
-    setAutoUpdateCheck: (on: boolean) => Promise<import('../../main/services/update-status').UpdateStatus>
     takeUpdateOutcome: () => Promise<import('../../main/services/update-marker').UpdateOutcome | null>
     onUpdateOutcomeReady: (cb: () => void) => () => void
     onUpdateStatus: (cb: (status: import('../../main/services/update-status').UpdateStatus) => void) => () => void
@@ -709,7 +708,7 @@ interface RedLogConfigPartial {
   operator?: { id?: string; name?: string }
   network?: { whitelist?: string[]; blacklist?: string[]; checkInterval?: number; ipMode?: 'dns' | 'http' | 'auto' }
   scope?: { warnOnViolation?: boolean; targets?: string[]; excludeTargets?: string[]; scopeFile?: string | null; personalDomains?: string[] }
-  screenshot?: { quality?: number; intervalSec?: number }
+  screenshot?: { quality?: number }
 }
 
 /** A plugin-registered event type, as `plugins:eventTypes` returns it. */

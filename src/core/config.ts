@@ -75,25 +75,13 @@ export interface RedLogConfig {
     scopeFile: string | null
   }
   screenshot: {
+    /** JPEG quality for the screenshots the operator (or their agent) asks
+     *  for. Ruling 7 (2026-11-12) removed timed capture and capture when a
+     *  command ends: a file written before still carries `intervalSec`,
+     *  `diffThreshold` and `captureOnCommand`. They load (deepMerge keeps a
+     *  key the defaults do not have), are written back as they were, and
+     *  nothing reads them. */
     quality: number
-    /** Periodic auto-capture interval in seconds. 0 = disabled. Deduped
-     *  against the previous frame's SHA-256 (see ScreenshotAgent), so a
-     *  30s interval on an idle screen doesn't produce 120 dupes/hour. */
-    intervalSec: number
-    /** Perceptual-diff threshold for AUTOMATIC captures (periodic/idle): a
-     *  frame whose dHash Hamming distance from the last stored frame is BELOW
-     *  this is treated as "no visible change" and skipped. Higher = only store
-     *  bigger changes; `0` = disable perceptual dedup and store every
-     *  non-byte-identical frame. Manual captures ignore it entirely. Default 5
-     *  (mouse/clock jitter ≈2-3 bits, one new terminal line ≈6-10). */
-    diffThreshold?: number
-    /** Capture a screenshot when a shell command finishes, linked to that
-     *  command via `_causes` — so a report's "this command produced this
-     *  screen" is automatic, not a manual ⌘⇧M. Off by default: it only earns
-     *  its keep for GUI-heavy work (Burp, a browser), and the perceptual dedup
-     *  still skips a command that changed nothing visible. Terminal output is
-     *  better read from the `.cast` recording (searchable text) than a JPEG. */
-    captureOnCommand?: boolean
   }
   // `overlay` is gone: the HUD's settings are machine-wide now
   // (src/core/hud-prefs.ts). An old config.yaml may still carry the block; it
@@ -270,10 +258,7 @@ export const DEFAULT_CONFIG: RedLogConfig = {
     scopeFile: null
   },
   screenshot: {
-    quality: 85,
-    intervalSec: 0,
-    diffThreshold: 5,
-    captureOnCommand: false
+    quality: 85
   },
   terminal: {
     maxCastBytes: 50 * 1024 * 1024

@@ -32,7 +32,7 @@ function install(items: unknown[]): void {
     artifacts: { reveal: vi.fn(async () => true) }
   }
 }
-const mount = (): void => { render(<I18nProvider><ScreenshotsView onNavigate={() => {}} /></I18nProvider>) }
+const mount = (): void => { render(<I18nProvider><ScreenshotsView /></I18nProvider>) }
 beforeEach(() => { window.localStorage.clear(); window.localStorage.setItem('redlog-locale', 'en'); toastSpy.mockClear() })
 afterEach(() => cleanup())
 

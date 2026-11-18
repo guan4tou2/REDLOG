@@ -57,8 +57,8 @@ async function openSearch(): Promise<HTMLInputElement> {
   const { default: TerminalView } = await import('../src/renderer/src/components/TerminalView')
   render(<I18nProvider><TerminalView /></I18nProvider>)
   await waitFor(() => expect(addons.length).toBeGreaterThan(0))
-  fireEvent.click(screen.getByRole('button', { name: 'Search buffer' }))
-  return screen.getByPlaceholderText(/Search terminal buffer/) as HTMLInputElement
+  fireEvent.keyDown(window, { key: 'f', metaKey: true })
+  return await screen.findByPlaceholderText(/Search terminal buffer/) as HTMLInputElement
 }
 const report = (resultIndex: number, resultCount: number): void => {
   act(() => addons[0].listeners.forEach((l) => l({ resultIndex, resultCount })))

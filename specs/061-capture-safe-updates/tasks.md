@@ -18,7 +18,7 @@
 
 ## Slice 4
 - [x] T030 Manual path: unfinished state resolved only by the running version.
-- [x] T031 Auto-check switch in settings; air-gap still wins.
+- [x] T031 Auto-check switch in settings; air-gap still wins. *(Superseded 2026-11-18 by ruling 7 — the update check is manual only; the switch, `update-prefs.ts` and its test are removed.)*
 - [x] T032 macOS and Linux wording for what is and is not automatic.
 
 ## 2026-10-30 執行對帳入口
@@ -30,7 +30,7 @@
 | T001–T004 | [UpdateFlow](../../src/main/services/update-flow.ts)、[update-flow tests](../../test/update-flow.test.ts)、quit guard 接線 | 真實候選下載、稍後、取消與確認重啟；當下 live impact 一致 |
 | T010–T012 | [update-status](../../src/main/services/update-status.ts)、[About tests](../../test/about-update-status.test.tsx)、[status tests](../../test/update-status.test.ts) | 成功／失敗／離線／不適用安裝包的原生 About 流程與精確版本 |
 | T020–T022 | [update-anchor](../../src/core/update-anchor.ts)、[update-marker](../../src/main/services/update-marker.ts)、[anchor tests](../../test/update-anchor.test.ts) | 實際保存／錨定失敗、重試／取消、更新前後證據讀回與版本結果 |
-| T030–T032 | [update-prefs](../../src/main/services/update-prefs.ts)、[prefs tests](../../test/update-prefs.test.ts)、各平台更新路徑 | Windows App 更新、Mac 手動替換、Linux 套件路徑各自實測；air-gap 與不適用狀態正確 |
+| T030–T032 | update-prefs、prefs tests（T031 部分已依裁定 7 刪除，2026-11-18）、各平台更新路徑 | Windows App 更新、Mac 手動替換、Linux 套件路徑各自實測；air-gap 與不適用狀態正確 |
 
 每組先列出已滿足／缺額，再補必要程式或驗收。完整結果留在此 feature 的 verification；跨 feature 最終更新驗收仍由 Spec 062 T012／T013 承接，不新增平行 updater 或第二份原生矩陣。
 
@@ -51,7 +51,7 @@
 | T021 | 未勾 | 缺「只重新檢查受影響來源、hook 有差異才提示重載」；其餘（marker、首次啟動判斷、事件、`sessions_resumed: false`）已有 |
 | T022 | 勾 | `stopProject()` 在 `will-quit` 先 `detachTerminalRecordings` 再 `closeDB`；測試是原始碼順序斷言，不是行為測試 |
 | T030 | 勾 | `restoreUnfinishedUpdate` + `judgeUpdateOutcome` 只看執行中版本；手動未完成時 `index.ts` 不寫事件、不清 marker |
-| T031 | 勾 | `update-prefs` 旗標檔、About 開關、`runCheck` 先判斷 air-gap 再發請求 |
+| T031 | 勾（已被裁定 7 取代，2026-11-18：旗標檔與開關已刪除） | `update-prefs` 旗標檔、About 開關、`runCheck` 先判斷 air-gap 再發請求 |
 | T032 | 勾 | About macOS／Linux 文案（en、zh-TW 皆有）與 `updater.ts` macOS 對話框說明；測試只驗選到哪個 key，文案內容靠人讀 |
 
 未能確認：真實 Windows 安裝包的 `quitAndInstall` 是否經過 `will-quit` 完成 T022 的收尾（未實機執行）、各平台實際升級路徑、更新確認框的原生外觀與預設鍵。

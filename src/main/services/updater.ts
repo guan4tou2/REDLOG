@@ -2,7 +2,6 @@ import { app, dialog, shell } from 'electron'
 import { anchorBeforeRestart } from '../../core/update-anchor'
 import { getProjectDir } from '../../core/db/index'
 import { writeUpdateMarker, readUpdateMarker, judgeUpdateOutcome, type UpdateOutcome } from './update-marker'
-import { isAutoCheckEnabled, setAutoCheckEnabled } from './update-prefs'
 import { allowQuit, quitDialog, defaultQuitText, type QuitImpact } from '../quit-guard'
 import { UpdateFlow } from './update-flow'
 import { UpdateStatusStore, hasInstallerFor, type UpdateStatus } from './update-status'
@@ -40,17 +39,11 @@ function store(): UpdateStatusStore {
     method: process.platform === 'win32' ? 'in-app' : 'download-page',
     packaged: app.isPackaged,
     currentVersion: app.getVersion(),
-    releaseUrl: RELEASES_PAGE,
-    autoCheck: isAutoCheckEnabled(app.getPath('userData'))
+    releaseUrl: RELEASES_PAGE
   })
 }
 export function getUpdateStatus(): UpdateStatus { return store().get() }
 
-export function autoCheckEnabled(): boolean { return store().get().autoCheck }
-export function setAutoCheck(on: boolean): void {
-  setAutoCheckEnabled(app.getPath('userData'), on)
-  store().patch({ autoCheck: on })
-}
 
 /** A manual update that was started and not finished stays visible until the
  *  running version says otherwise. Called once at launch. */
@@ -351,18 +344,16 @@ export function takeUpdateOutcome(): UpdateOutcome | null {
 
 export function setUpdaterAirgap(v: boolean): void { airgap = v }
 
-async function runCheck(manual: boolean): Promise<void> {
+async function runCheck(): Promise<void> {
   if (airgap) {
     // No request is made. About says why, and where the setting is.
     console.log(TAG, 'skipped (air-gap mode)')
     store().patch({ stage: 'unavailable', result: 'airgap', checkedAt: Date.now() })
     return
   }
-  if (!app.isPackaged && !manual) {
-    console.log(TAG, 'skipped (not packaged, non-manual)')
-    return
-  }
-  console.log(TAG, `check starting (manual=${manual}, platform=${process.platform})`)
+  // Only the About button calls this (ruling 7: no check at launch), so a
+  // development build checks too when asked.
+  console.log(TAG, `check starting (platform=${process.platform})`)
 
   // A download or a ready update is not a check in progress; leave its state.
   const stage = store().get().stage
@@ -382,9 +373,9 @@ async function runCheck(manual: boolean): Promise<void> {
 // second request and a second dialog.
 let inFlight: Promise<void> | null = null
 
-export function checkForUpdates(opts: { manual?: boolean } = {}): Promise<void> {
+export function checkForUpdates(): Promise<void> {
   if (inFlight) return inFlight
-  inFlight = runCheck(opts.manual ?? false)
+  inFlight = runCheck()
     .catch((e: unknown) => {
       console.error(TAG, 'check failed unexpectedly:', (e as Error).message)
       store().patch({ stage: 'failed', result: 'failed', checkedAt: Date.now() })

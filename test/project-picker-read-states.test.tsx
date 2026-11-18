@@ -38,22 +38,14 @@ describe('project list read state', () => {
     await waitFor(() => expect(status().getAttribute('data-state')).toBe('empty'))
   })
 
-  // With no project there is no row to move to or open: the arrow and Enter
-  // hints describe nothing. The search box stays (Spec 068 D1': at any count).
-  it('shows no keyboard hints with no project, and keeps the search box and the create action', async () => {
+  // The keyboard hints are gone at any count (2026-11-12 reduction list); the
+  // search box and the create action stay with no project (Spec 068 D1').
+  it('shows no keyboard hints, and keeps the search box and the create action with no project', async () => {
     mount(async () => [])
     await waitFor(() => expect(status().getAttribute('data-state')).toBe('empty'))
-    const footer = screen.getByTestId('project-picker-footer')
-    expect(footer.querySelector('kbd')).toBeNull()
-    expect(footer.textContent).not.toMatch(/to browse|to open/)
+    expect(screen.getByTestId('project-picker').querySelector('kbd')).toBeNull()
     expect(screen.getByTestId('project-search')).toBeTruthy()
     expect(screen.getByTestId('project-new')).toBeTruthy()
-  })
-
-  it('shows the keyboard hints once there is a row to move to', async () => {
-    mount(async () => [META])
-    expect(await screen.findByText('Client-Q3')).not.toBeNull()
-    expect(screen.getByTestId('project-picker-footer').querySelectorAll('kbd').length).toBe(3)
   })
 
   it('a rejected list is a failure that does not claim evidence is lost, and can be retried', async () => {

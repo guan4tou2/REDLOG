@@ -149,7 +149,6 @@ describe('the screenshot agent refuses to record an empty frame', () => {
   it('treats an api capture as deliberate, so a repeat of the same screen still lands', async () => {
     h.jpegBytes = 4096; h.empty = false
     const a = agent()
-    a.configure({ diffThreshold: 5 })
     const first = await a.captureNow('api')
     const second = await a.captureNow('api')
     expect(first).not.toBeNull()
@@ -160,8 +159,5 @@ describe('the screenshot agent refuses to record an empty frame', () => {
     expect(second).not.toBe(first)
     expect(shots()).toHaveLength(2)
 
-    // An ambient trigger on the same unchanged screen is still deduped away.
-    expect(await a.captureNow('periodic')).toBeNull()
-    expect(shots()).toHaveLength(2)
   })
 })

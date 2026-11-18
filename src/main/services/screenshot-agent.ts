@@ -3,22 +3,17 @@ import crypto from 'crypto'
 import path from 'path'
 import fs from 'fs'
 import { ingestEvent } from '../../core/ingest'
-import { eventBus } from '../../core/event-bus'
 import { noteCaptureError, clearCaptureError, type CapturePrerequisite } from '../../core/capture-health'
 import { currentScreenRecording } from './capture-prerequisites'
 import { getProjectDir, dbGeneration } from '../../core/db/index'
-import { dHashFromBgra, hammingDistance } from '../../core/dhash'
 import type { ProjectIdentity } from '../../core/project-runtime'
-
-// Triggers that represent someone asking for this exact frame, as opposed to
-// the agent deciding to take one. See captureNow.
-const DELIBERATE_TRIGGERS = new Set(['manual', 'api'])
 
 /** How long a frame held at the moment of a shortcut stays usable. */
 const HELD_FRAME_TTL_MS = 120_000
 
+/** A grabbed frame, encoded. The NativeImage is not kept: a frame held for a
+ *  marker waits up to HELD_FRAME_TTL_MS, and only the JPEG is ever written. */
 interface Frame {
-  image: Electron.NativeImage
   jpeg: Buffer
   width: number
   height: number
@@ -36,35 +31,16 @@ export interface CaptureOptions {
   /** Take RedLog's windows (main and HUD) off the screen for the capture. */
   hideOwnWindows?: boolean
   /** The operator's selected target, passed by the in-app capture. Used for a
-   *  `manual` capture only: the other triggers (`periodic`, `command`, `api`)
-   *  have no operator act behind them and record none. */
+   *  `manual` capture only: an `api` capture has no operator selection behind
+   *  it and records none. */
   targetId?: string
 }
 
 export class ScreenshotAgent {
-  private lastHash = ''
   // Held by reference and read when an event is written: the operator can be
   // changed in Settings while the project stays open.
   private identity: Readonly<ProjectIdentity> | null = null
   private quality = 85
-  private intervalSec = 0
-  private timer: ReturnType<typeof setInterval> | null = null
-  // Perceptual hash of the last stored frame (dHash — 64-bit). SHA-256 catches
-  // only byte-identical duplicates, which almost never trigger for a live
-  // desktop (a moving mouse cursor / ticking clock changes the JPEG bytes even
-  // when the operator sees no change). dHash compares an 8x8 downsampled
-  // grayscale bitmap, so cursor/clock jitter falls under the threshold and
-  // the frame is skipped — the .cast stream still has the raw bytes if
-  // needed.
-  private lastDHash: bigint | null = null
-  // Hamming distance below which two frames count as visually identical, so an
-  // automatic capture is skipped. Operator-configurable (config.screenshot.
-  // diffThreshold): 5/64 is empirically forgiving (mouse cursor ≈2-3, one line
-  // of new terminal output ≈6-10); higher stores only bigger changes; `0`
-  // disables perceptual dedup and stores every non-byte-identical frame.
-  private diffThreshold = 5
-  // Opt-in: capture a frame when a shell command finishes, linked to it.
-  private captureOnCommand = false
   // UI/UX audit F2. A capture asked for from inside RedLog photographed
   // RedLog: ⌘⇧M raised the main window before the marker's screenshot, and
   // "Capture now" ran with the app in front. The frame the operator meant was
@@ -154,73 +130,44 @@ export class ScreenshotAgent {
       ))
       return null
     }
-    return { image, jpeg, width, height, displayId: source.display_id || null, at: Date.now() }
+    return { jpeg, width, height, displayId: source.display_id || null, at: Date.now() }
   }
 
+  /** Ruling 7 (2026-11-12): screenshots are taken when someone asks — the
+   *  operator (manual, a marker) or their agent (POST /api/screenshot). There
+   *  is no timer and no capture when a command ends; an old project file's
+   *  `intervalSec` / `captureOnCommand` / `diffThreshold` are not passed in. */
   configure(opts: {
     identity?: Readonly<ProjectIdentity>
     quality?: number
-    intervalSec?: number
-    diffThreshold?: number
-    captureOnCommand?: boolean
   }): void {
     if (opts.identity) this.identity = opts.identity
     if (opts.quality) this.quality = opts.quality
-    if (opts.diffThreshold !== undefined) this.diffThreshold = Math.max(0, Math.floor(opts.diffThreshold))
-    if (opts.captureOnCommand !== undefined) this.captureOnCommand = opts.captureOnCommand
-    if (opts.intervalSec !== undefined) {
-      this.intervalSec = Math.max(0, Math.floor(opts.intervalSec))
-      this.applyInterval()
-    }
   }
 
-  /** A shell command_end landed. When captureOnCommand is on, grab a frame
-   *  linked to that command via `_causes` so a report can pair "command →
-   *  resulting screen" without a manual marker. Uses the 'command' trigger, so
-   *  the perceptual dedup still skips a command that changed nothing visible
-   *  (a text-only terminal step is better read from its `.cast` output anyway).
-   *  No-op when disabled — the event handler calls it unconditionally. */
-  async onCommandEnd(causeEventId: string): Promise<void> {
-    if (!this.captureOnCommand) return
-    await this.captureNow('command', causeEventId).catch(() => { /* transient */ })
-  }
-
-  // Start / stop the periodic loop when settings change. Called on configure
-  // and on start/stop; safe to call multiple times. `captureNow('periodic')`
-  // stays deduped against lastHash, so an idle screen won't fill the chain.
-  private applyInterval(): void {
-    if (this.timer) { clearInterval(this.timer); this.timer = null }
-    if (this.intervalSec > 0 && this.identity?.operatorId) {
-      this.timer = setInterval(() => {
-        this.captureNow('periodic').catch(() => { /* transient failure — retry next tick */ })
-      }, this.intervalSec * 1000)
-    }
-  }
-
-  start(): void { this.applyInterval() }
-  stop(): void { if (this.timer) { clearInterval(this.timer); this.timer = null } }
+  /** The project is closing: a frame held for a marker in it is not to be
+   *  claimed by the next one. */
+  stop(): void { this.held = null }
 
   async captureNow(trigger: string, causeEventId?: string, opts: CaptureOptions = {}): Promise<string | null> {
     const identity = this.identity
     if (!identity?.operatorId) return null
-    // Deliberate captures always land — operator intent overrides pause and
-    // dedup. `api` belongs here with `manual`: POST /api/screenshot is an
-    // operator (or their agent) asking for THIS frame, so silently skipping it
-    // because the screen looks like the last one, or because recording is
-    // paused, loses a frame someone asked for and says `captured: false` with
-    // no reason. Ambient triggers (periodic, idle, command) stay deduped.
-    const deliberate = DELIBERATE_TRIGGERS.has(trigger)
-    if (!deliberate && eventBus.paused) return null
+    // Every capture is one someone asked for — `manual` (shortcut, palette,
+    // marker) or `api` (POST /api/screenshot); ruling 7 removed the timed and
+    // command-end ones. So it always lands: not skipped because the screen
+    // looks like the last frame, and not because recording is paused, which
+    // would lose a frame someone asked for and say `captured: false` with no
+    // reason.
     // The grab and the write each wait. A project switched in between would
     // get a frame the operator took in the previous one, linked by
     // `_causes` to an event that is not in it — or an event pointing at a
     // file in the previous project's folder.
     const opened = dbGeneration()
     try {
-      let frame = deliberate ? this.takeHeld(opts.heldFrame) : null
+      let frame = this.takeHeld(opts.heldFrame)
       const heldAt = frame ? frame.at : null
       if (!frame) {
-        const restore = deliberate && opts.hideOwnWindows && this.hider ? await this.hider() : null
+        const restore = opts.hideOwnWindows && this.hider ? await this.hider() : null
         try {
           frame = await this.grabFrame()
         } finally {
@@ -228,26 +175,9 @@ export class ScreenshotAgent {
         }
       }
       if (!frame || dbGeneration() !== opened) return null
-      const { image, jpeg, width, height } = frame
+      const { jpeg, width, height } = frame
       const sha256 = crypto.createHash('sha256').update(jpeg).digest('hex')
       const dedupKey = sha256.slice(0, 16)
-
-      if (!deliberate) {
-        // First-pass exact-bytes dedup (rare hit, but zero-cost).
-        if (dedupKey === this.lastHash) return null
-        // Perceptual dedup — only for automatic triggers (periodic / idle),
-        // and only when enabled (diffThreshold > 0; 0 stores every frame).
-        // Deliberate captures always land regardless of similarity.
-        if (this.diffThreshold > 0) {
-          const dHash = this.computeDHash(image)
-          if (this.lastDHash != null) {
-            const dist = hammingDistance(dHash, this.lastDHash)
-            if (dist < this.diffThreshold) return null
-          }
-          this.lastDHash = dHash
-        }
-      }
-      this.lastHash = dedupKey
 
       const dir = path.join(getProjectDir(), 'screenshots')
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
@@ -298,7 +228,7 @@ export class ScreenshotAgent {
       }, {
         engagementId: identity.engagementId,
         operatorId: identity.operatorId,
-        bypassPause: deliberate,
+        bypassPause: true,
         ...(trigger === 'manual' && opts.targetId ? { targetId: opts.targetId, targetVia: 'operator-selected' as const } : {})
       }) } catch (e) {
         // The picture is on disk but no event points at it: a file nothing in
@@ -323,10 +253,5 @@ export class ScreenshotAgent {
       noteCaptureError('screenshot', e)
       return null
     }
-  }
-
-  private computeDHash(image: Electron.NativeImage): bigint {
-    const small = image.resize({ width: 9, height: 8, quality: 'good' })
-    return dHashFromBgra(small.toBitmap())
   }
 }

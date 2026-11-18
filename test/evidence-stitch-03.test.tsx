@@ -61,7 +61,7 @@ describe('screenshots', () => {
       events: { queryScreenshotPage: vi.fn(async () => ({ items, hasMore, nextCursor: hasMore ? 'n' : null })), onNewBatch: () => () => {} },
       screenshot: { deleteFile: vi.fn(async () => ({ ok: true })) }, artifacts: { reveal: vi.fn(async () => true) }
     }
-    render(<I18nProvider><ScreenshotsView onNavigate={() => {}} /></I18nProvider>)
+    render(<I18nProvider><ScreenshotsView /></I18nProvider>)
   }
 
   it('says how many are shown, newest first', async () => {

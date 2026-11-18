@@ -28,8 +28,8 @@ const SAME_IN_BOTH = new Set([
   'screenshots.trigger.api', 'activity.reader.field.pid', 'loot.type.jwt',
   // Awaiting a wording decision: the capture-mode names are the values the
   // zh-TW capture text itself uses (`capture_mode native`, "relay"); the
-  // tagline is branding; "flag" is a loot type name.
-  'toolCard.mode.native', 'toolCard.mode.relayed', 'project.tagline', 'loot.type.flag'
+  // "flag" is a loot type name.
+  'toolCard.mode.native', 'toolCard.mode.relayed', 'loot.type.flag'
 ])
 
 /** English JSX text and string-literal labels in renderer components, counted
