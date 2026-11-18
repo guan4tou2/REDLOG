@@ -11,6 +11,7 @@ import { useListKeyboard } from '../lib/useListKeyboard'
 import { EmptyState } from './EmptyState'
 import { Crosshair } from 'lucide-react'
 import { scopeConfigured, targetInScope } from '../lib/scope'
+import { classifyScope } from '../../../core/scope-evaluator'
 import { useSharedFilter } from '../lib/FilterContext'
 import { createThrottledRead, type ThrottledRead } from '../lib/throttledRead'
 import { useLivePagedQuery } from '../hooks/useLivePagedQuery'
@@ -39,6 +40,19 @@ const EVIDENCE_PAGE_SIZE = 200
  *  still in the row's title. */
 const ROW_GRID = 'grid grid-cols-[112px_minmax(0,1fr)_56px] @min-[640px]:grid-cols-[112px_minmax(0,1fr)_184px_56px] gap-x-3 items-center'
 const ROW_BOX = 'min-h-9 py-1 px-4'
+
+/** The rule that decided a target's relation, when one did: an allowed rule
+ *  it matched, or an exclusion. Nothing while no readable rule set exists, and
+ *  nothing for a target outside every rule. */
+function MatchedRule({ target, rules }: { target: string; rules: { targets: string[]; excludeTargets: string[] } | null }): JSX.Element | null {
+  const { t } = useI18n()
+  if (!rules) return null
+  const c = classifyScope(target, rules)
+  if (!c.matchedBy) return null
+  return <span data-testid="target-matched-rule" title={c.matchedBy} className="min-w-0 truncate font-mono text-xs text-redlog-text-dim">
+    {t(c.status === 'excluded' ? 'targets.matchedExclude' : 'targets.matchedRule', { rule: c.matchedBy })}
+  </span>
+}
 
 /** The target's relation to the scope: four states, each with its own shape
  *  as well as its word, never colour alone. Out of scope is the loud one, in
@@ -283,6 +297,12 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
     else onOpenInTimeline?.(tgt.lastSeen)
   }
 
+  // The Activity page reads the shared target, as the Timeline does.
+  const openInActivity = (tgt: TargetEntry): void => {
+    setTargetId(tgt.target)
+    window.dispatchEvent(new CustomEvent('redlog:navigate', { detail: 'search' }))
+  }
+
   // §7's main path: target → expand its commands → ⌘↩ to the Timeline.
   const listNav = useListKeyboard({
     count: filtered.length,
@@ -383,7 +403,24 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                 </span>
               </div>
               {open && (
-                <div className="ml-9 mr-4 mb-3 border-l-2 border-redlog-border pl-3 space-y-1 py-1">
+                <div className="mx-4 mb-3 border-l-2 border-redlog-border pl-3 space-y-1 py-1">
+                  <div data-testid="target-actions" className="flex flex-wrap items-center gap-2 pb-2">
+                    {/* One primary: the target's activity, read through the
+                        shared target the Activity page already filters by. */}
+                    <Button level="primary" size="compact" data-testid="target-open-activity" onClick={() => openInActivity(tgt)}>{t('targets.openInActivity')}</Button>
+                    {onOpenInTimeline && (
+                      <Button size="compact" data-testid="target-locate" onClick={() => jumpToTimeline(tgt)}>{t('targets.openInTimeline')}</Button>
+                    )}
+                    {activeTarget === tgt.target ? (
+                      <span className="text-xs text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded">{t('targets.viewingThis')}</span>
+                    ) : (
+                      <Button size="compact" data-testid="target-work-on" onClick={() => workOn(tgt.target)}>{t('activeTarget.workOn')}</Button>
+                    )}
+                    {tgt.inScope === false && (
+                      <Button size="compact" data-testid="target-add-to-scope" onClick={() => { void addToScope(tgt) }}>{t('targets.addToScope')}</Button>
+                    )}
+                    <MatchedRule target={tgt.target} rules={scopeKnown ? { targets: scopeTargets, excludeTargets } : null} />
+                  </div>
                   {evidencePhase === 'loading' ? (
                     <p data-testid="target-evidence-loading" role="status" className="text-redlog-text-faint text-xs">{t('targets.loading')}</p>
                   ) : evidencePhase === 'failed' ? (
@@ -434,19 +471,6 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                       )}
                     </>
                   )}
-                  <div className="flex flex-wrap items-center gap-2 pt-2">
-                    {activeTarget === tgt.target ? (
-                      <span className="text-xs text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded">{t('targets.viewingThis')}</span>
-                    ) : (
-                      <Button size="compact" data-testid="target-work-on" onClick={() => workOn(tgt.target)}>{t('activeTarget.workOn')}</Button>
-                    )}
-                    {onOpenInTimeline && (
-                      <Button size="compact" data-testid="target-locate" onClick={() => jumpToTimeline(tgt)}>{t('targets.openInTimeline')}</Button>
-                    )}
-                    {tgt.inScope === false && (
-                      <Button size="compact" data-testid="target-add-to-scope" onClick={() => { void addToScope(tgt) }}>{t('targets.addToScope')}</Button>
-                    )}
-                  </div>
                 </div>
               )}
             </div>

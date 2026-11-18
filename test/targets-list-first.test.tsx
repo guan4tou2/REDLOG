@@ -6,12 +6,12 @@
 // that nothing else says: being listed is not being authorised.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { TargetView } from '../src/renderer/src/components/TargetView'
 import { TargetsScopeHeader } from '../src/renderer/src/components/TargetsScopeHeader'
 import { ScopeStatus } from '../src/renderer/src/components/ScopeStatus'
-import { FilterProvider } from '../src/renderer/src/lib/FilterContext'
+import { FilterProvider, useSharedFilter } from '../src/renderer/src/lib/FilterContext'
 import { installTimelineBridge } from './helpers/timeline-bridge'
 
 type Redlog = Record<string, Record<string, unknown>>
@@ -232,5 +232,58 @@ describe('G4: the status card lists the rules', () => {
     expect(await screen.findByText('Scope rules could not be read')).toBeTruthy()
     expect(rules()).toEqual([])
     expect(screen.getByTestId('scope-context-retry')).toBeTruthy()
+  })
+})
+
+describe('G5: the expanded target', () => {
+  let filterApi: ReturnType<typeof useSharedFilter>
+  function Probe(): null { filterApi = useSharedFilter(); return null }
+  const mountWithProbe = (): void => {
+    render(<I18nProvider><FilterProvider><Probe /><TargetView onOpenInTimeline={noop} /></FilterProvider></I18nProvider>)
+  }
+  const expand = async (name: string): Promise<HTMLElement> => {
+    fireEvent.click(await screen.findByText(name))
+    return (await screen.findByTestId('target-actions'))
+  }
+
+  it('opens the target in Activity as its one primary action, scoped by the shared target', async () => {
+    installTargets([{ target: '10.0.0.5', eventCount: 1, firstSeen: 1, lastSeen: 1 }], { targets: ['10.0.0.0/24'], excludeTargets: [] })
+    const navigate = vi.fn()
+    window.addEventListener('redlog:navigate', navigate)
+    try {
+      mountWithProbe()
+      const actions = await expand('10.0.0.5')
+      const buttons = Array.from(actions.querySelectorAll('button'))
+      expect(buttons[0].dataset.testid).toBe('target-open-activity')
+      expect(buttons[0].textContent).toBe('Open in Activity')
+      expect(buttons.filter((b) => b.className.includes('bg-redlog-accent ')).map((b) => b.dataset.testid)).toEqual(['target-open-activity'])
+      expect(buttons[1].dataset.testid).toBe('target-locate')
+      fireEvent.click(buttons[0])
+      expect(filterApi.filter.targetId).toBe('10.0.0.5')
+      expect(navigate).toHaveBeenCalledTimes(1)
+      expect((navigate.mock.calls[0][0] as CustomEvent).detail).toBe('search')
+    } finally { window.removeEventListener('redlog:navigate', navigate) }
+  })
+
+  it('names the rule a target matched, allowed or excluded, and none where no rule decided', async () => {
+    installTargets([
+      { target: '10.0.0.5', eventCount: 1, firstSeen: 1, lastSeen: 3 },
+      { target: '10.0.0.9', eventCount: 1, firstSeen: 1, lastSeen: 2 },
+      { target: 'far.test', eventCount: 1, firstSeen: 1, lastSeen: 1 }
+    ], { targets: ['10.0.0.0/24'], excludeTargets: ['10.0.0.9'] })
+    mountWithProbe()
+    await expand('10.0.0.5')
+    expect(screen.getByTestId('target-matched-rule').textContent).toBe('Matches 10.0.0.0/24')
+    await expand('10.0.0.9')
+    expect(screen.getByTestId('target-matched-rule').textContent).toBe('Excluded by 10.0.0.9')
+    await expand('far.test')
+    expect(screen.queryByTestId('target-matched-rule')).toBeNull()
+  })
+
+  it('names no rule while none is declared', async () => {
+    installTargets([{ target: '10.0.0.5', eventCount: 1, firstSeen: 1, lastSeen: 1 }])
+    mountWithProbe()
+    await expand('10.0.0.5')
+    expect(screen.queryByTestId('target-matched-rule')).toBeNull()
   })
 })
