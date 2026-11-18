@@ -2383,5 +2383,7 @@
   "evidence.receiptUpgraded": "upgraded",
   "evidence.receiptFailed": "failed",
   "evidence.walkedHead": "Head at the last walk: {{hash}}",
-  "evidence.otsHint": "Each calendar receipt can be checked independently with the `ots` CLI."
+  "evidence.otsHint": "Each calendar receipt can be checked independently with the `ots` CLI.",
+  "evidence.signaturesUnchecked": "{{n}} not signature-checked",
+  "evidence.noAnchorChecked": "Rows only, no anchor checked"
 }

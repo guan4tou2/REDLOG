@@ -49,7 +49,13 @@ const n = (v: number): string => v.toLocaleString()
 
 /** Something on the record that is not clean. `danger` is a fault in the
  *  record or its timestamping; `warn` qualifies what a tick may claim. */
-interface Finding { id: string; tone: 'danger' | 'warn'; text: string; /** The fuller sentence, for the disclosure. */ detail?: string }
+interface Finding {
+  id: string; tone: 'danger' | 'warn'; text: string
+  /** The fuller sentence, for the disclosure. */
+  detail?: string
+  /** Said by the result's own lines in the disclosure, so not listed twice there. */
+  inResult?: boolean
+}
 const TONE: Record<Finding['tone'], string> = { danger: 'text-red-400', warn: 'text-amber-400' }
 
 interface Reading {
@@ -61,6 +67,14 @@ interface Reading {
   anchorsFailed: boolean
   skipped: boolean
   now: number
+}
+
+/** Entries no landed anchor covers, or null when unknown. A failed
+ *  submission timestamped nothing, so it covers nothing. */
+function unanchoredCount(anchors: ChainAnchorInfo[] | null, len: number | null): number | null {
+  if (!anchors || len === null) return null
+  const landed = anchors.find((a) => a.status !== 'failed')
+  return Math.max(0, len - (landed?.eventCount ?? 0))
 }
 
 /** Every abnormal state the block knows of, worst first. The verdict is not
@@ -79,9 +93,21 @@ function findings(r: Reading, t: Translate): Finding[] {
       else if (r.len !== null && r.len > walked) out.push({ id: 'added-since', tone: 'warn', text: `▲ ${t('evidence.addedSince', { n: n(r.len - walked) })}` })
       else if (r.len !== null && r.len < walked) out.push({ id: 'changed-since', tone: 'warn', text: `▲ ${t('evidence.changedSince')}` })
     }
+    // What qualifies a tick. Incomplete signatures are already the verdict.
+    const res = r.record.result as FullVerifyResult
+    if (res.ok && verdict !== 'signatures-incomplete' && res.signedCount !== undefined && res.authentication !== 'verified') {
+      out.push({ id: 'signatures', tone: 'warn', inResult: true, text: `▲ ${t('evidence.signaturesUnchecked', { n: n((res.unsignedCount ?? 0) + (res.noPubKeyCount ?? 0)) })}` })
+    }
+    if (res.ok && res.anchor == null) out.push({ id: 'no-anchor-checked', tone: 'warn', inResult: true, text: `▲ ${t('evidence.noAnchorChecked')}` })
+    if (res.clockAnomalies && res.clockAnomalies.length > 0) {
+      out.push({ id: 'clock', tone: 'warn', inResult: true, text: `▲ ${t('settings.integrityFullClockAnomalies', { n: String(res.clockAnomalies.length) })}` })
+    }
   } else if (r.lenFailed) out.push({ id: 'length-failed', tone: 'warn', text: `▲ ${t('evidence.lengthFailed')}` })
   if (r.anchorsFailed) out.push({ id: 'anchors-failed', tone: 'warn', text: `▲ ${t('evidence.anchorsFailed')}` })
-  if (latest && latest.status !== 'failed') {
+  // Stale only while something waits for an anchor: an idle chain that the
+  // last anchor covers, or an air-gapped one, is not overdue.
+  const unanchored = unanchoredCount(r.anchors, r.len)
+  if (latest && latest.status !== 'failed' && unanchored !== 0) {
     const hours = Math.floor((r.now - latest.createdAt) / 3_600_000)
     if (hours >= ANCHOR_DEAD_HOURS) out.push({ id: 'anchor-stale', tone: 'warn', text: `▲ ${t('issues.integrity.anchor-stale', { days: Math.max(1, Math.floor(hours / 24)) })}` })
   }
@@ -130,7 +156,7 @@ function ResultDetail({ r, t }: { r: FullVerifyResult; t: Translate }): JSX.Elem
   return <ul data-testid="evidence-verify-detail" className="space-y-0.5 font-mono text-xs text-redlog-text-dim">
     {/* A broken walk counted signatures only up to the break. */}
     {r.ok && r.signedCount !== undefined && (
-      <li className={r.authentication === 'failed' ? 'text-amber-400' : undefined}>
+      <li className={r.authentication !== 'verified' ? 'text-amber-400' : undefined}>
         {t('settings.integrityFullSignatures', { signed: n(r.signedCount), unchecked: n((r.unsignedCount ?? 0) + (r.noPubKeyCount ?? 0)) })}
       </li>
     )}
@@ -148,7 +174,7 @@ function ResultDetail({ r, t }: { r: FullVerifyResult; t: Translate }): JSX.Elem
     {anchored && verdict !== 'anchor-mismatch' && r.ok && (r.anchor as ChainAnchorInfo).status === 'failed' && <li className="text-amber-400">▲ {t('evidence.anchorNeverAccepted')}</li>}
     {/* The line says "Anchor mismatch"; this is the sentence. */}
     {verdict === 'anchor-mismatch' && <li className="text-red-400">{t('settings.integrityFullAnchorMismatch')}</li>}
-    {!anchored && r.ok && <li>{t('settings.integrityFullNoAnchor')}</li>}
+    {!anchored && r.ok && <li className="text-amber-400">{t('settings.integrityFullNoAnchor')}</li>}
     {r.currentHead && <li className="break-all">{t('evidence.walkedHead', { hash: r.currentHead })}</li>}
     {r.clockAnomalies && r.clockAnomalies.length > 0 && (
       <li className="text-amber-400">{t('settings.integrityFullClockAnomalies', { n: String(r.clockAnomalies.length) })}</li>
@@ -192,13 +218,12 @@ function AnchorLine({ anchors, chainLen, t }: { anchors: ChainAnchorInfo[]; chai
   const latest = anchors[0]
   // What is timestamped externally is what the last anchor that did not fail
   // covers; a failed submission timestamped nothing.
-  const landed = anchors.find((a) => a.status !== 'failed')
-  const unanchored = chainLen === null ? null : chainLen - (landed?.eventCount ?? 0)
+  const unanchored = unanchoredCount(anchors, chainLen)
+  // With no anchor at all, "not anchored yet" is the whole statement.
+  if (!latest) return <span>{t('evidence.anchorNone')}</span>
   return <span className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
-    {!latest ? <span>{t('evidence.anchorNone')}</span> : <>
-      <span className="font-mono tabular-nums">{formatWhen(latest.createdAt, { seconds: true })}</span>
-      <span>{statusLabel(t, latest.status)}</span>
-    </>}
+    <span className="font-mono tabular-nums">{formatWhen(latest.createdAt, { seconds: true })}</span>
+    <span>{statusLabel(t, latest.status)}</span>
     {unanchored !== null && unanchored > 0 && <span className="font-mono">{t('evidence.unanchored', { n: n(unanchored) })}</span>}
   </span>
 }
@@ -237,7 +262,10 @@ export function EvidenceVerify({ heading }: { heading: JSX.Element }): JSX.Eleme
   useEffect(() => {
     const live = createThrottledRead({ read: () => { rereadLength(); rereadAnchors() }, minIntervalMs: 1000 })
     const unsub = window.redlog.events.onNewBatch(() => live.request())
-    return () => { unsub(); live.dispose() }
+    // A fresh anchor lands without an event of its own; read the list on a
+    // minute's tick as the dashboard does, so "stale" clears by itself.
+    const anchorTimer = setInterval(rereadAnchors, 60_000)
+    return () => { unsub(); live.dispose(); clearInterval(anchorTimer) }
   }, [rereadLength, rereadAnchors])
 
   const handleVerify = useCallback(async (): Promise<void> => {
@@ -303,8 +331,8 @@ export function EvidenceVerify({ heading }: { heading: JSX.Element }): JSX.Eleme
       </div>
     </div>
     {open && <div id={detailsId} data-testid="evidence-verify-details" className="mt-2 max-h-[40vh] space-y-2 overflow-auto">
-      {list.length > 0 && <ul className="space-y-0.5 font-mono text-xs">
-        {list.map((f) => <li key={f.id} className={TONE[f.tone]}>{f.detail ?? f.text}</li>)}
+      {list.some((f) => !f.inResult) && <ul className="space-y-0.5 font-mono text-xs">
+        {list.filter((f) => !f.inResult || !shown).map((f) => <li key={f.id} className={TONE[f.tone]}>{f.detail ?? f.text}</li>)}
       </ul>}
       {shown && <ResultDetail r={shown.result as FullVerifyResult} t={t} />}
       <dl data-testid="evidence-chain-facts" className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-1 border-t border-redlog-border pt-2 text-xs text-redlog-text-dim">

@@ -149,3 +149,64 @@ describe('under sustained traffic', () => {
     }
   })
 })
+
+// What qualifies a tick is said with the caution treatment, on the line.
+describe('emphasis', () => {
+  it('counts signatures that were not verified as a caution, on the line and amber in the disclosure', async () => {
+    setLastVerifyResult({ ok: true, walked: 1201, anchor: anchorAt(), anchorMatchesWalkedHead: true, authentication: 'none', signedCount: 0, unsignedCount: 1201, noPubKeyCount: 0 }, { projectId: 'p1', verifiedAt: NOW })
+    install({ length: async () => 1201 })
+    mount()
+    await waitFor(() => expect(line().textContent).toContain('▲ 1,201 not signature-checked'))
+    fireEvent.click(toggle())
+    expect(within(details() as HTMLElement).getByText('Signatures: 0 verified, 1,201 not checked').className).toContain('amber')
+  })
+
+  it('says on the line when no anchor was checked, and gives clock anomalies the caution treatment', async () => {
+    setLastVerifyResult({ ...intact, anchor: null, clockAnomalies: [{ eventId: 'e2', reason: 'x' }] }, { projectId: 'p1', verifiedAt: NOW })
+    install()
+    mount()
+    await waitFor(() => expect(line().textContent).toContain('▲ Rows only, no anchor checked'))
+    expect(screen.getByTestId('evidence-verify-more').textContent).toBe('+1')
+    fireEvent.click(toggle())
+    const d = details() as HTMLElement
+    expect(within(d).getByText(/No anchor yet: only the rows were checked/).className).toContain('amber')
+    expect(within(d).getByText(/1 clock anomaly/).className).toContain('amber')
+  })
+
+  it('does not call an idle, fully anchored chain stale', async () => {
+    install({ length: async () => 3, anchors: async () => [anchorAt({ createdAt: NOW - 50 * 3_600_000, eventCount: 3 })] })
+    mount()
+    await waitFor(() => expect(window.redlog.chain.length).toHaveBeenCalled())
+    await waitFor(() => expect(line().textContent).toContain('Not verified yet'))
+    expect(line().textContent).not.toContain('No successful anchor')
+  })
+
+  it('calls it stale when entries are waiting for an anchor', async () => {
+    install({ length: async () => 5, anchors: async () => [anchorAt({ createdAt: NOW - 50 * 3_600_000, eventCount: 3 })] })
+    mount()
+    await waitFor(() => expect(line().textContent).toContain('No successful anchor for 2 days'))
+  })
+
+  it('re-reads the anchors on an interval, so a fresh anchor clears "stale" without waiting for an event', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: false })
+    try {
+      install()
+      mount()
+      await act(async () => { await vi.advanceTimersByTimeAsync(50) })
+      const calls = (window.redlog.chain.anchors as ReturnType<typeof vi.fn>).mock.calls.length
+      await act(async () => { await vi.advanceTimersByTimeAsync(61_000) })
+      expect((window.redlog.chain.anchors as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(calls)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('says "Not anchored yet" once, without a count beside it', async () => {
+    install({ length: async () => 5, anchors: async () => [] })
+    mount()
+    fireEvent.click(toggle())
+    const facts = within(details() as HTMLElement).getByTestId('evidence-chain-facts')
+    await waitFor(() => expect(facts.textContent).toContain('Not anchored yet'))
+    expect(facts.textContent).not.toContain('not anchored')
+  })
+})

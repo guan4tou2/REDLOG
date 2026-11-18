@@ -2383,5 +2383,7 @@
   "evidence.receiptUpgraded": "已升級",
   "evidence.receiptFailed": "失敗",
   "evidence.walkedHead": "上次驗證時的鏈頭：{{hash}}",
-  "evidence.otsHint": "每筆日曆收據都能用 `ots` CLI 獨立驗證。"
+  "evidence.otsHint": "每筆日曆收據都能用 `ots` CLI 獨立驗證。",
+  "evidence.signaturesUnchecked": "{{n}} 筆未經簽章檢查",
+  "evidence.noAnchorChecked": "只比對了各列，未比對錨點"
 }
