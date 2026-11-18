@@ -12,11 +12,13 @@ const restricted = new Map<string, string>()
 
 // Where a test-setup replacement of the icacls spawn is kept: on the global,
 // not in this module, so a test that calls vi.resetModules() and imports this
-// file again still finds it. Production never sets it.
+// file again still finds it. Production never sets it, and under Electron it is
+// not read at all: nothing in the app can turn restriction into a no-op
+// through the global.
 const TEST_RUNNER = Symbol.for('redlog.test.icaclsRunner')
 
 function runIcacls(args: string[]): void {
-  const replaced = (globalThis as Record<symbol, unknown>)[TEST_RUNNER]
+  const replaced = process.versions.electron ? undefined : (globalThis as Record<symbol, unknown>)[TEST_RUNNER]
   if (typeof replaced === 'function') { (replaced as IcaclsRunner)(args); return }
   execFileSync('icacls', args, { windowsHide: true, timeout: 5000 })
 }
@@ -31,7 +33,14 @@ export function _replaceIcaclsForTests(runner: IcaclsRunner | null): void {
 }
 
 /**
- * On Windows, restrict a file or directory so only the current user has access.
+ * On Windows, keep other local accounts out of a file or directory. One icacls
+ * call, `/inheritance:r /grant:r USERNAME:(F)`: it stops inheritance, removes
+ * every inherited entry, and gives the current user full control. Explicit
+ * entries the target already carried for other principals are left as they
+ * are: a file an elevated process creates has explicit SYSTEM and
+ * Administrators entries, and keeps them. Nothing the parent folder grants
+ * (Users, Authenticated Users) survives. On a directory the user's entry is
+ * not inheritable.
  * POSIX mode bits are silently ignored by NTFS; this fills the gap with icacls.
  *
  * No-op on non-win32 platforms (POSIX mode already handles it).
@@ -45,11 +54,12 @@ export function restrictToOwner(target: string): void {
 }
 
 /** Null when the identity cannot be told apart from another file's: a file
- *  system that reports no file index (0) cannot be memoised safely. */
+ *  system that reports no file index (0, or all ones) cannot be memoised
+ *  safely. */
 function identity(target: string): string | null {
   try {
     const s = fs.statSync(target, { bigint: true })
-    if (s.ino === 0n) return null
+    if (s.ino === 0n || s.ino === 0xFFFFFFFFFFFFFFFFn) return null
     return `${s.dev}:${s.ino}:${s.birthtimeNs}`
   } catch { return null }
 }
@@ -62,6 +72,10 @@ function identity(target: string): string | null {
  * file with a new index and the default ACL, and is restricted again. Only a
  * restriction that took effect is remembered; a failure throws as
  * restrictToOwner does and is retried on the next call.
+ *
+ * The memo is not a check of the ACL: if someone widens it while the app runs,
+ * it stays widened until the next app start, when the first call restricts it
+ * again.
  */
 export function restrictToOwnerOnce(target: string): void {
   if (process.platform !== 'win32') return

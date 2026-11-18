@@ -338,8 +338,12 @@ const SIDECAR_ACL_MARKER = '.owner-only'
  *  Files already in the directory are restricted first. Restricting a
  *  directory strips the inherited entries from its children, and a file that
  *  has nothing explicit is left with an empty ACL, unreadable by its owner.
- *  Files created afterwards take the process's default ACL, not the project
- *  directory's. The marker keeps this to one pass per directory, since each
+ *  Files created afterwards never get the project directory's entries. They
+ *  inherit only what the directory itself holds as inheritable explicit
+ *  entries: none from the user's grant, which is not inheritable; SYSTEM,
+ *  Administrators and the user when an elevated process created the
+ *  directory (the Windows CI log shows this); and with nothing inheritable,
+ *  the creating process's default entries. The marker keeps this to one pass per directory, since each
  *  icacls call costs about 50 ms. */
 function secureSidecarDir(dir: string): void {
   if (process.platform !== 'win32') return
