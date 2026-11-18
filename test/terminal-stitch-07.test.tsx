@@ -45,7 +45,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); window.localStorage.clear() 
 async function mount(): Promise<void> {
   const { default: TerminalView } = await import('../src/renderer/src/components/TerminalView')
   render(<I18nProvider><TerminalView /></I18nProvider>)
-  await screen.findByTestId('terminal-session-meta')
+  await screen.findByTestId('terminal-tab')
   await waitFor(() => expect(spawn).toHaveBeenCalled())
 }
 
@@ -79,9 +79,8 @@ it('has no page header and no capture dialog above the tab strip', async () => {
   expect(screen.queryByText(/does not mean every shell command output is fully kept/)).toBeNull()
 })
 
-it('opens buffer search with the shortcut, and the meta line names the pane PID', async () => {
+it('opens buffer search with the shortcut', async () => {
   await mount()
-  await waitFor(() => expect(screen.getByTestId('terminal-meta-pid').textContent).toContain('4242'))
   fireEvent.keyDown(window, { key: 'f', metaKey: true })
   await waitFor(() => expect(screen.getByRole('textbox')).toBeTruthy())
   expect(screen.getByText('Esc to close')).toBeTruthy()

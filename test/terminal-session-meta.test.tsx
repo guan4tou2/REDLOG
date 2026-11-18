@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 //
-// Spec 069 T019: the terminal page's heading, its capture explanation and the
-// state line of the active pane. Each pane's recording and hook state is its
-// own, an ended pane keeps saying what its recording went through, and a
-// restarted pane starts with none of the old session's history.
+// Spec 069 T019, folded into two layers: each pane's state is said once. A
+// pane that records with its hook connected is a dot on its tab and nothing
+// else; anything else is a word on the tab and one line in the pane. Each
+// pane's state is its own, an ended pane keeps saying what its recording went
+// through, and a restarted pane starts with none of the old session's history.
 
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -57,27 +58,81 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); window.localStorage.clear() 
 async function mount(): Promise<void> {
   const { default: TerminalView } = await import('../src/renderer/src/components/TerminalView')
   render(<I18nProvider><TerminalView /></I18nProvider>)
-  await screen.findByTestId('terminal-session-meta')
+  await screen.findByTestId('terminal-tab')
   await waitFor(() => expect(spawn).toHaveBeenCalled())
 }
+const tabState = (): HTMLElement => screen.getByTestId('terminal-tab-state')
+const line = (): string | null => screen.queryByTestId('terminal-recording-gap')?.textContent ?? null
+const hooked = (): void => {
+  spawn.mockImplementation(async () => ({ pid: 4242, recording: true, castTruncated: false, paused: false, hookSourced: true, shell: '/bin/zsh' }))
+}
 
-it('shows the pane\'s recording, hook, directory and exit', async () => {
+it('a recording pane with its hook connected is a dot on its tab, with no word and no line', async () => {
+  hooked()
   await mount()
-  await waitFor(() => expect(screen.getByTestId('terminal-meta-hook').textContent).toContain('not connected'))
-  expect(screen.getByTestId('terminal-meta-screen').textContent).toContain('Screen')
+  await waitFor(() => expect(tabState().dataset.state).toBe('recording'))
+  expect(tabState().textContent).toBe('')
+  expect(tabState().getAttribute('title')).toBe('Terminal session is being recorded (.cast)')
+  expect(line()).toBeNull()
+  expect(screen.queryByTestId('terminal-no-hook')).toBeNull()
+  expect(screen.queryByTestId('terminal-tab-hook')).toBeNull()
+  expect(screen.queryByTestId('terminal-session-meta')).toBeNull()
+})
+
+it('says a missing hook once on the tab and once in the pane', async () => {
+  await mount()
+  const word = await screen.findByTestId('terminal-tab-hook')
+  expect(word.textContent).toBe('command events not connected')
+  expect(word.getAttribute('title')).toContain('fish')
+  expect(screen.getByTestId('terminal-no-hook').textContent).toContain('NOT being recorded')
+  expect(screen.getAllByText(/not connected/)).toHaveLength(1)
+})
+
+it('keeps the full directory and the PID on the tab, and a failed exit code on it once', async () => {
+  await mount()
+  await waitFor(() => expect(screen.getByTestId('terminal-tab').getAttribute('title')).toContain('PID 4242'))
   act(() => batch([{ agentType: 'shell', data: { source: 'builtin-terminal', subtype: 'command_end', terminalId: tid(), cwd: '/home/op/acme', exit_code: 2 } }]))
-  const meta = screen.getByTestId('terminal-session-meta')
+  const tab = screen.getByTestId('terminal-tab')
   // The full path the shell reported — not its last segment dressed up as ~/.
-  expect(meta.textContent).toContain('/home/op/acme')
-  expect(meta.textContent).not.toContain('~/acme')
-  expect(meta.textContent).toMatch(/Exit\s*2/)
+  expect(tab.getAttribute('title')).toContain('/home/op/acme')
+  expect(document.body.textContent).not.toContain('acme')
+  expect(screen.getAllByText('✕2')).toHaveLength(1)
+})
+
+it('says "not recording" as a word on the tab, no fainter than "recording" was, and one line in the pane', async () => {
+  await mount()
+  cast('t1', { recording: false })
+  expect(tabState().textContent).toBe('no rec')
+  expect(tabState().className).toContain('text-amber-300')
+  expect(tabState().className).not.toContain('text-redlog-text-faint')
+  expect(line()).toBe('No cast recording for this session')
+})
+
+it('says a pause and a truncation where they apply, with what they leave out', async () => {
+  await mount()
+  cast('t1', { recording: false, paused: true })
+  expect(tabState().textContent).toBe('paused')
+  expect(tabState().getAttribute('title')).toContain('not written while paused')
+  expect(line()).toContain('not written while paused')
+  expect(screen.getAllByText('paused')).toHaveLength(1)
+  cast('t1', { castTruncated: true })
+  expect(tabState().textContent).toBe('trunc')
+  expect(tabState().getAttribute('title')).toContain('not captured')
+  expect(line()).toContain('not captured')
 })
 
 it('says a failed recording as failed, not as not recording', async () => {
   await mount()
   cast('t1', { recording: false, recordingReason: 'recording-failed', recordingError: 'disk full' })
-  expect(screen.getByTestId('terminal-meta-screen').textContent).toContain('rec failed')
-  expect(screen.getByTestId('terminal-meta-screen').getAttribute('title')).toContain('disk full')
+  expect(tabState().textContent).toBe('rec failed')
+  expect(tabState().getAttribute('title')).toContain('disk full')
+})
+
+it('says a pane with no project open is not recorded, and why', async () => {
+  await mount()
+  cast('t1', { recording: false, recordingReason: 'no-project' })
+  expect(tabState().textContent).toBe('no rec')
+  expect(line()).toContain('No project is open')
 })
 
 // A failed spawn is not a recording failure of a running shell: there is no
@@ -104,21 +159,32 @@ it('keeps what an ended pane\'s recording went through, instead of only "ended"'
   cast('t1', { paused: true, recording: false })
   cast('t1', {})
   act(() => exitHandlers.get(tid())!())
-  const screenBadge = screen.getByTestId('terminal-meta-screen').textContent ?? ''
-  expect(screenBadge).toContain('Session ended')
-  expect(screenBadge).toContain('part paused')
-  expect(screen.queryByTestId('terminal-meta-hook')).toBeNull()
+  const badge = screen.getByTestId('terminal-ended-recording')
+  expect(badge.textContent).toBe('part paused')
+  expect(badge.dataset.state).toBe('partly-paused')
+  expect(line()).toContain('Session ended')
+  expect(line()).toContain('paused for part of this session')
+  expect(screen.queryByTestId('terminal-tab-hook')).toBeNull()
+  expect(screen.queryByTestId('terminal-no-hook')).toBeNull()
+})
+
+it('says a cleanly ended pane ended, on its tab only', async () => {
+  await mount()
+  cast('t1', {})
+  act(() => exitHandlers.get(tid())!())
+  expect(screen.getByTestId('terminal-ended').textContent).toBe('Session ended')
+  expect(screen.queryByTestId('terminal-ended-recording')).toBeNull()
+  expect(line()).toBeNull()
 })
 
 it('starts a restarted pane with none of the old session\'s history', async () => {
   await mount()
   cast('t1', { recording: false, recordingReason: 'recording-failed', recordingError: 'x' })
   act(() => exitHandlers.get(tid())!())
-  expect(screen.getByTestId('terminal-meta-screen').textContent).toContain('rec failed')
+  expect(screen.getByTestId('terminal-ended-recording').textContent).toBe('rec failed')
   fireEvent.click(screen.getByRole('button', { name: /Restart/i }))
   await waitFor(() => expect(spawn).toHaveBeenCalledTimes(2))
-  const text = (): string => screen.getByTestId('terminal-meta-screen').textContent ?? ''
-  await waitFor(() => expect(text()).not.toContain('Session ended'))
-  expect(text()).not.toContain('rec failed')
-  expect(screen.getByTestId('terminal-meta-screen').textContent).toContain('rec')
+  await waitFor(() => expect(tabState().dataset.state).toBe('recording'))
+  expect(screen.queryByTestId('terminal-ended-recording')).toBeNull()
+  expect(line()).toBeNull()
 })

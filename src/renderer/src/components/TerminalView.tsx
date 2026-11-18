@@ -7,7 +7,7 @@ import { useI18n } from '../i18n'
 import { takePendingCommand, onRunInTerminal } from '../lib/terminalRunner'
 import { readClipboard, writeClipboard } from '../lib/clipboard'
 import { toast, UNDO_MS } from './Toast'
-import { castHistory, endedRecording, type CastHistory } from '../lib/terminalRecordingSummary'
+import { castHistory, endedRecording, type CastHistory, type EndedRecording } from '../lib/terminalRecordingSummary'
 import { usePersistentState } from '../lib/usePersistentState'
 import { DEFAULT_FONT_SIZE, FONT_MIN, FONT_MAX, clampFontSize } from '../lib/terminalFont'
 import { createAckBatcher, createFitScheduler } from '../lib/terminalFlow'
@@ -328,7 +328,6 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [activeTab, addTab, closeTab])
 
-  const current = tabs.find((tb) => tb.id === activeTab) ?? null
   return (
     <div className="flex flex-col h-full bg-redlog-bg">
       {/* Tab bar */}
@@ -336,6 +335,10 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
         {tabs.map((tab) => (
           <div
             key={tab.id}
+            data-testid="terminal-tab"
+            // Where the shell is and which process it is: one hover away, not
+            // repeated on a second row.
+            title={tabTitle(tab)}
             onClick={() => setActiveTab(tab.id)}
             className={`group flex items-center gap-1.5 px-3 h-7 rounded-md text-xs cursor-pointer transition-colors ${
               activeTab === tab.id
@@ -343,37 +346,13 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
                 : 'text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]'
             }`}
           >
-            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tab.alive ? 'bg-emerald-500' : 'bg-redlog-elevated-hover'}`} />
-            <span title={tab.label} className={`truncate max-w-[100px] ${tab.alive ? '' : 'italic text-redlog-text-faint'}`}>{tab.label}</span>
-            {tab.alive && tab.castRecording === true && (
-              <span className="text-xs font-mono text-red-400/70 bg-red-500/10 px-1 rounded" title={t('terminal.castRecording')}>{t('terminal.castRecordingShort')}</span>
-            )}
-            {tab.alive && tab.castTruncated === true && (
-              <span className="text-xs font-mono text-amber-400/70 bg-amber-500/10 px-1 rounded" title={t('terminal.castTruncated')}>{t('terminal.castTruncatedShort')}</span>
-            )}
-            {tab.alive && tab.castPaused === true && (
-              <span className="text-xs font-mono text-redlog-text-dim bg-redlog-elevated px-1 rounded" title={t('terminal.castPaused')}>{t('terminal.castPausedShort')}</span>
-            )}
-            {tab.alive && tab.castRecording === false && tab.castTruncated !== true && tab.castPaused !== true && (
-              <span className="text-xs font-mono text-redlog-text-faint bg-redlog-elevated px-1 rounded" title={t('terminal.castNotRecording')}>{t('terminal.castNotRecordingShort')}</span>
-            )}
-            {!tab.alive && (() => {
-              const ended = endedRecording(tab.castHistory ?? {})
-              return ended && (
-                <span data-testid="terminal-ended-recording" data-state={ended} className={`text-xs font-mono px-1 rounded ${ended === 'failed' ? 'text-red-400 bg-red-500/10' : 'text-amber-400/70 bg-amber-500/10'}`} title={t(ENDED_LABELS[ended][1])}>{t(ENDED_LABELS[ended][0])}</span>
-              )
-            })()}
-            {tab.cwd && tab.alive && (
-              <span className="text-xs font-mono text-redlog-text-dim truncate max-w-[80px]" title={tab.cwdFull ?? tab.cwd}>{tab.cwd}</span>
-            )}
+            <TabState tab={tab} />
+            <span title={tabTitle(tab)} className={`truncate max-w-[100px] ${tab.alive ? '' : 'italic text-redlog-text-faint'}`}>{tab.label}</span>
             {tab.alive && tab.lastExit !== undefined && tab.lastExit !== 0 && (
               <span
                 className="text-xs font-mono text-red-400 bg-red-500/10 px-1 rounded"
                 title={t('terminal.lastExit', { code: tab.lastExit })}
               >✕{tab.lastExit}</span>
-            )}
-            {tab.pid > 0 && tab.alive && (
-              <span className="text-xs text-redlog-text-faint font-mono">{tab.pid}</span>
             )}
             {!tab.alive && allowNew && (
               <button
@@ -541,7 +520,6 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
         </div>
       )}
 
-      {current && <SessionMeta tab={current} shellName={shells.find((s) => s.id === current.shellId)?.label} />}
 
       {/* Terminal panes */}
       <div className="flex-1 min-h-0 relative">
@@ -557,6 +535,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
               fontSize={fontSize}
               onSearch={() => setSearchOpen(true)}
               shellId={tab.shellId}
+              ended={tab.alive ? undefined : endedRecording(tab.castHistory ?? {})}
               onPid={(pid) => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, pid } : t))}
               onCastState={(state) => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, castRecording: state.recording, castTruncated: state.castTruncated, castPaused: state.paused, recordingReason: state.recordingReason, recordingError: state.recordingError, castHistory: recordCastState(tab.id, state) } : t))}
               onExit={() => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, alive: false } : t))}
@@ -580,56 +559,73 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
   )
 }
 
-const BADGE = 'inline-flex items-center gap-1.5 rounded border px-1.5 py-0.5 text-xs'
-const TONE = {
-  good: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
-  warn: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
-  bad: 'border-red-500/30 bg-red-500/10 text-red-300',
+/** The tab's name, the full directory its shell reported and its process. */
+function tabTitle(tab: Tab): string {
+  return [tab.label, tab.cwdFull ?? tab.cwd, tab.alive && tab.pid > 0 ? `PID ${tab.pid}` : null].filter(Boolean).join(' · ')
+}
+
+const WORD = 'shrink-0 rounded border px-1 text-xs font-mono'
+const WORD_TONE = {
+  warn: 'border-amber-500/40 bg-amber-500/15 text-amber-300',
+  bad: 'border-red-500/40 bg-red-500/15 text-red-300',
   quiet: 'border-redlog-border bg-redlog-elevated text-redlog-text-dim'
 } as const
 
-/** What the active pane's recording and hook are doing, and where it is. Each
- *  line is that pane's own: a state is never carried over from another pane or
- *  from the session this one replaced. */
-function SessionMeta({ tab, shellName }: { tab: Tab; shellName?: string }): JSX.Element {
+/** What the tab says about its pane. A pane that is recording, with its hook
+ *  connected, is a dot and nothing else; every other state is a word, so none
+ *  of them is told apart by colour alone. The word's tooltip says what the
+ *  state leaves out of the record, and the pane's own line says it again in
+ *  full — the strip that used to repeat both is gone. */
+function TabState({ tab }: { tab: Tab }): JSX.Element {
   const { t } = useI18n()
-  const ended = endedRecording(tab.castHistory ?? {})
-  let screen: { tone: keyof typeof TONE; text: string; title?: string } | null = null
   if (!tab.alive) {
-    screen = ended
-      ? { tone: ended === 'failed' ? 'bad' : 'warn', text: `${t('terminal.meta.ended')} · ${t(ENDED_LABELS[ended][0])}`, title: t(ENDED_LABELS[ended][1]) }
-      : { tone: 'quiet', text: `${t('terminal.meta.ended')} · ${t('terminal.meta.endedNoGap')}` }
-  } else if (tab.recordingReason === 'recording-failed') {
-    screen = { tone: 'bad', text: t('terminal.ended.failedShort'), title: t('terminal.recordingFailed', { reason: tab.recordingError ?? '' }) }
-  } else if (tab.castPaused) screen = { tone: 'warn', text: t('terminal.castPausedShort'), title: t('terminal.castPaused') }
-  else if (tab.castTruncated) screen = { tone: 'warn', text: t('terminal.castTruncatedShort'), title: t('terminal.castTruncated') }
-  else if (tab.castRecording === true) screen = { tone: 'good', text: t('terminal.castRecordingShort'), title: t('terminal.castRecording') }
-  else if (tab.castRecording === false) screen = { tone: 'quiet', text: t('terminal.castNotRecordingShort'), title: t('terminal.castNotRecording') }
-  // Hook: known only once the pane has a process; before that, say nothing.
-  const hook = tab.alive && tab.pid > 0 && tab.unhooked !== undefined
-    ? tab.unhooked
-      ? { tone: 'warn' as const, text: t('terminal.meta.hookOff'), title: t('terminal.noHook', { shell: tab.unhooked.split(/[\\/]/).pop() ?? tab.unhooked }) }
-      : { tone: 'good' as const, text: shellName ? `${t('terminal.meta.hookOn')} (${shellName})` : t('terminal.meta.hookOn') }
+    const ended = endedRecording(tab.castHistory ?? {})
+    return ended
+      ? <span data-testid="terminal-ended-recording" data-state={ended} className={`${WORD} ${WORD_TONE[ended === 'failed' ? 'bad' : 'warn']}`} title={t(ENDED_LABELS[ended][1])}>{t(ENDED_LABELS[ended][0])}</span>
+      : <span data-testid="terminal-ended" className={`${WORD} ${WORD_TONE.quiet}`}>{t('terminal.meta.ended')}</span>
+  }
+  let word: { state: string; tone: keyof typeof WORD_TONE; text: string; title: string } | null = null
+  if (tab.recordingReason === 'recording-failed') word = { state: 'failed', tone: 'bad', text: t('terminal.ended.failedShort'), title: t('terminal.recordingFailed', { reason: tab.recordingError ?? '' }) }
+  else if (tab.castPaused) word = { state: 'paused', tone: 'warn', text: t('terminal.castPausedShort'), title: t('terminal.castPaused') }
+  else if (tab.castTruncated) word = { state: 'truncated', tone: 'warn', text: t('terminal.castTruncatedShort'), title: t('terminal.castTruncated') }
+  else if (tab.castRecording === false) word = { state: 'not-recording', tone: 'warn', text: t('terminal.castNotRecordingShort'), title: tab.recordingReason === 'no-project' ? t('terminal.noProjectRecording') : t('terminal.castNotRecording') }
+  // Known only once the pane has a process; before that, say nothing.
+  const hook = tab.pid > 0 && tab.unhooked
+    ? <span data-testid="terminal-tab-hook" className={`${WORD} ${WORD_TONE.warn}`} title={t('terminal.noHook', { shell: tab.unhooked.split(/[\\/]/).pop() ?? tab.unhooked })}>{t('terminal.meta.hookOff')}</span>
     : null
   return (
-    <div data-testid="terminal-session-meta" className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-redlog-border bg-redlog-bg px-pad py-1">
-      <div className="flex flex-wrap items-center gap-2">
-        {screen && <span data-testid="terminal-meta-screen" className={`${BADGE} ${TONE[screen.tone]}`} title={screen.title}><span className="text-redlog-text-faint">{t('terminal.meta.screenLabel')}</span>{screen.text}</span>}
-        {hook && <span data-testid="terminal-meta-hook" className={`${BADGE} ${TONE[hook.tone]}`} title={hook.title}><span className="text-redlog-text-faint">{t('terminal.meta.hookLabel')}</span>{hook.text}</span>}
-      </div>
-      <div className="flex flex-wrap items-center gap-x-3 text-xs text-redlog-text-dim">
-        {tab.cwd && <span title={tab.cwdFull ?? tab.cwd}>{t('terminal.meta.cwd')} <span className="font-mono text-redlog-text">{tab.cwdFull ?? tab.cwd}</span></span>}
-        {tab.alive && tab.pid > 0 && <span data-testid="terminal-meta-pid">PID <span className="font-mono text-redlog-text">{tab.pid}</span></span>}
-        {tab.lastExit !== undefined && <span>{t('terminal.meta.exit')} <span className={`font-mono ${tab.lastExit === 0 ? 'text-emerald-400' : 'text-red-400'}`}>{tab.lastExit}</span></span>}
-      </div>
-    </div>
+    <>
+      {word
+        ? <span data-testid="terminal-tab-state" data-state={word.state} className={`${WORD} ${WORD_TONE[word.tone]}`} title={word.title}>{word.text}</span>
+        // Recording, or not known yet: a dot, filled only once recording is confirmed.
+        : <span data-testid="terminal-tab-state" data-state={tab.castRecording ? 'recording' : 'unknown'}
+            className={`w-1.5 h-1.5 rounded-full shrink-0 ${tab.castRecording ? 'bg-emerald-500' : 'border border-redlog-text-faint'}`}
+            title={tab.castRecording ? t('terminal.castRecording') : undefined} />}
+      {hook}
+    </>
   )
 }
 
-function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, onUnhooked, fontSize, onSearch, onSearchAddon }: {
+/** The one line a pane shows when its record has a gap: what is missing, in
+ *  full. Null when there is nothing to say. */
+function gapLine(t: (key: string, vars?: Record<string, string | number>) => string, spawnError: string | null, ended: EndedRecording | undefined, state: TerminalCastState | null): string | null {
+  if (spawnError !== null) return t('terminal.spawnFailed', { reason: spawnError })
+  if (ended !== undefined) return ended ? `${t('terminal.meta.ended')} · ${t(ENDED_LABELS[ended][1])}` : null
+  if (!state) return null
+  if (state.recordingReason === 'no-project') return t('terminal.noProjectRecording')
+  if (state.recordingReason === 'recording-failed') return t('terminal.recordingFailed', { reason: state.recordingError ?? '' })
+  if (state.paused) return t('terminal.castPaused')
+  if (state.castTruncated) return t('terminal.castTruncated')
+  if (!state.recording) return t('terminal.castNotRecording')
+  return null
+}
+
+function TerminalPane({ id, active, shellId, ended, onPid, onCastState, onExit, onUnhooked, fontSize, onSearch, onSearchAddon }: {
   id: string
   active: boolean
   shellId?: string
+  /** Undefined while the shell runs; once it has ended, what its recording went through. */
+  ended: EndedRecording | undefined
   onPid: (pid: number) => void
   onCastState: (state: TerminalCastState) => void
   onExit: () => void
@@ -885,16 +881,15 @@ function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, onUnhoo
     }
   }, [active, fitIfVisible])
 
+  const gap = gapLine(t, spawnError, ended, recordingState)
   return (
     <div className="w-full h-full flex flex-col">
-      {recordingState?.recordingReason && (
+      {gap !== null && (
         <div role="status" data-testid="terminal-recording-gap" className="shrink-0 px-3 py-2 border-b border-amber-500/30 bg-amber-500/10 text-xs text-amber-300">
-          {spawnError !== null
-            ? t('terminal.spawnFailed', { reason: spawnError })
-            : recordingState.recordingReason === 'no-project' ? t('terminal.noProjectRecording') : t('terminal.recordingFailed', { reason: recordingState.recordingError ?? '' })}
+          {gap}
         </div>
       )}
-      {unhookedShell && (
+      {unhookedShell && ended === undefined && (
         <div
           role="status"
           data-testid="terminal-no-hook"

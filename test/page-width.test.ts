@@ -42,7 +42,6 @@ const ALLOWED: Allowed[] = [
   { file: C + 'SourceSessionPicker.tsx', snippet: 'w-[28rem] max-w-[90vw]', kind: 'dialog' },
   { file: C + 'TargetView.tsx', snippet: 'flex-1 max-w-md rounded border', kind: 'control' },
   { file: C + 'TerminalView.tsx', snippet: 'truncate max-w-[100px]', kind: 'control' },
-  { file: C + 'TerminalView.tsx', snippet: 'truncate max-w-[80px]', kind: 'control' },
   { file: C + 'Timeline.tsx', snippet: 'timeline-load-failed', kind: 'state' },
   { file: C + 'TimelineHelpModal.tsx', snippet: 'w-[560px] max-w-[92vw]', kind: 'dialog' },
   { file: C + 'Toast.tsx', snippet: 'max-w-[380px]', kind: 'dialog' },
