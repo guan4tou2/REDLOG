@@ -474,6 +474,8 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.displayZoneHint'
   ],
   hud: [
+    'settings.hudLoadFailed',
+    'settings.hudSaveFailed',
     'settings.overlayGroup',
     'settings.overlayAutoShow',
     'settings.overlayAutoShowHint',

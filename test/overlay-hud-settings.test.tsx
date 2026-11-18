@@ -24,6 +24,42 @@ function mount(initial: Partial<HudPrefs> = {}) {
 describe('Settings ▸ HUD', () => {
   afterEach(() => cleanup())
 
+  // A failed save was `.catch(() => {})`: the control kept the value it was
+  // moved to, and the bar below still said changes save automatically.
+  it('says a change was not saved, shows what is really in effect, and retries it', async () => {
+    const { bridge } = mount({ autoShow: false })
+    bridge.set.mockRejectedValueOnce(new Error('not stored'))
+    const box = await screen.findByTestId('settings-overlay-autoshow') as HTMLInputElement
+    fireEvent.click(box)
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    // re-read: the main process never took the change, so the box is off again
+    expect(bridge.get).toHaveBeenCalledTimes(2)
+    await act(async () => {})
+    expect(box.checked).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'common.retry' }))
+    await act(async () => {})
+    expect(bridge.set).toHaveBeenLastCalledWith({ autoShow: true })
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(box.checked).toBe(true)
+  })
+
+  // A failed read rendered nothing at all: an empty page.
+  it('says the HUD settings could not be read, and reads them again on retry', async () => {
+    let listener: unknown = null
+    const bridge = {
+      get: vi.fn().mockRejectedValueOnce(new Error('ipc down')).mockResolvedValueOnce({ ...DEFAULT_HUD_PREFS }),
+      set: vi.fn(),
+      onChanged: vi.fn((cb: unknown) => { listener = cb; return () => { listener = null } })
+    }
+    ;(window as unknown as { redlog: unknown }).redlog = { hudPrefs: bridge }
+    render(<HudPage t={(k) => k} />)
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'common.retry' }))
+    expect(await screen.findByTestId('settings-overlay-autoshow')).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
+    void listener
+  })
+
   it('shows the stored prefs and writes a change through hudPrefs, not the project config', async () => {
     const { bridge } = mount({ autoShow: false })
     const box = await screen.findByTestId('settings-overlay-autoshow') as HTMLInputElement

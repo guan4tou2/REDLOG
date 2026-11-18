@@ -434,6 +434,8 @@
   "settings.vpnNamePlaceholder": "Name",
   "settings.vpnPatternPlaceholder": "Regex pattern",
   "settings.overlayGroup": "HUD",
+  "settings.hudSaveFailed": "This HUD setting was not saved and will not survive a restart.",
+  "settings.hudLoadFailed": "Could not read the HUD settings.",
   "settings.otherPlatforms": "Other platforms",
   "settings.overlayAutoShow": "Open the HUD when a project starts",
   "settings.overlayAutoShowHint": "When off, open the HUD from the status bar or the menu bar icon.",
