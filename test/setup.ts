@@ -26,8 +26,11 @@ process.env.ZDOTDIR = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-vitest-zdotd
 // disk on every commit. On Windows that is a real flush, and tests that seed
 // rows one autocommit at a time went from about 1-5 s to 3-17 s per file on
 // green runs and past the 15 s timeout on slow runners. The suite runs the
-// writer at NORMAL instead, by rewriting that one pragma before it reaches
-// SQLite. Production is untouched; `test/hash-input-pin.test.ts` is the
+// writer and derived WAL indexes at NORMAL instead. A newly created index
+// can retain synchronous=FULL when switching to WAL without ever setting
+// synchronous itself, so rewriting explicit FULL alone misses that connection.
+// NORMAL still syncs at WAL checkpoints. Production is untouched;
+// `test/hash-input-pin.test.ts` is the
 // place that checks the real setting (it sets REDLOG_TEST_REAL_SYNCHRONOUS=1).
 // If the native module cannot load here, do nothing: the files that need it
 // report that through test/helpers/requires.ts, and this setup also runs for
@@ -46,7 +49,15 @@ try {
       ) {
         args[0] = 'synchronous = NORMAL'
       }
-      return realPragma.apply(this, args)
+      const result = realPragma.apply(this, args)
+      if (
+        typeof args[0] === 'string' &&
+        process.env.REDLOG_TEST_REAL_SYNCHRONOUS !== '1' &&
+        /^\s*journal_mode\s*=\s*WAL\s*$/i.test(args[0])
+      ) {
+        realPragma.call(this, 'synchronous = NORMAL')
+      }
+      return result
     }
     Object.defineProperty(proto, marker, { value: true })
   }

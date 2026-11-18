@@ -255,4 +255,29 @@ sqlite.describe('the suite relaxes the writer to synchronous=NORMAL', () => {
     dbMod.getDB().prepare('INSERT INTO bookmarks (id, title, created_at) VALUES (?, ?, ?)').run(crypto.randomUUID(), 'sync', Date.now())
     expect(dbMod.getDB().pragma('synchronous', { simple: true })).toBe(1)
   })
+
+  it('also relaxes a new WAL connection that never explicitly requests FULL', async () => {
+    const Database = (await import('better-sqlite3')).default
+    const index = new Database(path.join(dir, 'derived.db'))
+    try {
+      expect(index.pragma('journal_mode = WAL', { simple: true })).toBe('wal')
+      expect(index.pragma('synchronous', { simple: true })).toBe(1)
+    } finally { index.close() }
+  })
+
+  it('leaves a new WAL connection at its real setting when opted out', async () => {
+    const Database = (await import('better-sqlite3')).default
+    const saved = process.env.REDLOG_TEST_REAL_SYNCHRONOUS
+    process.env.REDLOG_TEST_REAL_SYNCHRONOUS = '1'
+    const index = new Database(path.join(dir, 'real-derived.db'))
+    try {
+      index.pragma('synchronous = FULL')
+      expect(index.pragma('journal_mode = WAL', { simple: true })).toBe('wal')
+      expect(index.pragma('synchronous', { simple: true })).toBe(2)
+    } finally {
+      index.close()
+      if (saved === undefined) delete process.env.REDLOG_TEST_REAL_SYNCHRONOUS
+      else process.env.REDLOG_TEST_REAL_SYNCHRONOUS = saved
+    }
+  })
 })
