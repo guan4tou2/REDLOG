@@ -38,6 +38,14 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup(); localStorage.clear() })
 
+describe('the navigation landmark', () => {
+  it('is named for assistive tech but draws no heading over the rows', () => {
+    draw(ALL)
+    expect(screen.getByRole('navigation', { name: '工作區導覽' })).toBeTruthy()
+    expect(screen.queryByText('工作區導覽')).toBeNull()
+  })
+})
+
 describe('the loot badge', () => {
   // #695: a loot event stores at most 500 matches, so when one was capped the
   // stored count is a lower bound and the badge says so.

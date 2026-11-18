@@ -1,4 +1,4 @@
-import { PAGE_BODY, PROSE_WIDTH } from '../lib/pageLayout'
+import { PAGE_BODY } from '../lib/pageLayout'
 // The first screen of a new engagement (docs/UIUX-STANDARD.md §22, design turn
 // 9a).
 //
@@ -210,7 +210,6 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
     <div className="h-full overflow-auto p-pad"><div className={`${PAGE_BODY} space-y-4`}>
       <div>
         <h2 className="text-lg font-semibold text-redlog-text">{t('firstRun.title')}</h2>
-        <p className={`text-xs text-redlog-text-dim mt-1 ${PROSE_WIDTH}`}>{t('firstRun.hint')}</p>
       </div>
       <CapturePreparation onInstalling={(id, pending) => {
         if (pending) activeDependencyInstalls.current.add(id); else activeDependencyInstalls.current.delete(id)
@@ -226,9 +225,7 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
     <div hidden={preparing} className="h-full p-pad overflow-auto"><div className={`${PAGE_BODY} flex flex-col gap-gap`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-semibold tracking-[0.15em] text-redlog-accent">{t('firstRun.eyebrow')}</p>
           <h2 className="text-lg font-semibold text-redlog-text">{t('firstRun.title')}</h2>
-          <p className={`text-xs text-redlog-text-dim mt-1 ${PROSE_WIDTH}`}>{t('firstRun.hint')}</p>
         </div>
         <div data-testid="first-run-core-footer" className="flex flex-col items-start gap-1.5 text-xs sm:items-end sm:max-w-sm">
           {commands !== 'none' && (
@@ -335,7 +332,6 @@ export function FirstRunView({ onNavigate, renderCaptureCard }: {
                 {/* Two independent ways to record commands, side by side: RedLog's
                     own terminal needs nothing installed; the operator's own
                     terminal needs the hook. Either one proves command capture. */}
-                <p className="text-redlog-text-dim">{t('firstRun.paths.intro')}</p>
                 <div data-testid="first-run-paths" className="space-y-2">
                   <div data-testid="first-run-path-builtin" className="flex flex-wrap items-center justify-between gap-2 rounded border border-redlog-border-subtle bg-redlog-bg px-3 py-2">
                     <div className="min-w-0 flex-1">

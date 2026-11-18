@@ -46,4 +46,9 @@ describe.each(Object.keys(LOCALES) as (keyof typeof LOCALES)[])('copy facts (%s)
     expect(d['activity.reader.integrityNote']).toBeUndefined()
     expect(d['activity.reader.recordState']).toBeUndefined()
   })
+
+  it('first run carries no hint, eyebrow or path-intro sentence', () => {
+    for (const k of ['firstRun.hint', 'firstRun.eyebrow', 'firstRun.paths.intro']) expect(d[k], k).toBeUndefined()
+    expect(d['firstRun.title']).toBeTruthy()
+  })
 })
