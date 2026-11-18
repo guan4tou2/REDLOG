@@ -112,3 +112,24 @@ it('says in the shell menu which shells have a hook and which are a PTY stream o
   expect(items[1].textContent).toContain('PTY stream only')
   expect(items[1].textContent).toContain('not recorded')
 })
+
+// R3: a tab is named by its shell, numbered only when several run the same
+// one — not "Shell N" followed by a directory and a PID.
+it('names a tab by its shell, and numbers it only when several run the same shell', async () => {
+  const labels = ['zsh', 'zsh', 'zsh', 'fish']
+  spawn.mockImplementation(async () => ({ pid: 4242, recording: true, castTruncated: false, paused: false, hookSourced: true, shell: '/bin/x', shellLabel: labels[spawn.mock.calls.length - 1] }))
+  await mount()
+  const names = (): string[] => screen.getAllByTestId('terminal-tab-name').map((n) => n.textContent ?? '')
+  const add = (): void => { fireEvent.click(screen.getByRole('button', { name: 'New Terminal' })) }
+  await waitFor(() => expect(names()).toEqual(['zsh']))
+  add()
+  await waitFor(() => expect(names()).toEqual(['zsh 1', 'zsh 2']))
+  add()
+  await waitFor(() => expect(names()).toEqual(['zsh 1', 'zsh 2', 'zsh 3']))
+  // Closing the first renumbers nothing: "zsh 3" is still the one the operator called that.
+  fireEvent.click(screen.getAllByRole('button', { name: 'Close terminal tab' })[0])
+  await waitFor(() => expect(names()).toEqual(['zsh 2', 'zsh 3']))
+  add()
+  await waitFor(() => expect(names()).toEqual(['zsh 2', 'zsh 3', 'fish']))
+  expect(document.body.textContent).not.toMatch(/pts\//)
+})

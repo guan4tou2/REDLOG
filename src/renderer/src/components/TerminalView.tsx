@@ -17,8 +17,11 @@ import { isComposing } from '../lib/ime'
 
 interface Tab {
   id: string
-  label: string
   pid: number
+  /** The shell's name as the main process reports it ("zsh", "PowerShell 7"). */
+  shellLabel?: string
+  /** This tab's number among tabs of the same shell, kept when others close. */
+  seq?: number
   alive: boolean
   /** Catalog id the pane was opened with, or undefined for "whatever the
    *  old inherited-$SHELL rule picks". Kept per tab so a remount respawns
@@ -51,7 +54,8 @@ interface PaneRuntime {
   pid: number
   castState: TerminalCastState | null
   unhookedShell: string | null
-  handlers: { pid: (pid: number) => void; state: (state: TerminalCastState) => void; exit: () => void; unhooked: (shell: string | null) => void; spawnFailed: (error: string) => void } | null
+  shellLabel?: string
+  handlers: { pid: (pid: number, shellLabel?: string) => void; state: (state: TerminalCastState) => void; exit: () => void; unhooked: (shell: string | null) => void; spawnFailed: (error: string) => void } | null
   dispose: () => void
 }
 
@@ -188,13 +192,14 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
     if (!allowNew) return
     const n = ++tabCounter
     const id = `term-${Date.now()}-${n}`
-    // Monotonic counter — using tabs.length + 1 caused collisions after close
-    // ("Shell 2" reused if tab 3 was closed before adding a new one). Audit P1 #16.
-    const label = `${t('terminal.shell')} ${n}`
-    const tab: Tab = { id, label, pid: 0, alive: true, shellId: shellId || preferredShell || undefined }
+    // Monotonic counter, so an id is never reused after a close.
+    const tab: Tab = { id, pid: 0, alive: true, shellId: shellId || preferredShell || undefined }
     setTabs((prev) => [...prev, tab])
     setActiveTab(id)
   }, [t, preferredShell, allowNew])
+
+  // Until the shell reports its name: the one the picker chose, else "Shell".
+  const fallbackName = (tab: Tab): string => shells.find((s) => s.id === tab.shellId)?.label ?? t('terminal.shell')
 
   const closeTab = useCallback(async (id: string) => {
     // Terminal panes host live PTY sessions (with shell hook capturing every
@@ -217,12 +222,13 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
     // which is what "undo" can honestly mean here. Scrollback does not come
     // back, and the second line of the toast says so rather than letting the
     // operator find out.
-    toast(t('terminal.tabClosed', { label: tab?.label ?? '' }), {
+    toast(t('terminal.tabClosed', { label: tab ? tabName(tab, tabs, fallbackName(tab)) : '' }), {
       why: t('terminal.tabClosedWhy'),
       ...(allowNew ? { action: { label: t('toast.undo'), onClick: () => addTab() } } : {}),
       duration: UNDO_MS
     })
-  }, [activeTab, tabs, t, addTab, allowNew])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, tabs, t, addTab, allowNew, shells])
 
   const didInit = useRef(false)
   useEffect(() => {
@@ -239,8 +245,8 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
     void (window.redlog.terminal.list() ?? Promise.resolve([]))
       .then((live) => {
         if (!Array.isArray(live) || live.length === 0) { addTab(); return }
-        setTabs(live.map((s, i) => ({
-          id: s.id, label: `${t('terminal.shell')} ${i + 1}`, pid: s.pid, alive: true,
+        setTabs(live.map((s) => ({
+          id: s.id, pid: s.pid, alive: true,
           castRecording: s.recording, castTruncated: s.castTruncated, castPaused: s.paused,
           recordingReason: s.recordingReason, recordingError: s.recordingError, castHistory: recordCastState(s.id, s)
         })))
@@ -338,7 +344,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
             data-testid="terminal-tab"
             // Where the shell is and which process it is: one hover away, not
             // repeated on a second row.
-            title={tabTitle(tab)}
+            title={tabTitle(tab, tabName(tab, tabs, fallbackName(tab)))}
             onClick={() => setActiveTab(tab.id)}
             className={`group flex items-center gap-1.5 px-3 h-7 rounded-md text-xs cursor-pointer transition-colors ${
               activeTab === tab.id
@@ -347,7 +353,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
             }`}
           >
             <TabState tab={tab} />
-            <span title={tabTitle(tab)} className={`truncate max-w-[100px] ${tab.alive ? '' : 'italic text-redlog-text-faint'}`}>{tab.label}</span>
+            <span data-testid="terminal-tab-name" title={tabTitle(tab, tabName(tab, tabs, fallbackName(tab)))} className={`truncate max-w-[100px] ${tab.alive ? '' : 'italic text-redlog-text-faint'}`}>{tabName(tab, tabs, fallbackName(tab))}</span>
             {tab.alive && tab.lastExit !== undefined && tab.lastExit !== 0 && (
               <span
                 className="text-xs font-mono text-red-400 bg-red-500/10 px-1 rounded"
@@ -359,7 +365,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
                 onClick={(e) => {
                   // Restart in place: swap the tab's id for a fresh one — React
                   // unmounts the dead TerminalPane and mounts a new one at the
-                  // same slot with a new pty session. Preserves label + tab
+                  // same slot with a new pty session. Preserves name + tab
                   // order + active-tab focus. Audit finding #12.
                   e.stopPropagation()
                   const newId = `term-${Date.now()}-r${++tabCounter}`
@@ -367,7 +373,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
                   // history, hook state, directory and exit code belong to the
                   // shell that ended, and would otherwise be read as the new one's.
                   setTabs((prev) => prev.map((tb) => tb.id === tab.id
-                    ? { id: newId, label: tb.label, shellId: tb.shellId, pid: 0, alive: true }
+                    ? { id: newId, shellId: tb.shellId, shellLabel: tb.shellLabel, seq: tb.seq, pid: 0, alive: true }
                     : tb))
                   if (activeTab === tab.id) setActiveTab(newId)
                   // Clean up the dead pane's search-addon ref
@@ -536,7 +542,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
               onSearch={() => setSearchOpen(true)}
               shellId={tab.shellId}
               ended={tab.alive ? undefined : endedRecording(tab.castHistory ?? {})}
-              onPid={(pid) => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, pid } : t))}
+              onPid={(pid, shellLabel) => setTabs((prev) => prev.map((t) => t.id === tab.id ? withShell({ ...t, pid }, shellLabel, prev) : t))}
               onCastState={(state) => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, castRecording: state.recording, castTruncated: state.castTruncated, castPaused: state.paused, recordingReason: state.recordingReason, recordingError: state.recordingError, castHistory: recordCastState(tab.id, state) } : t))}
               onExit={() => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, alive: false } : t))}
               onUnhooked={(shell) => setTabs((prev) => prev.map((t) => t.id === tab.id ? { ...t, unhooked: shell } : t))}
@@ -559,9 +565,24 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
   )
 }
 
+/** Stamp the shell's name on a tab, with the next number among open tabs of
+ *  that shell. A tab that already has both keeps them (a restart, a remount). */
+function withShell(tab: Tab, shellLabel: string | undefined, all: Tab[]): Tab {
+  if (!shellLabel || (tab.shellLabel === shellLabel && tab.seq)) return tab
+  const taken = all.filter((o) => o.id !== tab.id && o.shellLabel === shellLabel).map((o) => o.seq ?? 0)
+  return { ...tab, shellLabel, seq: Math.max(0, ...taken) + 1 }
+}
+
+/** The shell's name, numbered only while another open tab runs the same shell. */
+function tabName(tab: Tab, all: Tab[], fallback: string): string {
+  const name = tab.shellLabel ?? fallback
+  const twins = all.filter((o) => (o.shellLabel ?? '') === (tab.shellLabel ?? '') && o.shellLabel !== undefined)
+  return twins.length > 1 && tab.seq ? `${name} ${tab.seq}` : name
+}
+
 /** The tab's name, the full directory its shell reported and its process. */
-function tabTitle(tab: Tab): string {
-  return [tab.label, tab.cwdFull ?? tab.cwd, tab.alive && tab.pid > 0 ? `PID ${tab.pid}` : null].filter(Boolean).join(' · ')
+function tabTitle(tab: Tab, name: string): string {
+  return [name, tab.cwdFull ?? tab.cwd, tab.alive && tab.pid > 0 ? `PID ${tab.pid}` : null].filter(Boolean).join(' · ')
 }
 
 const WORD = 'shrink-0 rounded border px-1 text-xs font-mono'
@@ -626,7 +647,7 @@ function TerminalPane({ id, active, shellId, ended, onPid, onCastState, onExit, 
   shellId?: string
   /** Undefined while the shell runs; once it has ended, what its recording went through. */
   ended: EndedRecording | undefined
-  onPid: (pid: number) => void
+  onPid: (pid: number, shellLabel?: string) => void
   onCastState: (state: TerminalCastState) => void
   onExit: () => void
   onUnhooked: (shell: string | null) => void
@@ -790,7 +811,7 @@ function TerminalPane({ id, active, shellId, ended, onPid, onCastState, onExit, 
       const resize = term.onResize(({ cols, rows }) => window.redlog.terminal.resize(id, cols, rows))
       runtime.dispose = () => { unsubData(); unsubExit(); unsubCast?.(); input.dispose(); resize.dispose(); term.dispose() }
     } else {
-      onPid(runtime.pid)
+      onPid(runtime.pid, runtime.shellLabel)
       if (runtime.castState) updateCastState(runtime.castState)
       setUnhookedShell(runtime.unhookedShell)
       onUnhooked(runtime.unhookedShell)
@@ -835,9 +856,10 @@ function TerminalPane({ id, active, shellId, ended, onPid, onCastState, onExit, 
       window.redlog.terminal.spawn(id, term.cols || 80, term.rows || 24, shellId)
         .then(r => {
           runtime.pid = r.pid
+          runtime.shellLabel = r.shellLabel
           runtime.castState = r
           runtime.unhookedShell = r.hookSourced ? null : r.shell
-          runtime.handlers?.pid(r.pid)
+          runtime.handlers?.pid(r.pid, r.shellLabel)
           runtime.handlers?.state(r)
           runtime.handlers?.unhooked(runtime.unhookedShell)
         })
