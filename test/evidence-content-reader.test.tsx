@@ -166,11 +166,19 @@ function findFixture(text: string, match: { offset: number; bytes: number }): vo
   const find = vi.fn().mockResolvedValue({ ok: true, value: { match, searchedThrough: match.offset + match.bytes, total, hasMore: false, nextCursor: null } })
   ;(window as any).redlog = { content: { list: vi.fn().mockResolvedValue({ ok: true, value: [{ field: 'response_body', status: 'available', ref, bytes: total, format: 'utf8', capture: 'unknown' }] }), read, find } }
 }
+// Types the needle and presses Find. Find is disabled while a read is in flight, and
+// the Reader starts one when it mounts: the search box is in the DOM before that read
+// has settled (and, when React has not flushed the mount effect yet, a change made
+// the moment the box appears is followed by the read starting, so the button is
+// disabled). A click on a disabled button does nothing and Find is never called, so
+// wait until it is enabled.
 async function findAndMark(needle: string): Promise<string | null | undefined> {
   render(<EventContentReader projectId="p" eventId="e"/>)
   await screen.findByRole('searchbox')
   fireEvent.change(screen.getByRole('searchbox'), { target: { value: needle } })
-  fireEvent.click(screen.getByRole('button', { name: 'content.find' }))
+  const button = screen.getByRole('button', { name: 'content.find' }) as HTMLButtonElement
+  await waitFor(() => expect(button.disabled).toBe(false))
+  fireEvent.click(button)
   await waitFor(() => expect((window as any).redlog.content.find).toHaveBeenCalled())
   return waitFor(() => { const m = document.querySelector('pre mark'); expect(m).toBeTruthy(); return m?.textContent })
 }
