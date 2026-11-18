@@ -48,6 +48,13 @@ it('opens as a list, switches to a grid, and remembers the choice', async () => 
   expect(await screen.findByTestId('screenshot-grid')).toBeTruthy()
 })
 
+it('gives "All" no count: the Evidence tab states the project\'s', async () => {
+  install()
+  mount()
+  await screen.findByTestId('screenshot-list')
+  expect(screen.getByRole('button', { name: /^All/ }).textContent).toBe('All')
+})
+
 it('keeps every trigger on offer after filtering to one, so the filter can be left', async () => {
   const query = install()
   mount()

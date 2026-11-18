@@ -64,9 +64,12 @@ describe('screenshots', () => {
     render(<I18nProvider><ScreenshotsView /></I18nProvider>)
   }
 
-  it('says how many are shown, newest first', async () => {
+  // The Evidence tab carries the project's count; a second one here is only
+  // for when the list is not everything.
+  it('states no second count when everything is loaded', async () => {
     install()
-    expect((await screen.findByTestId('screenshots-summary')).textContent).toBe('Showing 2 of 2 · newest first')
+    await screen.findByTestId('screenshot-list')
+    expect(screen.queryByTestId('screenshots-summary')).toBeNull()
   })
 
   it('does not pass a partial page off as the whole: it says more is available', async () => {

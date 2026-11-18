@@ -270,7 +270,6 @@ export function ScreenshotsView(): JSX.Element {
     remove: (s) => { setExpanded(null); void remove(s) }
   }
   const noShots = screenshots.length === 0 && !hasMore && triggerFilter === null
-  const totalAll = triggerTotals.reduce((n, [, c]) => n + c, 0)
 
   return (
     <div className={`p-pad overflow-auto h-full ${SCROLL_GUTTER}`}>
@@ -287,7 +286,8 @@ export function ScreenshotsView(): JSX.Element {
         <div data-testid="screenshots-toolbar" className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded border border-redlog-border bg-redlog-surface p-2">
           <div className="flex flex-wrap items-center gap-1">
             <span className="mr-1 text-xs text-redlog-text-faint">{t('screenshots.triggerFilter')}</span>
-            {[{ id: null as string | null, label: t('screenshots.all'), count: triggerTotalsPartial ? `${totalAll}+` : String(totalAll) },
+            {/* "All" has no count: the project's is on the Evidence tab, once. */}
+            {[{ id: null as string | null, label: t('screenshots.all'), count: null as string | null },
               ...triggerTotals.map(([id, count]) => ({ id: id as string | null, label: triggerLabel(id), count: triggerTotalsPartial ? `${count}+` : String(count) }))].map((chip) => (
               <button
                 key={chip.id ?? 'all'}
@@ -297,7 +297,7 @@ export function ScreenshotsView(): JSX.Element {
                 className={`px-2 py-0.5 text-xs font-mono rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 ${
                   triggerFilter === chip.id ? 'bg-red-500/20 text-red-300' : 'bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated-hover'
                 }`}
-              >{chip.label} <span className="text-redlog-text-faint">&middot;{chip.count}</span></button>
+              >{chip.label}{chip.count !== null && <> <span className="text-redlog-text-faint">&middot;{chip.count}</span></>}</button>
             ))}
           </div>
           <div className="flex items-center gap-2">
@@ -336,9 +336,12 @@ export function ScreenshotsView(): JSX.Element {
         />
       ) : (
         <>
-          <div className="mb-2 flex flex-wrap justify-between gap-2 text-xs text-redlog-text-faint">
-            <p data-testid="screenshots-summary">{hasMore ? t('screenshots.summaryMore', { shown: visible.length }) : t('screenshots.summary', { shown: visible.length, total: totalAll })}</p>
-          </div>
+          {/* A count of its own only when the list is not everything: more to
+              load, or a search over what is loaded — counted against the rows
+              this view holds, so a live arrival cannot make it "6 of 5". */}
+          {(hasMore || needle) && <p data-testid="screenshots-summary" className="mb-2 text-xs text-redlog-text-faint">
+            {hasMore ? t('screenshots.summaryMore', { shown: screenshots.length }) : t('screenshots.summary', { shown: visible.length, total: screenshots.length })}
+          </p>}
           {needle && hasMore && <p data-testid="screenshots-search-scope" className="mb-2 text-xs text-redlog-text-faint">{t('screenshots.searchLoadedOnly', { count: screenshots.length })}</p>}
           {visible.length === 0 ? (
             <EmptyState
