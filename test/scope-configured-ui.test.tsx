@@ -62,15 +62,11 @@ describe('the Targets & Scope header', () => {
     render(<I18nProvider><TargetsScopeHeader page="targets" onNavigate={noop} onOpenSettings={noop} /></I18nProvider>)
     const title = configured ? 'Scope rules are set' : 'Scope is not set'
     expect(await screen.findByText(title)).toBeTruthy()
-    const strip = screen.getByTestId('scope-context')
-    if (configured) expect(strip.textContent).toContain(`Allowed ${rules.targets.length}`)
-    else expect(strip.textContent).not.toContain('Allowed')
-    // Exclusions are reported as a fact whenever there are any, configured or not.
-    if (rules.excludeTargets.length > 0 || configured) {
-      expect(screen.getByTestId('scope-context-exclude').textContent).toBe(`Excluded ${rules.excludeTargets.length}`)
-    } else {
-      expect(screen.queryByTestId('scope-context-exclude')).toBeNull()
-    }
+    // The rules are listed; exclusions are reported as a fact whenever there
+    // are any, configured or not.
+    const listed = screen.queryAllByTestId('scope-rule')
+    expect(listed.filter((r) => r.dataset.kind === 'allow').map((r) => r.dataset.rule)).toEqual(rules.targets)
+    expect(listed.filter((r) => r.dataset.kind === 'exclude').map((r) => r.dataset.rule)).toEqual(rules.excludeTargets)
     // Not configured has no observation count to give.
     await waitFor(() => expect(screen.getByTestId('tab-count-scope').textContent).toBe(configured ? '0' : '—'))
   })

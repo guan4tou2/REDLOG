@@ -191,3 +191,46 @@ describe('G3: the relation filters carry their numbers', () => {
     expect(filters().out_scope).toEqual({ count: '—', disabled: true })
   })
 })
+
+describe('G4: the status card lists the rules', () => {
+  const onOpenSettings = vi.fn()
+  const mountHeader = (scope: { targets: string[]; excludeTargets: string[] } | Error): void => {
+    installTargets([], scope)
+    redlog().scope = { getObservationCount: async () => 0 }
+    render(<I18nProvider><TargetsScopeHeader page="targets" onNavigate={noop} onOpenSettings={onOpenSettings} /></I18nProvider>)
+  }
+  const rules = (): string[] => screen.queryAllByTestId('scope-rule').map((r) => `${r.dataset.kind}:${r.textContent}`)
+  beforeEach(() => onOpenSettings.mockReset())
+
+  it('shows each allowed and each excluded rule, the excluded ones marked by a word and "!"', async () => {
+    mountHeader({ targets: ['10.10.10.0/24', 'app.example.test'], excludeTargets: ['10.10.10.20'] })
+    await waitFor(() => expect(rules()).toEqual(['allow:10.10.10.0/24', 'allow:app.example.test', 'exclude:!10.10.10.20excluded']))
+    expect(screen.queryByTestId('scope-rules-more')).toBeNull()
+  })
+
+  it('caps the list and says how many more there are', async () => {
+    mountHeader({ targets: Array.from({ length: 9 }, (_, i) => `10.0.0.${i}`), excludeTargets: ['x.test'] })
+    await waitFor(() => expect(rules()).toHaveLength(6))
+    expect(screen.getByTestId('scope-rules-more').textContent).toBe('4 more')
+  })
+
+  it('has one way to Settings, whatever the state', async () => {
+    mountHeader({ targets: [], excludeTargets: [] })
+    expect(await screen.findByText('Scope is not set')).toBeTruthy()
+    const toSettings = screen.getAllByRole('button').filter((b) => /settings|scope rules/i.test(b.textContent ?? ''))
+    expect(toSettings.map((b) => b.dataset.testid)).toEqual(['targets-scope-settings'])
+  })
+
+  it('exclusions with no allowed target are listed under "not set", never as a scope', async () => {
+    mountHeader({ targets: [], excludeTargets: ['x.test'] })
+    expect(await screen.findByText('Scope is not set')).toBeTruthy()
+    expect(rules()).toEqual(['exclude:!x.testexcluded'])
+  })
+
+  it('a failed read lists no rules and keeps its retry', async () => {
+    mountHeader(new Error('refused'))
+    expect(await screen.findByText('Scope rules could not be read')).toBeTruthy()
+    expect(rules()).toEqual([])
+    expect(screen.getByTestId('scope-context-retry')).toBeTruthy()
+  })
+})

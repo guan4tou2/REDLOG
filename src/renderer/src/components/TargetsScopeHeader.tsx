@@ -11,9 +11,31 @@ const PAGES: Page[] = ['targets', 'scope']
 
 /** What the page can say about the declared rules, and nothing it cannot: a
  *  failed read is its own state, never "not set" and never "in scope". */
-async function loadRules(): Promise<{ allow: number; exclude: number; configured: boolean }> {
+async function loadRules(): Promise<{ allow: string[]; exclude: string[]; configured: boolean }> {
   const c = await window.redlog.config.get() as { scope?: { targets?: string[]; excludeTargets?: string[] } } | null
-  return { allow: c?.scope?.targets?.length ?? 0, exclude: c?.scope?.excludeTargets?.length ?? 0, configured: scopeConfigured(c?.scope) }
+  return { allow: c?.scope?.targets ?? [], exclude: c?.scope?.excludeTargets ?? [], configured: scopeConfigured(c?.scope) }
+}
+
+/** How many rules the card shows before it says how many more there are. */
+const RULES_SHOWN = 6
+
+/** The declared rules themselves. An excluded one is marked by "!" and by its
+ *  word, not by colour alone. Edited in Settings, not here. */
+function RuleList({ allow, exclude }: { allow: string[]; exclude: string[] }): JSX.Element | null {
+  const { t } = useI18n()
+  const all = [...allow.map((rule) => ({ rule, kind: 'allow' as const })), ...exclude.map((rule) => ({ rule, kind: 'exclude' as const }))]
+  if (all.length === 0) return null
+  const more = all.length - RULES_SHOWN
+  return <ul className="mt-1.5 grid grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] gap-x-4 gap-y-0.5 font-mono text-xs">
+    {all.slice(0, RULES_SHOWN).map(({ rule, kind }) => (
+      <li key={`${kind}:${rule}`} data-testid="scope-rule" data-kind={kind} data-rule={rule} className="flex min-w-0 items-baseline gap-1.5 whitespace-nowrap">
+        {kind === 'exclude' && <span aria-hidden="true" className="text-amber-300">!</span>}
+        <span title={rule} className={`min-w-0 overflow-hidden text-ellipsis ${kind === 'exclude' ? 'text-redlog-text-dim' : 'text-redlog-text'}`}>{rule}</span>
+        {kind === 'exclude' && <span className="font-sans text-redlog-text-faint">{t('targetsScope.exclude')}</span>}
+      </li>
+    ))}
+    {more > 0 && <li data-testid="scope-rules-more" className="font-sans text-redlog-text-faint">{t('targetsScope.moreRules', { count: more })}</li>}
+  </ul>
 }
 
 function Dot({ tone }: { tone: 'good' | 'warn' }): JSX.Element {
@@ -48,15 +70,12 @@ export function TargetsScopeHeader({ page, onNavigate, onOpenSettings }: {
 
   const value = rules.state.value
   const failed = rules.state.phase === 'failed' && !value
-  // Core's rule: exclusions alone are not a scope. Their count is still shown,
-  // as a fact, beside "not set".
+  // Core's rule: exclusions alone are not a scope. They are still listed, as
+  // a fact, under "not set".
   const configured = !!value && value.configured
 
   return <div data-testid="targets-scope-header" className="flex shrink-0 px-pad pt-3"><div className={`${PAGE_BODY} flex-1 space-y-3`}>
-    <div className="flex items-start justify-between gap-4">
-      <h1 className="min-w-0 text-lg font-semibold text-redlog-text">{t('sidebar.targetsScope')}</h1>
-      <Button data-testid="targets-scope-settings" size="compact" onClick={onOpenSettings}>{t('targetsScope.openSettings')} ↗</Button>
-    </div>
+    <h1 className="min-w-0 text-lg font-semibold text-redlog-text">{t('sidebar.targetsScope')}</h1>
     <div role="tablist" aria-label={t('sidebar.targetsScope')} className="flex gap-4 border-b border-redlog-border">
       {PAGES.map((id, index) => {
         // Observations are judged against the rules: with none set, or none
@@ -78,20 +97,22 @@ export function TargetsScopeHeader({ page, onNavigate, onOpenSettings }: {
         </button>
       })}
     </div>
-    <section data-testid="scope-context" role="status" className="flex flex-wrap items-center gap-3 rounded-lg border border-redlog-border bg-redlog-surface px-4 py-3">
+    <section data-testid="scope-context" role="status" className="flex flex-wrap items-start gap-3 rounded-lg border border-redlog-border bg-redlog-surface px-4 py-3">
       <div className="min-w-[14rem] flex-1">
-        <p className="flex items-center gap-2 text-sm font-medium text-redlog-text">
+        {/* Nothing until the first read answers: "not set" is a reading too. */}
+        {(failed || value) && <p className="flex items-center gap-2 text-sm font-medium text-redlog-text">
           <Dot tone={configured ? 'good' : 'warn'} />
           {failed ? t('targetsScope.failedTitle') : configured ? t('targetsScope.configuredTitle') : t('targetsScope.unsetTitle')}
-        </p>
-        <p className="mt-0.5 text-xs text-redlog-text-dim">
-          {failed ? t('targetsScope.failedBody') : configured ? t('targetsScope.configuredBody') : t('targetsScope.unsetBody')}
-        </p>
+        </p>}
+        {/* Set, the rules say it; not set and unreadable are said in words,
+            and are not the same thing. */}
+        {failed && <p className="mt-0.5 text-xs text-redlog-text-dim">{t('targetsScope.failedBody')}</p>}
+        {!failed && value && !configured && <p className="mt-0.5 text-xs text-redlog-text-dim">{t('targetsScope.unsetBody')}</p>}
+        {!failed && value && <RuleList allow={value.allow} exclude={value.exclude} />}
       </div>
-      {configured && value && <span className="rounded border border-redlog-border bg-redlog-elevated px-2 py-1 text-xs text-redlog-text-dim">{t('targetsScope.allow')} <b className="font-mono text-redlog-text">{value.allow}</b></span>}
-      {value && (configured || value.exclude > 0) && <span data-testid="scope-context-exclude" className="rounded border border-redlog-border bg-redlog-elevated px-2 py-1 text-xs text-redlog-text-dim">{t('targetsScope.exclude')} <b className="font-mono text-redlog-text">{value.exclude}</b></span>}
       {failed && <Button size="compact" data-testid="scope-context-retry" onClick={retryRules}>{t('common.retry')}</Button>}
-      {!failed && !configured && value && <Button size="compact" onClick={onOpenSettings}>{t('targetsScope.goSettings')}</Button>}
+      {/* The page's one way to Settings, where the rules are edited. */}
+      <Button data-testid="targets-scope-settings" size="compact" onClick={onOpenSettings}>{t('targetsScope.openSettings')} ↗</Button>
     </section>
   </div>
     {/* The page below keeps a scrollbar gutter; this keeps the same one. */}
