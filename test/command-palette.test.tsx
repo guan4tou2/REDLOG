@@ -227,6 +227,46 @@ describe('command palette', () => {
     expect(screen.getByText(/Nothing matches/)).toBeTruthy()
   })
 
+  it('lists only events found for the current query', async () => {
+    bridge.events.runQuery.mockResolvedValueOnce({
+      items: [{ id: 'e1', timestamp: 1, agentType: 'shell', data: { command: 'nmap -sV' } }],
+      hasMore: true, nextCursor: 'more'
+    } as never)
+    let answer: (v: unknown) => void = () => {}
+    bridge.events.runQuery.mockImplementationOnce(() => new Promise((r) => { answer = r }) as never)
+    vi.useFakeTimers()
+    open()
+    type('nmap')
+    await act(async () => { vi.advanceTimersByTime(200) })
+    expect(screen.getByText('nmap -sV')).toBeTruthy()
+    type('gobuster')
+    expect(screen.queryByText('nmap -sV'), 'the last query’s events under the new one').toBeNull()
+    expect(screen.queryByTestId('palette-search-subset'), 'the last query’s subset notice').toBeNull()
+    await act(async () => { vi.advanceTimersByTime(200) })
+    await act(async () => { answer({ items: [{ id: 'e2', timestamp: 2, agentType: 'shell', data: { command: 'gobuster dir' } }], hasMore: false, nextCursor: null }) })
+    vi.useRealTimers()
+    expect(screen.getByText('gobuster dir')).toBeTruthy()
+    expect(screen.queryByText('nmap -sV')).toBeNull()
+  })
+
+  it('drops an answer that arrives after a newer query was sent', async () => {
+    const answers: Array<(v: unknown) => void> = []
+    bridge.events.runQuery.mockImplementation(() => new Promise((r) => { answers.push(r) }) as never)
+    vi.useFakeTimers()
+    open()
+    type('nmap')
+    await act(async () => { vi.advanceTimersByTime(200) })
+    type('gobuster')
+    await act(async () => { vi.advanceTimersByTime(200) })
+    expect(answers).toHaveLength(2)
+    await act(async () => { answers[1]({ items: [{ id: 'e2', timestamp: 2, agentType: 'shell', data: { command: 'gobuster dir' } }], hasMore: false, nextCursor: null }) })
+    await act(async () => { answers[0]({ items: [{ id: 'e1', timestamp: 1, agentType: 'shell', data: { command: 'nmap -sV' } }], hasMore: true, nextCursor: 'more' }) })
+    vi.useRealTimers()
+    expect(screen.queryByText('nmap -sV'), 'the older answer replaced the newer one').toBeNull()
+    expect(screen.queryByTestId('palette-search-subset')).toBeNull()
+    expect(screen.getByText('gobuster dir')).toBeTruthy()
+  })
+
   it('does not run a half-typed condition, and says why', async () => {
     vi.useFakeTimers()
     open()

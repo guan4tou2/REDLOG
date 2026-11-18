@@ -136,6 +136,8 @@ async function switchProject(
   }
 }
 
+const NO_EVENTS: RedLogEvent[] = []
+
 export function CommandPalette({
   open, onClose, onNavigate, onOpenEvent, recording, onProjectClosed
 }: CommandPaletteProps): JSX.Element | null {
@@ -160,6 +162,9 @@ export function CommandPalette({
   const panel = useRef<HTMLDivElement | null>(null)
   const field = useRef<HTMLInputElement | null>(null)
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // The query most recently typed. An answer for any other is dropped: two
+  // searches can be out at once and answer in either order.
+  const latestQuery = useRef('')
 
   useFocusTrap(panel, open, field)
 
@@ -187,6 +192,7 @@ export function CommandPalette({
     if (!open) return
     if (debounce.current) clearTimeout(debounce.current)
     const q = query.trim()
+    latestQuery.current = q
     if (q.length < 2) { setEvents([]); setSearchState('idle'); return }
     debounce.current = setTimeout(() => {
       // Spec 026: the same query language as Search and the Transcript, so a
@@ -195,11 +201,23 @@ export function CommandPalette({
       const outcome = parseQuery(q)
       if (!outcome.ok) { setEvents([]); setSearchState('unparsable'); setAnsweredFor(q); return }
       window.redlog.events.runQuery({ parsed: outcome.parsed, limit: EVENT_LIMIT })
-        .then((page) => { setEvents(page.items); setEventsHasMore(page.hasMore); setSearchState('answered'); setAnsweredFor(q) })
-        .catch(() => { setEvents([]); setSearchState('failed'); setAnsweredFor(q) })
+        .then((page) => {
+          if (latestQuery.current !== q) return
+          setEvents(page.items); setEventsHasMore(page.hasMore); setSearchState('answered'); setAnsweredFor(q)
+        })
+        .catch(() => {
+          if (latestQuery.current !== q) return
+          setEvents([]); setSearchState('failed'); setAnsweredFor(q)
+        })
     }, 140)
     return () => { if (debounce.current) clearTimeout(debounce.current) }
   }, [query, open])
+
+  // Everything the search state holds belongs to `answeredFor`; under any
+  // other query it is the last query's, and is not shown.
+  const searchPending = query.trim().length >= 2 && answeredFor !== query.trim()
+  const shownEvents = searchPending ? NO_EVENTS : events
+  const shownSearchState = searchPending ? 'idle' : searchState
 
   const items = useMemo<Item[]>(() => {
     const q = query.trim()
@@ -284,7 +302,7 @@ export function CommandPalette({
       })
     }
 
-    for (const e of events) {
+    for (const e of shownEvents) {
       const d = e.data as Record<string, unknown> | undefined
       const label = String(d?.command ?? d?.title ?? d?.url ?? d?.description ?? e.agentType)
       out.push({
@@ -305,7 +323,7 @@ export function CommandPalette({
       .filter((x) => x.s > 0)
       .sort((a, b) => b.s - a.s)
       .map((x) => x.i)
-  }, [query, events, projects, activeProjectId, operators, hosts, recording, t, onNavigate, onOpenEvent, onProjectClosed])
+  }, [query, shownEvents, projects, activeProjectId, operators, hosts, recording, t, onNavigate, onOpenEvent, onProjectClosed])
 
   useEffect(() => { setCursor(0) }, [query])
   // Keep the keyboard selection on screen: ↓ past the fold used to move an
@@ -322,8 +340,6 @@ export function CommandPalette({
   }, [onClose])
 
   if (!open) return null
-
-  const searchPending = query.trim().length >= 2 && answeredFor !== query.trim()
 
   const onKeyDown = (e: React.KeyboardEvent): void => {
     // An input method owns Enter, Escape and the arrows while it composes.
@@ -369,22 +385,22 @@ export function CommandPalette({
         </div>
 
         <div id="palette-listbox" role="listbox" aria-label={t('palette.title')} className="max-h-[52vh] overflow-y-auto py-1">
-          {searchState === 'failed' && (
+          {shownSearchState === 'failed' && (
             <p data-testid="palette-search-failed" role="status" className="px-4 py-3 text-xs text-red-300 text-center">
               {t('palette.searchFailed')}
             </p>
           )}
-          {searchState === 'unparsable' && (
+          {shownSearchState === 'unparsable' && (
             <p data-testid="palette-search-unparsable" role="status" className="px-4 py-3 text-xs text-amber-300 text-center">
               {t('palette.searchUnparsable')}
             </p>
           )}
-          {searchState === 'answered' && eventsHasMore && (
+          {shownSearchState === 'answered' && eventsHasMore && (
             <p data-testid="palette-search-subset" role="status" className="px-4 py-2 text-xs text-redlog-text-faint">
               {t('palette.searchSubset', { count: EVENT_LIMIT })}
             </p>
           )}
-          {items.length === 0 && !searchPending && searchState !== 'failed' && searchState !== 'unparsable' && (
+          {items.length === 0 && !searchPending && shownSearchState !== 'failed' && shownSearchState !== 'unparsable' && (
             <p className="px-4 py-6 text-xs text-redlog-text-faint text-center">
               {t('palette.noMatches', { query })}
             </p>
