@@ -102,6 +102,7 @@ const GAP_PX = 48
 // pathological zoom can't allocate a track nothing can scroll.
 const MAX_TRACK_W = 400_000
 const NO_ROWS: readonly RedLogEvent[] = []
+const NO_HIDDEN_LANES: ReadonlySet<LaneId> = new Set()
 
 // Read defensively — this runs at module load, before the preload bridge
 // is guaranteed present (e.g. in tests). Default to mac styling, as App does.
@@ -1356,13 +1357,17 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
   const toggleShowAll = useCallback(() => setShowAllDespiteQuery((v) => !v), [])
   useEffect(() => { setShowAllDespiteQuery(false) }, [queryKey])
   const queryActive = filterMatches !== null && !showAllDespiteQuery
+  // Hide / solo is a lanes-mode control. Standard mode has no lane labels to
+  // show or undo it with, and its track draws every lane, so the cards and the
+  // keys walk the same events the track draws. The saved set is left as is.
+  const listHiddenLanes = timelineMode === 'standard' ? NO_HIDDEN_LANES : hiddenLanes
   // The rail shows the newest 50 and says "of N" with the same window rule, and
   // the hidden-by-query count is the difference of two real, uncapped totals
   // rather than of two capped slices. One walk of the window yields all three;
   // this runs on every scroll frame.
   const windowSlice = useMemo(
-    () => computeWindowSlice(events, hiddenLanes, pluginTypes, vp, 50, queryActive ? filterMatches : null),
-    [events, hiddenLanes, pluginTypes, vp, queryActive, filterMatches]
+    () => computeWindowSlice(events, listHiddenLanes, pluginTypes, vp, 50, queryActive ? filterMatches : null),
+    [events, listHiddenLanes, pluginTypes, vp, queryActive, filterMatches]
   )
   const recentEvents = windowSlice.recent
   const windowTotal = windowSlice.total
@@ -1553,7 +1558,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
           e.preventDefault()
           const next = nextSelection<string>(action, selectedEvent, {
             events,
-            hiddenLanes,
+            hiddenLanes: listHiddenLanes,
             pluginTypes,
             laneOrder: visibleRows,
             laneOf: (ev) => rowKeyOf(toLane(ev.agentType, ev.data?.subtype as string | undefined, pluginTypes)),
@@ -1606,7 +1611,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectedEvent, detailOpen, showHelp, focusAnchorId, events, hiddenLanes, pluginTypes, toX, TRACK_W, visibleRows, rowKeyOf])
+  }, [selectedEvent, detailOpen, showHelp, focusAnchorId, events, listHiddenLanes, pluginTypes, toX, TRACK_W, visibleRows, rowKeyOf])
 
   // Helper: scroll the track so the given event is centred in the viewport.
   // Used by the cause/effect chips (feature 1) and any other jump-to-event
