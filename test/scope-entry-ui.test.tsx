@@ -9,6 +9,12 @@ import type { ConfigState } from '../src/renderer/src/components/settings/Settin
 
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
+const projectConfig = (): ConfigState => ({
+  engagement: { id: 'p1' }, operator: { id: 'op', name: 'Operator' },
+  network: { whitelist: [], blacklist: [], checkInterval: 60 },
+  scope: { targets: [], excludeTargets: [], scopeFile: '' }, screenshot: { quality: 80 }
+}) as unknown as ConfigState
+
 describe('scope and project identity entry', () => {
   // The create card no longer asks for scope or exclusions: Settings > Scope
   // owns them, and asking twice is asking twice
@@ -66,6 +72,63 @@ describe('scope and project identity entry', () => {
     await waitFor(() => expect(rename).toHaveBeenCalledWith('p1', 'New name'))
     expect(renamed).toHaveBeenCalledOnce()
     window.removeEventListener('redlog:project-renamed', renamed)
+  })
+
+  // A refused rename used to put the old name back in the field and say
+  // nothing, so it read as "my typing was not kept". The typed name stays,
+  // the field says it was not saved, and Retry sends it again.
+  it('keeps the typed name and offers a retry when the rename is refused', async () => {
+    const rename = vi.fn()
+      .mockResolvedValueOnce({ ok: false, error: 'rename-refused' })
+      .mockImplementationOnce(async (_id: string, name: string) => ({ ok: true, name }))
+    ;(window as unknown as { redlog: unknown }).redlog = {
+      project: { active: async () => ({ id: 'p1', name: 'Old name', createdAt: 0 }), rename }
+    }
+    const renamed = vi.fn()
+    window.addEventListener('redlog:project-renamed', renamed)
+    render(<I18nProvider><ProjectSettings config={projectConfig()} setConfig={vi.fn()} /></I18nProvider>)
+    const name = await screen.findByDisplayValue('Old name')
+    fireEvent.change(name, { target: { value: 'New name' } })
+    fireEvent.blur(name)
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    expect((name as HTMLInputElement).value).toBe('New name')
+    expect(name.getAttribute('aria-invalid')).toBe('true')
+    expect(renamed).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: /retry|重試/i }))
+    await waitFor(() => expect(rename).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+    expect(rename.mock.calls[1]).toEqual(['p1', 'New name'])
+    expect(renamed).toHaveBeenCalledOnce()
+    window.removeEventListener('redlog:project-renamed', renamed)
+  })
+
+  it('reports a rename that throws instead of leaving it unhandled', async () => {
+    const rename = vi.fn(async () => { throw new Error('index locked') })
+    ;(window as unknown as { redlog: unknown }).redlog = {
+      project: { active: async () => ({ id: 'p1', name: 'Old name', createdAt: 0 }), rename }
+    }
+    render(<I18nProvider><ProjectSettings config={projectConfig()} setConfig={vi.fn()} /></I18nProvider>)
+    const name = await screen.findByDisplayValue('Old name')
+    fireEvent.change(name, { target: { value: 'New name' } })
+    fireEvent.blur(name)
+    expect((await screen.findByRole('alert')).textContent).toContain('index locked')
+    expect((name as HTMLInputElement).value).toBe('New name')
+  })
+
+  // A failed read of the open project left an empty name field that accepted
+  // typing and then dropped it on blur.
+  it('says the open project could not be read, and reads it again on retry', async () => {
+    const active = vi.fn()
+      .mockRejectedValueOnce(new Error('ipc down'))
+      .mockResolvedValueOnce({ id: 'p1', name: 'Old name', createdAt: 0 })
+    ;(window as unknown as { redlog: unknown }).redlog = { project: { active, rename: vi.fn() } }
+    render(<I18nProvider><ProjectSettings config={projectConfig()} setConfig={vi.fn()} /></I18nProvider>)
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    const nameField = screen.getAllByLabelText(/name|名稱/i)[0] as HTMLInputElement
+    expect(nameField.readOnly).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: /retry|重試/i }))
+    expect(await screen.findByDisplayValue('Old name')).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 
   // The operator ID is stamped on every event and names a signer, and a save

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useI18n } from '../../i18n'
 import { toast } from '../Toast'
 import { Button } from '../Button'
@@ -10,19 +10,47 @@ export default function ProjectSettings({ config, setConfig }: { config: ConfigS
   // this field renames the project rather than keeping a second name in config.
   const [project, setProject] = useState<{ id: string; name: string } | null>(null)
   const [projectName, setProjectName] = useState('')
+  // Until the open project is read the field cannot rename anything, so a
+  // failed read is said, not drawn as an empty editable name.
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [loadAttempt, setLoadAttempt] = useState(0)
   useEffect(() => {
+    let live = true
+    setLoadFailed(false)
     window.redlog.project.active().then((p) => {
-      if (p) { setProject({ id: p.id, name: p.name ?? '' }); setProjectName(p.name ?? '') }
-    }).catch(() => {})
-  }, [])
+      if (live && p) { setProject({ id: p.id, name: p.name ?? '' }); setProjectName(p.name ?? '') }
+    }, () => { if (live) setLoadFailed(true) })
+    return () => { live = false }
+  }, [loadAttempt])
+  // A failed rename keeps what was typed and says it was not saved. Putting
+  // the old name back without a word read as the input being dropped.
+  const [renameError, setRenameError] = useState<string | null>(null)
+  // Leaving the field and pressing Retry are both commits; one is enough.
+  const renaming = useRef(false)
   const commitProjectName = async (): Promise<void> => {
     const name = projectName.trim()
-    if (!project || !name || name === project.name) { setProjectName(project?.name ?? ''); return }
-    const res = await window.redlog.project.rename(project.id, name)
-    const final = res.ok ? res.name ?? name : project.name
+    if (!project || !name || name === project.name) { setProjectName(project?.name ?? ''); setRenameError(null); return }
+    if (renaming.current) return
+    renaming.current = true
+    let res: { ok: boolean; name?: string; error?: string }
+    try {
+      res = await window.redlog.project.rename(project.id, name)
+    } catch (e) {
+      res = { ok: false, error: e instanceof Error ? e.message : String(e) }
+    } finally {
+      renaming.current = false
+    }
+    if (!res.ok) {
+      // `rename-refused` is the main process's code, not words for the operator.
+      const why = res.error && res.error !== 'rename-refused' ? ` (${res.error})` : ''
+      setRenameError(t('settings.projectRenameFailed') + why)
+      return
+    }
+    const final = res.name ?? name
+    setRenameError(null)
     setProject({ ...project, name: final })
     setProjectName(final)
-    if (res.ok) window.dispatchEvent(new CustomEvent('redlog:project-renamed', { detail: final }))
+    window.dispatchEvent(new CustomEvent('redlog:project-renamed', { detail: final }))
   }
   // The operator ID names a signer, and a save applies it to every source at
   // once. So it is committed when the field is left, not per keystroke (a
@@ -45,7 +73,11 @@ export default function ProjectSettings({ config, setConfig }: { config: ConfigS
           field — four lines of prose here would bury the four inputs. */}
       <FieldGroup title={t('settings.engagement')}>
         <Field label={t('settings.id')} value={config.engagement.id} onChange={() => {}} readOnly hint={t('settings.engagementIdHint')} />
-        <Field label={t('settings.name')} value={projectName} onChange={setProjectName} onBlur={() => { void commitProjectName() }} hint={t('settings.engagementNameHint')} />
+        <Field label={t('settings.name')} value={projectName} onChange={(v) => { setProjectName(v); setRenameError(null) }} onBlur={() => { void commitProjectName() }} readOnly={!project} hint={t('settings.engagementNameHint')} error={renameError} />
+        {renameError && <Button size="compact" level="quiet" className="self-start" onClick={() => { void commitProjectName() }}>{t('common.retry')}</Button>}
+        {loadFailed && <div role="alert" className="text-xs text-redlog-danger">
+          {t('settings.projectLoadFailed')} <Button size="compact" level="quiet" onClick={() => setLoadAttempt(n => n + 1)}>{t('common.retry')}</Button>
+        </div>}
       </FieldGroup>
       <FieldGroup title={t('settings.operatorGroup')}>
         <Field label={t('settings.id')} value={operatorId} onChange={setOperatorId} onBlur={commitOperatorId} hint={t('settings.operatorIdHint')} />
