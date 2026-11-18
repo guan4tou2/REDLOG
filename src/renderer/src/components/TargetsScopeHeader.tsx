@@ -1,4 +1,4 @@
-import { HEADER_GUTTER, PAGE_BODY, PROSE_WIDTH } from '../lib/pageLayout'
+import { HEADER_GUTTER, PAGE_BODY } from '../lib/pageLayout'
 import { useEffect, useRef } from 'react'
 import { useI18n } from '../i18n'
 import { useReadState } from '../lib/readState'
@@ -54,10 +54,7 @@ export function TargetsScopeHeader({ page, onNavigate, onOpenSettings }: {
 
   return <div data-testid="targets-scope-header" className="flex shrink-0 px-pad pt-3"><div className={`${PAGE_BODY} flex-1 space-y-3`}>
     <div className="flex items-start justify-between gap-4">
-      <div className="min-w-0">
-        <h1 className="text-lg font-semibold text-redlog-text">{t('sidebar.targetsScope')}</h1>
-        <p className={`mt-1 text-xs text-redlog-text-dim ${PROSE_WIDTH}`}>{t('targetsScope.hint')}</p>
-      </div>
+      <h1 className="min-w-0 text-lg font-semibold text-redlog-text">{t('sidebar.targetsScope')}</h1>
       <Button data-testid="targets-scope-settings" size="compact" onClick={onOpenSettings}>{t('targetsScope.openSettings')} ↗</Button>
     </div>
     <div role="tablist" aria-label={t('sidebar.targetsScope')} className="flex gap-4 border-b border-redlog-border">

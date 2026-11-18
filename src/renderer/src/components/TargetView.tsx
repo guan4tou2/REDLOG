@@ -270,13 +270,6 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
   return (
     <div className={`p-pad h-full overflow-auto ${SCROLL_GUTTER}`}><div className={`${PAGE_BODY} space-y-4`}>
       <div className="bg-redlog-surface border border-redlog-border rounded-lg overflow-hidden">
-        <div className="flex flex-wrap items-start justify-between gap-2 px-4 py-3 border-b border-redlog-border">
-          <div>
-          <h2 className="text-sm font-semibold text-redlog-text">{t('targets.panelTitle')}</h2>
-          <p className="text-xs text-redlog-text-faint mt-0.5">{t('targets.panelCaption')}</p>
-          </div>
-          <span className="text-xs text-redlog-text-dim">{t('targets.sortedByRecent')}</span>
-        </div>
         <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-redlog-border">
           <input type="search" data-testid="targets-search" value={query} onChange={(e) => setQuery(e.target.value)}
             placeholder={t('targets.searchPlaceholder')} aria-label={t('targets.searchLabel')}
@@ -297,6 +290,9 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
               </button>
             ))}
           </div>
+          {/* The one place the app says it: a target is listed because it was
+              seen, and being seen is not being authorised. */}
+          <span data-testid="targets-not-authorised" className="text-xs text-redlog-text-faint">{t('targets.notAuthorised')}</span>
         </div>
 
       {scopeFailed && (
@@ -429,9 +425,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
           })}
         </div>
       )}
-        {filtered.length > 0 && <div className="border-t border-redlog-border px-4 py-2.5 text-xs text-redlog-text-faint">{t('targets.shownCount', { shown: filtered.length, total: targets.length })}</div>}
       </div>
-      <p className="text-xs text-redlog-text-dim">{t('targets.hint')}</p>
     </div></div>
   )
 }
