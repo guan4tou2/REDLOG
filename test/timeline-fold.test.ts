@@ -91,6 +91,9 @@ describe('what it refuses to fold', () => {
   it('never folds a failed command', () => {
     expect(neverFold(ev('x', 'shell', { exitCode: 1 }))).toBe(true)
     expect(neverFold(ev('x', 'shell', { exitCode: 0 }))).toBe(false)
+    // the shell hooks write snake_case
+    expect(neverFold(ev('x', 'shell', { subtype: 'command_end', exit_code: 1 }))).toBe(true)
+    expect(neverFold(ev('x', 'shell', { subtype: 'command_end', exit_code: 0 }))).toBe(false)
   })
 
   it('ignores a cause that is not in this list', () => {
