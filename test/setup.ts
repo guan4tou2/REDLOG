@@ -2,6 +2,11 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { createRequire } from 'module'
+import { installIcaclsRecorder } from './helpers/icacls'
+
+// restrictToOwner records its icacls arguments instead of spawning icacls; why,
+// and which files put the real one back, is in test/helpers/icacls.ts.
+installIcaclsRecorder()
 
 // v0.6.89: isolate signing keypair storage from the operator's real
 // ~/.redlog/keys directory. Every test session gets a fresh tmpdir so
