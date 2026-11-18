@@ -75,7 +75,7 @@ function nameless(root: Element): string[] {
 }
 
 
-const PAGES: SettingsPage[] = ['hooks', 'captureControl', 'browser', 'scope', 'network', 'loot', 'retention', 'integrity', 'general', 'hud', 'plugins', 'about']
+const PAGES: SettingsPage[] = ['hooks', 'captureControl', 'browser', 'scope', 'network', 'loot', 'retention', 'general', 'hud', 'plugins', 'about']
 
 describe.each(PAGES)('settings page %s', (page) => {
   it('names every control', async () => {

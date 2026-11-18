@@ -5,7 +5,7 @@
 // title, says what is optional, and keeps the draft when saving fails.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { LootPanel } from '../src/renderer/src/components/LootPanel'
 import { ScreenshotsView } from '../src/renderer/src/components/ScreenshotsView'
@@ -64,9 +64,12 @@ describe('screenshots', () => {
     render(<I18nProvider><ScreenshotsView /></I18nProvider>)
   }
 
-  it('says how many are shown, newest first', async () => {
+  // The Evidence tab carries the project's count; a second one here is only
+  // for when the list is not everything.
+  it('states no second count when everything is loaded', async () => {
     install()
-    expect((await screen.findByTestId('screenshots-summary')).textContent).toBe('Showing 2 of 2 · newest first')
+    await screen.findByTestId('screenshot-list')
+    expect(screen.queryByTestId('screenshots-summary')).toBeNull()
   })
 
   it('does not pass a partial page off as the whole: it says more is available', async () => {
@@ -76,11 +79,35 @@ describe('screenshots', () => {
 
   it('names the file a delete is about', async () => {
     install()
-    fireEvent.click((await screen.findAllByTestId('screenshot-delete'))[0])
+    // The row opens its preview; delete is there.
+    fireEvent.click((await screen.findByText('s1.png')).closest('[role="button"]') as HTMLElement)
+    fireEvent.click(await screen.findByTestId('screenshot-delete'))
     await waitFor(() => expect(confirmSpy).toHaveBeenCalled())
     const message = (confirmSpy.mock.calls[0] as unknown as string[])[1]
     expect(message).toMatch(/s[12]\.png/)
     expect(message).not.toContain('system.screenshot_deleted')
+  })
+
+  it('closes the preview before the delete confirmation opens', async () => {
+    install()
+    let previewOpenAtConfirm: boolean | null = null
+    confirmSpy.mockImplementationOnce(async () => { previewOpenAtConfirm = document.querySelector('[data-testid="screenshot-lightbox"]') !== null; return false })
+    fireEvent.click((await screen.findByText('s1.png')).closest('[role="button"]') as HTMLElement)
+    fireEvent.click(await screen.findByTestId('screenshot-delete'))
+    await waitFor(() => expect(previewOpenAtConfirm).toBe(false))
+  })
+
+  // The preview closes so the confirmation is the only dialog; cancelling it
+  // returns to the preview it came from, not to the list.
+  it('returns to the preview when the delete is cancelled', async () => {
+    install()
+    fireEvent.click((await screen.findByText('s2.png')).closest('[role="button"]') as HTMLElement)
+    fireEvent.click(await screen.findByTestId('screenshot-delete'))
+    expect(screen.queryByTestId('screenshot-lightbox')).toBeNull()
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalled())
+    const preview = await screen.findByTestId('screenshot-lightbox')
+    expect(preview.textContent).toContain(confirmSpy.mock.calls.length ? 'Delete file' : '')
+    expect(within(preview).getByTestId('screenshot-delete')).toBeTruthy()
   })
 })
 

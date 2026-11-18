@@ -4,8 +4,8 @@
 // filter and a search over what is loaded. A deleted file keeps its row and
 // says the event record is kept.
 
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { ScreenshotsView } from '../src/renderer/src/components/ScreenshotsView'
 
@@ -27,6 +27,12 @@ function install(over: { hasMore?: boolean } = {}): ReturnType<typeof vi.fn> {
   return queryScreenshotPage
 }
 const mount = (): void => { render(<I18nProvider><ScreenshotsView /></I18nProvider>) }
+/** Open a row's preview by the file name in its label, and return the preview. */
+const rowOf = (name: RegExp): HTMLElement => screen.getByText(name).closest('[role="button"]') as HTMLElement
+const openRow = (name: RegExp): HTMLElement => {
+  fireEvent.click(rowOf(name))
+  return screen.getByTestId('screenshot-lightbox')
+}
 beforeEach(() => { window.localStorage.clear(); window.localStorage.setItem('redlog-locale', 'en') })
 afterEach(() => cleanup())
 
@@ -40,6 +46,13 @@ it('opens as a list, switches to a grid, and remembers the choice', async () => 
   expect(window.localStorage.getItem('redlog-screenshots-view')).toBe('grid')
   cleanup(); mount()
   expect(await screen.findByTestId('screenshot-grid')).toBeTruthy()
+})
+
+it('gives "All" no count: the Evidence tab states the project\'s', async () => {
+  install()
+  mount()
+  await screen.findByTestId('screenshot-list')
+  expect(screen.getByRole('button', { name: /^All/ }).textContent).toBe('All')
 })
 
 it('keeps every trigger on offer after filtering to one, so the filter can be left', async () => {
@@ -77,7 +90,7 @@ it('shows the hash as recorded without claiming it was checked', async () => {
   for (const h of hashes) expect(h.getAttribute('title')).toMatch(/not re-checked here/)
 })
 
-it('keeps a deleted file as a row that says the event record is kept, with no actions', async () => {
+it('keeps a deleted file as a row that says the event record is kept, and offers only its hash', async () => {
   install()
   window.redlog.events.onNewBatch = ((cb: (e: unknown[]) => void) => {
     setTimeout(() => cb([{ agentType: 'system', data: { subtype: 'screenshot_deleted', source_event: 's1' } }]), 0)
@@ -86,7 +99,11 @@ it('keeps a deleted file as a row that says the event record is kept, with no ac
   mount()
   await screen.findByTestId('screenshot-list')
   await waitFor(() => expect(screen.getAllByText('File deleted · event record kept').length).toBeGreaterThan(0))
-  expect(screen.getAllByTestId('screenshot-delete')).toHaveLength(2)
+  const preview = openRow(/s1\.png/)
+  expect(within(preview).getByText('File deleted · event record kept')).toBeTruthy()
+  expect(within(preview).getByTestId('screenshot-copy-hash')).toBeTruthy()
+  expect(within(preview).queryByTestId('screenshot-delete')).toBeNull()
+  expect(within(preview).queryByTestId('screenshot-reveal')).toBeNull()
 })
 
 it('shows a failed read as a failure with a retry, not as an empty project', async () => {
@@ -99,16 +116,21 @@ it('shows a failed read as a failure with a retry, not as an empty project', asy
   expect(await screen.findByTestId('screenshot-list')).toBeTruthy()
 })
 
-// Stitch 03: a section heading, actions named in words, and a state tag on each row.
-it('names the section, labels each row recorded, and names its actions in words', async () => {
+// No explanation layers (§26, 2026-11-12 list §F): no section heading and
+// hint over the list, no "recorded" tag on every normal row, and no time-zone
+// note (the status bar states the zone). Actions are named in words.
+it('explains nothing the page already shows, and names its actions in words', async () => {
   install()
   mount()
   await screen.findByTestId('screenshot-list')
-  expect(screen.getByText('Screenshot records')).toBeTruthy()
-  expect(screen.getAllByTestId('screenshot-state')[0].textContent).toBe('Screenshot recorded')
+  openRow(/s1\.png/)
+  expect(screen.queryByText('Screenshot records')).toBeNull()
+  expect(screen.queryByText(/Click a screenshot to preview it/)).toBeNull()
+  expect(screen.queryByText('Screenshot recorded')).toBeNull()
+  expect(screen.queryByTestId('screenshot-state')).toBeNull()
+  expect(screen.queryByTestId('screenshots-time-zone')).toBeNull()
   expect(screen.getAllByTestId('screenshot-delete')[0].textContent).toBe('Delete file')
   expect(screen.getAllByTestId('screenshot-copy-hash')[0].textContent).toBe('Copy hash')
-  expect(screen.getByTestId('screenshots-time-zone').textContent).toMatch(/^Time: (local|UTC)$/)
 })
 
 it('replaces an image that fails to load with a placeholder, in list and grid, and drops the actions that need the file', async () => {
@@ -118,16 +140,21 @@ it('replaces an image that fails to load with a placeholder, in list and grid, a
   for (const view of ['list', 'grid']) {
     if (view === 'grid') fireEvent.click(screen.getByTestId('screenshots-view-grid'))
     await waitFor(() => expect(document.querySelectorAll('img').length).toBe(3))
-    expect(screen.getAllByTestId('screenshot-enlarge')).toHaveLength(3)
-    fireEvent.error(document.querySelectorAll('img')[0])
+    const failed = document.querySelectorAll('img')[0]
+    const row = failed.closest('[role="button"]') as HTMLElement
+    fireEvent.error(failed)
     expect(screen.getAllByTestId('screenshot-unreadable')).toHaveLength(1)
     expect(screen.getByText('Image unavailable')).toBeTruthy()
     expect(document.querySelectorAll('img').length).toBe(2)
-    expect(screen.getAllByTestId('screenshot-enlarge')).toHaveLength(2)
-    expect(screen.getAllByTestId('screenshot-reveal')).toHaveLength(2)
-    // Copy hash and delete stay; the load failure is not the "deleted" state.
-    expect(screen.getAllByTestId('screenshot-copy-hash')).toHaveLength(3)
-    expect(screen.getAllByTestId('screenshot-delete')).toHaveLength(3)
+    // The row still opens: copy hash and delete stay; the file cannot be
+    // shown or revealed. The load failure is not the "deleted" state.
+    fireEvent.click(row)
+    const preview = screen.getByTestId('screenshot-lightbox')
+    expect(within(preview).getByText('Image unavailable')).toBeTruthy()
+    expect(within(preview).queryByRole('img')).toBeNull()
+    expect(within(preview).queryByTestId('screenshot-reveal')).toBeNull()
+    expect(within(preview).getByTestId('screenshot-copy-hash')).toBeTruthy()
+    expect(within(preview).getByTestId('screenshot-delete')).toBeTruthy()
     expect(screen.queryByText('File deleted · event record kept')).toBeNull()
     // Reset for the next view: a fresh mount forgets the failure.
     cleanup(); install(); mount()
@@ -147,7 +174,142 @@ it('shows the placeholder, not the filename, for a screenshot with no file path'
   mount()
   expect(await screen.findByTestId('screenshot-unreadable')).toBeTruthy()
   expect(document.querySelectorAll('img').length).toBe(0)
-  expect(screen.queryByTestId('screenshot-enlarge')).toBeNull()
-  expect(screen.queryByTestId('screenshot-reveal')).toBeNull()
-  expect(screen.getByTestId('screenshot-copy-hash')).toBeTruthy()
+  const preview = openRow(/s9\.png/)
+  expect(within(preview).queryByTestId('screenshot-reveal')).toBeNull()
+  // No path, no file: nothing for "delete file" to remove.
+  expect(within(preview).queryByTestId('screenshot-delete')).toBeNull()
+  expect(within(preview).getByTestId('screenshot-copy-hash')).toBeTruthy()
+})
+
+// One click target per row: the row opens the preview, where the other
+// actions are. The time comes first, with the date when it is not today.
+describe('a screenshot row', () => {
+  it('is one click target with no buttons inside it', async () => {
+    install()
+    mount()
+    await screen.findByTestId('screenshot-list')
+    for (const row of screen.getAllByRole('button', { name: /^Screenshot at/ })) {
+      expect(within(row).queryAllByRole('button')).toEqual([])
+    }
+  })
+
+  it('leads with the time, and the date when it is not today', async () => {
+    const today = Date.now() - 60_000
+    const shots = [shot('s1', 'manual'), { ...shot('s2', 'manual'), timestamp: today }]
+    ;(window as unknown as { redlog: unknown }).redlog = {
+      events: { queryScreenshotPage: vi.fn(async () => ({ items: shots, hasMore: false, nextCursor: null })), onNewBatch: () => () => {} },
+      screenshot: { deleteFile: vi.fn(async () => ({ ok: true })) }, artifacts: { reveal: vi.fn(async () => true) }
+    }
+    mount()
+    await screen.findByTestId('screenshot-list')
+    const lead = (name: RegExp): string => (rowOf(name).querySelector('[data-testid="screenshot-time"]') as HTMLElement).textContent ?? ''
+    const first = (name: RegExp): HTMLElement => rowOf(name).querySelector('[data-testid="screenshot-meta"]')!.firstElementChild as HTMLElement
+    expect(lead(/s1\.png/)).toMatch(/^1970-01-01 \d\d:\d\d:\d\dZ?$/)
+    expect(lead(/s2\.png/)).toMatch(/^\d\d:\d\d:\d\dZ?$/)
+    expect(first(/s1\.png/).dataset.testid).toBe('screenshot-time')
+  })
+
+  it('shows the short hash without a label, the full one in its title', async () => {
+    install()
+    mount()
+    await screen.findByTestId('screenshot-list')
+    const hash = screen.getAllByTestId('screenshot-hash')[0]
+    expect(hash.textContent).not.toContain('SHA-256')
+    expect(hash.getAttribute('title')).toMatch(/SHA-256: sha-s\d0{58}$/)
+  })
+
+  it('opens the preview, which holds reveal, copy hash and delete', async () => {
+    install()
+    mount()
+    await screen.findByTestId('screenshot-list')
+    const preview = openRow(/s2\.png/)
+    expect(within(preview).getByTestId('screenshot-reveal').textContent).toBe('Show in folder')
+    expect(within(preview).getByTestId('screenshot-copy-hash').textContent).toBe('Copy hash')
+    expect(within(preview).getByTestId('screenshot-delete').textContent).toBe('Delete file')
+  })
+})
+
+// Ruling 7: screenshots are taken only when asked. The chips are the triggers
+// the recorded data has (old periodic ones keep their label); with one, there
+// is nothing to choose between. The title strip has the camera, so the
+// toolbar does not repeat Capture.
+describe('after ruling 7', () => {
+  it('shows no trigger chips when the data has one trigger', async () => {
+    const one = [shot('s1', 'manual'), shot('s2', 'manual')]
+    ;(window as unknown as { redlog: unknown }).redlog = {
+      events: { queryScreenshotPage: vi.fn(async () => ({ items: one, hasMore: false, nextCursor: null })), onNewBatch: () => () => {} },
+      screenshot: { deleteFile: vi.fn(async () => ({ ok: true })) }, artifacts: { reveal: vi.fn(async () => true) }
+    }
+    mount()
+    await screen.findByTestId('screenshot-list')
+    expect(screen.queryByText('Taken by')).toBeNull()
+    expect(screen.queryByRole('button', { name: /^All/ })).toBeNull()
+    expect(screen.getByTestId('screenshots-search')).toBeTruthy()
+  })
+
+  it('keeps a recorded periodic trigger on offer beside manual', async () => {
+    install()
+    mount()
+    await screen.findByTestId('screenshot-list')
+    expect(screen.getByRole('button', { name: /^periodic/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /^manual/ })).toBeTruthy()
+  })
+
+  it('has no Capture in the toolbar', async () => {
+    install()
+    mount()
+    const toolbar = await screen.findByTestId('screenshots-toolbar')
+    expect(within(toolbar).queryByRole('button', { name: 'Capture Now' })).toBeNull()
+  })
+})
+
+describe('round 2', () => {
+  // 150 shots: the newest 100 manual, the older 50 periodic. The first page
+  // holds one trigger but is not everything, so another may exist.
+  it('shows the trigger chips when the first page holds one trigger but is partial', async () => {
+    const one = [shot('s1', 'manual'), shot('s2', 'manual')]
+    ;(window as unknown as { redlog: unknown }).redlog = {
+      events: { queryScreenshotPage: vi.fn(async () => ({ items: one, hasMore: true, nextCursor: 'n' })), onNewBatch: () => () => {} },
+      screenshot: { deleteFile: vi.fn(async () => ({ ok: true })) }, artifacts: { reveal: vi.fn(async () => true) }
+    }
+    mount()
+    await screen.findByTestId('screenshot-list')
+    expect(screen.getByRole('button', { name: /^manual/ }).textContent).toContain('2+')
+  })
+
+  it('names an abnormal row\'s state in its accessible name', async () => {
+    install()
+    window.redlog.events.onNewBatch = ((cb: (e: unknown[]) => void) => {
+      setTimeout(() => cb([{ agentType: 'system', data: { subtype: 'screenshot_deleted', source_event: 's1' } }]), 0)
+      return () => {}
+    }) as never
+    mount()
+    await screen.findByTestId('screenshot-list')
+    await waitFor(() => expect(rowOf(/s1\.png/).getAttribute('aria-label')).toContain('File deleted · event record kept'))
+    fireEvent.error(rowOf(/s2\.png/).querySelector('img') as HTMLImageElement)
+    expect(rowOf(/s2\.png/).getAttribute('aria-label')).toContain('Image unavailable')
+    expect(rowOf(/s3\.png/).getAttribute('aria-label')).toMatch(/^Screenshot at [^·]*$/)
+  })
+})
+
+describe('keyboard and focus on a row', () => {
+  it.each(['Enter', ' '])('opens the preview on %j', async (key) => {
+    install()
+    mount()
+    await screen.findByTestId('screenshot-list')
+    fireEvent.keyDown(rowOf(/s2\.png/), { key })
+    expect(screen.getByTestId('screenshot-lightbox')).toBeTruthy()
+  })
+
+  it('returns focus to the row when the preview closes', async () => {
+    install()
+    mount()
+    await screen.findByTestId('screenshot-list')
+    const row = rowOf(/s2\.png/)
+    row.focus()
+    fireEvent.keyDown(row, { key: 'Enter' })
+    const preview = screen.getByTestId('screenshot-lightbox')
+    fireEvent.click(within(preview).getByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(document.activeElement).toBe(row))
+  })
 })

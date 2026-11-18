@@ -61,7 +61,7 @@ Each anchor row has a status:
 
 The hourly loop retries any failed head at the next tick. Manual retry:
 
-- UI: Settings ▸ Data ▸ **Timeline Integrity** ▸ **Anchor now**.
+- UI: the Evidence page ▸ the verification line's **Details** ▸ **Anchor now**.
 - CLI: `redlog-cli chain anchor` (and `redlog-cli chain status` / `chain verify` / `chain anchors`).
 - REST: `POST /api/anchors`.
 
@@ -168,8 +168,8 @@ recipient *can* check is set out next.
 
 A bundle is handed to a third party, who runs the `redlog-verify.py` inside it
 (or `verify.sh` / `verify.cmd`). The app applies the same rules to every bundle
-it writes before handing it over, and to the project's own chain in Settings ▸
-Integrity. The rules live in one place —
+it writes before handing it over, and to the project's own chain on the
+Evidence page (Verify). The rules live in one place —
 [src/core/evidence-rules.ts](../src/core/evidence-rules.ts), applied by
 [src/core/bundle-verify.ts](../src/core/bundle-verify.ts) and ported to
 [tools/redlog-verify.py](../tools/redlog-verify.py) — and
@@ -278,7 +278,7 @@ it does not know, or a seal of an unknown `sealVersion` or with unknown fields.
 
 When several apply: 2, 1, 4, 5, then 3. `--hash-only` never accepts 4 or 5.
 
-### The app's own walk (Settings ▸ Integrity)
+### The app's own walk (the Evidence page's Verify)
 
 It walks the project database rather than a bundle and now judges signatures
 as the bundle verifiers do. Before this it differed in four ways, all closed:

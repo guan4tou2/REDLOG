@@ -174,8 +174,9 @@ test('five workspaces remain usable across native size, zoom and language change
       await expect(page.getByTestId('screenshot-grid').locator('[role="button"]')).toHaveCount(8)
       await matrixFor('screenshots', async () => {
         const grid = page.getByTestId('screenshot-grid')
-        await page.getByTestId('screenshot-reveal').first().scrollIntoViewIfNeeded()
-        await expect(page.getByTestId('screenshot-reveal').first()).toBeInViewport()
+        // A card is one click target; its actions are in the preview.
+        await grid.getByTestId('screenshot-time').first().scrollIntoViewIfNeeded()
+        await expect(grid.getByTestId('screenshot-time').first()).toBeInViewport()
         await noOverflow(page, '[data-testid="screenshot-grid"]')
         const columns = await grid.evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length)
         const width = await grid.evaluate(el => el.clientWidth)

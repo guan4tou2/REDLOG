@@ -1,12 +1,13 @@
 import { SCROLL_GUTTER } from '../lib/pageLayout'
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, type HTMLAttributes } from 'react'
+import { flushSync } from 'react-dom'
 import { Image, LayoutList, LayoutGrid, Search } from 'lucide-react'
 import { EmptyState } from './EmptyState'
 import { LoadingSpinner } from './Feedback'
 import { confirm as confirmDialog } from './ConfirmDialog'
 import { toast } from './Toast'
 import { writeClipboard } from '../lib/clipboard'
-import { formatTime, useDisplayZone } from '../lib/time'
+import { formatWhen, useDisplayZone } from '../lib/time'
 import { useI18n } from '../i18n'
 import { captureScreenshotWithFeedback } from '../lib/captureScreenshot'
 import { Modal } from './Modal'
@@ -37,8 +38,6 @@ interface ShotActions {
   remove: (shot: RedLogEvent) => void
 }
 
-const ICON_BUTTON = 'inline-flex h-6 w-6 items-center justify-center rounded border border-redlog-border bg-redlog-surface text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40'
-
 function Thumb({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Element {
   const src = a.thumb(shot.id)
   return <>
@@ -55,107 +54,95 @@ function Thumb({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Element 
   </>
 }
 
-const LINK = 'rounded px-1.5 py-0.5 text-xs text-redlog-text-dim hover:bg-redlog-elevated hover:text-redlog-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40'
-
-/** The four things that can be done to one screenshot, always visible, named
- *  in words (Stitch 03). A deleted file keeps its event, so its hash can still
- *  be copied. */
-function ShotButtons({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Element | null {
+/** What can be done to one screenshot, in its preview: one click target per
+ *  row, so the row itself only opens this. A deleted file keeps its event, so
+ *  its hash can still be copied; a file that could not be shown can still be
+ *  deleted. */
+function ShotActionButtons({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Element {
   const gone = a.deleted(shot.id)
   const unreadable = a.unreadable(shot.id)
   const sha = typeof shot.data.sha256 === 'string' ? shot.data.sha256 : null
-  const filePath = typeof shot.data.filePath === 'string' ? shot.data.filePath : null
-  return <div className="flex flex-wrap items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-    {!gone && !unreadable && a.thumb(shot.id) && (
-      <button type="button" data-testid="screenshot-enlarge" className={LINK} aria-label={a.t('screenshots.enlarge')} onClick={() => a.open(shot.id)}>
-        {a.t('screenshots.preview')}
-      </button>
-    )}
+  const filePath = typeof shot.data.filePath === 'string' && shot.data.filePath !== '' ? shot.data.filePath : null
+  return <div className="flex flex-wrap items-center justify-center gap-2">
     {!gone && !unreadable && filePath && (
-      <button type="button" data-testid="screenshot-reveal" className={LINK} aria-label={a.t('artifacts.reveal')}
+      <Button level="quiet" size="compact" data-testid="screenshot-reveal"
         onClick={async () => {
           const ok = await window.redlog.artifacts.reveal('screenshot', filePath).catch(() => false)
           if (!ok) toast(a.t('artifacts.revealFailed'), { type: 'warning', why: a.t('artifacts.revealFailedWhy') })
         }}>
         {a.t('artifacts.reveal')}
-      </button>
+      </Button>
     )}
     {sha && (
-      <button type="button" data-testid="screenshot-copy-hash" className={LINK} aria-label={a.t('screenshots.copyHash')}
+      <Button level="quiet" size="compact" data-testid="screenshot-copy-hash"
         onClick={() => { void writeClipboard(sha).then((ok) => ok ? toast(a.t('common.copied'), 'success') : toast(a.t('common.copyFailed'), 'error')) }}>
         {a.t('screenshots.copyHash')}
-      </button>
+      </Button>
     )}
     {/* No path, no file: there is nothing for "delete file" to remove. */}
-    {!gone && filePath && <button type="button" data-testid="screenshot-delete" className={`${LINK} hover:text-red-400`} aria-label={a.t('screenshots.deleteTitle')} onClick={() => a.remove(shot)}>
-      {a.t('screenshots.deleteFile')}
-    </button>}
+    {!gone && filePath && (
+      <Button level="quiet" size="compact" data-testid="screenshot-delete" className="hover:text-red-400" aria-label={a.t('screenshots.deleteTitle')} onClick={() => a.remove(shot)}>
+        {a.t('screenshots.deleteFile')}
+      </Button>
+    )}
   </div>
-}
-
-function hasImage(shot: RedLogEvent, a: ShotActions): boolean {
-  return typeof shot.data.filePath === 'string' && shot.data.filePath !== '' && !a.unreadable(shot.id)
 }
 
 function ShotMeta({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Element {
   const trigger = a.triggerLabel(String(shot.data.trigger ?? ''))
   const diff = shot.data.diffPercent
   const sha = typeof shot.data.sha256 === 'string' ? shot.data.sha256 : null
-  return <div className="min-w-0 flex flex-col gap-1">
+  return <div data-testid="screenshot-meta" className="min-w-0 flex flex-col gap-1">
+    {/* The time first; the date too when it is not today. */}
+    <span data-testid="screenshot-time" className="font-mono text-xs text-redlog-text tabular-nums">{formatWhen(shot.timestamp, { seconds: true })}</span>
     <div className="flex flex-wrap items-center gap-2">
-      <span title={(shot.data.filename as string) ?? undefined} className="font-mono text-xs text-redlog-text truncate">{(shot.data.filename as string) ?? ''}</span>
+      <span title={(shot.data.filename as string) ?? undefined} className="font-mono text-xs text-redlog-text-dim truncate">{(shot.data.filename as string) ?? ''}</span>
       <span className="rounded border border-redlog-border bg-redlog-elevated px-1.5 text-xs text-redlog-text-dim">{trigger}</span>
       {typeof diff === 'number' && <span className="rounded border border-redlog-border px-1.5 text-xs text-redlog-text-faint">{a.t('screenshots.diff', { pct: diff.toFixed(1) })}</span>}
-      <span className="font-mono text-xs text-redlog-text-faint tabular-nums">{formatTime(shot.timestamp, { seconds: true })}</span>
     </div>
-    <div className="flex flex-wrap items-center gap-2 text-xs">
-      {/* "Recorded" beside an image that is not there reads as a contradiction;
-          the thumbnail placeholder already says the image is unavailable. */}
-      {(a.deleted(shot.id) || hasImage(shot, a)) && <span data-testid="screenshot-state" className={`rounded border px-1.5 ${a.deleted(shot.id) ? 'border-amber-500/40 bg-amber-500/10 text-amber-300' : 'border-redlog-border bg-redlog-elevated text-redlog-text-dim'}`}>
-        {a.t(a.deleted(shot.id) ? 'screenshots.deletedKept' : 'screenshots.recorded')}
-      </span>}
-      {/* The recorded hash, as recorded; the note says it is not a check. */}
-      {sha && <span data-testid="screenshot-hash" className="font-mono text-redlog-text-faint" title={`${a.t('screenshots.hashNote')} SHA-256: ${sha}`}>SHA-256 · {sha.slice(0, 12)}…</span>}
-    </div>
+    {/* The recorded hash, as recorded; the note says it is not a check. Only
+        an abnormal row is marked, by its thumbnail box ("File deleted · event
+        record kept", "Image unavailable"). */}
+    {sha && <span data-testid="screenshot-hash" className="font-mono text-xs text-redlog-text-faint" title={`${a.t('screenshots.hashNote')} SHA-256: ${sha}`}>{sha.slice(0, 12)}…</span>}
   </div>
 }
 
+/** The row's own props: one click target that opens the preview. */
+function openProps(shot: RedLogEvent, a: ShotActions): HTMLAttributes<HTMLDivElement> & { tabIndex: number } {
+  // The label replaces the row's text for assistive tech, so it carries the
+  // abnormal state the thumbnail box shows.
+  const state = a.deleted(shot.id) ? a.t('screenshots.deletedKept')
+    : a.unreadable(shot.id) || !screenshotSrc(shot.data) ? a.t('screenshots.imageUnavailable') : null
+  const label = a.t('screenshots.itemLabel', { time: formatWhen(shot.timestamp, { seconds: true }) })
+  return {
+    role: 'button', tabIndex: 0,
+    'aria-label': state ? `${label} · ${state}` : label,
+    onClick: () => a.open(shot.id),
+    onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); a.open(shot.id) } }
+  }
+}
+
+const ROW_STATE = (gone: boolean): string => `cursor-pointer hover:bg-redlog-elevated/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 ${gone ? 'opacity-70' : ''}`
+
 function ShotRow({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Element {
   const gone = a.deleted(shot.id) || a.unreadable(shot.id)
-  return <div
-    role="button" tabIndex={0}
-    aria-label={a.t('screenshots.itemLabel', { time: formatTime(shot.timestamp, { seconds: true }) })}
-    className={`flex items-center justify-between gap-3 rounded border border-redlog-border bg-redlog-surface p-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 ${gone ? 'opacity-70' : 'cursor-pointer hover:bg-redlog-elevated/50'}`}
-    onClick={() => !gone && a.open(shot.id)}
-    onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !gone) { e.preventDefault(); a.open(shot.id) } }}
-  >
-    <div className="flex min-w-0 items-center gap-3">
-      <div className="flex h-[81px] w-[144px] shrink-0 items-center justify-center overflow-hidden rounded border border-redlog-border bg-black/30"><Thumb shot={shot} a={a} /></div>
-      <ShotMeta shot={shot} a={a} />
-    </div>
-    <ShotButtons shot={shot} a={a} />
+  return <div {...openProps(shot, a)} className={`flex items-center gap-3 rounded border border-redlog-border bg-redlog-surface p-2 ${ROW_STATE(gone)}`}>
+    <div className="flex h-[81px] w-[144px] shrink-0 items-center justify-center overflow-hidden rounded border border-redlog-border bg-black/30"><Thumb shot={shot} a={a} /></div>
+    <ShotMeta shot={shot} a={a} />
   </div>
 }
 
 function ShotCard({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Element {
   const gone = a.deleted(shot.id) || a.unreadable(shot.id)
-  return <div
-    role="button" tabIndex={0}
-    aria-label={a.t('screenshots.itemLabel', { time: formatTime(shot.timestamp, { seconds: true }) })}
-    className={`flex flex-col overflow-hidden rounded border border-redlog-border bg-redlog-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 ${gone ? 'opacity-70' : 'cursor-pointer hover:bg-redlog-elevated/50'}`}
-    onClick={() => !gone && a.open(shot.id)}
-    onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !gone) { e.preventDefault(); a.open(shot.id) } }}
-  >
+  return <div {...openProps(shot, a)} className={`flex flex-col overflow-hidden rounded border border-redlog-border bg-redlog-surface ${ROW_STATE(gone)}`}>
     <div className="flex aspect-video items-center justify-center overflow-hidden bg-black/30"><Thumb shot={shot} a={a} /></div>
-    <div className="flex flex-col gap-2 p-2">
-      <ShotMeta shot={shot} a={a} />
-      <div className="flex justify-end"><ShotButtons shot={shot} a={a} /></div>
-    </div>
+    <div className="p-2"><ShotMeta shot={shot} a={a} /></div>
   </div>
 }
 
 export function ScreenshotsView(): JSX.Element {
-  const zone = useDisplayZone()
+  // Re-render when the display zone changes; the status bar names the zone.
+  useDisplayZone()
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
   const [expanded, setExpanded] = useState<string | null>(null)
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set())
@@ -254,14 +241,15 @@ export function ScreenshotsView(): JSX.Element {
         .some((v) => typeof v === 'string' && v.toLowerCase().includes(needle)))
     : screenshots, [screenshots, needle]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const remove = useCallback(async (s: RedLogEvent): Promise<void> => {
+  /** Resolves false when the operator cancelled the confirmation. */
+  const remove = useCallback(async (s: RedLogEvent): Promise<boolean> => {
     const name = typeof s.data.filename === 'string' && s.data.filename ? s.data.filename : t('screenshots.thisFile')
     const ok = await confirmDialog(t('screenshots.deleteTitle'), t('screenshots.deleteConfirm', { name }), true)
-    if (!ok) return
+    if (!ok) return false
     const fp = s.data.filePath as string | undefined
     if (!fp) {
       toast(t('screenshots.deleteFailed'), { type: 'error', why: t('screenshots.deleteFailedWhy') })
-      return
+      return true
     }
     const res = await window.redlog.screenshot.deleteFile(s.id, fp)
     if (res.ok) {
@@ -270,6 +258,7 @@ export function ScreenshotsView(): JSX.Element {
     } else {
       toast(t('screenshots.deleteFailed'), { type: 'error', why: t('screenshots.deleteFailedWhy'), detail: res.error })
     }
+    return true
   }, [t])
 
   if (loading) {
@@ -285,17 +274,15 @@ export function ScreenshotsView(): JSX.Element {
     unreadable: (id) => unreadableIds.has(id),
     markUnreadable: (id) => setUnreadableIds((prev) => prev.has(id) ? prev : new Set(prev).add(id)),
     open: (id) => setExpanded(id),
-    remove: (s) => { void remove(s) }
+    // The preview closes first, so the confirmation is the only dialog open;
+    // cancelling returns to the preview it came from.
+    // flushSync: the preview is gone from the page before the confirmation opens.
+    remove: (s) => { flushSync(() => setExpanded(null)); void remove(s).then((confirmed) => { if (!confirmed) setExpanded(s.id) }) }
   }
   const noShots = screenshots.length === 0 && !hasMore && triggerFilter === null
-  const totalAll = triggerTotals.reduce((n, [, c]) => n + c, 0)
 
   return (
     <div className={`p-pad overflow-auto h-full ${SCROLL_GUTTER}`}>
-      <div className="mb-3">
-        <h2 className="text-sm font-semibold text-redlog-text">{t('screenshots.sectionTitle')}</h2>
-        <p className="mt-0.5 text-xs text-redlog-text-dim">{t('screenshots.sectionHint')}</p>
-      </div>
       {loadError && (
         <div data-testid="screenshots-load-error" role="alert" className="mb-3 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
           <div>{t('screenshots.loadFailed')}</div>
@@ -307,9 +294,16 @@ export function ScreenshotsView(): JSX.Element {
       )}
       {!noShots && (
         <div data-testid="screenshots-toolbar" className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded border border-redlog-border bg-redlog-surface p-2">
-          <div className="flex flex-wrap items-center gap-1">
+          {/* The triggers the recorded data has — manual and API are what can
+              still occur (ruling 7); old periodic and after-command shots keep
+              their label. With one, there is nothing to choose between. A
+              chosen filter keeps the row, so it can be left. */}
+          {/* A partial first page may hold one trigger while older pages hold
+              others, so its chips (marked "+") stay. */}
+          {triggerTotals.length > 1 || triggerTotalsPartial || triggerFilter !== null ? <div className="flex flex-wrap items-center gap-1">
             <span className="mr-1 text-xs text-redlog-text-faint">{t('screenshots.triggerFilter')}</span>
-            {[{ id: null as string | null, label: t('screenshots.all'), count: triggerTotalsPartial ? `${totalAll}+` : String(totalAll) },
+            {/* "All" has no count: the project's is on the Evidence tab, once. */}
+            {[{ id: null as string | null, label: t('screenshots.all'), count: null as string | null },
               ...triggerTotals.map(([id, count]) => ({ id: id as string | null, label: triggerLabel(id), count: triggerTotalsPartial ? `${count}+` : String(count) }))].map((chip) => (
               <button
                 key={chip.id ?? 'all'}
@@ -319,9 +313,9 @@ export function ScreenshotsView(): JSX.Element {
                 className={`px-2 py-0.5 text-xs font-mono rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 ${
                   triggerFilter === chip.id ? 'bg-red-500/20 text-red-300' : 'bg-redlog-elevated text-redlog-text-dim hover:text-redlog-text hover:bg-redlog-elevated-hover'
                 }`}
-              >{chip.label} <span className="text-redlog-text-faint">&middot;{chip.count}</span></button>
+              >{chip.label}{chip.count !== null && <> <span className="text-redlog-text-faint">&middot;{chip.count}</span></>}</button>
             ))}
-          </div>
+          </div> : <span />}
           <div className="flex items-center gap-2">
             <label className="relative">
               <span className="sr-only">{t('screenshots.searchLabel')}</span>
@@ -340,7 +334,6 @@ export function ScreenshotsView(): JSX.Element {
               <button type="button" data-testid="screenshots-view-grid" aria-pressed={mode === 'grid'} title={t('screenshots.viewGrid')} aria-label={t('screenshots.viewGrid')}
                 onClick={() => chooseMode('grid')} className={`inline-flex h-6 w-6 items-center justify-center rounded ${mode === 'grid' ? 'bg-redlog-surface text-redlog-text' : 'text-redlog-text-faint hover:text-redlog-text'}`}><LayoutGrid size={14} aria-hidden /></button>
             </div>
-            <Button size="compact" onClick={() => { void captureScreenshotWithFeedback(t) }}>{t('screenshots.captureNow')}</Button>
           </div>
         </div>
       )}
@@ -351,15 +344,19 @@ export function ScreenshotsView(): JSX.Element {
           reason={t('screenshots.emptyReason')}
           action={{
             label: t('screenshots.captureNow'),
-            onClick: () => { void captureScreenshotWithFeedback(t) }
+            onClick: () => { void captureScreenshotWithFeedback(t) },
+            // Verify, above the tabs, is the Evidence page's primary.
+            level: 'secondary'
           }}
         />
       ) : (
         <>
-          <div className="mb-2 flex flex-wrap justify-between gap-2 text-xs text-redlog-text-faint">
-            <p data-testid="screenshots-summary">{hasMore ? t('screenshots.summaryMore', { shown: visible.length }) : t('screenshots.summary', { shown: visible.length, total: totalAll })}</p>
-            <span data-testid="screenshots-time-zone">{t(zone === 'utc' ? 'screenshots.timeUtc' : 'screenshots.timeLocal')}</span>
-          </div>
+          {/* A count of its own only when the list is not everything: more to
+              load, or a search over what is loaded — counted against the rows
+              this view holds, so a live arrival cannot make it "6 of 5". */}
+          {(hasMore || needle) && <p data-testid="screenshots-summary" className="mb-2 text-xs text-redlog-text-faint">
+            {hasMore ? t('screenshots.summaryMore', { shown: screenshots.length }) : t('screenshots.summary', { shown: visible.length, total: screenshots.length })}
+          </p>}
           {needle && hasMore && <p data-testid="screenshots-search-scope" className="mb-2 text-xs text-redlog-text-faint">{t('screenshots.searchLoadedOnly', { count: screenshots.length })}</p>}
           {visible.length === 0 ? (
             <EmptyState
@@ -392,13 +389,16 @@ export function ScreenshotsView(): JSX.Element {
         // The lightbox (UI/UX audit F20): what the frame is, not just the
         // pixels — when, why it was taken, its hash — and the neighbours
         // without closing it. A shared Modal, so focus stays in it.
-        const viewable = visible.filter((x) => !deletedIds.has(x.id) && !unreadableIds.has(x.id) && thumbs[x.id])
+        // Every row opens it, including one whose file is gone or could not be
+        // shown: the preview is where that row's actions are.
+        const viewable = visible
         const at = expanded ? viewable.findIndex((x) => x.id === expanded) : -1
         const shot = at >= 0 ? viewable[at] : null
         const step = (d: number): void => {
           const next = viewable[at + d]
           if (next) setExpanded(next.id)
         }
+        const showsImage = shot && !deletedIds.has(shot.id) && !unreadableIds.has(shot.id) && thumbs[shot.id]
         return (
           <Modal
             open={!!shot}
@@ -416,18 +416,21 @@ export function ScreenshotsView(): JSX.Element {
                   if (e.key === 'ArrowRight') { e.preventDefault(); step(1) }
                 }}
               >
-                <img src={thumbs[shot.id]} alt="" className="max-w-[90vw] max-h-[78vh] object-contain rounded-lg" />
-                <div className="flex items-center gap-3 text-xs text-redlog-text-dim">
+                {showsImage
+                  ? <img src={thumbs[shot.id]} alt="" className="max-w-[90vw] max-h-[78vh] object-contain rounded-lg" onError={() => actions.markUnreadable(shot.id)} />
+                  : <div className="flex h-48 w-80 items-center justify-center rounded-lg border border-redlog-border bg-black/30"><Thumb shot={shot} a={actions} /></div>}
+                <div className="flex flex-wrap items-center justify-center gap-3 text-xs text-redlog-text-dim">
                   <button type="button" onClick={() => step(-1)} disabled={at <= 0} aria-label={t('screenshots.prev')} className="px-2 py-1 rounded bg-redlog-elevated hover:bg-redlog-elevated-hover disabled:opacity-40">←</button>
-                  <span className="font-mono">{formatTime(shot.timestamp, { seconds: true })}</span>
+                  <span className="font-mono">{formatWhen(shot.timestamp, { seconds: true })}</span>
                   <span>{triggerLabel(String(shot.data.trigger ?? ''))}</span>
                   {typeof shot.data.sha256 === 'string' && (
-                    <span className="font-mono text-redlog-text-faint" title={`SHA-256: ${shot.data.sha256 as string}`}>{(shot.data.sha256 as string).slice(0, 12)}</span>
+                    <span className="font-mono text-redlog-text-faint" title={`${t('screenshots.hashNote')} SHA-256: ${shot.data.sha256 as string}`}>{(shot.data.sha256 as string).slice(0, 12)}…</span>
                   )}
                   <span className="text-redlog-text-faint">{at + 1} / {viewable.length}</span>
                   <button type="button" onClick={() => step(1)} disabled={at >= viewable.length - 1} aria-label={t('screenshots.next')} className="px-2 py-1 rounded bg-redlog-elevated hover:bg-redlog-elevated-hover disabled:opacity-40">→</button>
                   <button type="button" onClick={() => setExpanded(null)} aria-label={t('common.close')} className="px-2 py-1 rounded bg-redlog-elevated hover:bg-redlog-elevated-hover">{t('common.close')}</button>
                 </div>
+                <ShotActionButtons shot={shot} a={actions} />
               </div>
             )}
           </Modal>

@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { useI18n } from '../i18n'
 import { useReadState } from '../lib/readState'
-import { HEADER_GUTTER, PROSE_WIDTH } from '../lib/pageLayout'
+import { HEADER_GUTTER } from '../lib/pageLayout'
+import { EvidenceVerify } from './EvidenceVerify'
 
 export type EvidencePage = 'screenshots' | 'loot' | 'bookmarks'
 const PAGES: EvidencePage[] = ['screenshots', 'loot', 'bookmarks']
@@ -11,7 +12,8 @@ const TAB_LABEL: Record<EvidencePage, string> = { screenshots: 'sidebar.screens'
  *  instead of reading the list on a timer. */
 export const BOOKMARKS_CHANGED = 'redlog:bookmarks-changed'
 
-/** Heading and the three evidence pages as tabs. A tab shows a count only when
+/** Heading, the verification block, and the three evidence pages as tabs.
+ *  The block sits above the tabs so it answers on every one of them. A tab shows a count only when
  *  it is a total: screenshots and bookmarks are counted over the whole project.
  *  Loot has none here, because its page counts matches inside events and a
  *  second number for the same thing would disagree with it. */
@@ -44,12 +46,9 @@ export function EvidenceHeader({ page, onNavigate }: {
   }
 
   return <div data-testid="evidence-header" className="flex shrink-0 px-pad pt-3"><div className="min-w-0 flex-1 space-y-2">
-    <div className="min-w-0">
-      <h1 className="text-lg font-semibold text-redlog-text">{t('sidebar.evidence')}</h1>
-      {/* The one-line hint gives way when the window is short (a small window at
-          high zoom): the tabs must not push the page's own content out of reach. */}
-      <p className={`mt-1 hidden text-xs text-redlog-text-dim ${PROSE_WIDTH} [@media(min-height:640px)]:block`}>{t('evidence.hint')}</p>
-    </div>
+    {/* The heading and the verification line share one row; the block's
+        disclosure, when open, sits between it and the tabs. */}
+    <EvidenceVerify heading={<h1 className="shrink-0 text-lg font-semibold text-redlog-text">{t('sidebar.evidence')}</h1>} />
     <div role="tablist" aria-label={t('sidebar.evidence')} className="flex gap-4 border-b border-redlog-border">
       {PAGES.map((id, index) => {
         const count = counts[id]

@@ -24,8 +24,9 @@ export interface EmptyStateProps {
   title: string
   /** Why there is nothing right now. The specific cause, not "it is empty". */
   reason: string
-  /** The one next step. Omitted only when there genuinely isn't one. */
-  action?: { label: string; onClick: () => void }
+  /** The one next step. Omitted only when there genuinely isn't one.
+   *  `secondary` when the page around it already has its primary (§4). */
+  action?: { label: string; onClick: () => void; level?: 'primary' | 'secondary' }
   /** A second, quieter route — usually "turn on the thing that fills this". */
   secondary?: { label: string; onClick: () => void }
 }
@@ -49,7 +50,7 @@ export function EmptyState({
               one by definition. It used to copy the level's styles by hand,
               which is how a design system drifts. */}
           {action && (
-            <Button level="primary" onClick={action.onClick}>
+            <Button level={action.level ?? 'primary'} onClick={action.onClick}>
               {action.label}
             </Button>
           )}

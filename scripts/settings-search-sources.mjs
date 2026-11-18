@@ -30,7 +30,6 @@ export const PAGE_SOURCES = {
   browser: [{ file: 'settings/BrowserPage.tsx' }, { file: 'settings/BrowserPanel.tsx' }, { file: 'settings/ManualStepList.tsx' }, { file: 'HttpCaptureStep.tsx' }, { file: 'CapturePreparation.tsx' }],
   scope: [{ file: 'settings/ScopePage.tsx' }, { file: 'settings/ProjectSettings.tsx' }],
   network: [{ file: 'settings/NetworkPage.tsx' }],
-  integrity: [{ file: 'settings/IntegrityPanel.tsx' }],
   plugins: [{ file: 'settings/PluginsPanel.tsx' }],
   general: [{ file: 'settings/GeneralPage.tsx' }],
   hud: [{ file: 'settings/HudPage.tsx' }],

@@ -59,3 +59,13 @@ it('shows no count for a read that failed, rather than zero', async () => {
   await waitFor(() => expect(screen.getByTestId('tab-count-bookmarks').textContent).toBe('2'))
   expect(screen.queryByTestId('tab-count-screenshots')).toBeNull()
 })
+
+// §26: the heading and its tabs say what the page is; the hint that repeated
+// them is gone. Adding a file and exporting are in the title strip.
+it('carries no explanatory hint under the heading', () => {
+  install()
+  mount()
+  expect(screen.queryByText(/Screenshots, loot and bookmarks/)).toBeNull()
+  const header = screen.getByTestId('evidence-header')
+  expect(header.querySelector('h1 + p')).toBeNull()
+})

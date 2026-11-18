@@ -1,19 +1,21 @@
 import { toast } from '../components/Toast'
 import { runMutation } from './mutation'
 import { raiseIssue, clearIssue } from './issues'
-import { setLastVerifyResult, type FullVerifyResult as CachedFullVerifyResult } from './verifyResultCache'
-import { settingsTarget } from './navigation'
+import { setLastVerifyResult, setVerifyInFlight, verifyInFlight, type FullVerifyResult as CachedFullVerifyResult } from './verifyResultCache'
 
 // The two acts that answer an integrity fault, with the toast and the issue
 // each result implies.
 //
-// They lived inside Settings ▸ Integrity, which is where they are *performed*
-// and no longer the only place they are *reached*: the dashboard now offers
-// the same two as the fix on the issue they belong to (§9). Two copies of
-// "did the anchor land, and what does the issue list say now" is the kind of
-// pair that agrees on the day it is written and not afterwards — so there is
-// one copy, and the panel keeps only what is genuinely its own: the busy
-// flags, the anchor list and the detail card.
+// They are performed on the Evidence page's verification block and also
+// reached from the dashboard, which offers the same two as the fix on the
+// issue they belong to (§9). Two copies of "did the anchor land, and what does
+// the issue list say now" is the kind of pair that agrees on the day it is
+// written and not afterwards — so there is one copy, and the block keeps only
+// what is genuinely its own: the busy flags, the anchor list and the result.
+
+/** Where an integrity issue sends the operator: the Evidence page, whose
+ *  verification block sits above every tab (owner's ruling 6, 2026-11-12). */
+const VERIFY_VIEW = 'screenshots'
 
 type T = (key: string, vars?: Record<string, string | number>) => string
 
@@ -53,8 +55,9 @@ export function verifyVerdict(r: FullVerifyResult): VerifyVerdict {
 
 /** Submit the current head for timestamping. Returns the anchor, so a caller
  *  showing the anchor list can reload it, or null when there was nothing to
- *  anchor. `onRetry` is offered on the failure toast. */
-export async function anchorNowWithFeedback(t: T, onRetry?: () => void): Promise<ChainAnchorInfo | null> {
+ *  anchor. `onRetry` is offered on the failure toast; `onSkipped` hears that an
+ *  offline project did not submit, so a caller can keep saying so. */
+export async function anchorNowWithFeedback(t: T, onRetry?: () => void, onSkipped?: () => void): Promise<ChainAnchorInfo | null> {
   // A rejection is said here; a null reply is the "nothing to anchor" case
   // below, not a failure.
   const reply = await runMutation(() => window.redlog.chain.anchorNow(), { failed: t('settings.anchorFailed'), isFailure: () => false })
@@ -63,6 +66,7 @@ export async function anchorNowWithFeedback(t: T, onRetry?: () => void): Promise
   // Neither a failure nor an anchor: an offline project does not submit.
   if (result && 'skipped' in result) {
     toast(t('settings.integritySkippedOffline'), 'info')
+    onSkipped?.()
     return null
   }
   if (!result) {
@@ -81,7 +85,7 @@ export async function anchorNowWithFeedback(t: T, onRetry?: () => void): Promise
     raiseIssue({
       id: 'anchor', tier: 'attention',
       title: t('settings.anchorFailed'), detail: t('settings.anchorFailedWhy'),
-      view: settingsTarget('integrity'), fix: 'anchor-now'
+      view: VERIFY_VIEW, fix: 'anchor-now'
     })
     toast(t('settings.anchorFailed'), {
       type: 'error',
@@ -101,13 +105,38 @@ export async function upgradeAnchorsWithFeedback(t: T, id?: string): Promise<voi
   if ('upgraded' in r) toast(t('settings.integrityUpgraded', { n: r.upgraded, m: r.scanned }), r.upgraded > 0 ? 'success' : 'info')
 }
 
+/** The open project's id, or null when it cannot be read. */
+const activeProjectId = (): Promise<string | null> =>
+  Promise.resolve().then(() => window.redlog.project.active())
+    .then((p) => (p && typeof p.id === 'string' ? p.id : null), () => null)
+
 /** Walk every event, recompute each hash and check the latest anchor. Returns
- *  the full result for the detail card; the issue it implies is raised here. */
-export async function verifyChainWithFeedback(t: T): Promise<FullVerifyResult> {
+ *  the full result, or null when the walk was abandoned because the open
+ *  project changed while it ran; the issue it implies is raised here. */
+export function verifyChainWithFeedback(t: T): Promise<FullVerifyResult | null> {
+  // One walk at a time, wherever it was asked for: a second ask joins it.
+  const running = verifyInFlight()
+  if (running) return running as Promise<FullVerifyResult | null>
+  const walk = walkWithFeedback(t).finally(() => setVerifyInFlight(null))
+  setVerifyInFlight(walk)
+  return walk
+}
+
+async function walkWithFeedback(t: T): Promise<FullVerifyResult | null> {
+  const before = await activeProjectId()
   const r = await window.redlog.chain.verify()
-  // v0.6.89.5: publish to the module-level cache so a fresh Timeline mount
-  // picks up the broken-chain state without another verify click.
-  setLastVerifyResult(r as CachedFullVerifyResult | null)
+  const after = await activeProjectId()
+  // A walk that straddles a project change compared one project's anchor
+  // with another's rows. Its verdict belongs to neither: it raises nothing,
+  // clears nothing and is not cached.
+  if (before !== after) {
+    toast(t('evidence.verifyAbandoned'), 'info')
+    return null
+  }
+  // Published to the module-level cache, with the time and the project it was
+  // walked on, so the Evidence page and a fresh Timeline mount show it
+  // without another walk — and never on a different project.
+  setLastVerifyResult(r as CachedFullVerifyResult | null, { verifiedAt: Date.now(), projectId: before })
   // A chain that will not verify is the most consequential condition the
   // app can be in, so it stays on the issue list until a verify passes (SS9).
   // Incomplete signatures are said on the card, not raised as a broken chain.
@@ -117,7 +146,7 @@ export async function verifyChainWithFeedback(t: T): Promise<FullVerifyResult> {
     raiseIssue({
       id: 'chain', tier: 'attention', title: t('issues.chainBroken'),
       detail: t(verdict === 'anchor-mismatch' ? 'issues.chainAnchorMismatchDetail' : 'issues.chainBrokenDetail'),
-      view: settingsTarget('integrity'), fix: 'verify-chain'
+      view: VERIFY_VIEW, fix: 'verify-chain'
     })
   }
   return r

@@ -3,9 +3,11 @@
 // A screenshot whose file is not there. Seen in the running app: the row said
 // "Screenshot recorded" beside the image-unavailable placeholder, offered
 // "Delete file", and after the irreversible confirm did nothing at all.
+// No row carries a "recorded" tag any more (only an abnormal row is marked),
+// and a row's actions are in its preview, which every row opens.
 
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 
 const toastSpy = vi.fn()
 vi.mock('../src/renderer/src/components/Toast', async (orig) => ({
@@ -33,6 +35,10 @@ function install(items: unknown[]): void {
   }
 }
 const mount = (): void => { render(<I18nProvider><ScreenshotsView /></I18nProvider>) }
+const openPreview = (name: string): HTMLElement => {
+  fireEvent.click(screen.getByText(name).closest('[role="button"]') as HTMLElement)
+  return screen.getByTestId('screenshot-lightbox')
+}
 beforeEach(() => { window.localStorage.clear(); window.localStorage.setItem('redlog-locale', 'en'); toastSpy.mockClear() })
 afterEach(() => cleanup())
 
@@ -40,18 +46,20 @@ it('offers no file deletion and no "recorded" badge for a screenshot with no fil
   install([noPath])
   mount()
   expect(await screen.findByTestId('screenshot-unreadable')).toBeTruthy()
-  expect(screen.queryByTestId('screenshot-delete')).toBeNull()
   expect(screen.queryByText('Screenshot recorded')).toBeNull()
+  const preview = openPreview('s2.png')
+  expect(within(preview).queryByTestId('screenshot-delete')).toBeNull()
   // The event itself is still there: its hash can be copied.
-  expect(screen.getByTestId('screenshot-copy-hash')).toBeTruthy()
+  expect(within(preview).getByTestId('screenshot-copy-hash')).toBeTruthy()
 })
 
-it('drops the "recorded" badge once the image fails to load', async () => {
+it('marks the row only once the image fails to load', async () => {
   install([withPath])
   mount()
   await screen.findByTestId('screenshot-list')
   await waitFor(() => expect(document.querySelectorAll('img').length).toBe(1))
-  expect(screen.getByText('Screenshot recorded')).toBeTruthy()
+  expect(screen.queryByText('Screenshot recorded')).toBeNull()
+  expect(screen.queryByText('Image unavailable')).toBeNull()
   fireEvent.error(document.querySelector('img')!)
   expect(screen.queryByText('Screenshot recorded')).toBeNull()
   expect(screen.getByText('Image unavailable')).toBeTruthy()
@@ -63,7 +71,7 @@ it('says so with the error toast when a delete cannot proceed', async () => {
   await screen.findByTestId('screenshot-list')
   await waitFor(() => expect(document.querySelectorAll('img').length).toBe(1))
   fireEvent.error(document.querySelector('img')!)
-  fireEvent.click(screen.getByTestId('screenshot-delete'))
+  fireEvent.click(within(openPreview('s1.png')).getByTestId('screenshot-delete'))
   await waitFor(() => expect(deleteFile).toHaveBeenCalled())
   await waitFor(() => expect(toastSpy).toHaveBeenCalledWith('Could not delete the image file', expect.objectContaining({ type: 'error' })))
   expect(screen.queryByText('File deleted · event record kept')).toBeNull()
