@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Button } from '../Button'
-import { FieldGroup, Field, ListField, type ConfigState } from './SettingsShared'
+import { FieldGroup, NumberField, ListField, type ConfigState } from './SettingsShared'
 import CapturePackGroup, { PackMember } from './CapturePackGroup'
 import AgentsPanel from './AgentsPanel'
 import ExternalCaptureGroup from './ExternalCaptureGroup'
@@ -130,11 +130,14 @@ export default function CaptureControlPage({
         <details>
           <summary className="min-h-8 content-center cursor-pointer text-xs text-redlog-text-dim">{t('settings.screenshot.options')}</summary>
           <div className="space-y-2 pt-2">
-        <Field
+        <NumberField
           label={t('settings.jpegQuality')}
-          value={String(config.screenshot?.quality ?? 85)}
-          onChange={(v) => setConfig({ ...config, screenshot: { ...config.screenshot, quality: Math.min(100, Math.max(1, parseInt(v) || 85)) } })}
-          type="number"
+          value={config.screenshot?.quality ?? 85}
+          min={1}
+          max={100}
+          onCommit={(n) => setConfig({ ...config, screenshot: { ...config.screenshot, quality: n } })}
+          invalid={t('settings.numberInvalidRange', { min: 1, max: 100 })}
+          pending={t('settings.numberPending')}
         />
 
         <label className="text-xs text-redlog-text-dim mt-3 block">{t('settings.screenshot.diffLabel')}</label>

@@ -9,11 +9,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { SearchPanel } from '../src/renderer/src/components/SearchPanel'
 
+// What the filter bar holds: a test sets a condition here, and clearing is a spy.
+const bar = vi.hoisted(() => ({ filter: { targetId: null as string | null, agentType: null, timeRange: null as { since: number; before: number } | null, inScopeOnly: false }, clearAll: (() => {}) as () => void }))
 vi.mock('../src/renderer/src/lib/FilterContext', () => ({
-  useSharedFilter: () => ({
-    filter: { targetId: null, agentType: null, timeRange: null, inScopeOnly: false }
-  }),
-  toEventFilter: () => ({})
+  useSharedFilter: () => ({ filter: bar.filter, clearAll: () => bar.clearAll() }),
+  toEventFilter: (f: typeof bar.filter) => ({
+    ...(f.targetId ? { targetId: f.targetId } : {}),
+    ...(f.timeRange ? { since: f.timeRange.since, before: f.timeRange.before } : {})
+  })
 }))
 
 vi.mock('../src/renderer/src/i18n', () => ({
@@ -157,5 +160,57 @@ describe('agent-type facets are an explicit state', () => {
 
     await waitFor(() => expect(distinctAgentTypes).toHaveBeenCalled())
     expect(screen.queryByTestId('search-types-failed')).toBeNull()
+  })
+})
+
+describe('an empty event search says when the filter bar emptied it', () => {
+  beforeEach(() => vi.clearAllMocks())
+  afterEach(() => { cleanup(); bar.filter.timeRange = null; bar.filter.targetId = null })
+
+  const okStatus = (): Fn => vi.fn().mockResolvedValue({ total: 0, indexed: 0, pending: 0 })
+
+  it('names the conditions and clears them, instead of blaming the query', async () => {
+    bar.filter.timeRange = { since: 1, before: 2 }
+    const clearAll = vi.fn(); bar.clearAll = clearAll
+    const { runQuery } = installBridge({ castIndexStatus: okStatus() })
+    render(<SearchPanel />)
+    fireEvent.change(screen.getByTestId('search-input'), { target: { value: 'needle' } })
+    await waitFor(() => expect(runQuery).toHaveBeenCalled(), { timeout: 1500 })
+    expect(await screen.findByText('search.noEventsFiltered')).not.toBeNull()
+    expect(screen.queryByText('search.noResults:needle')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'filter.clearAll' }))
+    expect(clearAll).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps blaming the query when no condition is set', async () => {
+    const { runQuery } = installBridge({ castIndexStatus: okStatus() })
+    render(<SearchPanel />)
+    await searchForNothing(runQuery)
+    expect(screen.queryByText('search.noEventsFiltered')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'filter.clearAll' })).toBeNull()
+  })
+})
+
+// Back on the Activity page from the Timeline: the page stays mounted but
+// hidden, and Chromium drops the offset of a hidden scroller. The list is the
+// one `useKeepScroll` is attached to; this is the wiring, since jsdom cannot
+// scroll and the hook's own behaviour is in keep-scroll.test.tsx.
+describe('the results list keeps its scroll offset while the page is hidden', () => {
+  beforeEach(() => vi.clearAllMocks())
+  afterEach(() => { cleanup(); vi.unstubAllGlobals() })
+
+  it('puts the offset back when the page is active again', async () => {
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => setTimeout(() => cb(0), 0) as unknown as number)
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => clearTimeout(id))
+    installBridge({ castIndexStatus: vi.fn().mockResolvedValue({ total: 0, indexed: 0, pending: 0 }) })
+    const { rerender } = render(<SearchPanel active browse viewMode="activities" controlledQuery="" />)
+    const list = screen.getByTestId('search-results')
+    Object.defineProperty(list, 'scrollHeight', { configurable: true, get: () => 3000 })
+    Object.defineProperty(list, 'clientHeight', { configurable: true, get: () => 400 })
+    list.scrollTop = 900; fireEvent.scroll(list)
+    rerender(<SearchPanel active={false} browse viewMode="activities" controlledQuery="" />)
+    list.scrollTop = 0 // what display:none does to it
+    rerender(<SearchPanel active browse viewMode="activities" controlledQuery="" />)
+    await waitFor(() => expect(list.scrollTop).toBe(900))
   })
 })

@@ -2,8 +2,9 @@
 //
 // The capture issue named the dashboard as where to deal with it — the page
 // its own issue list is drawn on — so from there "Open" went nowhere. It now
-// leads to the failing source's settings when exactly one source is failing,
-// and the dashboard list offers no link that would land where it already is.
+// leads to a failing source's settings, the first one with a row on the capture
+// sources page when several are failing, and the dashboard list offers no link
+// that would land where it already is.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -35,9 +36,30 @@ describe('captureIssueView', () => {
       .toBe('settings/browser')
   })
 
-  it('stays on the dashboard when no single source is the answer', () => {
-    expect(captureIssueView({ verdict: 'partial', sources: [failed('screenshot'), failed('file-watcher')] })).toBe('dashboard')
-    expect(captureIssueView({ verdict: 'partial', sources: [failed('screenshot')], managedHttpProxy: { state: 'failed' } })).toBe('dashboard')
+  // Two failures used to name the dashboard, which is where the list is drawn,
+  // so the worse the situation the less the screen offered. The capture sources
+  // page is where they are dealt with; the page lands on one row, so it is the
+  // first failing source that has a row there, in the order the snapshot lists them.
+  it('with several failing sources leads to the capture sources page, on the first failing row', () => {
+    expect(captureIssueView({ verdict: 'partial', sources: [failed('screenshot'), failed('file-watcher')] }))
+      .toBe('settings/captureControl?source=screenshot')
+    expect(captureIssueView({ verdict: 'partial', sources: [ready('screenshot'), failed('file-watcher'), failed('agent-codex')] }))
+      .toBe('settings/captureControl?source=file-watcher')
+    // The core sources have no row there: skipped for one that has.
+    expect(captureIssueView({ verdict: 'partial', sources: [failed('terminal'), failed('screenshot')] }))
+      .toBe('settings/captureControl?source=screenshot')
+    expect(captureIssueView({ verdict: 'partial', sources: [failed('screenshot')], managedHttpProxy: { state: 'failed' } }))
+      .toBe('settings/captureControl?source=screenshot')
+  })
+
+  it('with only the core sources failing leads to the first one\'s own page', () => {
+    expect(captureIssueView({ verdict: 'partial', sources: [failed('terminal'), failed('mitmproxy')] })).toBe('settings/hooks')
+    expect(captureIssueView({ verdict: 'partial', sources: [failed('mitmproxy'), failed('terminal')] })).toBe('settings/browser')
+    expect(captureIssueView({ verdict: 'partial', sources: [ready('terminal')], managedHttpProxy: { state: 'failed' } })).toBe('settings/browser')
+  })
+
+  it('stays on the dashboard when nothing names a failing source', () => {
+    expect(captureIssueView({ verdict: 'partial', sources: [ready('terminal')] })).toBe('dashboard')
     // Dark is a write or chain failure, or nothing wired — not one source.
     expect(captureIssueView({ verdict: 'dark', sources: [failed('screenshot')] })).toBe('dashboard')
   })
@@ -80,10 +102,10 @@ describe('the capture issue the status bar raises', () => {
     window.removeEventListener('redlog:navigate', listen)
   })
 
-  it('names the dashboard when two sources are failing', async () => {
+  it('still leads somewhere when two sources are failing', async () => {
     installBridge([failed('file-watcher'), failed('screenshot')])
     render(<I18nProvider><StatusBar /></I18nProvider>)
-    await waitFor(() => expect(snapshotIssues().find((i) => i.id === 'capture')?.view).toBe('dashboard'))
+    await waitFor(() => expect(snapshotIssues().find((i) => i.id === 'capture')?.view).toBe('settings/captureControl?source=file-watcher'))
   })
 })
 

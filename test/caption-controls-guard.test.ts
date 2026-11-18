@@ -49,11 +49,24 @@ describe('window buttons: nothing full-window ignores the strip', () => {
 
   it('the utilities exist, and the title strip reserves through them rather than a literal', () => {
     const css = readFileSync(path.join(ROOT, 'styles', 'index.css'), 'utf8')
-    for (const u of ['pr-caption', 'mr-caption', 'pt-caption']) expect(css).toMatch(new RegExp(`@utility ${u}\\b`))
+    for (const u of ['pr-caption', 'mr-caption', 'pt-caption', 'pl-caption']) expect(css).toMatch(new RegExp(`@utility ${u}\\b`))
     const app = readFileSync(path.join(ROOT, 'App.tsx'), 'utf8')
     // 144 CSS px is 129.6 px on screen at the default zoom: less than three Windows buttons need.
     expect(app).not.toMatch(/\b(?:pr|mr)-36\b/)
     expect(app).toContain('pr-caption')
     expect(app).toContain('mr-caption')
+    expect(app).toContain('pl-caption')
+  })
+
+  it('nothing pads for the macOS traffic lights with a fixed class', () => {
+    // The lights end 72 screen px in; a fixed `pl-16` is 57.6 px at the default
+    // zoom and shrinks with it. `pl-caption` divides by the zoom.
+    const offenders: string[] = []
+    for (const file of glob.sync('**/*.tsx', { cwd: ROOT })) {
+      for (const text of readFileSync(path.join(ROOT, file), 'utf8').split('\n')) {
+        if (/isMac\s*\?[^:\n]*['"`][^'"`]*\b(?:pl|ml|left|-left)-[\w[\]./-]+/.test(text) || /isMac\s*&&[^\n]*\b(?:pl|ml)-\d/.test(text)) offenders.push(`${file}: ${text.trim().slice(0, 120)}`)
+      }
+    }
+    expect(offenders, 'use pl-caption (lib/captionInsets) instead of a fixed padding that depends on isMac').toEqual([])
   })
 })

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { FieldGroup, isMacOS } from './SettingsShared'
 import { CheckRow } from './CheckRow'
+import { Button } from '../Button'
 import type { HudPrefs } from '../../../../core/hud-prefs'
 
 export default function HudPage({ t }: {
@@ -10,19 +11,35 @@ export default function HudPage({ t }: {
   // project autosave. Every control that changes them — this page, the HUD
   // button, ⌘⇧P, the menu bar — announces the result, and this mirrors it.
   const [prefs, setPrefs] = useState<HudPrefs | null>(null)
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [loadAttempt, setLoadAttempt] = useState(0)
   useEffect(() => {
     let live = true
-    window.redlog.hudPrefs.get().then((p) => { if (live) setPrefs(p) }).catch(() => {})
+    setLoadFailed(false)
+    window.redlog.hudPrefs.get().then((p) => { if (live) setPrefs(p) }, () => { if (live) setLoadFailed(true) })
     const off = window.redlog.hudPrefs.onChanged((p) => setPrefs(p))
     return () => { live = false; off() }
-  }, [])
-  if (!prefs) return null
+  }, [loadAttempt])
+  // The change that did not save, kept so Retry can send it again. After a
+  // failure the controls are re-read from main, so they show what is in
+  // effect rather than what was ticked.
+  const [unsaved, setUnsaved] = useState<Partial<HudPrefs> | null>(null)
+  const retryButton = (onClick: () => void): JSX.Element => <Button size="compact" level="quiet" onClick={onClick}>{t('common.retry')}</Button>
+  if (!prefs) {
+    return loadFailed
+      ? <div role="alert" className="text-xs text-redlog-danger">{t('settings.hudLoadFailed')} {retryButton(() => setLoadAttempt(n => n + 1))}</div>
+      : null
+  }
   const set = (partial: Partial<HudPrefs>): void => {
     setPrefs({ ...prefs, ...partial })
-    window.redlog.hudPrefs.set(partial).then(setPrefs).catch(() => {})
+    window.redlog.hudPrefs.set(partial).then((p) => { setUnsaved(null); setPrefs(p) }, () => {
+      setUnsaved(partial)
+      window.redlog.hudPrefs.get().then(setPrefs, () => {})
+    })
   }
   return (
     <>
+      {unsaved && <div role="alert" className="mb-3 text-xs text-redlog-danger">{t('settings.hudSaveFailed')} {retryButton(() => set(unsaved))}</div>}
       <FieldGroup title={t('settings.overlayGroup')}>
         <CheckRow
           inputTestId="settings-overlay-autoshow"

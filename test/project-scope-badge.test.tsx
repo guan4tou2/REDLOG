@@ -54,7 +54,7 @@ describe('project scope badge', () => {
     const row = await rowOf('Alpha')
     expect(badgeIn(row)).toBeNull()
     expect(screen.queryByText(/not set|未設定/i)).toBeNull()
-    fireEvent.doubleClick(screen.getByRole('button', { name: 'Alpha' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Alpha' }))
     await waitFor(() => expect(open).toHaveBeenCalledWith('a'))
   })
 
@@ -89,7 +89,7 @@ describe('project scope badge', () => {
     await waitFor(() => expect(badgeIn(screen.getByRole('button', { name: 'Alpha' }).closest('div') as HTMLElement)?.textContent).toBe('Scope unknown'))
     expect(badgeIn(screen.getByRole('button', { name: 'Beta' }).closest('div') as HTMLElement)?.textContent).toBe('Scope unknown')
     expect(screen.queryByText('Scope not set')).toBeNull()
-    fireEvent.doubleClick(screen.getByRole('button', { name: 'Beta' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Beta' }))
     await waitFor(() => expect(open).toHaveBeenCalledWith('b'))
   })
 

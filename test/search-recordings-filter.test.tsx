@@ -42,7 +42,9 @@ async function search(value = 'nmap'): Promise<void> {
   render(<SearchPanel />)
   await waitFor(() => expect(events.castIndexStatus).toHaveBeenCalled())
   fireEvent.change(screen.getByTestId('search-input'), { target: { value } })
-  await screen.findByText(`search.noResults:${value}`, undefined, { timeout: 1500 })
+  // The empty line is only the sign the search finished. Under a condition it
+  // says the conditions emptied it instead of naming the query.
+  await screen.findByText((text) => text === `search.noResults:${value}` || text === 'search.noEventsFiltered', undefined, { timeout: 1500 })
 }
 
 beforeEach(() => { state.filter = base() })

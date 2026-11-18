@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { toast } from '../Toast'
 import { useI18n } from '../../i18n'
 import { IconButton } from '../IconButton'
-import { FieldGroup, Field, ListField, isMacOS, type ConfigState } from './SettingsShared'
+import { FieldGroup, NumberField, ListField, isMacOS, type ConfigState } from './SettingsShared'
 import { CheckRow } from './CheckRow'
 import { isComposing } from '../../lib/ime'
 
@@ -165,18 +165,22 @@ export default function NetworkPage({
           />
           {isMacOS && <p className="text-xs text-redlog-text-faint mt-1">{t('settings.showWifiNameHint')}</p>}
         </div>
-        <Field
+        <NumberField
           label={t('settings.checkInterval')}
-          value={String(config.network.checkInterval)}
-          onChange={(v) => setConfig({ ...config, network: { ...config.network, checkInterval: parseInt(v) || 60 } })}
-          type="number"
+          value={config.network.checkInterval}
+          min={1}
+          onCommit={(n) => setConfig({ ...config, network: { ...config.network, checkInterval: n } })}
+          invalid={t('settings.numberInvalidMin', { min: 1 })}
+          pending={t('settings.numberPending')}
         />
         <p className="text-xs text-amber-600/80">{t('settings.pollingOpsecHint')}</p>
-        <Field
+        <NumberField
           label={t('settings.confirmations')}
-          value={String(config.network.confirmations ?? 3)}
-          onChange={(v) => setConfig({ ...config, network: { ...config.network, confirmations: Math.max(1, parseInt(v) || 3) } })}
-          type="number"
+          value={config.network.confirmations ?? 3}
+          min={1}
+          onCommit={(n) => setConfig({ ...config, network: { ...config.network, confirmations: n } })}
+          invalid={t('settings.numberInvalidMin', { min: 1 })}
+          pending={t('settings.numberPending')}
         />
         <p className="text-xs text-redlog-text-faint">{t('settings.confirmationsHint')}</p>
         <ListField

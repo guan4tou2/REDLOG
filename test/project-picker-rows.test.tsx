@@ -40,15 +40,33 @@ describe('project list', () => {
     await waitFor(() => expect(open).toHaveBeenCalledWith('p1'))
   })
 
-  // Stitch 01: a click selects, a double click opens.
-  it('selects on click and opens on double click', async () => {
+  it('opens on a single click anywhere on the row, once', async () => {
     const { open } = mount({ projects: [project('p1', 'Proj'), project('p2', 'Other')] })
     const second = await screen.findByRole('button', { name: 'Other' })
     fireEvent.click(second.closest('[role="option"]') as HTMLElement)
-    expect(open).not.toHaveBeenCalled()
-    expect(second.closest('[role="option"]')?.getAttribute('aria-selected')).toBe('true')
-    fireEvent.doubleClick(second)
     await waitFor(() => expect(open).toHaveBeenCalledWith('p2'))
+    expect(open).toHaveBeenCalledTimes(1)
+  })
+
+  it('a double click opens once', async () => {
+    const { open } = mount({ projects: [project('p1', 'Proj')] })
+    const row = (await screen.findByRole('button', { name: 'Proj' })).closest('[role="option"]') as HTMLElement
+    fireEvent.click(row); fireEvent.click(row); fireEvent.doubleClick(row)
+    await waitFor(() => expect(open).toHaveBeenCalledTimes(1))
+  })
+
+  it('rename and delete on a row do not open it', async () => {
+    const { open } = mount({ projects: [project('p1', 'Proj')] })
+    fireEvent.click(await screen.findByRole('button', { name: 'Rename' }))
+    fireEvent.click(screen.getByDisplayValue('Proj'))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete project' }))
+    await Promise.resolve()
+    expect(open).not.toHaveBeenCalled()
+  })
+
+  it('carries no double-click hint', async () => {
+    mount({ projects: [project('p1', 'Proj')] })
+    expect((await screen.findByRole('button', { name: 'Proj' })).getAttribute('title')).toBeNull()
   })
 
   it('moves the selection with the arrows and opens the selected row with Enter', async () => {
@@ -106,8 +124,8 @@ describe('project list', () => {
     const { open } = mount({ projects: [project('p1', 'Proj')] })
     open.mockImplementation(() => new Promise(() => {}))
     const row = await screen.findByRole('button', { name: 'Proj' })
-    fireEvent.doubleClick(row)
-    fireEvent.doubleClick(row)
+    fireEvent.click(row)
+    fireEvent.click(row)
     expect(open).toHaveBeenCalledTimes(1)
     expect((row as HTMLButtonElement).disabled).toBe(true)
   })

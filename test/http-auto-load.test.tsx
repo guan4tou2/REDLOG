@@ -60,7 +60,10 @@ describe('HTTP History auto-load', () => {
       installBridge([flowPage(0, 0, false)])
       const { HttpHistoryPanel } = await import('../src/renderer/src/components/HttpHistoryPanel')
       render(<HttpHistoryPanel onOpenSettings={vi.fn()} />)
-      await screen.findByText('httpHistory.empty')
+      // A selected target narrows the list: "nothing captured yet" would be a
+      // claim about the whole record that this view cannot make.
+      await screen.findByText('httpHistory.noMatch')
+      expect(screen.queryByText('httpHistory.empty')).toBeNull()
       expect(screen.queryByRole('button', { name: 'browser.openSettings' })).toBeNull()
     } finally { sharedFilter.targetId = null }
   })

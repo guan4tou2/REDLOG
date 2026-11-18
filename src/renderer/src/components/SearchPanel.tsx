@@ -16,6 +16,7 @@ import { parseQuery, type ParseOutcome } from '../../../core/query/contract'
 import { QueryReadout } from './QueryReadout'
 import { useReadState } from '../lib/readState'
 import { indexStatusOf } from '../lib/castIndexStatus'
+import { narrowsEvents } from '../lib/filterNarrowing'
 
 // §1 collapsed the timeline's eighteen lane hues into one grey, because a
 // colour per category means colour says nothing when something is actually
@@ -139,10 +140,14 @@ interface SearchPanelProps {
   onClearQuery?: () => void
   /** Where the activity count is drawn, when the host has a row for it. */
   statsSlot?: HTMLElement | null
+  /** The event the operator arrived from; the activity holding it opens. */
+  locateEventId?: string
+  /** The located activity was closed; the host restores the operator's query. */
+  onLocateEnd?: () => void
 }
 
-export function SearchPanel({ onOpenInTimeline, active = true, browse = false, controlledQuery, viewMode, onClearQuery, statsSlot }: SearchPanelProps = {}): JSX.Element {
-  const { filter: sharedFilter } = useSharedFilter()
+export function SearchPanel({ onOpenInTimeline, active = true, browse = false, controlledQuery, viewMode, onClearQuery, statsSlot, locateEventId, onLocateEnd }: SearchPanelProps = {}): JSX.Element {
+  const { filter: sharedFilter, clearAll: clearConditions } = useSharedFilter()
   const [query, setQuery] = useState('')
   const [localMode, setMode] = useState<'events' | 'activities'>('events')
   const mode = viewMode ?? localMode
@@ -383,7 +388,7 @@ export function SearchPanel({ onOpenInTimeline, active = true, browse = false, c
         )}
         {(browse || mode === 'activities') && (browse || submitted.trim()) && (() => {
           const parsed = parseQuery(submitted)
-          return parsed.ok ? <div hidden={mode !== 'activities'}><ActivityResults active={active && mode === 'activities'} statsSlot={statsSlot} onExportSelection={setOperationExport} onClearQuery={onClearQuery} request={{ parsed: parsed.parsed, filter: buildSearchOpts(), ...(browse ? { excludeHousekeeping: true } : {}) }} onOpen={onOpenInTimeline} /></div> : null
+          return parsed.ok ? <div hidden={mode !== 'activities'}><ActivityResults active={active && mode === 'activities'} statsSlot={statsSlot} onExportSelection={setOperationExport} onClearQuery={onClearQuery} onClearConditions={clearConditions} locateEventId={locateEventId} onLocateEnd={onLocateEnd} request={{ parsed: parsed.parsed, filter: buildSearchOpts(), ...(browse ? { excludeHousekeeping: true } : {}) }} onOpen={onOpenInTimeline} /></div> : null
         })()}
         <SearchCoverage coverage={bodyCoverage} />
         {mode === 'events' && toolSession && (
@@ -445,7 +450,10 @@ export function SearchPanel({ onOpenInTimeline, active = true, browse = false, c
         )}
         {searched && !searchError && results.length === 0 && castHits.length === 0 && (
           <div className="text-redlog-text-faint text-sm text-center mt-8">
-            {t('search.noResults', { query })}
+            {narrowsEvents(toEventFilter(sharedFilter)) ? <>
+              {t('search.noEventsFiltered')}
+              {clearConditions && <button type="button" onClick={clearConditions} className="ml-2 underline hover:text-redlog-text focus-visible:outline focus-visible:outline-red-400">{t('filter.clearAll')}</button>}
+            </> : t('search.noResults', { query })}
             {castPending > 0 && (
               <p className="text-xs text-amber-500/80 mt-2" role="status">
                 {t('castSearch.stillIndexing', { pending: castPending })}

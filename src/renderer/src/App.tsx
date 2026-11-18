@@ -167,8 +167,10 @@ export default function App(): JSX.Element {
   // Stitch 05: from an event on the Timeline to the activity that holds it.
   // The Activity workspace already answers `event:<id>` (the condition
   // resolves against the stored id), so this is that query, typed for the
-  // operator; the Reader there is the one Reader (06).
-  const [activityQuery, setActivityQuery] = useState<{ text: string; at: number } | null>(null)
+  // operator; the Reader there is the one Reader (06). The activity holding the
+  // event opens on arrival and the operator's own query comes back when they
+  // leave it (RecordingWorkspace), so the id travels with the text.
+  const [activityQuery, setActivityQuery] = useState<{ text: string; at: number; eventId: string } | null>(null)
   // Stitch 06: the way back is part of the route. The Timeline is not kept
   // mounted, so "back" re-focuses the event the operator left from.
   const [timelineReturn, setTimelineReturn] = useState<{ id: string; ts: number } | null>(null)
@@ -180,7 +182,7 @@ export default function App(): JSX.Element {
     setView('search')
   }, [trail, view])
   const openInActivity = useCallback((id: string, ts: number): void => {
-    setActivityQuery({ text: `event:${id}`, at: Date.now() })
+    setActivityQuery({ text: `event:${id}`, at: Date.now(), eventId: id })
     setTimelineReturn({ id, ts })
     stepToActivity()
   }, [stepToActivity])
@@ -361,7 +363,7 @@ export default function App(): JSX.Element {
         className={`flex items-center gap-2 px-4 select-none shrink-0 border-b border-redlog-border bg-redlog-bg whitespace-nowrap ${narrow ? 'flex-wrap min-h-10 py-1' : 'h-10'}`}
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
-        <div className={`flex items-center gap-2 shrink-0 ${isMac ? 'pl-16' : ''}`}>
+        <div className="flex items-center gap-2 shrink-0 pl-caption">
           {/* Title-bar size is small, so the ring collapses to a solid dot
               (§4). Single wordmark — the old image + plain-text pair is gone. */}
           <Wordmark className="text-xs" dotOnly />

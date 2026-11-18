@@ -13,6 +13,7 @@ import { Button } from './Button'
 import { activityResultLabel } from '../lib/commandStatus'
 import { ActivityReader, sourceName } from './ActivityReader'
 import { ActivityAround } from './ActivityAround'
+import { narrowsEvents } from '../lib/filterNarrowing'
 
 const ROW_GRID = 'grid grid-cols-[72px_130px_minmax(0,1fr)_24px] gap-x-3 items-center'
 /** A list row is `--row-h` tall (UIUX-STANDARD §3: 40px, 32px tight), a
@@ -35,7 +36,18 @@ export function SearchCoverage({ coverage }: { coverage?: BodySearchCoverage }):
 }
 
 /** Same parsed query and EventFilter as raw Search; grouping happens in SQL. */
-export function ActivityResults({ request, onOpen, onExportSelection, onClearQuery, active = true, statsSlot }: { active?: boolean; statsSlot?: HTMLElement | null; onClearQuery?: () => void; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: Omit<ActivityRequest, 'projectId'>; onOpen?: (id: string, ts: number) => void }): JSX.Element {
+/** What the list is told about an arrival and about the filter bar. */
+interface ActivityListHooks {
+  /** The event the operator came from. The activity holding it is opened once
+   *  the page answers the request that names it. */
+  locateEventId?: string
+  /** The located activity was closed: the host gives the operator's own query back. */
+  onLocateEnd?: () => void
+  /** Clears the filter bar's conditions, when an empty list is theirs to answer for. */
+  onClearConditions?: () => void
+}
+
+export function ActivityResults({ request, onOpen, onExportSelection, onClearQuery, active = true, statsSlot, ...hooks }: { active?: boolean; statsSlot?: HTMLElement | null; onClearQuery?: () => void; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: Omit<ActivityRequest, 'projectId'>; onOpen?: (id: string, ts: number) => void } & ActivityListHooks): JSX.Element {
   const { t } = useI18n()
   const project = useReadState(async () => {
     const config = await window.redlog.config.get() as { engagement?: unknown }
@@ -45,9 +57,9 @@ export function ActivityResults({ request, onOpen, onExportSelection, onClearQue
   })
   if (project.state.phase === 'failed') return <div role="alert">{project.state.error} <Button onClick={project.retry}>{t('common.retry')}</Button></div>
   if (!project.state.value) return <span role="status">{t('search.loading')}</span>
-  return <ActivityList key={`${project.state.value}:${JSON.stringify(request)}`} active={active} request={{ ...request, projectId: project.state.value }} onOpen={onOpen} onExportSelection={onExportSelection} onClearQuery={onClearQuery} statsSlot={statsSlot} />
+  return <ActivityList key={`${project.state.value}:${JSON.stringify(request)}`} active={active} request={{ ...request, projectId: project.state.value }} onOpen={onOpen} onExportSelection={onExportSelection} onClearQuery={onClearQuery} statsSlot={statsSlot} {...hooks} />
 }
-function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active, statsSlot }: { active: boolean; statsSlot?: HTMLElement | null; onClearQuery?: () => void; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: ActivityRequest; onOpen?: (id: string, ts: number) => void }): JSX.Element {
+function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active, statsSlot, locateEventId, onLocateEnd, onClearConditions }: { active: boolean; statsSlot?: HTMLElement | null; onClearQuery?: () => void; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: ActivityRequest; onOpen?: (id: string, ts: number) => void } & ActivityListHooks): JSX.Element {
   const { t } = useI18n()
   const read = useReadState(() => window.redlog.events.activityPage({ ...request, limit: 50 }))
   const [exportKind,setExportKind] = useState<'activity' | 'session'>('activity')
@@ -88,6 +100,24 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
       void more().then((added) => { if (added.length > 0 && alive.current) { setReaderId(added[0].id); setExpanded(added[0].id) } })
     }
   }
+  // Arriving from a Timeline event. Only the request that names the event
+  // counts: the one on screen while the typed query catches up is not it.
+  const locating = locateEventId && request.parsed.conditions.some((c) => c.field === 'event' && c.value === locateEventId) ? locateEventId : null
+  const located = useRef<string | null>(null)
+  const locatedFor = useRef<string | null>(null)
+  useEffect(() => {
+    if (!locating || !page || locatedFor.current === locating) return
+    locatedFor.current = locating
+    const holder = page.items.find((item) => item.matchedPreview.ids.includes(locating) || item.sourcePreview.ids.includes(locating) || item.anchor.id === locating)
+    if (!holder) return
+    located.current = holder.id
+    setExpanded(holder.id)
+  }, [locating, page])
+  // Closing the row is leaving the record; stepping in the Reader moves the
+  // open row but does not.
+  useEffect(() => {
+    if (located.current && expanded === null) { located.current = null; onLocateEnd?.() }
+  }, [expanded]) // eslint-disable-line react-hooks/exhaustive-deps
   const anchorId = selectedActivity?.anchor.id
   const hasSession = selectedActivity ? sourceSessionKey(selectedActivity.anchor)!==null : false
   useEffect(()=>{
@@ -123,7 +153,15 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
             one line and reaches left into the gap instead of stacking 檢/視. */}
         <span className="justify-self-end whitespace-nowrap">{t('activity.col.view')}</span>
       </div>}
-      {page.items.length === 0 && <p className="text-sm text-redlog-text-faint">{t('activity.noMatches')}</p>}
+      {page.items.length === 0 && (() => {
+        // Three different empties: the filter bar's conditions emptied it, a
+        // typed query matched nothing, or there is nothing recorded to match.
+        const narrowed = narrowsEvents(request.filter)
+        return <p data-testid="activity-empty" className="text-sm text-redlog-text-faint">
+          {t(narrowed ? 'activity.noMatchesFiltered' : filtering ? 'activity.noMatches' : 'activity.empty')}
+          {narrowed && onClearConditions && <button type="button" data-testid="activity-clear-conditions" onClick={onClearConditions} className="ml-2 underline hover:text-redlog-text focus-visible:outline focus-visible:outline-red-400">{t('filter.clearAll')}</button>}
+        </p>
+      })()}
       <div className="flex flex-col gap-1">
         {(() => {
           const day = (at: number): JSX.Element | null => (at === 0 || formatDate(page.items[at - 1].firstAt) !== formatDate(page.items[at].firstAt))
