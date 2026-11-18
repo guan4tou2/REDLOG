@@ -99,16 +99,20 @@ it('shows a failed read as a failure with a retry, not as an empty project', asy
   expect(await screen.findByTestId('screenshot-list')).toBeTruthy()
 })
 
-// Stitch 03: a section heading, actions named in words, and a state tag on each row.
-it('names the section, labels each row recorded, and names its actions in words', async () => {
+// No explanation layers (§26, 2026-11-12 list §F): no section heading and
+// hint over the list, no "recorded" tag on every normal row, and no time-zone
+// note (the status bar states the zone). Actions are named in words.
+it('explains nothing the page already shows, and names its actions in words', async () => {
   install()
   mount()
   await screen.findByTestId('screenshot-list')
-  expect(screen.getByText('Screenshot records')).toBeTruthy()
-  expect(screen.getAllByTestId('screenshot-state')[0].textContent).toBe('Screenshot recorded')
+  expect(screen.queryByText('Screenshot records')).toBeNull()
+  expect(screen.queryByText(/Click a screenshot to preview it/)).toBeNull()
+  expect(screen.queryByText('Screenshot recorded')).toBeNull()
+  expect(screen.queryByTestId('screenshot-state')).toBeNull()
+  expect(screen.queryByTestId('screenshots-time-zone')).toBeNull()
   expect(screen.getAllByTestId('screenshot-delete')[0].textContent).toBe('Delete file')
   expect(screen.getAllByTestId('screenshot-copy-hash')[0].textContent).toBe('Copy hash')
-  expect(screen.getByTestId('screenshots-time-zone').textContent).toMatch(/^Time: (local|UTC)$/)
 })
 
 it('replaces an image that fails to load with a placeholder, in list and grid, and drops the actions that need the file', async () => {

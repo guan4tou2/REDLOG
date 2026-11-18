@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useI18n } from '../i18n'
 import { useReadState } from '../lib/readState'
-import { HEADER_GUTTER, PROSE_WIDTH } from '../lib/pageLayout'
+import { HEADER_GUTTER } from '../lib/pageLayout'
 import { EvidenceVerify } from './EvidenceVerify'
 
 export type EvidencePage = 'screenshots' | 'loot' | 'bookmarks'
@@ -46,12 +46,7 @@ export function EvidenceHeader({ page, onNavigate }: {
   }
 
   return <div data-testid="evidence-header" className="flex shrink-0 px-pad pt-3"><div className="min-w-0 flex-1 space-y-2">
-    <div className="min-w-0">
-      <h1 className="text-lg font-semibold text-redlog-text">{t('sidebar.evidence')}</h1>
-      {/* The one-line hint gives way when the window is short (a small window at
-          high zoom): the tabs must not push the page's own content out of reach. */}
-      <p className={`mt-1 hidden text-xs text-redlog-text-dim ${PROSE_WIDTH} [@media(min-height:640px)]:block`}>{t('evidence.hint')}</p>
-    </div>
+    <h1 className="text-lg font-semibold text-redlog-text">{t('sidebar.evidence')}</h1>
     <EvidenceVerify />
     <div role="tablist" aria-label={t('sidebar.evidence')} className="flex gap-4 border-b border-redlog-border">
       {PAGES.map((id, index) => {

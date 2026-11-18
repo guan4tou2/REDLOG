@@ -93,10 +93,6 @@ function ShotButtons({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.El
   </div>
 }
 
-function hasImage(shot: RedLogEvent, a: ShotActions): boolean {
-  return typeof shot.data.filePath === 'string' && shot.data.filePath !== '' && !a.unreadable(shot.id)
-}
-
 function ShotMeta({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Element {
   const trigger = a.triggerLabel(String(shot.data.trigger ?? ''))
   const diff = shot.data.diffPercent
@@ -109,11 +105,8 @@ function ShotMeta({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Eleme
       <span className="font-mono text-xs text-redlog-text-faint tabular-nums">{formatTime(shot.timestamp, { seconds: true })}</span>
     </div>
     <div className="flex flex-wrap items-center gap-2 text-xs">
-      {/* "Recorded" beside an image that is not there reads as a contradiction;
-          the thumbnail placeholder already says the image is unavailable. */}
-      {(a.deleted(shot.id) || hasImage(shot, a)) && <span data-testid="screenshot-state" className={`rounded border px-1.5 ${a.deleted(shot.id) ? 'border-amber-500/40 bg-amber-500/10 text-amber-300' : 'border-redlog-border bg-redlog-elevated text-redlog-text-dim'}`}>
-        {a.t(a.deleted(shot.id) ? 'screenshots.deletedKept' : 'screenshots.recorded')}
-      </span>}
+      {/* Only an abnormal row is marked; the thumbnail box says which
+          ("File deleted · event record kept", "Image unavailable"). */}
       {/* The recorded hash, as recorded; the note says it is not a check. */}
       {sha && <span data-testid="screenshot-hash" className="font-mono text-redlog-text-faint" title={`${a.t('screenshots.hashNote')} SHA-256: ${sha}`}>SHA-256 · {sha.slice(0, 12)}…</span>}
     </div>
@@ -155,7 +148,8 @@ function ShotCard({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Eleme
 }
 
 export function ScreenshotsView(): JSX.Element {
-  const zone = useDisplayZone()
+  // Re-render when the display zone changes; the status bar names the zone.
+  useDisplayZone()
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
   const [expanded, setExpanded] = useState<string | null>(null)
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set())
@@ -292,10 +286,6 @@ export function ScreenshotsView(): JSX.Element {
 
   return (
     <div className={`p-pad overflow-auto h-full ${SCROLL_GUTTER}`}>
-      <div className="mb-3">
-        <h2 className="text-sm font-semibold text-redlog-text">{t('screenshots.sectionTitle')}</h2>
-        <p className="mt-0.5 text-xs text-redlog-text-dim">{t('screenshots.sectionHint')}</p>
-      </div>
       {loadError && (
         <div data-testid="screenshots-load-error" role="alert" className="mb-3 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
           <div>{t('screenshots.loadFailed')}</div>
@@ -360,7 +350,6 @@ export function ScreenshotsView(): JSX.Element {
         <>
           <div className="mb-2 flex flex-wrap justify-between gap-2 text-xs text-redlog-text-faint">
             <p data-testid="screenshots-summary">{hasMore ? t('screenshots.summaryMore', { shown: visible.length }) : t('screenshots.summary', { shown: visible.length, total: totalAll })}</p>
-            <span data-testid="screenshots-time-zone">{t(zone === 'utc' ? 'screenshots.timeUtc' : 'screenshots.timeLocal')}</span>
           </div>
           {needle && hasMore && <p data-testid="screenshots-search-scope" className="mb-2 text-xs text-redlog-text-faint">{t('screenshots.searchLoadedOnly', { count: screenshots.length })}</p>}
           {visible.length === 0 ? (
