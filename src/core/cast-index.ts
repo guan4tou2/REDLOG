@@ -16,11 +16,17 @@ import { ensurePrivateFile } from './private-fs'
 // no structured commands at all (§2.2), only a stream of bytes; searching
 // those bytes is the only thing that makes such a session findable.
 //
-// What it deliberately does NOT do is parse. "Which runs mention 445" is
-// answerable from what was on screen; "list every open port" requires reading
-// nmap's XML into structured findings, and what counts as a finding is
-// per-shop opinion. That is the same interpretation the positioning lists as
-// a non-goal, so the line is drawn at search.
+// What THIS INDEX deliberately does not do is parse. "Which runs mention 445"
+// is answerable from what was on screen, and that is all it answers.
+//
+// The line used to be drawn there for the whole product. On 2026-11-16 the
+// owner moved it (docs/records/2026-11-16/DECISIONS.md): structuring what a
+// tool REPORTED — host, port, state, service — may be built in; judging it —
+// is this a vulnerability, how severe, how to fix — stays a non-goal, because
+// what counts as a finding is per-shop opinion. That structuring, when it is
+// built, is a separate derived view over the same raw output; it does not
+// belong in this file, and nothing here should grow a parser to stand in for
+// it.
 //
 // -- Why a separate database file -----------------------------------------
 //
