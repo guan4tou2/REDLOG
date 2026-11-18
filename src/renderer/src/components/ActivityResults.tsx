@@ -1,5 +1,3 @@
-import type { ExportRequest } from '../../../core/export-plan'
-import { sourceSessionKey } from '../../../core/operation-pair-key'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { ActivityKind, ActivityPage, ActivityRequest, ActivitySummary } from '../../../core/activity-contract'
@@ -53,7 +51,7 @@ interface ActivityListHooks {
   onClearConditions?: () => void
 }
 
-export function ActivityResults({ request, onOpen, onExportSelection, onClearQuery, active = true, statsSlot, ...hooks }: { active?: boolean; statsSlot?: HTMLElement | null; onClearQuery?: () => void; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: Omit<ActivityRequest, 'projectId'>; onOpen?: (id: string, ts: number) => void } & ActivityListHooks): JSX.Element {
+export function ActivityResults({ request, onOpen, onClearQuery, active = true, statsSlot, ...hooks }: { active?: boolean; statsSlot?: HTMLElement | null; onClearQuery?: () => void; request: Omit<ActivityRequest, 'projectId'>; onOpen?: (id: string, ts: number) => void } & ActivityListHooks): JSX.Element {
   const { t } = useI18n()
   const project = useReadState(async () => {
     const config = await window.redlog.config.get() as { engagement?: unknown }
@@ -63,12 +61,11 @@ export function ActivityResults({ request, onOpen, onExportSelection, onClearQue
   })
   if (project.state.phase === 'failed') return <div role="alert">{project.state.error} <Button onClick={project.retry}>{t('common.retry')}</Button></div>
   if (!project.state.value) return <span role="status">{t('search.loading')}</span>
-  return <ActivityList key={`${project.state.value}:${JSON.stringify(request)}`} active={active} request={{ ...request, projectId: project.state.value }} onOpen={onOpen} onExportSelection={onExportSelection} onClearQuery={onClearQuery} statsSlot={statsSlot} {...hooks} />
+  return <ActivityList key={`${project.state.value}:${JSON.stringify(request)}`} active={active} request={{ ...request, projectId: project.state.value }} onOpen={onOpen} onClearQuery={onClearQuery} statsSlot={statsSlot} {...hooks} />
 }
-function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active, statsSlot, locateEventId, onLocateEnd, onClearConditions }: { active: boolean; statsSlot?: HTMLElement | null; onClearQuery?: () => void; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: ActivityRequest; onOpen?: (id: string, ts: number) => void } & ActivityListHooks): JSX.Element {
+function ActivityList({ request, onOpen, onClearQuery, active, statsSlot, locateEventId, onLocateEnd, onClearConditions }: { active: boolean; statsSlot?: HTMLElement | null; onClearQuery?: () => void; request: ActivityRequest; onOpen?: (id: string, ts: number) => void } & ActivityListHooks): JSX.Element {
   const { t } = useI18n()
   const read = useReadState(() => window.redlog.events.activityPage({ ...request, limit: 50 }))
-  const [exportKind,setExportKind] = useState<'activity' | 'session'>('activity')
   const [expanded, setExpanded] = useState<string | null>(null)
   // System-event folds the operator opened, by the first row's id.
   const [openFolds, setOpenFolds] = useState<ReadonlySet<string>>(() => new Set())
@@ -95,7 +92,6 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
   useEffect(() => window.redlog.events.onNewBatch((events) => setNewEvents((n) => n + (Array.isArray(events) ? events.length : 1))), [])
   const refresh = (): void => { setNewEvents(0); setError(null); read.retry() }
   const page = read.state.value
-  const selectedActivity = page?.items.find(item=>item.id===expanded)
   const readerIndex = page && readerId !== null ? page.items.findIndex(item => item.id === readerId) : -1
   // Stepping past the last loaded operation loads the next page, then reads on.
   const step = (direction: -1 | 1): void => {
@@ -124,12 +120,6 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
   useEffect(() => {
     if (located.current && expanded === null) { located.current = null; onLocateEnd?.() }
   }, [expanded]) // eslint-disable-line react-hooks/exhaustive-deps
-  const anchorId = selectedActivity?.anchor.id
-  const hasSession = selectedActivity ? sourceSessionKey(selectedActivity.anchor)!==null : false
-  useEffect(()=>{
-    onExportSelection?.(active && anchorId && page ? {kind:exportKind==='session' && hasSession ? 'session' : 'activity',projectId:request.projectId,anchorEventId:anchorId,snapshot:page.snapshot} : null)
-    return ()=>onExportSelection?.(null)
-  },[active,anchorId,page?.snapshot,exportKind,hasSession,request.projectId,onExportSelection])
   return <div className="min-w-0" aria-busy={read.state.phase === 'loading' || busy}>
     {read.state.phase === 'loading' && <span role="status">{t('search.loading')}</span>}
     {(read.state.phase === 'failed' || error) && <div role="alert" className="text-sm text-amber-300 break-words">{error ?? (read.state.phase === 'failed' ? read.state.error : '')} <Button onClick={refresh}>{t('activity.refresh')}</Button></div>}
@@ -200,7 +190,6 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
               <div className="flex flex-wrap items-center gap-2">
                 <Button level="primary" size="compact" data-testid="activity-read" onClick={() => setReaderId(item.id)}>{t('activity.reader.open')} ↗</Button>
                 {onOpen && <Button size="compact" data-testid="activity-locate" onClick={() => onOpen(item.anchor.id, item.anchor.timestamp)}>{t('activity.reader.locate')}</Button>}
-                <select aria-label={t('export.preview.subset')} value={exportKind==='session' && hasSession ? 'session' : 'activity'} onChange={e=>setExportKind(e.target.value as 'activity'|'session')} className="bg-redlog-elevated border border-redlog-border rounded px-2 py-1 text-xs"><option value="activity">{t('activity.export.activity')}</option><option value="session" disabled={!hasSession}>{t('activity.export.session')}</option></select>
               </div>
               {/* Hit counts are on the row while a query is active, and the
                   session and PID are under 事件資訊 in the Reader. With no

@@ -141,3 +141,26 @@ it('collapses the target column first when the list is narrow', async () => {
   expect(screen.getByTestId('activity-target').className).toMatch(/(^|\s)hidden(\s|$)/)
   expect(screen.getByTestId('activity-target').className).toContain('@min-[720px]:block')
 })
+
+// Export always exports the current view; the expanded row no longer offers a
+// choice of scope. What it keeps: read (primary), locate, the events around
+// it, and the source-event count.
+it('offers no export scope in the expanded row, and keeps its four things', async () => {
+  api.activityPage.mockResolvedValue({ items: [summary('a', { sourceCount: 3 })], hasMore: false, nextCursor: null, totalGroups: 1, totalMatches: 3, snapshot: {} })
+  api.activityMembers.mockResolvedValue({ items: [], hasMore: false, nextCursor: null, sourceCount: 0, matchedCount: 0, snapshot: {} })
+  api.query.mockResolvedValue([])
+  ;(window as any).redlog = {
+    config: { get: vi.fn().mockResolvedValue({ engagement: { id: 'p' } }) },
+    events: { onNewBatch: () => () => {}, ...api },
+    content: { list: vi.fn().mockResolvedValue({ ok: true, value: [] }), read: vi.fn() }
+  }
+  render(<ActivityResults onOpen={vi.fn()} request={{ parsed: { text: '', conditions: [], tokens: [] } } as any} />)
+  ;(await screen.findByTestId('activity-row')).click()
+  const box = await screen.findByTestId('activity-summary')
+  expect(box.querySelector('select')).toBeNull()
+  expect(box.textContent).not.toContain('activity.export.')
+  expect(screen.getByTestId('activity-read').className).toContain('bg-redlog-accent')
+  expect(screen.getByTestId('activity-locate')).toBeTruthy()
+  expect(screen.getByTestId('activity-around-toggle')).toBeTruthy()
+  expect(screen.getByTestId('activity-summary-meta').textContent).toBe('activity.summary.sources {"count":3}')
+})

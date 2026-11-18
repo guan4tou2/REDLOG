@@ -142,12 +142,12 @@ test('Search opens indexed Activity output and returns from original evidence wi
     await expect(page.locator('[data-testid="reader-source-tab"][aria-selected="true"]')).toContainText('Command result')
     await expect(page.locator('pre:visible')).toHaveText(shellMarker)
     await page.keyboard.press('Escape')
-    // The same running app proves both explicit scopes, including members
-    // that did not match the search text. No separate launch per assertion.
-    for (const kind of ['activity','session'] as const) {
-      await page.getByLabel('Selection',{exact:true}).selectOption(kind)
+    // Export is the current view (2026-11-18: the expanded row no longer
+    // offers an activity or session scope). The query matches both the
+    // command's start and its end, so both are what the view exports.
+    {
       await page.getByRole('button',{name:'Export',exact:true}).click()
-      await expect(page.getByTestId('export-preview-subset')).toContainText(kind==='activity' ? 'Selected operation' : 'Entire source session')
+      await expect(page.getByTestId('export-preview-subset')).toContainText('shell-e2e-input')
       await page.getByLabel('Export format',{exact:true}).selectOption('other')
       await page.getByLabel('Other formats',{exact:true}).selectOption('json')
       await page.getByTestId('export-confirm').click()
