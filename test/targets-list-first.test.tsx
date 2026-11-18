@@ -36,21 +36,28 @@ beforeEach(() => { window.localStorage.setItem('redlog-locale', 'en') })
 afterEach(() => { cleanup(); window.localStorage.clear(); vi.restoreAllMocks() })
 
 describe('G1: no explanation layers above the list', () => {
+  // Asserted by structure, not by the removed sentences: the page says only
+  // what is listed here (scripts/verify-i18n-assertions.mjs keeps removed copy
+  // out of tests).
   it('the header is the heading, the tabs and the rules, with no caption under the heading', async () => {
     installTargets([])
     redlog().scope = { getObservationCount: async () => 0 }
     render(<I18nProvider><TargetsScopeHeader page="targets" onNavigate={noop} onOpenSettings={noop} /></I18nProvider>)
-    await screen.findByTestId('scope-context')
-    expect(screen.queryByText(/Targets seen in recorded events/)).toBeNull()
+    const header = screen.getByTestId('targets-scope-header').firstElementChild as HTMLElement
+    await screen.findByText('Scope is not set')
+    expect(Array.from(header.children).map((c) => c.getAttribute('role') ?? c.tagName)).toEqual(['H1', 'tablist', 'status'])
   })
 
-  it('the list has no panel title, caption, sort note, footer count or hint, and says listing is not authorisation', async () => {
+  it('above and below the list there is only the search, the filters and "listed is not authorised"', async () => {
     installTargets([{ target: '10.0.0.1', eventCount: 2, firstSeen: 1, lastSeen: 2 }])
     mountTargets()
-    await screen.findByText('10.0.0.1')
-    for (const gone of [/Observed targets/, /Gathered from the project/, /Most recent activity first/, /Showing \d+ of \d+ targets/, /Target status follows/]) {
-      expect(screen.queryByText(gone), String(gone)).toBeNull()
-    }
+    const list = await screen.findByRole('listbox')
+    expect(screen.queryAllByRole('heading')).toHaveLength(0)
+    const card = list.parentElement as HTMLElement
+    const outside = Array.from(card.children).filter((c) => c !== list).map((c) => c.textContent).join('|')
+    expect(outside).toBe('All 1In Scope —Out of Scope —Listed is not authorised')
+    // Nothing after the card, either.
+    expect(card.nextElementSibling).toBeNull()
     expect(screen.getByTestId('targets-not-authorised').textContent).toBe('Listed is not authorised')
   })
 
@@ -66,7 +73,8 @@ describe('G1: no explanation layers above the list', () => {
     }
     render(<I18nProvider><ScopeStatus /></I18nProvider>)
     await screen.findByText('v1.example')
-    expect(screen.queryByText('Record integrity')).toBeNull()
+    // One panel heading: the observations'. The integrity card was the other.
+    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(1)
     expect(screen.queryByTestId('scope-chain-entries')).toBeNull()
     await waitFor(() => expect(length).not.toHaveBeenCalled())
   })
