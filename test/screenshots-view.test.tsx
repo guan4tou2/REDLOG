@@ -26,7 +26,7 @@ function install(over: { hasMore?: boolean } = {}): ReturnType<typeof vi.fn> {
   }
   return queryScreenshotPage
 }
-const mount = (): void => { render(<I18nProvider><ScreenshotsView onNavigate={() => {}} /></I18nProvider>) }
+const mount = (): void => { render(<I18nProvider><ScreenshotsView /></I18nProvider>) }
 beforeEach(() => { window.localStorage.clear(); window.localStorage.setItem('redlog-locale', 'en') })
 afterEach(() => cleanup())
 

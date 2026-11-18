@@ -482,7 +482,7 @@ export default function App(): JSX.Element {
             {view === 'settings' && <Suspense fallback={<PaneLoading />}><Settings key={project.id} request={settingsRequest} /></Suspense>}
           </ErrorBoundary>
           {origin('http_history', <Suspense fallback={<PaneLoading />}><HttpHistoryPanel active={view === 'http_history'} onOpenInTimeline={openInTimeline} onOpenSettings={() => navigate(settingsTarget('browser'))} /></Suspense>)}
-          {origin('screenshots', <ScreenshotsView onNavigate={navigate} />)}
+          {origin('screenshots', <ScreenshotsView />)}
           {origin('targets', <TargetView onOpenInTimeline={(ts, id?: string) => openInTimeline(id ?? '', ts)} />)}
           {origin('scope', <ScopeStatus onOpenInTimeline={openInTimeline} onOpenSettings={(candidate) => navigate(settingsTarget('scope', { candidate }))} />)}
           {origin('loot', <LootPanel projectId={project.id} active={view === 'loot'} onOpenInTimeline={openInTimeline} />)}
