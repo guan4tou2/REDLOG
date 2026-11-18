@@ -349,7 +349,6 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.personalDomainsHint',
     'settings.scopeFile',
     'settings.scopeFileLabel',
-    'settings.scopeFileHint',
     'settings.projectRenameFailed',
     'settings.engagement',
     'settings.id',

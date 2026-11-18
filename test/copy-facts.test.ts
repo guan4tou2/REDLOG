@@ -35,4 +35,9 @@ describe.each(Object.keys(LOCALES) as (keyof typeof LOCALES)[])('copy facts (%s)
     expect(d['settings.warnOnViolationHint']).toMatch(loc === 'en' ? /subnet/ : /同網段/)
     expect(d['settings.warnOnViolationHint']).not.toMatch(/root domain/)
   })
+
+  it('scope file field is one label naming an absolute path, with no hint line', () => {
+    expect(d['settings.scopeFileHint']).toBeUndefined()
+    expect(d['settings.scopeFileLabel']).toMatch(loc === 'en' ? /[Aa]bsolute path/ : /絕對路徑/)
+  })
 })
