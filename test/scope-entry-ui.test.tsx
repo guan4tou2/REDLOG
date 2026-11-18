@@ -102,6 +102,30 @@ describe('scope and project identity entry', () => {
     window.removeEventListener('redlog:project-renamed', renamed)
   })
 
+  // Leaving the field again while a rename was in flight was skipped, and the
+  // first answer then wrote its name over the newer one: the second edit was
+  // dropped with nothing said.
+  it('sends the newer name once a rename in flight returns, instead of dropping it', async () => {
+    let finish: (v: { ok: boolean; name?: string }) => void = () => {}
+    const rename = vi.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+      .mockImplementationOnce(async (_id: string, name: string) => ({ ok: true, name }))
+    ;(window as unknown as { redlog: unknown }).redlog = {
+      project: { active: async () => ({ id: 'p1', name: 'Old name', createdAt: 0 }), rename }
+    }
+    render(<I18nProvider><ProjectSettings config={projectConfig()} setConfig={vi.fn()} /></I18nProvider>)
+    const name = await screen.findByDisplayValue('Old name') as HTMLInputElement
+    fireEvent.change(name, { target: { value: 'Second' } })
+    fireEvent.blur(name)
+    fireEvent.change(name, { target: { value: 'Third' } })
+    fireEvent.blur(name)
+    expect(rename).toHaveBeenCalledTimes(1)
+    finish({ ok: true, name: 'Second' })
+    await waitFor(() => expect(rename).toHaveBeenCalledTimes(2))
+    expect(rename.mock.calls[1]).toEqual(['p1', 'Third'])
+    await waitFor(() => expect(name.value).toBe('Third'))
+  })
+
   it('reports a rename that throws instead of leaving it unhandled', async () => {
     const rename = vi.fn(async () => { throw new Error('index locked') })
     ;(window as unknown as { redlog: unknown }).redlog = {
