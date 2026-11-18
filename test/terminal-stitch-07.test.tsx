@@ -71,15 +71,37 @@ it('has no font-size or find buttons, and one new-tab control at the right end',
   expect(strip.lastElementChild?.contains(screen.getByRole('button', { name: 'New Terminal' }))).toBe(true)
 })
 
-it('opens the shell menu from the one new-tab control when there is more than one shell', async () => {
+// Opening a tab is the most frequent action here: one click on ＋, whatever
+// the machine offers. The shell menu is a second hit area, ▾, beside it.
+it('opens a tab with the preferred shell in one click on ＋, and the shell menu from ▾', async () => {
+  window.localStorage.setItem('redlog-terminal-shell', 'sh')
   ;(window as unknown as { redlog: { terminal: { shells: unknown } } }).redlog.terminal.shells = vi.fn(async () => [
     { id: 'zsh', label: 'zsh', flavour: 'posix' }, { id: 'sh', label: '/bin/sh', flavour: 'none' }
   ])
   await mount()
-  await waitFor(() => expect(screen.getByRole('button', { name: 'New Terminal' }).getAttribute('aria-haspopup')).toBe('menu'))
-  expect(screen.queryByTestId('terminal-shell-menu')).toBeNull()
-  fireEvent.click(screen.getByRole('button', { name: 'New Terminal' }))
+  const pick = await screen.findByRole('button', { name: 'Choose the shell for the next pane' })
+  expect(pick.getAttribute('aria-haspopup')).toBe('menu')
+  expect(pick.className).toContain('focus-visible:ring-1')
+  const plus = screen.getByRole('button', { name: 'New Terminal' })
+  expect(plus.getAttribute('aria-haspopup')).toBeNull()
+  expect(plus.className).toContain('focus-visible:ring-1')
+  // One visual group: both hit areas share one wrapper.
+  expect(plus.parentElement).toBe(pick.parentElement)
+  const before = spawn.mock.calls.length
+  fireEvent.click(plus)
+  await waitFor(() => expect(spawn.mock.calls.length).toBe(before + 1))
+  expect(screen.queryByRole('menu')).toBeNull()
+  // The preferred shell, as ⌘T opens it — not a menu, not the first shell.
+  expect(spawn.mock.calls[spawn.mock.calls.length - 1][3]).toBe('sh')
+  fireEvent.click(pick)
+  expect(pick.getAttribute('aria-expanded')).toBe('true')
   expect(screen.getAllByRole('menuitem')).toHaveLength(2)
+})
+
+it('draws no ▾ when the machine offers one shell', async () => {
+  await mount()
+  expect(screen.getByRole('button', { name: 'New Terminal' })).toBeTruthy()
+  expect(screen.queryByRole('button', { name: 'Choose the shell for the next pane' })).toBeNull()
 })
 
 // Many tabs scroll inside the strip; they do not push the new-tab control out.
@@ -144,8 +166,7 @@ it('says in the shell menu which shells have a hook and which are a PTY stream o
     { id: 'zsh', label: 'zsh', flavour: 'posix' }, { id: 'sh', label: '/bin/sh', flavour: 'none' }
   ])
   await mount()
-  await waitFor(() => expect(screen.getByRole('button', { name: 'New Terminal' }).getAttribute('aria-haspopup')).toBe('menu'))
-  fireEvent.click(screen.getByRole('button', { name: 'New Terminal' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Choose the shell for the next pane' }))
   const items = screen.getAllByRole('menuitem')
   expect(items[0].textContent).toContain('hook supported')
   expect(items[1].textContent).toContain('PTY stream only')

@@ -399,20 +399,31 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
         ))}
         </div>
 
-        {/* One control at the right end. With more than one shell on this
-            machine it opens the picker; with one, it opens a tab. */}
+        {/* New tab at the right end: ＋ opens one with the preferred shell in
+            one click, as ⌘T does; ▾ beside it picks the shell, drawn only when
+            this machine offers more than one. */}
         {allowNew && (
-          <div className="relative shrink-0">
+          <div className="relative shrink-0 flex items-center rounded-md">
             <button
-              onClick={() => shells.length > 1 ? setShellMenuOpen((v) => !v) : addTab()}
-              {...(shells.length > 1 ? { 'aria-haspopup': 'menu' as const, 'aria-expanded': shellMenuOpen } : {})}
-              className="h-7 px-2 rounded-md flex items-center gap-1 justify-center text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03] transition-colors text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
+              onClick={() => addTab()}
+              className="h-7 px-2 rounded-md flex items-center justify-center text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03] transition-colors text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
               title={`${t('terminal.newTab')} (${isMac ? '⌘T' : 'Ctrl+T'})`}
               aria-label={t('terminal.newTab')}
             >
               <span aria-hidden>＋</span>
-              {shells.length > 1 && <span aria-hidden className="text-xs">▾</span>}
             </button>
+            {shells.length > 1 && (
+              <button
+                onClick={() => setShellMenuOpen((v) => !v)}
+                aria-haspopup="menu"
+                aria-expanded={shellMenuOpen}
+                className="h-7 w-5 -ml-1 rounded-md flex items-center justify-center text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03] transition-colors text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
+                title={t('terminal.pickShell')}
+                aria-label={t('terminal.pickShell')}
+              >
+                <span aria-hidden>▾</span>
+              </button>
+            )}
             {shellMenuOpen && shells.length > 1 && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setShellMenuOpen(false)} />
