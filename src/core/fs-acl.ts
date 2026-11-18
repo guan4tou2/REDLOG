@@ -2,46 +2,96 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-type IcaclsRunner = (args: string[]) => void
+interface AclRunner {
+  icacls(args: string[], timeoutMs: number): void
+  currentUserSid(timeoutMs: number): string
+}
 
 // Files and directories this process has restricted, keyed by resolved path and
-// holding the identity they had when it was done. Each restriction is an icacls
-// child process that blocks the main process for up to 5 s, and the mirrored
+// holding the identity they had when it was done. Each restriction is three
+// icacls child processes that block the main process, and the mirrored
 // ~/.redlog/api-token was restricted again on every project open.
 const restricted = new Map<string, string>()
 
-// Where a test-setup replacement of the icacls spawn is kept: on the global,
-// not in this module, so a test that calls vi.resetModules() and imports this
-// file again still finds it. Production never sets it.
-const TEST_RUNNER = Symbol.for('redlog.test.icaclsRunner')
+// The current user's SID, asked of whoami once per process.
+let currentSid: string | null = null
 
-function runIcacls(args: string[]): void {
-  const replaced = (globalThis as Record<symbol, unknown>)[TEST_RUNNER]
-  if (typeof replaced === 'function') { (replaced as IcaclsRunner)(args); return }
-  execFileSync('icacls', args, { windowsHide: true, timeout: 5000 })
+/** Whole-operation bound for one restriction: every child process it starts
+ *  shares it. */
+const RESTRICT_BUDGET_MS = 10_000
+
+const real: AclRunner = {
+  icacls(args, timeoutMs) {
+    execFileSync('icacls', args, { windowsHide: true, timeout: timeoutMs })
+  },
+  currentUserSid(timeoutMs) {
+    // CSV, no header: "domain\user","S-1-5-21-…". The SID is not localised.
+    const out = execFileSync('whoami', ['/user', '/fo', 'csv', '/nh'], { windowsHide: true, timeout: timeoutMs, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] })
+    const sid = /"(S-1-\d+(?:-\d+)+)"/.exec(out)?.[1]
+    if (!sid) throw new Error(`whoami /user printed no SID: ${out.trim()}`)
+    return sid
+  }
 }
 
-/** Unit tests only (test/setup.ts): replace the icacls spawn with `runner`,
- *  or put the real one back with null. */
-export function _replaceIcaclsForTests(runner: IcaclsRunner | null): void {
+// Where a test-setup replacement of the icacls and whoami spawns is kept: on
+// the global, not in this module, so a test that calls vi.resetModules() and
+// imports this file again still finds it. Production never sets it.
+const TEST_RUNNER = Symbol.for('redlog.test.icaclsRunner')
+
+function runner(): AclRunner {
+  const replaced = (globalThis as Record<symbol, unknown>)[TEST_RUNNER]
+  return replaced && typeof replaced === 'object' ? replaced as AclRunner : real
+}
+
+/** Unit tests only (test/setup.ts): replace the icacls and whoami spawns with
+ *  `replacement`, or put the real ones back with null. */
+export function _replaceIcaclsForTests(replacement: AclRunner | null): void {
   const g = globalThis as Record<symbol, unknown>
-  if (runner) g[TEST_RUNNER] = runner
+  if (replacement) g[TEST_RUNNER] = replacement
   else delete g[TEST_RUNNER]
   restricted.clear()
+  currentSid = null
 }
 
 /**
- * On Windows, restrict a file or directory so only the current user has access.
- * POSIX mode bits are silently ignored by NTFS; this fills the gap with icacls.
+ * On Windows, leave a file or directory with exactly one access entry: the
+ * current user, full control, nothing inherited. A directory's entry is
+ * inheritable, (OI)(CI), so what is created in it afterwards is the current
+ * user's alone without a call of its own. SYSTEM and Administrators get no
+ * entry: they are not needed to protect against another local account, and a
+ * process holding the backup privilege or an administrator taking ownership
+ * reads the file whatever its ACL says.
+ *
+ * Three icacls processes, in this order, so the result does not depend on what
+ * the file held before:
+ *   1. `/reset` — drop every explicit entry (an older version, or anyone,
+ *      may have left one) and take the parent's inherited ones;
+ *   2. `/grant:r *<SID>:(F)` — the current user, by SID, so the grant does not
+ *      depend on account names, the domain or the system language;
+ *   3. `/inheritance:r` — remove the inherited entries and stop inheritance.
+ * Granting before removing inheritance keeps the user's own entry in the ACL
+ * at every step. Before this, one call combined `/inheritance:r /grant:r`,
+ * which kept the inherited entries as explicit ones.
  *
  * No-op on non-win32 platforms (POSIX mode already handles it).
- * Failures are thrown — callers decide whether to swallow or propagate.
+ * Failures are thrown — callers decide whether to swallow or propagate. All
+ * the processes share one bound of RESTRICT_BUDGET_MS.
  */
 export function restrictToOwner(target: string): void {
   if (process.platform !== 'win32') return
-  const user = process.env.USERNAME
-  if (!user) throw new Error('USERNAME env var is not set')
-  runIcacls([target, '/inheritance:r', '/grant:r', `${user}:(F)`])
+  const deadline = Date.now() + RESTRICT_BUDGET_MS
+  const left = (): number => {
+    const ms = deadline - Date.now()
+    if (ms <= 0) throw new Error(`restricting ${target} took longer than ${RESTRICT_BUDGET_MS} ms`)
+    return ms
+  }
+  const run = runner()
+  const sid = run === real ? (currentSid ??= run.currentUserSid(left())) : run.currentUserSid(left())
+  let isDir = false
+  try { isDir = fs.statSync(target).isDirectory() } catch { /* icacls reports the missing path */ }
+  run.icacls([target, '/reset'], left())
+  run.icacls([target, '/grant:r', `*${sid}:${isDir ? '(OI)(CI)(F)' : '(F)'}`], left())
+  run.icacls([target, '/inheritance:r'], left())
 }
 
 /** Null when the identity cannot be told apart from another file's: a file

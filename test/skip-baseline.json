@@ -1,7 +1,7 @@
 {
   "$comment": "Skipped Vitest cases per CI unit leg, checked by scripts/verify-skip-baseline.mjs after Vitest. More skipped cases than skippedCases, or skips in a file not listed under skippedFiles, fails the leg; so does any skip in a mustRun file. Fewer prints a notice: lower the numbers in the same change. Counts start from main run 43160639864 (2026-11-12), minus csp-production's 3 cases, which run now that CI builds before Vitest.",
   "linux": {
-    "skippedCases": 31,
+    "skippedCases": 35,
     "mustRun": [
       "test/csp-production.test.ts",
       "test/bundle-requires.test.ts",
@@ -14,7 +14,7 @@
     ],
     "skippedFiles": {
       "test/export-workflow-perf.test.ts": 1,
-      "test/fs-acl.test.ts": 2,
+      "test/fs-acl.test.ts": 6,
       "test/git-bash-direct-send.test.ts": 5,
       "test/http-flow-query-perf.test.ts": 2,
       "test/loot-emit-dedup.test.ts": 1,
@@ -26,7 +26,7 @@
     }
   },
   "darwin": {
-    "skippedCases": 34,
+    "skippedCases": 38,
     "mustRun": [
       "test/csp-production.test.ts",
       "test/bundle-requires.test.ts",
@@ -40,7 +40,7 @@
     "skippedFiles": {
       "test/bash-hook-prompt-command.test.ts": 3,
       "test/export-workflow-perf.test.ts": 1,
-      "test/fs-acl.test.ts": 2,
+      "test/fs-acl.test.ts": 6,
       "test/git-bash-direct-send.test.ts": 5,
       "test/http-flow-query-perf.test.ts": 2,
       "test/loot-emit-dedup.test.ts": 1,

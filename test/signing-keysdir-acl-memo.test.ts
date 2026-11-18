@@ -4,7 +4,7 @@ import os from 'os'
 import path from 'path'
 
 import { generateOperatorKeyPair } from '../src/core/signing'
-import { clearIcacls, failNextIcacls, icaclsTargets, installIcaclsRecorder } from './helpers/icacls'
+import { clearIcacls, failNextIcacls, icaclsRestricted, installIcaclsRecorder } from './helpers/icacls'
 
 // restrictToOwner is an icacls child process with a 5 s timeout, and every new
 // operator went through it for the keys directory. The directory only needs
@@ -14,20 +14,18 @@ import { clearIcacls, failNextIcacls, icaclsTargets, installIcaclsRecorder } fro
 // test/setup.ts's record of icacls calls, through the real fs-acl memo.
 
 const realPlatform = Object.getOwnPropertyDescriptor(process, 'platform')!
-const realUser = process.env.USERNAME
 
 let root: string
 let keys: string
 let prevKeysDir: string | undefined
 
-const keysDirCalls = (): number => icaclsTargets().filter((target) => target === keys).length
+const keysDirCalls = (): number => icaclsRestricted().filter((target) => target === keys).length
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 beforeEach(() => {
   installIcaclsRecorder()
   clearIcacls()
   Object.defineProperty(process, 'platform', { value: 'win32' })
-  process.env.USERNAME = 'tester'
   prevKeysDir = process.env.REDLOG_KEYS_DIR
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-acl-memo-'))
   keys = path.join(root, 'keys')
@@ -36,8 +34,6 @@ beforeEach(() => {
 
 afterEach(() => {
   Object.defineProperty(process, 'platform', realPlatform)
-  if (realUser === undefined) delete process.env.USERNAME
-  else process.env.USERNAME = realUser
   if (prevKeysDir === undefined) delete process.env.REDLOG_KEYS_DIR
   else process.env.REDLOG_KEYS_DIR = prevKeysDir
   fs.rmSync(root, { recursive: true, force: true })
@@ -51,7 +47,7 @@ describe('keys directory ACL on win32', () => {
 
     expect(keysDirCalls()).toBe(1)
     // Each private key file is still restricted on its own.
-    expect(icaclsTargets().filter((target) => target.endsWith('.key'))).toHaveLength(3)
+    expect(icaclsRestricted().filter((target) => target.endsWith('.key'))).toHaveLength(3)
   })
 
   it('is restricted again when the directory was removed and made again', async () => {
@@ -81,7 +77,7 @@ describe('keys directory ACL on win32', () => {
     process.env.REDLOG_KEYS_DIR = other
     generateOperatorKeyPair('op-a')
 
-    expect(icaclsTargets().filter((target) => target === other)).toHaveLength(1)
+    expect(icaclsRestricted().filter((target) => target === other)).toHaveLength(1)
     expect(keysDirCalls()).toBe(1)
   })
 })

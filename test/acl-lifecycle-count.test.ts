@@ -3,11 +3,12 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { requires } from './helpers/requires'
-import { clearIcacls, icaclsTargets, installIcaclsRecorder } from './helpers/icacls'
+import { clearIcacls, icaclsRestricted, icaclsTargets, installIcaclsRecorder } from './helpers/icacls'
 
-// How many icacls processes each lifecycle step starts on Windows, and for
-// which paths. Each one blocks the main process (the one that ingests) for as
-// long as Windows takes to start it, up to a 5 s timeout. Project open used to
+// How many restrictions each lifecycle step makes on Windows, and of which
+// paths. Each restriction is three icacls processes that block the main
+// process (the one that ingests) for as long as Windows takes to start them,
+// up to 10 s for the three together. Project open used to
 // restrict the mirrored ~/.redlog/api-token every time although it is rewritten
 // in place and keeps its ACL; it now does that once per file identity
 // (src/core/fs-acl.ts restrictToOwnerOnce). The lists are exact, so a new call
@@ -15,7 +16,7 @@ import { clearIcacls, icaclsTargets, installIcaclsRecorder } from './helpers/ica
 // stops being restricted fails here too.
 
 // Read before any test here installs the record itself.
-const installedBySetup = typeof (globalThis as Record<symbol, unknown>)[Symbol.for('redlog.test.icaclsRunner')] === 'function'
+const installedBySetup = typeof (globalThis as Record<symbol, unknown>)[Symbol.for('redlog.test.icaclsRunner')] === 'object'
 
 const sqlite = requires('better-sqlite3')
 const listen = requires('listen')
@@ -35,7 +36,6 @@ if (sqlite.ok) {
 }
 
 const realPlatform = Object.getOwnPropertyDescriptor(process, 'platform')!
-const realUser = process.env.USERNAME
 const dirs: string[] = []
 const project = (name: string): string => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), `redlog-acl-${name}-`))
@@ -43,11 +43,16 @@ const project = (name: string): string => {
   return d
 }
 
-/** What `step` restricted, in order. */
+/** What `step` restricted, in order: one entry per restriction. Each
+ *  restriction is exactly three icacls processes (/reset, /grant:r,
+ *  /inheritance:r on the same path), so the processes started are three times
+ *  the length of this list. */
 function spawned(step: () => unknown): string[] {
   clearIcacls()
   step()
-  return icaclsTargets()
+  const restricted = icaclsRestricted()
+  expect(icaclsTargets(), 'each restriction is three icacls processes on its path').toEqual(restricted.flatMap((p) => [p, p, p]))
+  return restricted
 }
 
 function open(dir: string): void {
@@ -66,13 +71,10 @@ sqlite.describe('icacls calls per lifecycle step on Windows', () => {
     // A fresh record and an empty memo: each test starts as a new process.
     installIcaclsRecorder()
     Object.defineProperty(process, 'platform', { value: 'win32' })
-    process.env.USERNAME = 'tester'
-    api.configureApi({ engagementId: 'E', operatorId: 'op', operatorName: 'Op' })
+      api.configureApi({ engagementId: 'E', operatorId: 'op', operatorName: 'Op' })
   })
   afterEach(() => {
     Object.defineProperty(process, 'platform', realPlatform)
-    if (realUser === undefined) delete process.env.USERNAME
-    else process.env.USERNAME = realUser
   })
   afterAll(() => {
     try { db.closeDB() } catch { /* */ }
@@ -112,7 +114,8 @@ sqlite.describe('icacls calls per lifecycle step on Windows', () => {
     clearIcacls()
     await api.startApiServer(0)
     try {
-      expect(icaclsTargets()).toEqual([TOKEN, PORT])
+      expect(icaclsRestricted()).toEqual([TOKEN, PORT])
+      expect(icaclsTargets()).toHaveLength(6)
       expect(spawned(() => open(a))).toEqual([])
     } finally {
       api.stopApiServer()
