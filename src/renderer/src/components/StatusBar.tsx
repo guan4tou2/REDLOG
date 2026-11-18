@@ -339,16 +339,16 @@ export default function StatusBar(): JSX.Element {
       <Sep narrow={narrow} />
 
       {/* Clickable like its fault-counter neighbours: an unfixed scope is a
-          setup debt the chip can only point at, and the scope states share one
-          destination — Settings ▸ 範圍規則, where the lists are edited.
-          The 越界 count belongs here because the clash already happened; the
-          tab it opens is where the allow/exclude lists live. */}
+          setup debt the chip can only point at, so it opens Settings ▸ 範圍規則,
+          where the lists are edited. The 越界 count belongs here because the
+          clash already happened, and it opens the observations it counts. */}
       <button
         type="button"
         data-testid="status-bar-scope"
-        onClick={() => window.dispatchEvent(new CustomEvent('redlog:navigate', { detail: settingsTarget('scope') }))}
-        title={t('statusBar.scopeOpen')}
-        aria-label={t('statusBar.scopeOpen')}
+        // Observations open the tab that lists them; every other state, the rules.
+        onClick={() => window.dispatchEvent(new CustomEvent('redlog:navigate', { detail: scopeObservations > 0 ? 'scope' : settingsTarget('scope') }))}
+        title={t(scopeObservations > 0 ? 'targetsScope.scopeTab' : 'statusBar.scopeOpen')}
+        aria-label={t(scopeObservations > 0 ? 'targetsScope.scopeTab' : 'statusBar.scopeOpen')}
         // min-w/min-h: at 800×600/150% the bar squeezes labels away and this
         // chip shrinks to the dot alone — 18×10, below the 24×24 floor. Same
         // floor as the HUD toggle beside it (e2e/ui-closeout hit-area check).
