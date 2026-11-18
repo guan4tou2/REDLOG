@@ -67,6 +67,15 @@
   - 起點比第一個畫出的列早超過 pad 時，線的起點會在軌道外（`computeDomainBounds` 只看畫出的列，`lib/timelineTimeMap.ts:124-147`）。這一片先以 `Math.max(0, x0)` 裁切並在測試中標明是過渡，S3 修正時間範圍。
   - 貼邊標籤的 `position: sticky` 在絕對定位的列內、`body{zoom:0.9}` 下的行為未經執行驗證。
 
+#### S1 實作時與上述計畫不同之處（讀碼與執行的結果）
+- **E-1 的答案是「不能」，且有兩層。** 滾輪的判斷問的是外層量測容器，它從不 overflow（overflow 在 `timeline-lane-scroll`），所以兩種模式下滾輪一律水平平移；改問 `timeline-lane-scroll`。這也改到泳道模式，恢復該處註解（v0.9.4 P0-2）所說的行為。第二層只在瀏覽器中看得到：標準模式沒有標籤欄，軌道捲動區被拉伸到上限高度並以 `overflow-y-hidden` 裁掉自己的第 4、5 列，外層永遠不 overflow，任何方式都捲不到。有終端列時軌道捲動區改為內容高度（`self-start`），上限加上它的水平捲軸厚度（傳統捲軸平台上 10px，否則三列就多出 10px、滾輪變成垂直）。沒有終端列時兩者都不套用（FR-016）。
+- **E-6**：標籤不用 `position: sticky`，以面板已追蹤的水平捲動位置（`view.left`）放在可視左緣加 4px。
+- **`terminalTrackKey`** 照抄核心 `rowTerminal` 的整個規則，包括 `api`／`handoff` 入口沒有記下終端時為無；計畫原寫「直接讀 `_ingest.terminal`」。測試鎖住兩者一致。
+- **配對**直接呼叫 `collapseCommandPairs` 與 `unfinishedCommandIds`（只對指令列的子集，結果相同），不另寫規則；只有「沒有起點列的結束」需要自己判斷衝突，與摺疊用同一個 `sameSourceContent`。
+- **SC-001 的「起點集合」**：重複的起點全部被摺疊，但區間的 `startId` 只有最早一筆，所以性質測試比的是「`observed` 區間中角色為起點的成員」等於被摺疊的起點，而不是 `startId` 的集合。
+- **測試環境**：jsdom 中軌道寬度從不改變，滾輪處理器只在 `TRACK_W` 改變時綁定，所以 E-1 的測試以回報一次寬度的 `ResizeObserver` 讓它綁定。
+- **S1 尚未處理、留給後續切片**：寬度不到 1px 的線（1 秒的指令）看不見（S2 的 point）；只看範圍內等篩選下 `open` 仍畫到下一個起點或右緣（S4 的 FR-025）；有 4 個以上終端列而向下捲動時，時間尺隨內容捲出視野（泳道模式今天也是如此）。
+
 ### S2 版面：狀態、名稱、密度（仍不能點）
 - **新檔 `src/renderer/src/lib/timelineIntervalLayout.ts`**：`layoutIntervalMarks(input: IntervalLayoutInput): IntervalMark[]`、`filterVisibleMarks(...)`，常數 `TRACK_LINE_Y = 28`、`INTERVAL_MIN_LINE_PX = 14`、`LABEL_MIN_PX = 48`、`LABEL_MAX_PX = 320`、`OPEN_STUB_PX = 16`、`SPAN_DEPTH = 2`。
 - **改 `TimelineCommandTracks.tsx`**：依 `IntervalMark` 畫 span／point／cluster、四種終點、名稱（CSS 省略號加 inline `maxWidth`；不用 `max-w-*` class，因為 `test/page-width.test.ts` 有白名單）。

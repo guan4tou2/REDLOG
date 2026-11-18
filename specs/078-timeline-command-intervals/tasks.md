@@ -15,11 +15,11 @@
 
 ## S1 區間資料加軌道骨架（看得到、不能點）
 
-- [ ] T010 RED：`test/timeline-intervals.test.ts`：一對、缺半（兩個方向）、衝突的結束、指令文字不符、重複的起點、`command_boundary`、`session_end`、亂序、結束早於開始；SC-001 的性質測試（固定種子的偽亂數列）。
-- [ ] T011 `src/renderer/src/lib/timelineIntervals.ts`：plan「接縫」的型別、`buildCommandIntervals`、`terminalTrackKey`、`nextTrackOrder`；配對呼叫 `collapseCommandPairs`／`unfinishedCommandIds`，角色以查表判斷。
-- [ ] T012 `lib/timelineIncremental.ts` 的 `commandIntervals` 推導；`test/timeline-incremental-equivalence.test.ts` 加入它（SC-002）。
-- [ ] T013 RED：`test/timeline-command-tracks.test.tsx`：兩個終端機兩個終端列與其標籤；`makeEvent` 的預設資料沒有終端列，`[data-timeline-event]` 數不變（FR-016）；可見列上限與滾輪的垂直捲動（plan E-1）。
-- [ ] T014 `components/timeline/TimelineCommandTracks.tsx`（只畫標籤與線，`aria-hidden`、`pointer-events-none`）；`Timeline.tsx` 的列順序、可見高度上限與繪製。
+- [x] T010 RED：`test/timeline-intervals.test.ts`：一對、缺半（兩個方向）、衝突的結束、指令文字不符、重複的起點、`command_boundary`、`session_end`、亂序、結束早於開始；SC-001 的性質測試（固定種子的偽亂數列）。
+- [x] T011 `src/renderer/src/lib/timelineIntervals.ts`：plan「接縫」的型別、`buildCommandIntervals`、`terminalTrackKey`、`nextTrackOrder`；配對呼叫 `collapseCommandPairs`／`unfinishedCommandIds`，角色以查表判斷。
+- [x] T012 `lib/timelineIncremental.ts` 的 `commandIntervals` 推導；`test/timeline-incremental-equivalence.test.ts` 加入它（SC-002）。
+- [x] T013 RED：`test/timeline-command-tracks.test.tsx`：兩個終端機兩個終端列與其標籤；`makeEvent` 的預設資料沒有終端列，`[data-timeline-event]` 數不變（FR-016）；可見列上限與滾輪的垂直捲動（plan E-1）。
+- [x] T014 `components/timeline/TimelineCommandTracks.tsx`（只畫標籤與線，`aria-hidden`、`pointer-events-none`）；`Timeline.tsx` 的列順序、可見高度上限與繪製。
 
 ## S2 版面：狀態、名稱、密度（仍不能點）
 
