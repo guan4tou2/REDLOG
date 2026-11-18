@@ -328,11 +328,13 @@ describe('the render sites', () => {
 
   // §4/§16: the in-app identity is the single wordmark REDL(●)G rendered as
   // live text, NOT the SVG mark. The SVG masters are for OS-level icons only
-  // (app icon / Dock / tray / favicon). So the header and the picker render
-  // <Wordmark/>, and neither imports the mark SVG as an in-app <img> anymore.
+  // (app icon / Dock / tray / favicon). So the header renders <Wordmark/>, and
+  // neither it nor the picker imports the mark SVG as an in-app <img>. The
+  // picker draws no brand block at all since 2026-11-18 (the 2026-11-12
+  // reduction list, §F): its first row is the project list.
   it('renders the single wordmark component, not the SVG mark <img>', () => {
+    expect(APP, 'App.tsx should render <Wordmark/>').toMatch(/<Wordmark\b/)
     for (const [name, src] of [['App.tsx', APP], ['ProjectPicker.tsx', PICKER]] as const) {
-      expect(src, `${name} should render <Wordmark/>`).toMatch(/<Wordmark\b/)
       expect(src, `${name} must not render the mark SVG as an in-app image`).not.toMatch(/<img[^>]*src=\{markUrl\}/)
     }
   })
