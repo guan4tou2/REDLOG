@@ -3,7 +3,7 @@ import { useI18n } from '../i18n'
 import { toast } from './Toast'
 import { toggleRecordingWithFeedback } from '../lib/recordingToggle'
 import { useIssues, raiseIssue, clearIssue } from '../lib/issues'
-import { formatTime, formatDateTime, useDisplayZone } from '../lib/time'
+import { formatTime, formatDateTime, useDisplayZone, zoneLabel } from '../lib/time'
 import { useAppCounts } from '../lib/useAppCounts'
 import { integrityFault } from '../lib/integrityPulse'
 import { scopeIssue } from '../lib/scopeIssue'
@@ -26,7 +26,7 @@ export default function StatusBar(): JSX.Element {
   const narrow = useNarrowViewport()
   // Mounted under Settings too, so it reprints the last-event time when the
   // display zone changes there (spec 038).
-  useDisplayZone()
+  const zone = useDisplayZone()
   const { eventCount, loggedCount, scopeObservations, scopeConfigured, scopeUnknown, loading: countsLoading } = useAppCounts()
   const [ipStatus, setIpStatus] = useState<IPStatus | null>(null)
   const [uptime, setUptime] = useState(0)
@@ -390,6 +390,9 @@ export default function StatusBar(): JSX.Element {
          *  FilterBar's "Chained only" chip (spec 038) and the Dashboard.
          *  Narrow: left to the Dashboard, to keep the line on one row.
          */}
+        {/* The zone every time on screen is printed in, once for all pages.
+         *  Narrow, it goes with the count: the line stays on one row. */}
+        {!narrow && <span data-testid="statusbar-zone" className="text-redlog-text-dim">{zoneLabel(zone, t)}</span>}
         {!narrow && (
           <span
             data-testid="statusbar-event-count"

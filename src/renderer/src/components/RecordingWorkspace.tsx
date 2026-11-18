@@ -1,12 +1,10 @@
-import { FIELD_FOCUS_RING } from './Button'
+import { Button, FIELD_FOCUS_RING } from './Button'
 import SourceSessionPicker from './SourceSessionPicker'
 import type { SourceSession } from '../../../core/source-sessions'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { SearchPanel } from './SearchPanel'
 import { useSharedFilter } from '../lib/FilterContext'
-import { useDisplayZone, zoneLabel } from '../lib/time'
-import { agentTypeLabel } from '../lib/timelineDomain'
 import { Search } from 'lucide-react'
 import { useCaptureHealthState } from '../lib/useCaptureHealth'
 import { HEADER_GUTTER } from '../lib/pageLayout'
@@ -34,6 +32,18 @@ function SourceAlert({ onFilter, knownAgentTypes }: { onFilter: (agentType: stri
     {filterable && <span aria-hidden>→</span>}
   </button>
 }
+
+/** The kinds the page offers as buttons, each the one event type it filters
+ *  to. HTTP is not here: proxy traffic is `scanner`, which also holds
+ *  connection and C2 rows, and browser navigation is a type of its own. Every
+ *  other source stays in the FilterBar panel's full type list, whose chip shows
+ *  it while none of these is pressed. */
+const SOURCE_KINDS: ReadonlyArray<{ agentType: string; label: string }> = [
+  { agentType: 'shell', label: 'activity.filter.command' },
+  { agentType: 'agent', label: 'timeline.agent' },
+  { agentType: 'file_transfer', label: 'timeline.files' },
+  { agentType: 'marker', label: 'timeline.markers' }
+]
 
 const TranscriptView = lazy(() => import('./TranscriptView'))
 type Reading = 'activities' | 'io' | 'ai' | 'events'
@@ -99,10 +109,9 @@ export default function RecordingWorkspace({ active = true, onOpenInTimeline, on
     return () => window.removeEventListener('redlog:find-in-page', focus)
   }, [active])
   const searching = reading === 'activities' || reading === 'events'
-  // The source choice is the shared filter's own agent type, not a second state:
-  // the FilterBar's chip, every other view and this select all read one value.
+  // The source choice is the filter context's own agent type, not a second
+  // state: the FilterBar's chip, every other view and these buttons read one value.
   const { filter, setAgentType, knownAgentTypes } = useSharedFilter()
-  const zone = useDisplayZone()
   return <div className="h-full min-h-0 min-w-0 flex flex-col" data-testid="recording-workspace">
     <div className="flex px-pad pt-3 shrink-0">
     <div className="min-w-0 flex-1 space-y-3">
@@ -116,15 +125,10 @@ export default function RecordingWorkspace({ active = true, onOpenInTimeline, on
             value={query} onChange={e => { setLocating(null); setQuery(e.target.value) }} placeholder={t('search.placeholder')}
             className={`h-8 w-full min-w-0 rounded-lg border border-redlog-border bg-redlog-surface pl-8 pr-3 text-sm focus:border-redlog-accent ${FIELD_FOCUS_RING}`} />
         </div>
-        {searching && <select data-testid="activity-source" aria-label={t('activity.sourceLabel')} value={filter.agentType ?? ''} onChange={e => setAgentType(e.target.value || null)}
-          className="h-8 rounded-lg border border-redlog-border bg-redlog-surface px-2.5 text-xs text-redlog-text-dim">
-          <option value="">{t('activity.sourceAll')}</option>
-          {knownAgentTypes.map(at => <option key={at} value={at}>{agentTypeLabel(at, t)}</option>)}
-        </select>}
-        {/* Stated once for every reading. The date separators only exist in
-            the activity list, and only once it has rows; the I/O, AI and raw
-            event readings print times with nothing else naming the zone. */}
-        <span data-testid="activity-zone" className="text-xs text-redlog-text-dim whitespace-nowrap">{t('activity.zone', { zone: zoneLabel(zone, t) })}</span>
+        {searching && <div role="group" data-testid="activity-source" aria-label={t('activity.sourceLabel')} className="flex flex-wrap items-center gap-1">
+          {SOURCE_KINDS.map(({ agentType, label }) => <Button key={agentType} level="quiet" size="compact" aria-pressed={filter.agentType === agentType}
+            onClick={() => setAgentType(filter.agentType === agentType ? null : agentType)}>{t(label)}</Button>)}
+        </div>}
         <SourceAlert knownAgentTypes={knownAgentTypes} onFilter={(at) => { setAgentType(at); choose('activities') }} />
       </div>
       <div data-testid="activity-tab-row" className="flex flex-wrap items-center gap-x-2 border-b border-redlog-border">

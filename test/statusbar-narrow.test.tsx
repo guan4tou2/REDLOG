@@ -52,6 +52,7 @@ it('keeps the IP and scope words at a narrow width, and sheds the uptime and eve
   expect(visibleWord('status-bar-ip-state')).toBeTruthy()
   expect(screen.queryByTestId('statusbar-uptime')).toBeNull()
   expect(screen.queryByTestId('statusbar-event-count')).toBeNull()
+  expect(screen.queryByTestId('statusbar-zone')).toBeNull()
 })
 
 it('shows everything at a wide width', async () => {
@@ -61,6 +62,8 @@ it('shows everything at a wide width', async () => {
   await waitFor(() => expect(visibleWord('status-bar-scope-state')).toBe('SCOPE —'))
   expect(screen.getByTestId('statusbar-uptime')).toBeTruthy()
   expect(screen.getByTestId('statusbar-event-count')).toBeTruthy()
+  // The display zone, stated once here rather than on each page's header.
+  expect(visibleWord('statusbar-zone')).toMatch(/^(UTC|local \(UTC[+-]\d)/)
 })
 
 // With rules set and nothing observed the chip used to read "SCOPE OK", while a
