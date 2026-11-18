@@ -8,6 +8,7 @@ import { render, cleanup, screen, fireEvent, waitFor, act } from '@testing-libra
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { CommandPalette } from '../src/renderer/src/components/CommandPalette'
 import { toast, toastUndo } from '../src/renderer/src/components/Toast'
+import { isSettingControlKey } from '../src/renderer/src/lib/paletteSettings'
 import { searchSettings } from '../src/renderer/src/lib/settingsSearch'
 import en from '../src/renderer/src/i18n/en.json'
 
@@ -462,5 +463,24 @@ describe('settings in the palette', () => {
     type(q!)
     expect(await screen.findByTestId('palette-settings-subset')).toBeTruthy()
     expect(kinds().filter((k) => k === 'setting')).toHaveLength(8)
+  })
+})
+
+describe('settings rows are things to set', () => {
+  it('lists the loot settings group, not its load-failure message or hint', async () => {
+    open()
+    type('loot')
+    await screen.findAllByRole('option')
+    const labels = screen.getAllByRole('option')
+      .filter((o) => o.getAttribute('data-kind') === 'setting')
+      .map((o) => o.querySelector('[title]')?.getAttribute('title'))
+    expect(labels).toContain(t('settings.lootGroup'))
+    expect(labels).not.toContain(t('settings.lootRulesFailed'))
+    expect(labels).not.toContain(t('settings.lootHint'))
+  })
+
+  it('tells controls from messages by key', () => {
+    for (const k of ['settings.lootRulesFailed', 'settings.lootHint', 'settings.lootRuleStopped', 'settings.lootBuiltin']) expect(isSettingControlKey(k), k).toBe(false)
+    for (const k of ['settings.lootGroup', 'httpCapture.caReady']) expect(isSettingControlKey(k), k).toBe(true)
   })
 })

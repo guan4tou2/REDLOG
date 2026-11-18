@@ -126,7 +126,8 @@ test.describe.serial('personal-traffic-visibility: personal traffic visibility',
     await expect(page.getByRole('button', { name: 'Non-work visible' })).toBeVisible()
     await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+k`)
     await page.getByRole('dialog').getByRole('combobox').fill('Loot')
-    await page.getByRole('option').filter({ hasText: 'Loot' }).click()
+    // By id: a query also lists settings rows whose text contains "Loot".
+    await page.locator('[data-command-id="nav:loot"]').click()
     await expect(page.locator('[data-view="loot"]')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Non-work visible' })).toBeVisible()
     await page.getByRole('button', { name: 'Non-work visible' }).click()

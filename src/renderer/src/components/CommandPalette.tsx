@@ -7,7 +7,7 @@ import { useFocusTrap } from '../lib/useFocusTrap'
 import { DEFAULT_ORDER, primaryLabelKey, NUMBERED_SLOTS } from '../lib/sidebarOrder'
 import { applyDensity, resolveDensity, storedDensity, DENSITY_KEY } from '../lib/density'
 import { formatTime, formatFreshness } from '../lib/time'
-import { searchSettings } from '../lib/settingsSearch'
+import { paletteSettingsHits } from '../lib/paletteSettings'
 import { settingsTarget } from '../lib/navigation'
 import { landOnSetting } from '../lib/settingsFind'
 import { parseQuery } from '../../../core/query/contract'
@@ -228,11 +228,12 @@ export function CommandPalette({
   // Settings text is local and cheap to search, so it needs no debounce, but a
   // single character matches too much to be a jump.
   const trimmed = query.trim()
-  const settingsHits = useMemo(
-    () => (trimmed.length >= 2 ? searchSettings(trimmed, t, SETTINGS_LIMIT + 1, window.redlog.platform) : []),
+  const { hits: settingsHits, hasMore: settingsHasMore } = useMemo(
+    () => (trimmed.length >= 2
+      ? paletteSettingsHits(trimmed, t, window.redlog.platform, SETTINGS_LIMIT)
+      : { hits: [], hasMore: false }),
     [trimmed, t]
   )
-  const settingsHasMore = settingsHits.length > SETTINGS_LIMIT
 
   const items = useMemo<Item[]>(() => {
     const q = query.trim()
@@ -305,7 +306,7 @@ export function CommandPalette({
       })
     }
 
-    for (const h of settingsHits.slice(0, SETTINGS_LIMIT)) {
+    for (const h of settingsHits) {
       add({
         id: `setting:${h.page}:${h.key}`, kind: 'setting', label: h.text,
         run: () => { onNavigate(settingsTarget(h.page)); landOnSetting(h.page, h.key, h.text) }
