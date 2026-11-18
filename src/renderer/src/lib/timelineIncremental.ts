@@ -28,6 +28,7 @@ import { distributeLaneEvents, distributeRowEvents, singleTrackEvents, indexDraw
 import { countByLane } from '../components/timeline/TimelineLanesHeader'
 import type { MarkerFold } from './markerFold'
 import { sameSourceContent } from './eventContent'
+import { buildCommandIntervals, isIntervalRow, type TimelineIntervalSet } from './timelineIntervals'
 
 type Events = readonly RedLogEvent[]
 
@@ -192,6 +193,20 @@ export const unfinishedCommands: Derivation<UnfinishedState> = {
       if (!prev.ended.has(key)) writable().add(e.id)
     }
     return out === prev.out ? prev : { out, ended: prev.ended, startsByKey: prev.startsByKey }
+  }
+}
+
+// ── A terminal's commands as intervals (Spec 078) ───────────────────
+
+/** `buildCommandIntervals(all)`. A tail with no command start, end or
+ *  boundary and no terminal end changes nothing; one with any rebuilds, as
+ *  `drawnEvents` does when a pair closes, because an end can pair with a start
+ *  drawn long before the tail. */
+export const commandIntervals: Derivation<TimelineIntervalSet> = {
+  build: (all) => buildCommandIntervals(all),
+  extend(prev, all, from) {
+    for (let i = from; i < all.length; i++) if (isIntervalRow(all[i])) return null
+    return prev
   }
 }
 
