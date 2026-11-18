@@ -327,29 +327,36 @@ function sessionKey(agentKind: string, sessionId: string): string {
   return `${agentKind}:${sessionId}`
 }
 
-/** Written once the sidecar directory is owner-only on Windows. */
+/** Written once the sidecar directory is owner-only on Windows, holding
+ *  SIDECAR_ACL_VERSION. */
 const SIDECAR_ACL_MARKER = '.owner-only'
+/** 2: one entry, the current user's (fs-acl.ts restrictToOwner). An empty
+ *  marker was written by the version whose icacls call kept the project
+ *  directory's entries, so that directory is restricted again. */
+const SIDECAR_ACL_VERSION = '2'
 
 /** Sidecars are raw, unredacted conversations. The 0o700/0o600 modes mean
  *  nothing on NTFS, so there the directory takes the same icacls restriction
  *  as the keys directory. Throws when it cannot be applied: the caller must
  *  not save raw content it cannot protect.
  *
- *  Files already in the directory are restricted first. Restricting a
- *  directory strips the inherited entries from its children, and a file that
- *  has nothing explicit is left with an empty ACL, unreadable by its owner.
- *  Files created afterwards take the process's default ACL, not the project
- *  directory's. The marker keeps this to one pass per directory, since each
- *  icacls call costs about 50 ms. */
+ *  Files already in the directory are restricted first: each keeps its own
+ *  ACL, which may hold other accounts' entries, explicit ones included.
+ *  Files created afterwards inherit the directory's one entry, the current
+ *  user's, and nothing else. The marker keeps this to one pass per directory
+ *  and restriction version, since each restriction costs three icacls
+ *  processes. */
 function secureSidecarDir(dir: string): void {
   if (process.platform !== 'win32') return
   const marker = path.join(dir, SIDECAR_ACL_MARKER)
-  if (fs.existsSync(marker)) return
+  let done = ''
+  try { done = fs.readFileSync(marker, 'utf-8') } catch { /* not restricted yet */ }
+  if (done === SIDECAR_ACL_VERSION) return
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (entry.isFile()) restrictToOwner(path.join(dir, entry.name))
+    if (entry.isFile() && entry.name !== SIDECAR_ACL_MARKER) restrictToOwner(path.join(dir, entry.name))
   }
   restrictToOwner(dir)
-  fs.writeFileSync(marker, '')
+  fs.writeFileSync(marker, SIDECAR_ACL_VERSION)
 }
 
 let resumeBoundary = 0
