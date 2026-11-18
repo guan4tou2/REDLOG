@@ -56,21 +56,14 @@ describe('Capture sources page: landing on a source row', () => {
     await waitFor(() => expect(document.activeElement).toBe(container.querySelector('[data-source-id="file-watcher"]')))
   })
 
-  // #557: a jump per group, in page order, each scrolling to its own group.
-  it('jumps to each of the four groups', async () => {
+  // The jump bar (#557) was four buttons whose labels were the four group
+  // titles right below them: an index of a page that fits its own titles.
+  it('draws no jump bar above the groups', async () => {
     stubBridge()
-    const scrolled: Element[] = []
-    Element.prototype.scrollIntoView = function (this: Element) { scrolled.push(this) }
-    const { container, getByTestId } = page(null)
-    const buttons = Array.from(container.querySelectorAll('nav button')).map(b => b.getAttribute('data-testid'))
-    expect(buttons).toEqual(['capture-jump-agents', 'capture-jump-screenshot', 'capture-jump-hostMonitors', 'capture-jump-external'])
-    for (const id of ['agents', 'screenshot', 'hostMonitors']) fireEvent.click(getByTestId(`capture-jump-${id}`))
-    // `t` is the identity here, so a group's title is its key.
-    expect(scrolled[0]!.textContent).toContain('settings.agents')
-    expect(scrolled[1]).toBe(container.querySelector('[data-source-id="screenshot"]'))
-    expect(scrolled[2]!.textContent).toContain('settings.packHostMonitors')
-    expect(scrolled).toHaveLength(3)
-    cleanup()
+    const { container } = page(null)
+    await waitFor(() => expect(container.querySelector('[data-source-id="screenshot"]')).not.toBeNull())
+    expect(container.querySelector('nav')).toBeNull()
+    expect(container.querySelector('[data-testid^="capture-jump-"]')).toBeNull()
   })
 
   it('does not move focus when no source is named', async () => {

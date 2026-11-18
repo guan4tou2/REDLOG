@@ -1162,7 +1162,6 @@
   "palette.hostHits": "{{count}} events",
   "palette.operatorPrimary": "primary",
   "settings.categories": "Settings categories",
-  "settings.captureJump": "Groups on this page",
   "settings.home.group.capture": "Capture sources",
   "settings.home.group.project": "Project settings",
   "settings.home.group.other": "Other settings",
