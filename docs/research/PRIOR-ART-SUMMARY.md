@@ -116,6 +116,23 @@
 - 以特定工具的擴充套件作為 HTTP 的主要接入方式。不預設操作者使用哪個工具；既有 proxy 把 RedLog 當上游、或由任一來源依寫入契約送事件，都是同一條路。
 - 外掛宿主與延遲啟用。第三方程式碼不進 RedLog 的行程，沒有宿主可言。
 
+## 以產品為單位的比較（2026-11-18 補）
+
+[Topic E](PRIOR-ART-E-pentest-platforms-and-operator-tools.md) 比較了四類產品：發現與報告平台（Dradis、PlexTrac、AttackForge、Faraday、PwnDoc、Reconmap）、紅隊作業紀錄（Ghostwriter 的同步工具、RedEye、RedELK、Cobalt Strike 的報告、Mythic）、工作階段錄製與 shell 歷史（Teleport、Atuin、Warp）、時間軸調查與 HTTP 歷史（Timesketch、DFIR-IRIS、Caido）。它比 A–D 淺，定位查過當時的公開資料，細部功能多數未對照官方文件。
+
+對本頁結論的影響：
+
+| 項目 | 對照 | 處置 |
+|---|---|---|
+| 工具輸出的結構化（Faraday、Dradis 的匯入器） | 先前的界線是「不做解析器」（`DESIGN-core-and-capture` §2.4） | **界線已移動**：擁有者於 2026-11-16 決定可以內建、只記工具回報的事實（[DECISIONS](../records/2026-11-16/DECISIONS.md) §1）。設計分析見 [工具輸出的事實與技術標記](RESEARCH-tool-output-facts-and-technique-tags.md) |
+| ATT&CK 技術標記（PlexTrac、AttackForge、Mythic） | 已是「走外掛」（`PRODUCT-POSITIONING`） | 不變；同一份設計分析指出現有的 `commandTags` 把推測寫進鏈上的列，建議改為可重算的建議 |
+| 紅隊／藍隊雙模式（RedEye） | 與既定的唯讀調查模式同一件事 | 併入：動手前參考它如何切分兩個模式 |
+| 一鍵看一筆事件前後、所有來源發生了什麼（Timesketch） | 與階段 6 的 `InvestigationContext`（共用時間範圍與選取的事件）一致，但先前沒有寫成一個操作 | **新增**到階段 6 |
+| 從紀錄彙整的指標清單（Cobalt Strike 的入侵指標報告） | 與 C §4.2 引的 TIBER-EU artefact 要求、C §6.5 人工層的 `artefacts[]` 同一題 | 併入交付（Spec 077）的考量；是事實的彙整，不是報告 |
+| 對齊列轉成 Timesketch 的匯入格式 | 對齊列已定（Spec 076 FR-084） | 轉換，不是新的匯出格式 |
+| 保存查詢（Timesketch、Caido） | 下方已列為不採用 | 不變；Topic E 沒有新的需求證據 |
+| 擷取來源的區分（journald、Elastic Common Schema 的兩族分法） | 蓋章已分開入口、來源、自稱的身分、種類、位置、是否推導 | 模型不需要改。兩個落地的缺口：外部來源目前都是 `legacy`，答不出是哪個來源寫的（等階段 4 的憑證）；`target_via`、`door` 已寫入但畫面沒有顯示 |
+
 ## 不採用
 
 - 分散式系統才需要的部分：見證者網路、gossip、多寫入者協調、跨節點的排序。

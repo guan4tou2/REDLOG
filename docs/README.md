@@ -56,7 +56,7 @@
 - [Stitch 整合設計](design/UIUX-STITCH-DESIGN.md)：跨頁設計決策與 React 整合契約，Draft，2026-11-06 快照。
 - [Forensic Editorial](design/UIUX-FORENSIC-EDITORIAL.md)：尚未完成的全產品視覺與操作矩陣，由 Spec 062 承接。
 
-研究筆記（`research/`）：[Tool design analysis](research/RESEARCH-tool-design-analysis.md)、[Onboarding references](research/RESEARCH-onboarding-references.md)、[同類系統的設計參考](research/PRIOR-ART-SUMMARY.md)（2026-11-12，四份報告的整合與對各階段的影響）。外部產品的參考，不是需求。
+研究筆記（`research/`）：[Tool design analysis](research/RESEARCH-tool-design-analysis.md)、[Onboarding references](research/RESEARCH-onboarding-references.md)、[同類系統的設計參考](research/PRIOR-ART-SUMMARY.md)（2026-11-12，四份報告的整合與對各階段的影響）、[Topic E：滲透測試平台、紅隊作業紀錄與調查工具](research/PRIOR-ART-E-pentest-platforms-and-operator-tools.md)（2026-11-18，以產品為單位的比較）、[工具輸出的事實與技術標記](research/RESEARCH-tool-output-facts-and-technique-tags.md)（2026-11-18，兩個已定方向的實作與設計分析）。外部產品的參考，不是需求。
 
 ## 文件放置規則
 
