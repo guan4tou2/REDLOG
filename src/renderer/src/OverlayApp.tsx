@@ -1,19 +1,28 @@
 import { useEffect, useState, useRef, useLayoutEffect } from 'react'
 import { useI18n } from './i18n'
-import { HUD, hexA } from './lib/hud'
+import { HUD, HUD_FONT, hexA } from './lib/hud'
 import { usePivotRead } from './lib/usePivots'
 import { formatTime, formatFreshness, useDisplayZone } from './lib/time'
 import { useTick } from './lib/useTick'
 import { hudWindowWidth, hudWindowHeight } from '../../core/overlay-layout'
 import { shownIpSafety } from '../../core/alert/ip-safety'
 
-// HUD palette — cyberpunk, but DESATURATED for dark-UI comfort (see lib/hud):
-// cyan frame identity, calmer state accents, angular corner brackets that frame
-// without enclosing (reads as an active scan), low-alpha glows.
-const CYAN = HUD.cyan
-const SKY = HUD.sky
-const MUTED = HUD.muted
-const VALUE = HUD.value
+// The simple-1112 HUD (docs/UIUX-STANDARD.md §8; design 10-hud): a near-black
+// panel inside a hairline frame, four corner marks in the state colour (dashed
+// while click-through is on), vertical ticks for recording and IP state. Colours
+// are in lib/hud — the overlay window loads no app stylesheet.
+
+/** The four corner marks: 10px L-shapes sitting on the 1px frame. */
+const CORNERS: React.CSSProperties[] = [
+  { left: -1, top: -1, borderWidth: '2px 0 0 2px' },
+  { right: -1, top: -1, borderWidth: '2px 2px 0 0' },
+  { left: -1, bottom: -1, borderWidth: '0 0 2px 2px' },
+  { right: -1, bottom: -1, borderWidth: '0 2px 2px 0' }
+]
+
+/** Key caps shown beside the form's verbs. Not translated: both locales name
+ *  these keys the same way (zh-TW strings already say "Esc"). */
+const KEYCAP = { enter: '⏎', esc: 'Esc' } as const
 
 export default function OverlayApp(): JSX.Element {
   // Another window: the display zone reaches it through `storage` (spec 038).
@@ -29,12 +38,12 @@ export default function OverlayApp(): JSX.Element {
   const [scale, setScale] = useState(1.0)
   const [emphasizeIp, setEmphasizeIp] = useState(false)
   // Pin: when true, the expanded HUD never auto-collapses. Session-local (not
-  // persisted). Toggle via a pin button in the compact bar. Audit finding #52.
+  // persisted). Toggled by "Keep expanded" in the action row. Audit finding #52.
   const [pinned, setPinned] = useState(false)
   // Pass-through visual state — dims non-critical HUD chrome while keeping the
   // external IP fully readable (user asked for exactly that: "外部IP可以保持
-  // 透明度嗎"). Applied via CSS opacity on the root, IP nodes opt back to 1
-  // via `data-critical` — window opacity stays at 1 so the ip's colour isn't
+  // 透明度嗎"). Applied per child (`dimStyle`), never on a parent, so the IP
+  // row is untouched — window opacity stays at 1 so the ip's colour isn't
   // washed out by the compositor.
   const [passThrough, setPassThrough] = useState(false)
   const [passThroughOpacity, setPassThroughOpacity] = useState(0.4)
@@ -160,12 +169,9 @@ export default function OverlayApp(): JSX.Element {
   // §8: while the address is exposed the details stay on screen, so the
   // collapse control does nothing then (and says why).
   const exposedNow = status?.ipSafety === 'exposed'
+  const collapseBlocked = expanded && exposedNow
   const toggleExpand = (): void => { if (expanded && exposedNow) return; setExpanded(!expanded) }
 
-  // fs = font-size scaler; ip = extra emphasis for the external IP.
-  // Clamp scale to a sane band so a rogue config can't blow the HUD up beyond
-  // useful. `autosize` picks up the new content height on every render so the
-  // window still fits without clipping.
   const openMarkForm = (): void => {
     markAtRef.current = Date.now()
     markBindRef.current = (window.redlog.overlay.beginMarker?.() ?? Promise.resolve(null)).catch(() => null)
@@ -206,70 +212,61 @@ export default function OverlayApp(): JSX.Element {
     markedTimerRef.current = setTimeout(() => setJustMarked(false), 1400)
   }
 
+  // Clamp scale to a sane band so a rogue config can't blow the HUD up beyond
+  // useful. `autosize` picks up the new content height on every render so the
+  // window still fits without clipping.
   const s = Math.max(0.75, Math.min(1.75, scale))
   // 11px is the HUD's text floor (UIUX-STANDARD §2 — the HUD is the one
   // exception to the app's 13px floor, because it has its own scale setting
-  // and sits at arm's length). The ladder used to run down to 8px, which is
-  // below the size at which a label is legible at any distance. Sizes under
-  // the floor collapse onto it; the hierarchy they used to carry is carried by
-  // weight and colour instead, which is how §2 says it should have worked.
+  // and sits at arm's length). Sizes under the floor collapse onto it; the
+  // hierarchy is carried by weight and colour instead.
   const HUD_MIN_PX = 11
+  // fs = font-size scaler; fsIp = the external IP, with its optional emphasis.
   const fs = (n: number): number => Math.round(Math.max(n, HUD_MIN_PX) * s * 10) / 10
   const fsIp = (n: number): number => Math.round(n * s * (emphasizeIp ? 1.4 : 1) * 10) / 10
   // px() scales layout dimensions (padding, gap, separator sizes) with the
   // same factor. Without this the middle gap stays fixed while text shrinks —
   // small scale looks loose, large scale looks cramped.
   const px = (n: number): number => Math.round(n * s)
-  const BTN_CLIP = 'polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)'
-  // The action row was two buttons on `flex: 1` beside two on their own
-  // padding, at a different font size — so the pair of toggles came out a
-  // width nobody chose and a height that did not match the verbs beside them.
-  // One height for all four; the verbs share what is left; the toggles are
-  // square, which is what a toggle looks like.
-  const rowH = px(26)
-  const hudVerb: React.CSSProperties = {
-    flex: 1, height: rowH, padding: 0, fontSize: fs(10), fontWeight: 700,
-    letterSpacing: '0.12em', clipPath: BTN_CLIP, cursor: 'pointer',
-    fontFamily: 'inherit', transition: 'background 0.12s, color 0.12s'
-  }
-  const hudToggle: React.CSSProperties = {
-    width: rowH, height: rowH, flex: 'none', padding: 0, fontSize: fs(11),
-    fontWeight: 700, clipPath: BTN_CLIP, cursor: 'pointer',
-    fontFamily: 'inherit', transition: 'background 0.12s, color 0.12s'
-  }
-  const hair = <span style={{ width: 1, height: px(13), background: 'rgba(34,211,238,0.25)', flexShrink: 0 }} />
 
   const safety = shownIpSafety(status)
   const link = status?.link
   const linkText = link?.type === 'wifi' ? (link.name || 'Wi-Fi')
     : link?.type === 'wired' ? t('overlay.wired') : ''
-  const STATE = { safe: HUD.green, exposed: HUD.red, unknown: HUD.amber }[safety]
+  const STATE = { safe: HUD.green, exposed: HUD.danger, unknown: HUD.amber }[safety]
   const LABEL = { safe: t('overlay.safeIp'), exposed: t('overlay.exposedIp'), unknown: t('overlay.ipUnknown') }[safety]
   const STATUS_TXT = { safe: t('overlay.safeIpStatus'), exposed: t('overlay.exposedIpStatus'), unknown: t('overlay.unknownIp') }[safety]
-  // exposure turns the whole frame into a red-alert scan; otherwise cyan HUD.
-  const FRAME = safety === 'exposed' ? HUD.red : CYAN
-  // when EXPOSED, flash the whole frame as an unmissable alarm (opt-out in Settings).
-  const alarm = safety === 'exposed' && flashExposed
+  const exposed = safety === 'exposed'
+  // The state colour of the corner marks and the relay accents.
+  const FRAME = exposed ? HUD.danger : HUD.cyan
+  // When EXPOSED, flash the frame as an unmissable alarm (opt-out in Settings).
+  const alarm = exposed && flashExposed
   const noDrag = { WebkitAppRegion: 'no-drag' } as React.CSSProperties
   const isMac = navigator.platform?.includes('Mac')
   const ptChord = isMac ? '⌘⇧P' : 'Ctrl+Shift+P'
+  const markChord = isMac ? '⌘⇧M' : 'Ctrl+Shift+M'
   // RedLog lives in the menu bar on macOS and in the tray elsewhere.
   const placeKey = (key: string): string => isMac ? key : `${key}Tray`
 
-  const bracket = (pos: React.CSSProperties): JSX.Element => (
-    <span style={{ position: 'absolute', width: 9, height: 9, borderColor: FRAME, boxShadow: `0 0 4px ${FRAME}55`, pointerEvents: 'none', ...noDrag, ...pos }} />
-  )
-  const iconBtn: React.CSSProperties = {
-    color: CYAN, fontSize: fs(10), cursor: 'pointer', width: 18, height: 16,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    padding: 0, fontFamily: 'inherit', appearance: 'none', outline: 'none',
-    background: interactive ? 'rgba(34,211,238,0.10)' : 'transparent',
-    border: `1px solid ${interactive ? 'rgba(34,211,238,0.35)' : 'transparent'}`,
-    transition: 'background 0.12s, border-color 0.12s'
-  }
   // The newest by time, not by position: nothing promises the list is ordered.
   const latestPivot = pivots.reduce<(typeof pivots)[number] | undefined>((a, p) => (!a || p.ts > a.ts ? p : a), undefined)
-  const tick = (c: string): React.CSSProperties => ({ width: 6, height: 6, borderRadius: '50%', background: c, boxShadow: `0 0 7px ${c}, 0 0 3px ${c}`, flexShrink: 0 })
+  // A state is a 3px vertical tick beside its word — the word carries it, the
+  // tick only repeats it in colour.
+  const tick = (c: string): React.CSSProperties => ({ width: px(3), height: px(14), background: c, flexShrink: 0 })
+  const label: React.CSSProperties = { color: HUD.muted, marginRight: px(6), flexShrink: 0 }
+  // Text-styled controls: no box, a hit area as tall as the old boxed buttons.
+  const textBtn: React.CSSProperties = {
+    display: 'inline-flex', alignItems: 'center', gap: px(6), minHeight: px(26), padding: 0,
+    fontSize: fs(12), fontFamily: 'inherit', color: 'inherit', background: 'none', border: 0, cursor: 'pointer'
+  }
+  const on: React.CSSProperties = { color: HUD.text, textDecoration: 'underline', textDecorationColor: FRAME, textUnderlineOffset: px(4) }
+  const kbd: React.CSSProperties = { fontFamily: HUD_FONT.mono, fontSize: fs(12), color: HUD.muted }
+  // The expand / hide glyphs: never smaller than the 18×16 boxes they replace.
+  const iconBtn: React.CSSProperties = {
+    ...textBtn, justifyContent: 'center', width: Math.max(18, px(22)), height: Math.max(18, px(24)), minHeight: 0,
+    color: HUD.muted
+  }
+  const note: React.CSSProperties = { fontFamily: HUD_FONT.ui, fontSize: fs(12), margin: `${px(4)}px 0 0` }
 
   // Pass-through dimming — applied to individual "chrome" children instead
   // of the outer wrapper. CSS opacity on a parent forces every descendant
@@ -284,109 +281,112 @@ export default function OverlayApp(): JSX.Element {
       onMouseLeave={() => window.redlog.overlay.mouseLeave!()}
       style={{ width: '100%', height: '100%', padding: 3, WebkitAppRegion: 'drag', cursor: interactive ? 'grab' : 'default' } as React.CSSProperties}
     >
-      {/* frame (neon edge) */}
-      <div style={{ position: 'relative', height: '100%', borderRadius: 5, background: FRAME, opacity: interactive ? 1 : 0.94, transition: 'background 0.2s, opacity 0.15s', boxShadow: `0 0 16px ${FRAME}44`, animation: alarm ? 'alarm 0.9s ease-in-out infinite' : undefined }}>
-        {/* panel (inset fill) */}
+      {/* frame: the hairline border; the corner marks sit on it */}
+      <div
+        data-testid="hud-frame"
+        data-state={safety}
+        data-pass-through={passThrough || undefined}
+        style={{
+          position: 'relative', height: '100%',
+          background: exposed ? HUD.panelExposed : HUD.panel,
+          border: `1px solid ${exposed ? HUD.borderExposed : HUD.border}`,
+          opacity: interactive ? 1 : 0.94, transition: 'opacity 0.15s',
+          animation: alarm ? 'hudAlarm 0.9s ease-in-out infinite' : undefined,
+          color: HUD.text, fontFamily: HUD_FONT.mono, fontVariantNumeric: 'tabular-nums', lineHeight: 1.4
+        }}
+      >
+        {/* panel */}
         <div
           style={{
-            position: 'absolute', inset: 1, borderRadius: 4,
-            background: 'rgba(7,12,17,0.65)',
-            backdropFilter: 'blur(16px) saturate(1.5)',
-            overflow: 'hidden',
+            position: 'relative', height: '100%', overflow: 'hidden',
             // Vertically centre the measured content: the window autosizes to
             // content + fixed chrome, and with the content anchored to the top
             // that chrome all fell below it (the HUD read "偏上"). Centring
             // splits it evenly. In the expanded state the content fills the
             // panel, so this is a no-op there.
-            display: 'flex', flexDirection: 'column', justifyContent: 'center',
-            fontFamily: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
+            display: 'flex', flexDirection: 'column', justifyContent: 'center'
           }}
         >
-          {/* scanlines */}
-          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'repeating-linear-gradient(0deg, rgba(34,211,238,0.035) 0px, rgba(34,211,238,0.035) 1px, transparent 1px, transparent 3px)', opacity: 0.6 }} />
-
           {/* measured content — window auto-sizes to this */}
-          <div ref={contentRef}>
-          {/* compact bar — two columns: external IP (left) with any active pivot
-              stacked beneath it, and internal IP (right) with the Wi-Fi/wired name
-              beneath it. Keeping the pivot in the external column stops it crowding
-              the internal IP. */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: px(8), padding: `${px(4)}px ${px(54)}px ${px(4)}px ${px(12)}px`, minHeight: px(40), fontSize: fs(12), position: 'relative', zIndex: 2, overflow: 'hidden' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, ...dimStyle }}>
-              <span style={{ ...tick(recording ? HUD.red : '#3a4a52'), animation: recording ? 'blinkRec 1.1s step-end infinite' : undefined }} />
-              <span data-testid="hud-rec" style={{ fontSize: fs(9), fontWeight: 700, letterSpacing: '0.14em', color: recording ? '#e39aa0' : '#4a5a62', textShadow: recording ? `0 0 7px ${hexA(HUD.red, 0.4)}` : 'none' }}>{recording === null ? t('overlay.recUnknown') : recording ? t('overlay.rec') : t('overlay.paused')}</span>
+          <div ref={contentRef} data-testid="hud-content">
+          {/* compact bar: recording → hairline → IP state → external IP
+              (largest; any relay capsule beneath it) → internal IP and network
+              right-aligned. The expand / hide pair sits over the reserved right
+              padding (see the cluster at the end of the panel). */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: px(8), padding: `${px(4)}px ${px(58)}px ${px(4)}px ${px(12)}px`, minHeight: px(40), fontSize: fs(12), lineHeight: 1.2, overflow: 'hidden' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: px(6), flexShrink: 0, ...dimStyle }}>
+              <span aria-hidden="true" style={{ ...tick(recording ? HUD.red : HUD.rule), animation: recording ? 'blinkRec 1.1s step-end infinite' : undefined }} />
+              <span data-testid="hud-rec" style={{ fontWeight: 600, color: recording ? HUD.recText : HUD.muted }}>{recording === null ? t('overlay.recUnknown') : recording ? t('overlay.rec') : t('overlay.paused')}</span>
             </span>
-            <span style={dimStyle}>{hair}</span>
-            <span style={{ ...tick(STATE), animation: safety === 'exposed' ? 'pulse 1.4s infinite' : undefined, ...dimStyle }} />
-            <span style={{ color: STATE, fontWeight: 700, fontSize: fs(10.5), letterSpacing: '0.09em', textShadow: `0 0 8px ${STATE}55`, flexShrink: 0, ...dimStyle }}>{status ? LABEL : '···'}</span>
-            {/* external IP + pivot (left column) */}
-            <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1, flexShrink: 1, minWidth: 0, lineHeight: 1.15, overflow: 'hidden' }}>
-              <span style={{ display: 'flex', alignItems: 'baseline', gap: 4, maxWidth: '100%' }}>
-                <span style={{ color: MUTED, fontSize: fs(8.5), letterSpacing: '0.1em', flexShrink: 0 }}>{t('overlay.ext')}</span>
-                <span style={{ color: VALUE, fontWeight: 600, whiteSpace: 'nowrap', fontSize: fsIp(12), overflow: 'hidden', textOverflow: 'ellipsis' }}>{status?.externalIP ?? '—'}</span>
+            <span aria-hidden="true" style={{ width: 1, height: px(18), background: HUD.rule, flexShrink: 0, ...dimStyle }} />
+            <span style={{ display: 'flex', alignItems: 'center', gap: px(6), flexShrink: 0, ...dimStyle }}>
+              <span aria-hidden="true" style={{ ...tick(STATE), animation: exposed ? 'pulse 1.4s infinite' : undefined }} />
+              <span data-testid="hud-ip-state" style={{ color: STATE, fontWeight: 600 }}>{status ? LABEL : '···'}</span>
+            </span>
+            {/* external IP + relay capsule (left column). When the bar is short
+                of room the internal column gives way first: a near-zero shrink
+                factor leaves the external IP whole until the internal IP has
+                ellipsized away, and only then lets it ellipsize too. */}
+            <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: px(3), flexShrink: 0.001, minWidth: 0, overflow: 'hidden' }}>
+              <span style={{ display: 'flex', alignItems: 'baseline', maxWidth: '100%' }}>
+                <span style={label}>{t('overlay.ext')}</span>
+                <span style={{ color: HUD.ip, fontWeight: 600, letterSpacing: '0.02em', whiteSpace: 'nowrap', fontSize: fsIp(16), overflow: 'hidden', textOverflow: 'ellipsis' }}>{status?.externalIP ?? '—'}</span>
               </span>
               {latestPivot && (
                 <span
                   data-testid="hud-pivot-latest"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 6px', clipPath: 'polygon(4px 0,100% 0,100% calc(100% - 4px),calc(100% - 4px) 100%,0 100%,0 4px)', background: hexA(CYAN, 0.2), border: `1px solid ${hexA(CYAN, 0.6)}`, boxShadow: `0 0 5px ${hexA(CYAN, 0.2)}`, maxWidth: 160 }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: px(6), padding: `1px ${px(8)}px`, maxWidth: '100%', fontSize: fs(11), color: HUD.pivot, border: `1px solid ${FRAME}`, clipPath: 'polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px)' }}
                   title={pivots.map((p) => `${p.tool} ${p.via}${p.route ? ` (${p.route})` : ''}`).join('\n')}
                 >
-                  <span style={{ color: CYAN, fontSize: fs(9), textShadow: `0 0 6px ${CYAN}` }}>⇄</span>
-                  <span style={{ color: '#bff2ff', fontSize: fs(9.5), fontWeight: 600, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{latestPivot.via}</span>
-                  {pivots.length > 1 && <span style={{ color: CYAN, fontSize: fs(8.5), fontWeight: 700 }}>+{pivots.length - 1}</span>}
+                  <span aria-hidden="true" style={{ color: FRAME }}>⇄</span>
+                  <span style={{ maxWidth: px(120), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{latestPivot.via}</span>
+                  {pivots.length > 1 && <span style={{ color: FRAME, fontWeight: 700 }}>+{pivots.length - 1}</span>}
                 </span>
               )}
             </span>
             {/* internal IP + network name (right column) */}
-            <span style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1, minWidth: 0, lineHeight: 1.15, flexShrink: 1, overflow: 'hidden', ...dimStyle }}>
-              <span style={{ display: 'flex', alignItems: 'baseline', gap: 4, maxWidth: '100%' }}>
-                <span style={{ color: MUTED, fontSize: fs(8.5), letterSpacing: '0.1em', flexShrink: 0 }}>{t('overlay.int')}</span>
-                <span style={{ color: '#9fd8e6', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{status?.internalIP ?? '—'}</span>
+            <span style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: px(3), minWidth: 0, flexShrink: 1, overflow: 'hidden', whiteSpace: 'nowrap', ...dimStyle }}>
+              <span style={{ display: 'flex', alignItems: 'baseline', maxWidth: '100%' }}>
+                <span style={label}>{t('overlay.int')}</span>
+                <span style={{ color: HUD.internal, overflow: 'hidden', textOverflow: 'ellipsis' }}>{status?.internalIP ?? '—'}</span>
               </span>
               {linkText && (
-                <span style={{ display: 'flex', alignItems: 'baseline', gap: 4, maxWidth: '100%', minWidth: 0 }}>
-                  <span style={{ color: MUTED, fontSize: fs(8), letterSpacing: '0.1em', flexShrink: 0 }}>{link?.type === 'wifi' ? '⌁' : t('overlay.net')}</span>
-                  <span style={{ color: '#7fb8c6', fontWeight: 500, fontSize: fs(10), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{linkText}</span>
+                <span style={{ display: 'flex', alignItems: 'baseline', maxWidth: '100%', minWidth: 0, fontSize: fs(11), color: HUD.link }}>
+                  <span style={link?.type === 'wifi' ? { marginRight: px(6), flexShrink: 0 } : label}>{link?.type === 'wifi' ? '⌁' : t('overlay.net')}</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{linkText}</span>
                 </span>
               )}
             </span>
           </div>
 
-          {/* expanded */}
+          {/* expanded — fixed order: key/value → relay nodes → warning →
+              marker form → actions (§8) */}
           {expanded && (
-            <div style={{ padding: '0 14px 11px', fontSize: fs(11), position: 'relative', zIndex: 2, ...dimStyle }}>
-              <div style={{ height: 1, background: `linear-gradient(90deg, ${FRAME}55, transparent)`, margin: '0 0 8px' }} />
-              {/* v0.11.1: the label column scales with the text. It was a hard
-                  70px while the labels render at fs(11), so "Last check" sat
-                  right on the boundary at scale 1 and wrapped to two lines —
-                  and at scale 1.25/1.5 every label wrapped. `px()` ties the
-                  column to the same factor as the type, which is what the
-                  rest of the panel already does. */}
-              <div style={{ display: 'grid', gridTemplateColumns: `${px(78)}px 1fr`, rowGap: px(5), alignItems: 'baseline' }}>
-                <span style={{ color: MUTED, letterSpacing: '0.06em' }}>{t('overlay.status')}</span>
-                <span style={{ color: STATE, fontWeight: 600, textShadow: `0 0 8px ${STATE}55` }}>{STATUS_TXT}</span>
-                <span style={{ color: MUTED, letterSpacing: '0.06em' }}>{t('overlay.external')}</span>
-                <span style={{ color: VALUE, fontSize: fsIp(11) }}>{status?.externalIP ?? '—'}</span>
-                <span style={{ color: MUTED, letterSpacing: '0.06em' }}>{t('overlay.internal')}</span>
-                <span style={{ color: VALUE }}>{status?.internalIP ?? '—'}</span>
-                <span style={{ color: MUTED, letterSpacing: '0.06em' }}>{t('overlay.network')}</span>
-                <span style={{ color: VALUE }}>{link?.type === 'wifi' ? `⌁ ${linkText}` : linkText || '—'}</span>
-                <span style={{ color: MUTED, letterSpacing: '0.06em' }}>{t('overlay.lastCheck')}</span>
-                <span style={{ color: '#9fd8e6' }}>{status?.lastCheck ? formatTime(status.lastCheck, { seconds: true }) : '—'}</span>
+            <div style={{ padding: `${px(2)}px ${px(14)}px ${px(12)}px`, fontSize: fs(12), ...dimStyle }}>
+              {/* The label column scales with the text (v0.11.1: a fixed column
+                  wrapped "Last check" at scale 1.25+). */}
+              <div style={{ display: 'grid', gridTemplateColumns: `${px(96)}px 1fr`, rowGap: px(4), alignItems: 'baseline' }}>
+                <span style={{ color: HUD.muted }}>{t('overlay.status')}</span>
+                <span style={{ color: STATE, fontWeight: 600 }}>{STATUS_TXT}</span>
+                <span style={{ color: HUD.muted }}>{t('overlay.external')}</span>
+                <span style={{ color: HUD.value, fontSize: fsIp(12) }}>{status?.externalIP ?? '—'}</span>
+                <span style={{ color: HUD.muted }}>{t('overlay.internal')}</span>
+                <span style={{ color: HUD.value }}>{status?.internalIP ?? '—'}</span>
+                <span style={{ color: HUD.muted }}>{t('overlay.network')}</span>
+                <span style={{ color: HUD.value }}>{link?.type === 'wifi' ? `⌁ ${linkText}` : linkText || '—'}</span>
+                <span style={{ color: HUD.muted }}>{t('overlay.lastCheck')}</span>
+                <span style={{ color: HUD.value }}>{status?.lastCheck ? formatTime(status.lastCheck, { seconds: true }) : '—'}</span>
               </div>
-
-              {safety === 'unknown' && (
-                <p style={{ color: '#ffcc44', fontSize: fs(9), marginTop: 6, letterSpacing: '0.02em', opacity: 0.85 }}>ⓘ {t('overlay.unknownHint', { page: t('settings.pageNetwork') })}</p>
-              )}
 
               {/* Relay nodes seen in commands, listed — not drawn as a route. A
                   detected node does not say which node forwards to which, nor
                   that its channel is up, so no arrows and no health. A failed
-                  read says so instead of looking like "none". */}
+                  read says so instead of looking like "none"; it stays above the
+                  list because its wording points at the list "below". */}
               {pivotRead.status === 'error' && (
-                <p data-testid="hud-pivot-error" style={{ color: '#ffcc44', fontSize: fs(9), marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <p data-testid="hud-pivot-error" style={{ ...note, color: HUD.amber, marginTop: px(10), display: 'flex', alignItems: 'center', gap: px(8) }}>
                   <span>⚠ {pivotRead.pivots.length ? t('pivot.readFailedStale', { count: pivotRead.pivots.length }) : t('pivot.readFailed')}</span>
-                  <button type="button" className="hudBtn" data-testid="hud-pivot-retry" onClick={pivotRead.retry} aria-label={t('common.retry')} title={t('common.retry')} style={{ ...noDrag, ...iconBtn, flex: 'none' }}>↻</button>
+                  <button type="button" className="hudBtn" data-testid="hud-pivot-retry" onClick={pivotRead.retry} aria-label={t('common.retry')} title={t('common.retry')} style={{ ...noDrag, ...iconBtn, color: HUD.amber, flex: 'none' }}>↻</button>
                 </p>
               )}
               {/* The expanded list keeps the last list read through a failed
@@ -394,69 +394,52 @@ export default function OverlayApp(): JSX.Element {
                   shows current nodes only. */}
               {listedPivots.length > 0 && (
                 <div data-testid="hud-pivot-nodes" data-stale={pivotRead.status === 'error' || undefined} style={pivotRead.status === 'error' ? { opacity: 0.55 } : undefined}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '9px 0 6px' }}>
-                    <span style={{ color: CYAN, fontSize: fs(10), textShadow: `0 0 6px ${CYAN}` }}>⇄</span>
-                    <span style={{ color: '#7fe6f7', fontSize: fs(8.5), fontWeight: 700, letterSpacing: '0.14em' }}>{t('pivot.detected', { count: listedPivots.length }).toUpperCase()}</span>
-                    <span style={{ flex: 1, height: 1, background: `linear-gradient(90deg, ${CYAN}44, transparent)` }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: px(8), margin: `${px(12)}px 0 ${px(6)}px`, color: HUD.section }}>
+                    <span>⇄ {t('pivot.detected', { count: listedPivots.length })}</span>
+                    <span aria-hidden="true" style={{ flex: 1, height: 1, background: HUD.sectionRule }} />
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {listedPivots.map((p) => (
-                      <div key={p.via + p.tool + p.ts} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '2px 8px', padding: '3px 8px', background: hexA(CYAN, 0.14), border: `1px solid ${hexA(CYAN, 0.45)}`, fontSize: fs(10) }}>
-                        <span style={{ color: MUTED, letterSpacing: '0.06em' }}>{p.tool}</span>
-                        <span style={{ color: '#d6f7fd', fontWeight: 600, overflowWrap: 'anywhere' }}>{p.via}</span>
-                        {p.route && <span style={{ color: '#9fd8e6', overflowWrap: 'anywhere' }}>{t('pivot.route', { route: p.route })}</span>}
-                        <span style={{ marginLeft: 'auto', color: MUTED }}>{t('pivot.lastSeen', { when: formatFreshness(p.ts, t) })}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <p style={{ color: MUTED, fontSize: fs(8.5), marginTop: 4 }}>{t('pivot.unverified')}</p>
+                  {listedPivots.map((p) => (
+                    <div key={p.via + p.tool + p.ts} style={{ display: 'grid', gridTemplateColumns: `${px(72)}px minmax(0, 1fr) auto`, columnGap: px(10), padding: `${px(4)}px ${px(8)}px`, marginBottom: px(4), borderLeft: `2px solid ${FRAME}`, background: HUD.nodeBg }}>
+                      <span style={{ color: HUD.muted, overflowWrap: 'anywhere' }}>{p.tool}</span>
+                      <span style={{ color: HUD.value, fontWeight: 600, overflowWrap: 'anywhere' }}>{p.via}</span>
+                      <span style={{ color: HUD.muted }}>{t('pivot.lastSeen', { when: formatFreshness(p.ts, t) })}</span>
+                      {p.route && <span style={{ gridColumn: '2 / -1', color: HUD.internal, overflowWrap: 'anywhere' }}>{t('pivot.route', { route: p.route })}</span>}
+                    </div>
+                  ))}
+                  <p style={{ ...note, color: HUD.muted }}>{t('pivot.unverified')}</p>
                 </div>
               )}
 
-              {status?.error && <p style={{ color: '#e39aa0', marginTop: 6, fontSize: fs(10) }}>{status.error}</p>}
+              {/* warning line: an unclassified IP, or the IP read's own error */}
+              {safety === 'unknown' && (
+                <p style={{ ...note, color: HUD.amber, marginTop: px(10) }}>ⓘ {t('overlay.unknownHint', { page: t('settings.pageNetwork') })}</p>
+              )}
+              {status?.error && <p style={{ ...note, color: HUD.amber, marginTop: px(10) }}>{status.error}</p>}
 
               {/* One way to add a marker. The click opens a small form here in
                   the HUD: the time is the click's, the title is optional, Enter
                   or "Save marker" finishes, Esc cancels, and "More" adds notes.
-                  The global shortcut still opens the full dialog. Below it, the
-                  HUD's own controls (keep expanded, click-through) are a second
-                  row because they are a different kind of control. */}
-              {showMark && !markOpen && (
-                <div style={{ ...noDrag, display: 'flex', gap: 6, marginTop: 10 }}>
-                  <button
-                    type="button"
-                    className="hudBtn"
-                    data-testid="hud-add-marker"
-                    onClick={openMarkForm}
-                    style={{
-                      ...hudVerb,
-                      color: justMarked ? HUD.green : CYAN,
-                      background: justMarked ? hexA(HUD.green, 0.18) : hexA(CYAN, 0.09),
-                      border: `1px solid ${justMarked ? HUD.green : CYAN}55`,
-                      textShadow: `0 0 7px ${justMarked ? HUD.green : CYAN}55`
-                    }}
-                    title={`${t('overlay.addMarkerHint')} · ${navigator.platform?.includes('Mac') ? '⌘⇧M' : 'Ctrl+Shift+M'}`}
-                  >
-                    {justMarked ? `✓ ${t('overlay.marked')}` : t('overlay.addMarker')}
-                  </button>
-                </div>
-              )}
+                  The global shortcut opens the full dialog. */}
               {showMark && markOpen && (
                 <form
                   data-testid="hud-marker-form"
-                  style={{ ...noDrag, display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10 }}
+                  className="hudForm"
+                  style={{ ...noDrag, marginTop: px(10), padding: `${px(4)}px ${px(10)}px`, border: `1px solid ${HUD.border}` }}
                   onSubmit={(e) => { e.preventDefault(); void saveMark() }}
                   onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); closeMarkForm() } }}
                 >
-                  <input
-                    data-testid="hud-marker-title"
-                    autoFocus
-                    value={markTitle}
-                    onChange={(e) => setMarkTitle(e.target.value)}
-                    placeholder={t('overlay.markTitlePlaceholder')}
-                    aria-label={t('overlay.markTitlePlaceholder')}
-                    style={{ height: rowH, padding: '0 8px', fontSize: fs(11), color: '#eaf7fb', background: 'rgba(255,255,255,0.07)', border: `1px solid ${CYAN}55`, outline: 'none', fontFamily: 'inherit' }}
-                  />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: px(8) }}>
+                    <span aria-hidden="true" style={{ color: HUD.red }}>⚑</span>
+                    <input
+                      data-testid="hud-marker-title"
+                      autoFocus
+                      value={markTitle}
+                      onChange={(e) => setMarkTitle(e.target.value)}
+                      placeholder={t('overlay.markTitlePlaceholder')}
+                      aria-label={t('overlay.markTitlePlaceholder')}
+                      style={{ flex: 1, minWidth: 0, height: px(26), padding: 0, fontSize: fs(12), color: HUD.text, caretColor: HUD.red, background: 'transparent', border: 0, outline: 'none', fontFamily: 'inherit' }}
+                    />
+                  </div>
                   {markMore && (
                     <textarea
                       data-testid="hud-marker-notes"
@@ -465,70 +448,83 @@ export default function OverlayApp(): JSX.Element {
                       placeholder={t('overlay.markNotesPlaceholder')}
                       aria-label={t('overlay.markNotesPlaceholder')}
                       rows={3}
-                      style={{ padding: '4px 8px', fontSize: fs(11), color: '#eaf7fb', background: 'rgba(255,255,255,0.07)', border: `1px solid ${CYAN}55`, outline: 'none', resize: 'none', fontFamily: 'inherit' }}
+                      style={{ display: 'block', width: '100%', padding: `${px(4)}px 0`, fontSize: fs(12), color: HUD.text, caretColor: HUD.red, background: 'transparent', border: 0, borderTop: `1px solid ${HUD.border}`, outline: 'none', resize: 'none', fontFamily: 'inherit' }}
                     />
                   )}
                   {markFailed && (
-                    <p role="alert" data-testid="hud-marker-failed" style={{ margin: 0, fontSize: fs(10), color: HUD.red }}>{`✕ ${markFailed === 'project-changed' ? t('overlay.markProjectChanged') : t('overlay.markFailed')}`}</p>
+                    <p role="alert" data-testid="hud-marker-failed" style={{ ...note, color: HUD.red }}>{`✕ ${markFailed === 'project-changed' ? t('overlay.markProjectChanged') : t('overlay.markFailed')}`}</p>
                   )}
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button type="submit" className="hudBtn" data-testid="hud-marker-save" disabled={markSaving} style={{ ...hudVerb, color: CYAN, background: hexA(CYAN, 0.09), border: `1px solid ${CYAN}55` }}>
-                      {t('overlay.markSave')}
-                    </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: px(8), color: HUD.muted }}>
                     {!markMore && (
-                      <button type="button" className="hudBtn" data-testid="hud-marker-more" onClick={() => setMarkMore(true)} style={{ ...hudVerb, flex: 'none', padding: `0 ${px(8)}px`, letterSpacing: '0.06em', color: MUTED, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(150,170,180,0.35)' }}>
-                        {t('overlay.markMore')}
+                      <button type="button" className="hudBtn" data-testid="hud-marker-more" onClick={() => setMarkMore(true)} style={textBtn}>
+                        {t('overlay.markMore')} <span aria-hidden="true">›</span>
                       </button>
                     )}
-                    <button type="button" className="hudBtn" data-testid="hud-marker-cancel" onClick={closeMarkForm} style={{ ...hudVerb, flex: 'none', padding: `0 ${px(8)}px`, letterSpacing: '0.06em', color: MUTED, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(150,170,180,0.35)' }}>
-                      {t('common.cancel')}
+                    <span style={{ flex: 1 }} />
+                    <button type="submit" className="hudBtn" data-testid="hud-marker-save" disabled={markSaving} style={{ ...textBtn, color: HUD.action, opacity: markSaving ? 0.5 : 1, cursor: markSaving ? 'default' : 'pointer' }}>
+                      {t('overlay.markSave')} <kbd style={kbd}>{KEYCAP.enter}</kbd>
+                    </button>
+                    <span aria-hidden="true">·</span>
+                    <button type="button" className="hudBtn" data-testid="hud-marker-cancel" onClick={closeMarkForm} style={textBtn}>
+                      {t('common.cancel')} <kbd style={kbd}>{KEYCAP.esc}</kbd>
                     </button>
                   </div>
                 </form>
               )}
-              <div style={{ ...noDrag, display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
-                {/* Keep expanded: controls the 8s auto-collapse. A checkbox
-                    glyph carries the state in words, not a square to decode. */}
-                <button
-                  type="button"
-                  className="hudBtn"
-                  data-testid="hud-keep-open"
-                  onClick={() => setPinned((p) => !p)}
-                  style={{ ...hudVerb, flex: 'none', padding: `0 ${px(8)}px`, letterSpacing: '0.06em', color: pinned ? HUD.green : MUTED, background: pinned ? hexA(HUD.green, 0.14) : 'rgba(255,255,255,0.05)', border: `1px solid ${pinned ? hexA(HUD.green, 0.55) : 'rgba(150,170,180,0.35)'}` }}
-                  title={pinned ? t('overlay.keepOpenOnHint') : t('overlay.keepOpenOffHint')}
-                  aria-pressed={pinned}
-                >
-                  {pinned ? '☑' : '☐'} {t('overlay.keepOpen')}
-                </button>
-                <span style={{ flex: 1 }} />
+
+              {/* The action row: a quiet line of words, not boxes. */}
+              <div style={{ ...noDrag, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: `0 ${px(16)}px`, marginTop: px(12), paddingTop: px(4), borderTop: `1px solid ${HUD.border}`, color: HUD.action }}>
+                {showMark && !markOpen && (
+                  <button
+                    type="button"
+                    className="hudBtn"
+                    data-testid="hud-add-marker"
+                    onClick={openMarkForm}
+                    style={{ ...textBtn, ...(justMarked ? { color: HUD.green } : {}) }}
+                    title={t('overlay.addMarkerHint')}
+                  >
+                    {justMarked ? `✓ ${t('overlay.marked')}` : t('overlay.addMarker')}
+                    {!justMarked && <kbd style={kbd}>{markChord}</kbd>}
+                  </button>
+                )}
                 {/* Pass-through (§8): the way IN to ghost mode. Once on, the HUD
                     is click-through so this button cannot turn it off; the way
                     back is the shortcut or the menu bar (both wired in main),
-                    so the button's own tooltip and the line below name it
-                    BEFORE it is pressed. */}
+                    so the tooltip and the line below name it BEFORE it is
+                    pressed. The chord only releases, so it is not shown here as
+                    this button's shortcut. */}
                 <button
                   type="button"
                   className="hudBtn"
                   data-testid="hud-pass-through"
                   onClick={() => window.redlog.overlay.setPassThrough!(true)}
-                  style={{ ...hudVerb, flex: 'none', padding: `0 ${px(8)}px`, letterSpacing: '0.06em', color: MUTED, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(150,170,180,0.35)' }}
+                  style={textBtn}
                   title={`${t('overlay.passThrough')} — ${t(placeKey('overlay.passThroughHint'), { chord: ptChord })}`}
                 >
                   {t('overlay.passThrough')}
                 </button>
+                {/* Keep expanded: controls the 8s auto-collapse. The box glyph
+                    carries the state in words, not only the underline. */}
+                <button
+                  type="button"
+                  className="hudBtn"
+                  data-testid="hud-keep-open"
+                  onClick={() => setPinned((p) => !p)}
+                  style={{ ...textBtn, ...(pinned ? on : {}) }}
+                  title={pinned ? t('overlay.keepOpenOnHint') : t('overlay.keepOpenOffHint')}
+                  aria-pressed={pinned}
+                >
+                  {pinned ? '☑' : '☐'} {t('overlay.keepOpen')}
+                </button>
               </div>
-              <p data-testid="hud-pass-through-hint" style={{ ...noDrag, margin: '4px 0 0', fontSize: fs(10), color: MUTED }}>
+              <p data-testid="hud-pass-through-hint" style={{ ...noDrag, ...note, color: HUD.muted }}>
                 {t(placeKey('overlay.passThroughHint'), { chord: ptChord })}
               </p>
             </div>
           )}
           </div>
 
-          {/* buttons (top-right): expand + hide only. The pin toggle used to
-              live here too, but the operator asked to move it into the
-              expanded pane's bottom row — it's a low-frequency action and
-              a fixed-position icon in the corner competed with the more
-              important expand button for glances.
+          {/* buttons (bar, right end): expand + hide only.
 
               Rendered LAST inside the panel, and it has to stay last. Chromium
               inherits `-webkit-app-region`, so every descendant of the dragging
@@ -540,13 +536,16 @@ export default function OverlayApp(): JSX.Element {
               click started a window drag and the HUD could only be moved.
               Playwright cannot see this — CDP clicks are delivered straight to
               the renderer, below the hit test — so the guard is the region-order
-              test in renderer-smoke. */}
-          <div style={{ position: 'absolute', top: 5, right: 7, zIndex: 10, display: 'flex', alignItems: 'center', gap: 3, ...noDrag, ...dimStyle }}>
+              test in renderer-smoke.
+
+              Placed over the bar's reserved right padding, centred on its
+              minimum height (the content starts 5px down: hudWindowHeight's
+              chrome less the 3px root padding and 1px frame, split in two). */}
+          <div style={{ position: 'absolute', top: 5 + Math.round((px(40) - Math.max(18, px(24))) / 2), right: px(8), display: 'flex', alignItems: 'center', gap: px(2), ...noDrag, ...dimStyle }}>
             {/* Real <button>s, not onClick divs: keyboard-reachable and
-                announced as controls, matching the mark/pin buttons below
-                (§21 — icon-only controls must be focusable; the focus ring is
-                the .hudBtn rule in the <style> block). */}
-            <button data-testid="hud-expand" type="button" aria-disabled={expanded && exposedNow ? true : undefined} className="hudBtn" onClick={toggleExpand} style={iconBtn} title={expanded ? (exposedNow ? t('overlay.collapseBlocked') : t('overlay.collapse')) : t('overlay.expand')} aria-label={expanded ? t('overlay.collapse') : t('overlay.expand')}>{expanded ? '▲' : '▼'}</button>
+                announced as controls (§21 — icon-only controls must be
+                focusable; the focus ring is the .hudBtn rule below). */}
+            <button data-testid="hud-expand" type="button" aria-disabled={collapseBlocked ? true : undefined} className="hudBtn" onClick={toggleExpand} style={{ ...iconBtn, ...(collapseBlocked ? { opacity: 0.45, cursor: 'default' } : {}) }} title={expanded ? (exposedNow ? t('overlay.collapseBlocked') : t('overlay.collapse')) : t('overlay.expand')} aria-label={expanded ? t('overlay.collapse') : t('overlay.expand')}>{expanded ? '▲' : '▼'}</button>
             <button data-testid="hud-hide" type="button" className="hudBtn" onClick={() => window.redlog.overlay.hide()} style={iconBtn} title={t(placeKey('overlay.hide'))} aria-label={t(placeKey('overlay.hide'))}>✕</button>
           </div>
         </div>
@@ -555,29 +554,28 @@ export default function OverlayApp(): JSX.Element {
             stays readable exactly when everything else has just gone ghost.
             Auto-hides after 3s (ptHint effect). */}
         {ptHint && (
-          <div style={{ position: 'absolute', left: 0, right: 0, bottom: 6, display: 'flex', justifyContent: 'center', pointerEvents: 'none', zIndex: 30, ...noDrag }}>
-            <span style={{ padding: '3px 10px', fontSize: fs(9.5), fontWeight: 600, letterSpacing: '0.04em', color: '#d6f7fd', background: 'rgba(7,12,17,0.92)', border: `1px solid ${hexA(CYAN, 0.6)}`, clipPath: BTN_CLIP, boxShadow: `0 0 8px ${hexA(CYAN, 0.3)}` }}>
+          <div style={{ position: 'absolute', left: 0, right: 0, bottom: px(6), display: 'flex', justifyContent: 'center', pointerEvents: 'none', zIndex: 30, ...noDrag }}>
+            <span data-testid="hud-pass-through-active" style={{ padding: `${px(2)}px ${px(10)}px`, fontFamily: HUD_FONT.ui, fontSize: fs(11), color: HUD.text, background: HUD.panelSolid, border: `1px solid ${HUD.cyan}` }}>
               {t(placeKey('overlay.passThroughActive'), { chord: ptChord })}
             </span>
           </div>
         )}
 
-        {/* L-brackets on all four (now square) corners — no chamfered triangles. */}
-        {bracket({ top: 4, left: 4, borderTop: `1.5px solid ${FRAME}`, borderLeft: `1.5px solid ${FRAME}` })}
-        {bracket({ top: 4, right: 4, borderTop: `1.5px solid ${FRAME}`, borderRight: `1.5px solid ${FRAME}` })}
-        {bracket({ bottom: 4, left: 4, borderBottom: `1.5px solid ${FRAME}`, borderLeft: `1.5px solid ${FRAME}` })}
-        {bracket({ bottom: 4, right: 4, borderBottom: `1.5px solid ${FRAME}`, borderRight: `1.5px solid ${FRAME}` })}
+        {/* corner marks: the state colour; dashed while click-through is on */}
+        {CORNERS.map((pos, i) => (
+          <span key={i} aria-hidden="true" data-testid="hud-corner" style={{ position: 'absolute', width: 10, height: 10, borderStyle: passThrough ? 'dashed' : 'solid', borderColor: FRAME, pointerEvents: 'none', ...noDrag, ...pos }} />
+        ))}
 
         <style>{`
-          /* §21: every HUD control shows a focus ring. The buttons carry their
-             own backgrounds, so the ring is a cyan glow, not the OS outline. */
-          .hudBtn:focus-visible { box-shadow: 0 0 0 2px ${hexA(CYAN, 0.65)}; border-radius: 2px; }
+          /* §21: every HUD control shows a focus ring. The controls are bare
+             text, so the ring is an outline in the frame colour. */
+          .hudBtn:focus-visible { outline: 2px solid ${hexA(HUD.cyan, 0.8)}; outline-offset: 1px; }
+          .hudBtn:not([aria-disabled]):not(:disabled):hover { color: ${HUD.text} !important; }
+          .hudForm:focus-within { border-color: ${hexA(HUD.cyan, 0.6)} !important; }
+          .hudForm input::placeholder, .hudForm textarea::placeholder { color: ${HUD.muted}; }
           @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
           @keyframes blinkRec { 0%,100% { opacity: 1; } 50% { opacity: 0.15; } }
-          @keyframes alarm {
-            0%,100% { box-shadow: 0 0 16px ${HUD.red}44; filter: brightness(1); }
-            50% { box-shadow: 0 0 26px ${HUD.red}dd, 0 0 44px ${HUD.red}88; filter: brightness(1.5); }
-          }
+          @keyframes hudAlarm { 0%,100% { border-color: ${HUD.borderExposed}; } 50% { border-color: ${HUD.danger}; } }
         `}</style>
       </div>
     </div>
