@@ -14,6 +14,10 @@ for full commit body + generated notes.
 - The update check at launch is removed: updates are checked only when "Check
   for updates" is pressed in About. The launch-check switch is gone with it
   (#819).
+- Air-gap (`network.offline`) switched on while a project is open now stops
+  the NTP queries and the update check at once; before, both kept going until
+  the project was reopened. Switched off again, NTP and anchoring resume as
+  they do at open.
 
 ## v0.19.0 — 2026-11-17
 

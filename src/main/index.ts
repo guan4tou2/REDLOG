@@ -564,6 +564,9 @@ const configApplier = createConfigApplier({
   screenshotConfigure: (opts) => screenshotAgent.configure(opts),
   alertResetOnProjectSwitch: () => alertRuntime.resetOnProjectSwitch(),
   alertConfigure: (cfg, identity, targets) => alertRuntime.configure(cfg, identity, targets),
+  setUpdaterAirgap,
+  startOutboundLoops: () => { startAnchorLoop(); startNtpLoop() },
+  stopOutboundLoops: () => { stopAnchorLoop(); stopNtpLoop() },
   lootConfigure: (opts) => lootDetector.configure(opts),
   configureCaptureHealth,
   configureRedaction,
@@ -1074,6 +1077,8 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
   // anchoring, NTP sync, and the update check. Capture and the local API are
   // untouched. Record the mode so a timeline that lacks anchors is explained
   // by a choice, not a failure.
+  // A save that switches it later goes through the applier's `airgap` step,
+  // which does the same to the updater and these two loops.
   const airgap = config.network?.offline === true
   setUpdaterAirgap(airgap)
   insertEvent('system', { subtype: 'opsec_airgap', enabled: airgap, description: airgap ? 'Air-gap ON — no outbound anchoring / NTP / update / IP lookup' : 'Air-gap OFF' }, opening)
