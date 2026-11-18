@@ -68,8 +68,11 @@ const ROOT = path.join(__dirname, '..', '..')
 //   operator adds the global target, which was `agentType === 'file_transfer'
 //   && data.subtype === 'artifact_added'` in ingest.ts: agent -1, subtype -1.
 //   The in-app call sites that now pass the selected target compare no kind.
-const AGENT_BASELINE = 281
-const SUBTYPE_BASELINE = 309
+// 2026-11-18, ruling 7: main no longer screenshots when a command ends, which
+//   was `event.agentType === 'shell' && d.subtype === 'command_end'` in
+//   main/index.ts: agent -1, subtype -1.
+const AGENT_BASELINE = 280
+const SUBTYPE_BASELINE = 308
 const TABLE_BASELINE = 31
 
 type Counter = 'agent' | 'subtype'
