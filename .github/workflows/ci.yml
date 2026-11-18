@@ -199,12 +199,28 @@ jobs:
         # Electron on headless Ubuntu needs a bunch of system libs — playwright
         # ships install-deps for browsers but not for Electron. Grab the
         # commonly-missing ones directly.
+        #
+        # This step has hung twice in one day (2026-11-18): the runner sat in
+        # apt for 13 and 16 minutes with no output, before the app was even
+        # built, and with no job timeout the shard stayed "pending" until
+        # someone cancelled the run. A stalled mirror is the runner's fault,
+        # not the branch's, so each apt call is bounded and the pair is tried
+        # three times; the step as a whole cannot outlive ten minutes.
+        timeout-minutes: 10
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libxkbcommon0 \
-            libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 \
-            libgtk-3-0 libasound2t64 xvfb zsh fonts-noto-cjk
+          for attempt in 1 2 3; do
+            if sudo timeout 120 apt-get update \
+              && sudo timeout 240 apt-get install -y \
+                libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libxkbcommon0 \
+                libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 \
+                libgtk-3-0 libasound2t64 xvfb zsh fonts-noto-cjk; then
+              exit 0
+            fi
+            echo "::warning::apt attempt ${attempt} failed or timed out; retrying"
+            sleep 5
+          done
+          echo "::error::apt did not finish in three bounded attempts"
+          exit 1
 
       - name: Install mitmproxy
         # The real-source acceptance specs (capture-gap-acceptance,
