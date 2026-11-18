@@ -29,7 +29,7 @@
 //   6 plugin detail     PluginsPanel -> PluginDetailPanel
 //   7 first run         FirstRunView
 //   8 HUD               OverlayApp
-//   9 pane badge        TerminalView's session meta
+//   9 pane badge        TerminalView's tab state
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useState } from 'react'
@@ -209,7 +209,10 @@ async function paneBadge(): Promise<void> {
   const { default: TerminalView } = await import('../src/renderer/src/components/TerminalView')
   wrap(<TerminalView />)
   await waitFor(() => expect(spawn).toHaveBeenCalled())
-  said['pane.hook'] = text(await screen.findByTestId('terminal-meta-hook'))
+  // A connected hook is the normal state: the tab shows a dot and says nothing.
+  await waitFor(() => expect(screen.getByTestId('terminal-tab-state').dataset.state).toBe('recording'))
+  const hook = screen.queryByTestId('terminal-tab-hook') ?? screen.queryByTestId('terminal-no-hook')
+  said['pane.hook'] = hook ? text(hook) : ''
 }
 
 describe('what each surface says about one machine (Spec 075 T005)', () => {
@@ -267,9 +270,9 @@ describe('what each surface says about one machine (Spec 075 T005)', () => {
     expect(health).not.toHaveBeenCalled()
   })
 
-  it('9 pane badge: the hook line reads "events connected" from the pane, not from the snapshot', async () => {
+  it('9 pane badge: a pane whose hook is connected says nothing about it — only a gap is a word', async () => {
     await paneBadge()
-    expect(said['pane.hook']).toBe('Commandsevents connected')
+    expect(said['pane.hook']).toBe('')
   })
 })
 

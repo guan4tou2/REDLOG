@@ -163,7 +163,8 @@ export function appShortcuts(order: readonly string[], isMac: boolean): Shortcut
     },
     { id: 'term:new', keys: `${m}T`, label: 'dashboard.terminalNewTab', scope: 'terminal' },
     { id: 'term:close', keys: `${m}W`, label: 'dashboard.terminalCloseTab', scope: 'terminal' },
-    { id: 'term:cycle', keys: isMac ? '⌘⇧[ ]' : 'Ctrl+Shift+[ ]', label: 'dashboard.terminalCycleTab', scope: 'terminal' }
+    { id: 'term:cycle', keys: isMac ? '⌘⇧[ ]' : 'Ctrl+Shift+[ ]', label: 'dashboard.terminalCycleTab', scope: 'terminal' },
+    { id: 'term:font', keys: isMac ? '⌘= ⌘- ⌘0' : 'Ctrl+= Ctrl+- Ctrl+0', label: 'dashboard.terminalFontSize', scope: 'terminal' }
   ]
 }
 

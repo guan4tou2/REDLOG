@@ -71,8 +71,9 @@ describe('Enter during IME composition does not submit', () => {
     const { default: TerminalView } = await import('../src/renderer/src/components/TerminalView')
     render(<I18nProvider><TerminalView /></I18nProvider>)
     await waitFor(() => expect(addons.length).toBeGreaterThan(0))
-    fireEvent.click(screen.getByRole('button', { name: 'Search buffer' }))
-    const input = screen.getByPlaceholderText(/Search terminal buffer/)
+    // Find is ⌘F; the strip has no find button.
+    fireEvent.keyDown(window, { key: 'f', metaKey: true })
+    const input = await screen.findByPlaceholderText(/Search terminal buffer/)
     fireEvent.change(input, { target: { value: 'root' } })
     const typed = addons[0].calls.length
     fireEvent.keyDown(input, composing)
