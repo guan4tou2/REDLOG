@@ -13,6 +13,7 @@ import { Button } from './Button'
 import { activityResultLabel } from '../lib/commandStatus'
 import { ActivityReader, sourceName } from './ActivityReader'
 import { ActivityAround } from './ActivityAround'
+import { narrowsEvents } from '../lib/filterNarrowing'
 
 const ROW_GRID = 'grid grid-cols-[72px_130px_minmax(0,1fr)_24px] gap-x-3 items-center'
 /** A list row is `--row-h` tall (UIUX-STANDARD §3: 40px, 32px tight), a
@@ -35,7 +36,13 @@ export function SearchCoverage({ coverage }: { coverage?: BodySearchCoverage }):
 }
 
 /** Same parsed query and EventFilter as raw Search; grouping happens in SQL. */
-export function ActivityResults({ request, onOpen, onExportSelection, onClearQuery, active = true, statsSlot }: { active?: boolean; statsSlot?: HTMLElement | null; onClearQuery?: () => void; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: Omit<ActivityRequest, 'projectId'>; onOpen?: (id: string, ts: number) => void }): JSX.Element {
+/** What the list is told about the filter bar. */
+interface ActivityListHooks {
+  /** Clears the filter bar's conditions, when an empty list is theirs to answer for. */
+  onClearConditions?: () => void
+}
+
+export function ActivityResults({ request, onOpen, onExportSelection, onClearQuery, active = true, statsSlot, ...hooks }: { active?: boolean; statsSlot?: HTMLElement | null; onClearQuery?: () => void; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: Omit<ActivityRequest, 'projectId'>; onOpen?: (id: string, ts: number) => void } & ActivityListHooks): JSX.Element {
   const { t } = useI18n()
   const project = useReadState(async () => {
     const config = await window.redlog.config.get() as { engagement?: unknown }
@@ -45,9 +52,9 @@ export function ActivityResults({ request, onOpen, onExportSelection, onClearQue
   })
   if (project.state.phase === 'failed') return <div role="alert">{project.state.error} <Button onClick={project.retry}>{t('common.retry')}</Button></div>
   if (!project.state.value) return <span role="status">{t('search.loading')}</span>
-  return <ActivityList key={`${project.state.value}:${JSON.stringify(request)}`} active={active} request={{ ...request, projectId: project.state.value }} onOpen={onOpen} onExportSelection={onExportSelection} onClearQuery={onClearQuery} statsSlot={statsSlot} />
+  return <ActivityList key={`${project.state.value}:${JSON.stringify(request)}`} active={active} request={{ ...request, projectId: project.state.value }} onOpen={onOpen} onExportSelection={onExportSelection} onClearQuery={onClearQuery} statsSlot={statsSlot} {...hooks} />
 }
-function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active, statsSlot }: { active: boolean; statsSlot?: HTMLElement | null; onClearQuery?: () => void; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: ActivityRequest; onOpen?: (id: string, ts: number) => void }): JSX.Element {
+function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active, statsSlot, onClearConditions }: { active: boolean; statsSlot?: HTMLElement | null; onClearQuery?: () => void; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: ActivityRequest; onOpen?: (id: string, ts: number) => void } & ActivityListHooks): JSX.Element {
   const { t } = useI18n()
   const read = useReadState(() => window.redlog.events.activityPage({ ...request, limit: 50 }))
   const [exportKind,setExportKind] = useState<'activity' | 'session'>('activity')
@@ -123,7 +130,15 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
             one line and reaches left into the gap instead of stacking 檢/視. */}
         <span className="justify-self-end whitespace-nowrap">{t('activity.col.view')}</span>
       </div>}
-      {page.items.length === 0 && <p className="text-sm text-redlog-text-faint">{t('activity.noMatches')}</p>}
+      {page.items.length === 0 && (() => {
+        // Three different empties: the filter bar's conditions emptied it, a
+        // typed query matched nothing, or there is nothing recorded to match.
+        const narrowed = narrowsEvents(request.filter)
+        return <p data-testid="activity-empty" className="text-sm text-redlog-text-faint">
+          {t(narrowed ? 'activity.noMatchesFiltered' : filtering ? 'activity.noMatches' : 'activity.empty')}
+          {narrowed && onClearConditions && <button type="button" data-testid="activity-clear-conditions" onClick={onClearConditions} className="ml-2 underline hover:text-redlog-text focus-visible:outline focus-visible:outline-red-400">{t('filter.clearAll')}</button>}
+        </p>
+      })()}
       <div className="flex flex-col gap-1">
         {(() => {
           const day = (at: number): JSX.Element | null => (at === 0 || formatDate(page.items[at - 1].firstAt) !== formatDate(page.items[at].firstAt))

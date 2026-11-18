@@ -9,11 +9,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { SearchPanel } from '../src/renderer/src/components/SearchPanel'
 
+// What the filter bar holds: a test sets a condition here, and clearing is a spy.
+const bar = vi.hoisted(() => ({ filter: { targetId: null as string | null, agentType: null, timeRange: null as { since: number; before: number } | null, inScopeOnly: false }, clearAll: (() => {}) as () => void }))
 vi.mock('../src/renderer/src/lib/FilterContext', () => ({
-  useSharedFilter: () => ({
-    filter: { targetId: null, agentType: null, timeRange: null, inScopeOnly: false }
-  }),
-  toEventFilter: () => ({})
+  useSharedFilter: () => ({ filter: bar.filter, clearAll: () => bar.clearAll() }),
+  toEventFilter: (f: typeof bar.filter) => ({
+    ...(f.targetId ? { targetId: f.targetId } : {}),
+    ...(f.timeRange ? { since: f.timeRange.since, before: f.timeRange.before } : {})
+  })
 }))
 
 vi.mock('../src/renderer/src/i18n', () => ({
@@ -157,5 +160,33 @@ describe('agent-type facets are an explicit state', () => {
 
     await waitFor(() => expect(distinctAgentTypes).toHaveBeenCalled())
     expect(screen.queryByTestId('search-types-failed')).toBeNull()
+  })
+})
+
+describe('an empty event search says when the filter bar emptied it', () => {
+  beforeEach(() => vi.clearAllMocks())
+  afterEach(() => { cleanup(); bar.filter.timeRange = null; bar.filter.targetId = null })
+
+  const okStatus = (): Fn => vi.fn().mockResolvedValue({ total: 0, indexed: 0, pending: 0 })
+
+  it('names the conditions and clears them, instead of blaming the query', async () => {
+    bar.filter.timeRange = { since: 1, before: 2 }
+    const clearAll = vi.fn(); bar.clearAll = clearAll
+    const { runQuery } = installBridge({ castIndexStatus: okStatus() })
+    render(<SearchPanel />)
+    fireEvent.change(screen.getByTestId('search-input'), { target: { value: 'needle' } })
+    await waitFor(() => expect(runQuery).toHaveBeenCalled(), { timeout: 1500 })
+    expect(await screen.findByText('search.noEventsFiltered')).not.toBeNull()
+    expect(screen.queryByText('search.noResults:needle')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'filter.clearAll' }))
+    expect(clearAll).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps blaming the query when no condition is set', async () => {
+    const { runQuery } = installBridge({ castIndexStatus: okStatus() })
+    render(<SearchPanel />)
+    await searchForNothing(runQuery)
+    expect(screen.queryByText('search.noEventsFiltered')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'filter.clearAll' })).toBeNull()
   })
 })

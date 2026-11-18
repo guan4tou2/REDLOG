@@ -89,3 +89,37 @@ it('sizes each activity row by the list-row token, not by its own padding', asyn
   expect(row.className).toContain('min-h-[var(--row-h)]')
   expect(row.className).not.toMatch(/\bpy-2(\.5)?\b/)
 })
+
+// The filter bar's conditions are what an empty list may owe its emptiness to.
+const emptyPage = { items: [], hasMore: false, nextCursor: null, totalGroups: 0, totalMatches: 0, snapshot: {} }
+function mountEmpty(request: unknown, onClearConditions?: () => void) {
+  api.activityPage.mockResolvedValue(emptyPage)
+  ;(window as any).redlog = {
+    config: { get: vi.fn().mockResolvedValue({ engagement: { id: 'p' } }) },
+    events: { onNewBatch: () => () => {}, ...api },
+    content: { list: vi.fn().mockResolvedValue({ ok: true, value: [] }), read: vi.fn() }
+  }
+  return render(<ActivityResults request={request as any} onClearConditions={onClearConditions} />)
+}
+const noText = { text: '', conditions: [], tokens: [] }
+
+it('says the filter bar emptied the list, and clears it from there', async () => {
+  const clear = vi.fn()
+  mountEmpty({ parsed: noText, filter: { since: 5, before: 9 } }, clear)
+  expect(await screen.findByText('activity.noMatchesFiltered')).toBeTruthy()
+  expect(screen.queryByText('activity.noMatches')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'filter.clearAll' }))
+  expect(clear).toHaveBeenCalledTimes(1)
+})
+
+it('says nothing was recorded when nothing narrows an empty list', async () => {
+  mountEmpty({ parsed: noText, filter: { hidePersonal: true } }, vi.fn())
+  expect(await screen.findByText('activity.empty')).toBeTruthy()
+  expect(screen.queryByRole('button', { name: 'filter.clearAll' })).toBeNull()
+})
+
+it('keeps the plain no-match line for a typed query the filter bar has no part in', async () => {
+  mountEmpty({ parsed: { text: 'needle', conditions: [], tokens: [] }, filter: {} }, vi.fn())
+  expect(await screen.findByText('activity.noMatches')).toBeTruthy()
+  expect(screen.queryByRole('button', { name: 'filter.clearAll' })).toBeNull()
+})
