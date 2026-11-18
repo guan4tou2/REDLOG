@@ -8,7 +8,7 @@ import { render, cleanup, screen, fireEvent, waitFor, act } from '@testing-libra
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { CommandPalette } from '../src/renderer/src/components/CommandPalette'
 import { toast, toastUndo } from '../src/renderer/src/components/Toast'
-import { isSettingControlKey } from '../src/renderer/src/lib/paletteSettings'
+import { isSettingControlKey, looksLikeLabel, paletteSettingsHits } from '../src/renderer/src/lib/paletteSettings'
 import { searchSettings } from '../src/renderer/src/lib/settingsSearch'
 import en from '../src/renderer/src/i18n/en.json'
 
@@ -457,7 +457,7 @@ describe('settings in the palette', () => {
   })
 
   it('caps the settings rows and says when there are more', async () => {
-    const q = ['capture', 'settings', 'proxy', 'event', 'the'].find((w) => searchSettings(w, t, 40).length > 8)
+    const q = ['capture', 'settings', 'proxy', 'event', 'the', 'port', 'ip', 'on'].find((w) => paletteSettingsHits(w, t, undefined, 8).hasMore)
     expect(q, 'fixture: a query with more than 8 setting matches').toBeTruthy()
     open()
     type(q!)
@@ -482,5 +482,24 @@ describe('settings rows are things to set', () => {
   it('tells controls from messages by key', () => {
     for (const k of ['settings.lootRulesFailed', 'settings.lootHint', 'settings.lootRuleStopped', 'settings.lootBuiltin']) expect(isSettingControlKey(k), k).toBe(false)
     for (const k of ['settings.lootGroup', 'httpCapture.caReady']) expect(isSettingControlKey(k), k).toBe(true)
+  })
+
+  it('lists a label, not a sentence that happens to contain the word', () => {
+    expect(looksLikeLabel('AI agent capture')).toBe(true)
+    expect(looksLikeLabel('Only web-traffic capture needs this. You can record commands without it.')).toBe(false)
+    expect(looksLikeLabel('截圖品質')).toBe(true)
+    expect(looksLikeLabel('只有網路流量擷取需要這個。沒有它也能記錄指令。')).toBe(false)
+    const { hits } = paletteSettingsHits('capture', t, undefined, 50)
+    expect(hits.length).toBeGreaterThan(0)
+    for (const h of hits) expect(looksLikeLabel(h.text), h.key).toBe(true)
+  })
+
+  it('renders every setting hit it counted, however late the word sits in the label', async () => {
+    const q = ['capture', 'settings', 'proxy', 'event', 'port'].find((w) => paletteSettingsHits(w, t, undefined, 8).hits.length > 0)!
+    const { hits } = paletteSettingsHits(q, t, undefined, 8)
+    open()
+    type(q)
+    await screen.findAllByRole('option')
+    expect(kinds().filter((k) => k === 'setting')).toHaveLength(hits.length)
   })
 })

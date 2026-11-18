@@ -333,7 +333,10 @@ export function CommandPalette({
     // Array.prototype.sort is stable: rows of equal score keep their own order,
     // which is how events stay newest-first.
     return out
-      .map((i) => ({ i, s: i.kind === 'search' ? 900 : score(i.label, q) }))
+      // A settings row was matched by the settings index, and is listed whatever
+      // this substring score makes of it: a hit the count already includes must
+      // not vanish here, or the "more match" line would be said over a short list.
+      .map((i) => ({ i, s: i.kind === 'search' ? 900 : i.kind === 'setting' ? Math.max(1, score(i.label, q)) : score(i.label, q) }))
       .filter((x) => x.s > 0)
       .sort((a, b) => rank(a.i.kind) - rank(b.i.kind) || b.s - a.s)
       .map((x) => x.i)

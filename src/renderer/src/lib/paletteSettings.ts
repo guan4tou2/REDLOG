@@ -11,6 +11,16 @@ const NOT_A_CONTROL = /(?:Hint|Failed|Why|Error|Empty|Unknown|Missing|Pending|Re
 // reads like a status.
 const KEEP = new Set(['httpCapture.caReady'])
 
+// A control's label is a few words. The index also holds whole sentences under
+// keys whose names give no sign of it ("Only web-traffic capture needs this.
+// You can record…"): a sentence is an explanation, not somewhere to go.
+const SENTENCE = /[.。!?！？](?:\s|$)/
+const LABEL_MAX = 60
+
+export function looksLikeLabel(text: string): boolean {
+  return text.length <= LABEL_MAX && !SENTENCE.test(text)
+}
+
 export function isSettingControlKey(key: string): boolean {
   return KEEP.has(key) || !NOT_A_CONTROL.test(key.slice(key.lastIndexOf('.') + 1))
 }
@@ -23,6 +33,6 @@ export function paletteSettingsHits(
   platform: string | undefined,
   limit: number
 ): { hits: SettingsHit[]; hasMore: boolean } {
-  const all = searchSettings(query, t, 500, platform).filter((h) => isSettingControlKey(h.key))
+  const all = searchSettings(query, t, 500, platform).filter((h) => isSettingControlKey(h.key) && looksLikeLabel(h.text))
   return { hits: all.slice(0, limit), hasMore: all.length > limit }
 }
