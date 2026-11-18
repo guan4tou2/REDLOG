@@ -1,4 +1,4 @@
-// Spec 073 T006. Ten project config.yaml files in the shapes projects have
+// Spec 073 T006. Eleven project config.yaml files in the shapes projects have
 // today, and what `loadConfig` returns for each, pinned as a golden; plus a
 // frozen copy of today's DEFAULT_CONFIG.
 //
@@ -14,6 +14,10 @@
 //              endings aside, so they stay "what main writes").
 //   hand-*     are shapes `saveConfig` no longer produces (an old `overlay:`
 //              block, sections left out); they are committed as they are.
+//              `hand-pre-ruling7-screenshot` is `written-default.yaml` as
+//              main wrote it before ruling 7 (git 743dbc60~1): its
+//              screenshot block still has intervalSec / diffThreshold /
+//              captureOnCommand, which a load must keep and a save write back.
 //
 // To rewrite after an intended change:
 //   REDLOG_WRITE_CONFIG_LEGACY=1 npx vitest run test/config-legacy-golden.test.ts
@@ -83,7 +87,11 @@ packs:
 `
 }
 
-const NAMES = [...Object.keys(WRITTEN), ...Object.keys(HAND)]
+/** Hand fixtures kept as files (too long to write out here); never rewritten. */
+const HAND_FILES = ['hand-pre-ruling7-screenshot']
+const RULING7_KEYS = { intervalSec: 0, diffThreshold: 5, captureOnCommand: false }
+
+const NAMES = [...Object.keys(WRITTEN), ...Object.keys(HAND), ...HAND_FILES]
 
 function writtenText(patch: Patch): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-legacy-'))
@@ -125,8 +133,8 @@ describe('config.yaml shapes in the field, as loadConfig reads them today (Spec 
     fs.writeFileSync(GOLDEN, JSON.stringify(golden, null, 1) + '\n')
   })
 
-  it('there are exactly ten fixtures and each is on disk', () => {
-    expect(NAMES).toHaveLength(10)
+  it('there are exactly eleven fixtures and each is on disk', () => {
+    expect(NAMES).toHaveLength(11)
     for (const name of NAMES) expect(fs.existsSync(path.join(DIR, `${name}.yaml`)), name).toBe(true)
   })
 
@@ -158,7 +166,20 @@ describe('config.yaml shapes in the field, as loadConfig reads them today (Spec 
     expect(golden['written-operator-changed'].operator).toEqual({ id: 'alice-9', name: 'Alice Nguyen' })
   })
 
-  it('legacy-v1-defaults.json is today\'s DEFAULT_CONFIG; change DEFAULT_CONFIG and this fails, which is the cue to keep the old copy alive in code', () => {
+  it('a file written before ruling 7 keeps its three screenshot keys through a load and a save', () => {
+    const golden = JSON.parse(fs.readFileSync(GOLDEN, 'utf8')) as Record<string, RedLogConfig>
+    expect(golden['hand-pre-ruling7-screenshot'].screenshot).toEqual({ quality: 85, ...RULING7_KEYS })
+    const loaded = load('hand-pre-ruling7-screenshot')
+    expect(loaded.screenshot).toEqual({ quality: 85, ...RULING7_KEYS })
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-legacy-'))
+    try {
+      saveConfig(dir, loaded)
+      const back = fs.readFileSync(path.join(dir, 'config.yaml'), 'utf8')
+      expect(back).toMatch(/\n  intervalSec: 0\n  diffThreshold: 5\n  captureOnCommand: false\n/)
+    } finally { fs.rmSync(dir, { recursive: true, force: true }) }
+  })
+
+  it('legacy-v1-defaults.json is v1\'s DEFAULT_CONFIG; today\'s differs only by the keys ruling 7 removed, and any other change is the cue to keep the old copy alive in code', () => {
     const frozen = JSON.parse(fs.readFileSync(FROZEN, 'utf8'))
     // Ruling 7 (2026-11-12, carried out 2026-11-18) removed timed and
     // on-command screenshots. Their three defaults left DEFAULT_CONFIG after
