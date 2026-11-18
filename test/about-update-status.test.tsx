@@ -69,6 +69,20 @@ describe('About: update status', () => {
     expect(screen.queryByTestId('update-open-page')).toBeNull()
   })
 
+  // Air-gap switched on after an earlier check: pressing Check replaces the old
+  // "up to date" with why nothing was asked, not with an error
+  // (test/airgap-live.test.ts shows main answering this status after the switch).
+  it('a check pressed after air-gap was switched on says air-gap stopped it, not an error or "up to date"', async () => {
+    const { app, push } = draw({ result: 'upToDate', checkedAt: 1 })
+    expect(await state()).toBe('update.state.upToDate')
+    fireEvent.click(screen.getByTestId('update-check'))
+    expect(app.checkForUpdates).toHaveBeenCalledTimes(1)
+    push({ stage: 'unavailable', result: 'airgap', checkedAt: 2 })
+    expect(await state()).toBe('update.state.airgap')
+    expect(screen.getByTestId('update-airgap-hint').textContent).toBe('update.airgapHint')
+    expect(screen.queryByTestId('update-open-page')).toBeNull()
+  })
+
   it('does not let a check start while one runs, and says so', async () => {
     draw({ stage: 'checking' })
     expect(await state()).toBe('update.state.checking')

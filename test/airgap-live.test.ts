@@ -4,8 +4,10 @@
 // What a "patch" is here: the same two things `config:save` does — write the
 // new config.yaml, then hand the new config to the real `createConfigApplier`
 // with reason `save`. The applier is wired as src/main/index.ts wires it for
-// the one step an air-gap change plans (`alertRuntime`, which reconfigures the
-// real AlertRuntime and its IP producer); everything else in its deps is inert.
+// the two steps an air-gap change plans: `alertRuntime`, which reconfigures the
+// real AlertRuntime and its IP producer, and `airgap`, which sets the real
+// updater's flag and stops or starts the real NTP and anchoring loops.
+// Everything else in its deps is inert.
 //
 // What is counted: outbound requests at the network doubles — UDP sends
 // (`dgram`, the NTP query), DNS resolver calls (`dns/promises`, the IP lookup),
@@ -14,12 +16,14 @@
 // across the longest period any of those loops has, so a loop that was left
 // running has its tick.
 //
-// Today only the IP lookup and the anchor stop: the IP producer is told
-// `offline` by the alertRuntime step, and the anchor reads config.yaml on each
-// call. The NTP loop is started at open if not air-gapped and nothing stops it;
-// the updater's air-gap flag is set at open only. Those two are `it.fails`.
+// The IP producer is told `offline` by the alertRuntime step; the anchor reads
+// config.yaml on each call and its loop is stopped by the airgap step; the NTP
+// loop is stopped and the updater's flag set by the airgap step. Until that
+// step existed the NTP loop and the update check kept going after the patch
+// (85 NTP sends over the window, one release lookup).
 // The control case (air-gap never on) is what keeps the zero counts honest:
-// each counter is shown able to move.
+// each counter is shown able to move; the last case shows switching it off
+// again brings back what an open without air-gap starts.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -108,6 +112,9 @@ function deps(): import('../src/main/config-apply').ConfigApplyDeps {
     screenshotConfigure: nop, alertResetOnProjectSwitch: () => alertRuntime.resetOnProjectSwitch(),
     // As src/main/index.ts wires it.
     alertConfigure: (cfg, id, targets) => alertRuntime.configure(cfg, id, targets),
+    setUpdaterAirgap: (on) => updater.setUpdaterAirgap(on),
+    startOutboundLoops: () => { anchor.startAnchorLoop(); clock.startNtpLoop() },
+    stopOutboundLoops: () => { anchor.stopAnchorLoop(); clock.stopNtpLoop() },
     lootConfigure: nop, configureCaptureHealth: nop, configureRedaction: nop, setVpnAdapters: nop, configureTerminal: nop,
     ingestCollaborators: () => ({}) as never, configureIngest: nop, configureFileWatcher: nop, configureConnectionMonitor: nop,
     configurePowershellTranscript: nop, configureProcessMonitor: nop, configureAgentTailer: nop,
@@ -119,11 +126,12 @@ function deps(): import('../src/main/config-apply').ConfigApplyDeps {
 }
 
 /** The patch: write the file, apply it, as config:save does. */
-function patchOffline(): void {
-  const next = structuredClone(before)
-  next.network.offline = true
+function patchOffline(offline = true): void {
+  const prev = cfgMod.loadConfig(dir)
+  const next = structuredClone(prev)
+  next.network.offline = offline
   cfgMod.saveConfig(dir, next)
-  applier.apply({ reason: 'save', identity, next, diskPrev: before, hooks: undefined } as never)
+  applier.apply({ reason: 'save', identity, next, diskPrev: prev, hooks: undefined } as never)
 }
 
 sqlite.describe('network.offline switched on while a project is open (Spec 073 T008)', () => {
@@ -189,31 +197,51 @@ sqlite.describe('network.offline switched on while a project is open (Spec 073 T
     expect(net.other, 'requests to anywhere else').toEqual([])
   })
 
-  // RED today: the NTP loop keeps its timers; the air-gap patch does not touch it.
-  it.fails('NTP sends nothing after the patch', async () => {
+  it('NTP sends nothing after the patch', async () => {
     patchOffline(); zero()
     await vi.advanceTimersByTimeAsync(LONG)
     expect(net.ntp).toBe(0)
   })
 
-  // RED today: the updater's air-gap flag is set at project open, not by a patch.
-  it.fails('the update check makes no request after the patch', async () => {
+  it('the update check makes no request after the patch, and says air-gap is why', async () => {
     patchOffline(); zero()
     await checkUpdate()
     expect(net.update).toBe(0)
+    // What About draws from (test/about-update-status.test.tsx draws this status).
+    expect(updater.getUpdateStatus()).toMatchObject({ stage: 'unavailable', result: 'airgap' })
   })
 
-  // Already true today: chain-anchor reads config.yaml on each call.
+  // chain-anchor reads config.yaml on each call; the airgap step also stops its loop.
   it('anchoring sends nothing after the patch', async () => {
     patchOffline(); zero()
     await vi.advanceTimersByTimeAsync(LONG)
     expect(net.calendars).toBe(0)
   })
 
-  // Already true today: the alertRuntime step reconfigures the IP producer with offline.
+  // The alertRuntime step reconfigures the IP producer with offline.
   it('the IP lookup sends nothing after the patch', async () => {
     patchOffline(); zero()
     await vi.advanceTimersByTimeAsync(LONG)
     expect(net.dns + net.ipHttp).toBe(0)
+  })
+
+  // As a fresh open with air-gap off: NTP and anchoring run again, the IP
+  // lookup resumes, and the update check is allowed when pressed. Nothing
+  // checks for updates on its own.
+  it('switching it off again brings back what an open without air-gap starts', async () => {
+    patchOffline(); zero()
+    await vi.advanceTimersByTimeAsync(HOUR)
+    expect(net.ntp + net.calendars + net.dns + net.ipHttp + net.update, 'while on').toBe(0)
+    // A seed row after the last anchor attempt, so the anchor loop has a new head.
+    evMod.insertEvent('system', { subtype: 'seed_after' }, { operatorId: 'op' })
+    patchOffline(false)
+    await vi.advanceTimersByTimeAsync(LONG)
+    expect(net.ntp, 'NTP').toBeGreaterThan(0)
+    expect(net.calendars, 'anchor calendars').toBeGreaterThan(0)
+    expect(net.dns + net.ipHttp, 'IP lookup').toBeGreaterThan(0)
+    expect(net.update, 'no update check on its own').toBe(0)
+    await checkUpdate()
+    expect(net.update, 'update check when pressed').toBeGreaterThan(0)
+    expect(net.other, 'requests to anywhere else').toEqual([])
   })
 })
