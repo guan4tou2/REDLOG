@@ -52,8 +52,30 @@ describe('no timed or on-command screenshots', () => {
     expect(h.events.map((e) => e.data.trigger)).toEqual(['manual'])
   })
 
-  it('main no longer calls the agent when a command ends', () => {
-    expect(read('src/main/index.ts')).not.toMatch(/onCommandEnd/)
+  // main/index.ts cannot call a command-end hook the agent no longer has:
+  // `'onCommandEnd' in agent` above, and typecheck, cover that call site.
+
+  it('takes every capture it is asked for: a repeat of the same screen lands, whatever the trigger', async () => {
+    const { ScreenshotAgent } = await import('../src/main/services/screenshot-agent')
+    const agent = new ScreenshotAgent()
+    agent.configure({ identity: { projectId: 'p', engagementId: 'e', operatorId: 'op' } })
+    expect(await agent.captureNow('api')).not.toBeNull()
+    expect(await agent.captureNow('api')).not.toBeNull()
+    // No caller sends another trigger; one that did is not deduped away.
+    expect(await agent.captureNow('periodic')).not.toBeNull()
+    expect(h.events).toHaveLength(3)
+  })
+
+  it('holds the encoded frame for a marker, not the native image', async () => {
+    const { ScreenshotAgent } = await import('../src/main/services/screenshot-agent')
+    const agent = new ScreenshotAgent()
+    agent.configure({ identity: { projectId: 'p', engagementId: 'e', operatorId: 'op' } })
+    const token = await agent.holdFrame()
+    expect(token).not.toBeNull()
+    const held = (agent as unknown as { held: { frame: Record<string, unknown> } }).held
+    expect(Object.keys(held.frame)).not.toContain('image')
+    expect(Buffer.isBuffer(held.frame.jpeg)).toBe(true)
+    expect(await agent.captureNow('manual', undefined, { heldFrame: token! })).not.toBeNull()
   })
 })
 
@@ -79,12 +101,14 @@ describe('an old project file with the removed keys', () => {
 })
 
 describe('the update check runs only when pressed', () => {
-  it('main schedules no check at launch and has no switch for one', () => {
+  // Text, not behaviour: the launch sequence is the body of main's whenReady
+  // callback, which no harness here runs (test/helpers/project-lifecycle-trace
+  // extracts startProject / stopProject only). What the check does when it is
+  // asked is behavioural: test/update-check-on-press.test.ts.
+  it('main has one call to the check, the About button\'s IPC handler', () => {
     const index = read('src/main/index.ts')
-    // The only call: the About button's IPC.
-    expect(index.match(/checkForUpdates\(/g)).toHaveLength(1)
-    expect(index).toMatch(/ipcMain\.handle\('app:checkForUpdates', \(\) => checkForUpdates\(\{ manual: true \}\)\)/)
-    expect(index).not.toMatch(/app:setAutoUpdateCheck|autoCheckEnabled/)
-    expect(read('src/preload/index.ts')).not.toMatch(/setAutoUpdateCheck/)
+    const calls = [...index.matchAll(/checkForUpdates\(/g)].map((m) => index.slice(Math.max(0, m.index! - 60), m.index))
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toContain("ipcMain.handle('app:checkForUpdates'")
   })
 })

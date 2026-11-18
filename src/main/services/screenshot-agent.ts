@@ -3,21 +3,17 @@ import crypto from 'crypto'
 import path from 'path'
 import fs from 'fs'
 import { ingestEvent } from '../../core/ingest'
-import { eventBus } from '../../core/event-bus'
 import { noteCaptureError, clearCaptureError, type CapturePrerequisite } from '../../core/capture-health'
 import { currentScreenRecording } from './capture-prerequisites'
 import { getProjectDir, dbGeneration } from '../../core/db/index'
 import type { ProjectIdentity } from '../../core/project-runtime'
 
-// Triggers that represent someone asking for this exact frame, as opposed to
-// the agent deciding to take one. See captureNow.
-const DELIBERATE_TRIGGERS = new Set(['manual', 'api'])
-
 /** How long a frame held at the moment of a shortcut stays usable. */
 const HELD_FRAME_TTL_MS = 120_000
 
+/** A grabbed frame, encoded. The NativeImage is not kept: a frame held for a
+ *  marker waits up to HELD_FRAME_TTL_MS, and only the JPEG is ever written. */
 interface Frame {
-  image: Electron.NativeImage
   jpeg: Buffer
   width: number
   height: number
@@ -41,7 +37,6 @@ export interface CaptureOptions {
 }
 
 export class ScreenshotAgent {
-  private lastHash = ''
   // Held by reference and read when an event is written: the operator can be
   // changed in Settings while the project stays open.
   private identity: Readonly<ProjectIdentity> | null = null
@@ -135,7 +130,7 @@ export class ScreenshotAgent {
       ))
       return null
     }
-    return { image, jpeg, width, height, displayId: source.display_id || null, at: Date.now() }
+    return { jpeg, width, height, displayId: source.display_id || null, at: Date.now() }
   }
 
   /** Ruling 7 (2026-11-12): screenshots are taken when someone asks — the
@@ -157,25 +152,22 @@ export class ScreenshotAgent {
   async captureNow(trigger: string, causeEventId?: string, opts: CaptureOptions = {}): Promise<string | null> {
     const identity = this.identity
     if (!identity?.operatorId) return null
-    // Deliberate captures always land — operator intent overrides pause and
-    // dedup. `api` belongs here with `manual`: POST /api/screenshot is an
-    // operator (or their agent) asking for THIS frame, so silently skipping it
-    // because the screen looks like the last one, or because recording is
-    // paused, loses a frame someone asked for and says `captured: false` with
-    // no reason. Any other trigger is ambient and stays deduped (none is
-    // started today: ruling 7 removed the periodic and command triggers).
-    const deliberate = DELIBERATE_TRIGGERS.has(trigger)
-    if (!deliberate && eventBus.paused) return null
+    // Every capture is one someone asked for — `manual` (shortcut, palette,
+    // marker) or `api` (POST /api/screenshot); ruling 7 removed the timed and
+    // command-end ones. So it always lands: not skipped because the screen
+    // looks like the last frame, and not because recording is paused, which
+    // would lose a frame someone asked for and say `captured: false` with no
+    // reason.
     // The grab and the write each wait. A project switched in between would
     // get a frame the operator took in the previous one, linked by
     // `_causes` to an event that is not in it — or an event pointing at a
     // file in the previous project's folder.
     const opened = dbGeneration()
     try {
-      let frame = deliberate ? this.takeHeld(opts.heldFrame) : null
+      let frame = this.takeHeld(opts.heldFrame)
       const heldAt = frame ? frame.at : null
       if (!frame) {
-        const restore = deliberate && opts.hideOwnWindows && this.hider ? await this.hider() : null
+        const restore = opts.hideOwnWindows && this.hider ? await this.hider() : null
         try {
           frame = await this.grabFrame()
         } finally {
@@ -186,13 +178,6 @@ export class ScreenshotAgent {
       const { jpeg, width, height } = frame
       const sha256 = crypto.createHash('sha256').update(jpeg).digest('hex')
       const dedupKey = sha256.slice(0, 16)
-
-      if (!deliberate) {
-        // An exact repeat of the last frame is not stored again. Deliberate
-        // captures always land.
-        if (dedupKey === this.lastHash) return null
-      }
-      this.lastHash = dedupKey
 
       const dir = path.join(getProjectDir(), 'screenshots')
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
@@ -243,7 +228,7 @@ export class ScreenshotAgent {
       }, {
         engagementId: identity.engagementId,
         operatorId: identity.operatorId,
-        bypassPause: deliberate,
+        bypassPause: true,
         ...(trigger === 'manual' && opts.targetId ? { targetId: opts.targetId, targetVia: 'operator-selected' as const } : {})
       }) } catch (e) {
         // The picture is on disk but no event points at it: a file nothing in

@@ -2023,7 +2023,7 @@ app.whenReady().then(() => {
   })) console.warn(`[shortcuts] ${QUICK_SHOT_ACCELERATOR} is taken by another application`)
 
   // --- Updates ---
-  ipcMain.handle('app:checkForUpdates', () => checkForUpdates({ manual: true }))
+  ipcMain.handle('app:checkForUpdates', () => checkForUpdates())
   ipcMain.handle('app:updateStatus', () => getUpdateStatus())
   ipcMain.handle('app:cancelUpdate', () => cancelUpdateDownload())
   ipcMain.handle('app:installUpdate', () => installReadyUpdate())

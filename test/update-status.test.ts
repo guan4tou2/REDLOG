@@ -246,9 +246,7 @@ describe('the quit that an update ends with', () => {
     expect(branch).not.toContain('clearUpdateMarker')
   })
 
-  it('checks only when the operator presses the button (ruling 7)', () => {
-    const index = fs.readFileSync(path.join(__dirname, '../src/main/index.ts'), 'utf8')
-    expect(index).not.toMatch(/autoCheckEnabled/)
-    expect(index).toMatch(/ipcMain\.handle\('app:checkForUpdates', \(\) => checkForUpdates\(\{ manual: true \}\)\)/)
-  })
+  // Ruling 7's "only when pressed" is pinned in test/timed-capture-removed-main
+  // (one call site, the IPC handler) and test/update-check-on-press (the
+  // check asks the release server whenever it is called).
 })

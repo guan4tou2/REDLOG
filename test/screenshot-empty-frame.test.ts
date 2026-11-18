@@ -159,8 +159,5 @@ describe('the screenshot agent refuses to record an empty frame', () => {
     expect(second).not.toBe(first)
     expect(shots()).toHaveLength(2)
 
-    // An ambient trigger on the same unchanged screen is still deduped away.
-    expect(await a.captureNow('periodic')).toBeNull()
-    expect(shots()).toHaveLength(2)
   })
 })
