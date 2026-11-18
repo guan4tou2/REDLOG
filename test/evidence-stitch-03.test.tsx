@@ -76,7 +76,9 @@ describe('screenshots', () => {
 
   it('names the file a delete is about', async () => {
     install()
-    fireEvent.click((await screen.findAllByTestId('screenshot-delete'))[0])
+    // The row opens its preview; delete is there.
+    fireEvent.click((await screen.findByText('s1.png')).closest('[role="button"]') as HTMLElement)
+    fireEvent.click(await screen.findByTestId('screenshot-delete'))
     await waitFor(() => expect(confirmSpy).toHaveBeenCalled())
     const message = (confirmSpy.mock.calls[0] as unknown as string[])[1]
     expect(message).toMatch(/s[12]\.png/)
