@@ -2364,12 +2364,18 @@
   "evidence.notVerified": "Not verified yet",
   "evidence.verifiedAt": "Verified {{time}}",
   "evidence.addedSince": "{{n}} added since, not verified",
-  "evidence.changedSince": "The chain has changed since; verify again",
+  "evidence.changedSince": "Changed since; verify again",
   "evidence.verifyFailed": "Verification could not run",
   "evidence.chain": "Chain",
   "evidence.anchor": "Anchor",
   "evidence.readFailed": "Could not be read",
   "evidence.anchorNone": "Not anchored yet",
   "evidence.unanchored": "{{n}} not anchored",
-  "evidence.olderAnchors": "{{n}} earlier anchors"
+  "evidence.olderAnchors": "{{n}} earlier anchors",
+  "evidence.details": "Details",
+  "evidence.sinceUnknown": "Additions since unknown: the chain length could not be read",
+  "evidence.lengthFailed": "Chain length could not be read",
+  "evidence.anchorsFailed": "Anchors could not be read",
+  "evidence.sinceUnknownShort": "Additions since unknown",
+  "evidence.verdictMismatch": "Anchor mismatch"
 }

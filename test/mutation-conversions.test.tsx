@@ -24,8 +24,10 @@ function install(chain: Record<string, unknown>): void {
 }
 
 function Panel(): JSX.Element {
-  return <EvidenceVerify />
+  return <EvidenceVerify heading={<h1>Evidence</h1>} />
 }
+/** Anchor now and Upgrade sit in the block's disclosure. */
+const openDetails = async (): Promise<void> => { fireEvent.click(await screen.findByRole('button', { name: 'Details' })) }
 
 describe('Anchor now when the IPC call rejects', () => {
   afterEach(() => { cleanup(); _resetIssues(); toasts.length = 0 })
@@ -40,6 +42,7 @@ describe('Anchor now when the IPC call rejects', () => {
   it('Evidence ▸ verification: the button comes back instead of staying busy', async () => {
     install({ anchorNow: vi.fn(async () => { throw new Error('ipc down') }) })
     render(<I18nProvider><Panel /></I18nProvider>)
+    await openDetails()
     const button = screen.getByText('Anchor now').closest('button')!
     fireEvent.click(button)
     await waitFor(() => expect(toasts).toHaveLength(1))

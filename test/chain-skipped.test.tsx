@@ -25,8 +25,10 @@ function install(chain: Record<string, unknown>): void {
 }
 
 function Panel(): JSX.Element {
-  return <EvidenceVerify />
+  return <EvidenceVerify heading={<h1>Evidence</h1>} />
 }
+/** Anchor now and Upgrade sit in the block's disclosure. */
+const openDetails = async (): Promise<void> => { fireEvent.click(await screen.findByRole('button', { name: 'Details' })) }
 
 describe('air-gapped anchoring', () => {
   afterEach(() => { cleanup(); _resetIssues(); toasts.length = 0 })
@@ -42,6 +44,7 @@ describe('air-gapped anchoring', () => {
   it('Evidence ▸ verification: Anchor now does not show the "no anchors" error', async () => {
     install({ anchorNow: vi.fn(async () => ({ skipped: 'offline' })) })
     render(<I18nProvider><Panel /></I18nProvider>)
+    await openDetails()
     fireEvent.click(screen.getByText('Anchor now'))
     await waitFor(() => expect(toasts.map((x) => x.message)).toEqual([SKIPPED]))
   })
@@ -49,6 +52,7 @@ describe('air-gapped anchoring', () => {
   it('Evidence ▸ verification: upgrade does not read a skipped result as counts', async () => {
     install({ upgrade: vi.fn(async () => ({ skipped: 'offline' })) })
     render(<I18nProvider><Panel /></I18nProvider>)
+    await openDetails()
     fireEvent.click(screen.getByText('Upgrade pending'))
     await waitFor(() => expect(toasts.map((x) => x.message)).toEqual([SKIPPED]))
   })

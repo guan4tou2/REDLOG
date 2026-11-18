@@ -45,6 +45,12 @@ const verify = async (): Promise<void> => {
   fireEvent.click(await screen.findByRole('button', { name: 'Verify' }))
   await waitFor(() => expect(result().textContent).toMatch(/Verified/))
 }
+/** Open the block's disclosure (collapsed by default for a clean or absent result). */
+const openDetails = (): HTMLElement => {
+  const toggle = within(screen.getByTestId('evidence-verify-line')).getByRole('button', { name: 'Details' })
+  if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle)
+  return screen.getByTestId('evidence-verify-details')
+}
 const chainIssue = (): ReturnType<typeof snapshotIssues>[number] | undefined => snapshotIssues().find((i) => i.id === 'chain')
 
 beforeEach(() => { window.localStorage.setItem('redlog-locale', 'en') })
@@ -78,8 +84,7 @@ describe('the verification block', () => {
   it('says "Not verified yet" when this run has no result, and shows no tick', async () => {
     install()
     mount()
-    await screen.findByText('3 events')
-    expect(result().textContent).toBe('Not verified yet')
+    await waitFor(() => expect(result().textContent).toBe('Not verified yet'))
     expect(screen.getByTestId('evidence-verify').textContent).not.toContain('✓')
   })
 
@@ -91,7 +96,7 @@ describe('the verification block', () => {
     expect(result().textContent).toContain('✓ Chain intact')
     expect(result().textContent).toContain('Walked 3 events')
     expect(result().textContent).not.toContain('added since')
-    expect(screen.getByText('✓ Anchor matches the events it covers')).toBeTruthy()
+    expect(within(openDetails()).getByText('✓ Anchor matches the events it covers')).toBeTruthy()
     expect(walk).toHaveBeenCalledTimes(1)
   })
 
@@ -99,7 +104,7 @@ describe('the verification block', () => {
   it('says how many entries arrived after the walk and were not verified', async () => {
     install(undefined, { length: 1201 })
     mount()
-    await screen.findByText('1,201 events')
+    await waitFor(() => expect(window.redlog.chain.length).toHaveBeenCalled())
     act(() => { setLastVerifyResult({ ok: true, walked: 1201, anchor, anchorMatchesWalkedHead: true }, { projectId: 'p1' }) })
     await waitFor(() => expect(result().textContent).toContain('Walked 1,201 events'))
     expect(result().textContent).not.toContain('added since')
@@ -124,8 +129,7 @@ describe('the verification block', () => {
     setLastVerifyResult({ ok: true, walked: 3, anchor, anchorMatchesWalkedHead: true }, { projectId: 'other' })
     install(undefined, { project: 'p1' })
     mount()
-    await screen.findByText('3 events')
-    expect(result().textContent).toBe('Not verified yet')
+    await waitFor(() => expect(result().textContent).toBe('Not verified yet'))
   })
 
   it('raises the chain issue, pointed at the Evidence page, when the walk breaks', async () => {
@@ -149,8 +153,10 @@ describe('the verification block', () => {
     mount()
     await verify()
     expect(result().textContent).not.toContain('Chain intact')
-    expect(result().textContent).toContain('⚠ Anchor does not match the events it covers')
+    expect(result().textContent).toContain('⚠ Anchor mismatch')
     expect(result().innerHTML).not.toContain('emerald')
+    // The full sentence once, in the disclosure, which a verdict that is not clean opens.
+    expect(within(screen.getByTestId('evidence-verify-details')).getAllByText(/Anchor does not match the events it covers/)).toHaveLength(1)
     expect(screen.getAllByText(/Anchor does not match the events it covers/)).toHaveLength(1)
     await waitFor(() => expect(chainIssue()).toBeTruthy())
   })
@@ -183,7 +189,7 @@ describe('the verification block', () => {
     install({ ok: true, walked: 3, anchor: null })
     mount()
     await verify()
-    expect(screen.getByText('No anchor yet: only the rows were checked against each other.')).toBeTruthy()
+    expect(within(openDetails()).getByText('No anchor yet: only the rows were checked against each other.')).toBeTruthy()
   })
 
   it('keeps the button usable and says so when the walk cannot run', async () => {
@@ -201,7 +207,7 @@ describe('what is known without verifying', () => {
   it('states the chain length and the latest anchor with what it leaves unanchored', async () => {
     install(undefined, { length: 5 })
     mount()
-    const facts = screen.getByTestId('evidence-chain-facts')
+    const facts = within(openDetails()).getByTestId('evidence-chain-facts')
     await waitFor(() => expect(facts.textContent).toContain('5 events'))
     await waitFor(() => expect(facts.textContent).toContain('3 not anchored'))
     expect(facts.textContent).toContain('COMPLETE')
@@ -210,9 +216,10 @@ describe('what is known without verifying', () => {
   it('does not call a failed anchor "not anchored yet"', async () => {
     install(undefined, { anchors: async () => [anchorAt({ status: 'failed' })], length: 5 })
     mount()
-    const facts = screen.getByTestId('evidence-chain-facts')
-    await waitFor(() => expect(facts.textContent).toContain('The last anchor failed'))
-    expect(facts.textContent).not.toContain('Not anchored yet')
+    const details = openDetails()
+    const facts = within(details).getByTestId('evidence-chain-facts')
+    await waitFor(() => expect(details.textContent).toContain('The last anchor failed'))
+    expect(details.textContent).not.toContain('Not anchored yet')
     // A failed submission timestamped nothing.
     expect(facts.textContent).toContain('5 not anchored')
   })
@@ -220,13 +227,13 @@ describe('what is known without verifying', () => {
   it('says an anchor a day old is stale', async () => {
     install(undefined, { anchors: async () => [anchorAt({ createdAt: NOW - 50 * 3_600_000 })] })
     mount()
-    await waitFor(() => expect(screen.getByTestId('evidence-chain-facts').textContent).toContain('No successful anchor for 2 days'))
+    await waitFor(() => expect(openDetails().textContent).toContain('No successful anchor for 2 days'))
   })
 
   it('does not read a failed anchor list as "no anchors"', async () => {
     install(undefined, { anchors: async () => { throw new Error('db locked') } })
     mount()
-    const facts = screen.getByTestId('evidence-chain-facts')
+    const facts = within(openDetails()).getByTestId('evidence-chain-facts')
     await waitFor(() => expect(facts.textContent).toContain('Could not be read'))
     expect(facts.textContent).not.toContain('Not anchored yet')
   })
@@ -234,12 +241,13 @@ describe('what is known without verifying', () => {
   it('says "Not anchored yet" only when there is no anchor', async () => {
     install(undefined, { anchors: async () => [] })
     mount()
-    await waitFor(() => expect(screen.getByTestId('evidence-chain-facts').textContent).toContain('Not anchored yet'))
+    await waitFor(() => expect(within(openDetails()).getByTestId('evidence-chain-facts').textContent).toContain('Not anchored yet'))
   })
 
   it('shows the latest anchor and folds the earlier ones into a disclosure', async () => {
     install(undefined, { anchors: async () => [anchorAt({ id: 'a3' }), anchorAt({ id: 'a2', createdAt: NOW - 3_600_000 }), anchorAt({ id: 'a1', createdAt: NOW - 7_200_000 })] })
     mount()
+    openDetails()
     const more = await screen.findByText('2 earlier anchors')
     const details = more.closest('details') as HTMLDetailsElement
     expect(details.open).toBe(false)
@@ -250,6 +258,7 @@ describe('what is known without verifying', () => {
   it('offers Anchor now and Upgrade after Verify, neither of them danger', async () => {
     const { anchorNow } = install()
     mount()
+    openDetails()
     const block = screen.getByTestId('evidence-verify')
     const names = within(block).getAllByRole('button').map((b) => b.textContent)
     expect(names.indexOf('Verify')).toBeLessThan(names.indexOf('Anchor now'))
@@ -266,7 +275,7 @@ describe('what is known without verifying', () => {
     const { anchorNow } = install()
     anchorNow.mockResolvedValueOnce({ skipped: 'offline' })
     mount()
-    fireEvent.click(within(screen.getByTestId('evidence-verify')).getByRole('button', { name: 'Anchor now' }))
-    await waitFor(() => expect(screen.getByTestId('evidence-chain-facts').textContent).toContain('Skipped: this project is offline'))
+    fireEvent.click(within(openDetails()).getByRole('button', { name: 'Anchor now' }))
+    await waitFor(() => expect(screen.getByTestId('evidence-verify-line').textContent).toContain('Skipped: this project is offline'))
   })
 })

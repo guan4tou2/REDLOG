@@ -2364,12 +2364,18 @@
   "evidence.notVerified": "尚未驗證",
   "evidence.verifiedAt": "上次驗證 {{time}}",
   "evidence.addedSince": "之後新增 {{n}} 筆，未驗證",
-  "evidence.changedSince": "之後證據鏈有變動，請重新驗證",
+  "evidence.changedSince": "之後有變動，請重新驗證",
   "evidence.verifyFailed": "無法執行驗證",
   "evidence.chain": "證據鏈",
   "evidence.anchor": "錨定",
   "evidence.readFailed": "無法讀取",
   "evidence.anchorNone": "尚未錨定",
   "evidence.unanchored": "未錨定 {{n}} 筆",
-  "evidence.olderAnchors": "較早的錨點 {{n}} 個"
+  "evidence.olderAnchors": "較早的錨點 {{n}} 個",
+  "evidence.details": "詳情",
+  "evidence.sinceUnknown": "之後新增的筆數不明：無法讀取證據鏈長度",
+  "evidence.lengthFailed": "無法讀取證據鏈長度",
+  "evidence.anchorsFailed": "無法讀取錨點",
+  "evidence.sinceUnknownShort": "之後新增筆數不明",
+  "evidence.verdictMismatch": "錨點不符"
 }
