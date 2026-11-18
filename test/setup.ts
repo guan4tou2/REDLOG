@@ -2,6 +2,8 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { createRequire } from 'module'
+import { afterAll, expect } from 'vitest'
+import { installStallTiming } from './helpers/stall-timing'
 import { installIcaclsRecorder } from './helpers/icacls'
 
 // restrictToOwner records its icacls arguments instead of spawning icacls; why,
@@ -70,6 +72,26 @@ try {
     }
     Object.defineProperty(proto, marker, { value: true })
   }
+  // The helper's injected flag lets tests exercise this gate on other OSes.
+  const enabled = process.platform === 'win32' && !!process.env.CI
+  const timing = installStallTiming({
+    enabled,
+    fs,
+    Database,
+    get statementPrototype() {
+      const probe = new Database(':memory:')
+      try { return Object.getPrototypeOf(probe.prepare('SELECT 1')) } finally { probe.close() }
+    },
+    replaceDatabase: replacement => {
+      const require = createRequire(import.meta.url)
+      require.cache[require.resolve('better-sqlite3')]!.exports = replacement
+    },
+    syncBuiltinESMExports: createRequire(import.meta.url)('module').syncBuiltinESMExports,
+  })
+  afterAll(() => {
+    timing.summary(expect.getState().testPath ?? '<unknown test file>')
+    timing.restore()
+  })
 } catch {
   // better-sqlite3 is not built for this Node ABI; nothing to relax.
 }
