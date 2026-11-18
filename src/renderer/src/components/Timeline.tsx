@@ -21,7 +21,7 @@ import { escapeBelongsAbove } from '../lib/escapeLayer'
 import { useSharedFilter, toEventFilter, describeActiveConditions } from '../lib/FilterContext'
 import { windowAround } from '../lib/timeRangeInput'
 import { LoadingSpinner } from './Feedback'
-import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
+import { getOpenVerification, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
 import { BrokenChainBanner, FocusChainBadge, StripAlert } from './timeline/TimelineStatusStrips'
 import { TimelineToolbar } from './timeline/TimelineToolbar'
 import { TimelineEventLog } from './timeline/TimelineEventLog'
@@ -431,11 +431,11 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
       } catch { return new Set<LaneId>() }
     }, setHiddenLanes)
   }, [projectIdForKeys])
-  const [verifyResult, setVerifyResult] = useState<FullVerifyResult | null>(() => getLastVerifyResult())
+  const [verifyResult, setVerifyResult] = useState<FullVerifyResult | null>(() => getOpenVerification()?.result ?? null)
   const [verifyDismissed, setVerifyDismissed] = useState(false)
   useEffect(() => {
     const onUpdate = (): void => {
-      setVerifyResult(getLastVerifyResult())
+      setVerifyResult(getOpenVerification()?.result ?? null)
       setVerifyDismissed(false)
     }
     window.addEventListener(VERIFY_UPDATED_EVENT, onUpdate)

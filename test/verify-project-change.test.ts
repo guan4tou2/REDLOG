@@ -15,7 +15,7 @@ vi.mock('../src/renderer/src/components/Toast', () => ({
 
 import { verifyChainWithFeedback } from '../src/renderer/src/lib/chainActions'
 import { _resetIssues, raiseIssue, snapshotIssues } from '../src/renderer/src/lib/issues'
-import { getLastVerifyResult, setLastVerifyResult } from '../src/renderer/src/lib/verifyResultCache'
+import { getOpenVerification, setLastVerifyResult } from '../src/renderer/src/lib/verifyResultCache'
 
 const t = (k: string): string => k
 const chainIssue = (): unknown => snapshotIssues().find((i) => i.id === 'chain')
@@ -36,7 +36,7 @@ describe('a walk across a project change', () => {
     install({ ok: false, walked: 1, brokenAtEventId: 'e2', brokenReason: 'x', anchor: null })
     await verifyChainWithFeedback(t)
     expect(chainIssue()).toBeUndefined()
-    expect(getLastVerifyResult()).toBeNull()
+    expect(getOpenVerification()).toBeNull()
     expect(toasts.map((x) => x.message)).toEqual(['evidence.verifyAbandoned'])
   })
 
