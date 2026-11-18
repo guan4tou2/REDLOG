@@ -354,7 +354,12 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
   // this view cannot know under that condition, so it is not shown.
   const emptyExplained = (!!sharedFilter.agentType && sharedFilter.agentType !== HTTP_FLOW_AGENT_TYPE)
     || sharedFilter.tier === 'chained'
-  const emptyText = flows.length === 0 ? (emptyExplained || loadError ? null : t('httpHistory.empty')) : t('httpHistory.noMatch')
+  // Every filter here is applied in the query, so a filter that matches
+  // nothing returns zero flows too. Which line is true depends on whether
+  // anything is narrowing the list, not on how many flows came back.
+  const narrowed = !!(filterText || methodFilter || statusFilter || hostFilter
+    || sharedFilter.targetId || sharedFilter.timeRange || sharedFilter.inScopeOnly)
+  const emptyText = emptyExplained || loadError ? null : narrowed ? t('httpHistory.noMatch') : t('httpHistory.empty')
 
   const toggleSort = (col: typeof sortCol) => {
     if (sortCol === col) setSortAsc(!sortAsc)
@@ -593,8 +598,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
           {filtered.length === 0 && emptyText && (
             <div className="flex flex-col items-center justify-center gap-3 py-6 text-redlog-text-faint text-sm">
               {emptyText}
-              {flows.length === 0 && !filterText && !methodFilter && !statusFilter && !hostFilter
-                && !sharedFilter.targetId && !sharedFilter.timeRange && !sharedFilter.inScopeOnly && onOpenSettings && (
+              {!narrowed && onOpenSettings && (
                 <button type="button" onClick={onOpenSettings} className="min-h-8 text-redlog-text-dim underline hover:text-redlog-text">{t('browser.openSettings')}</button>
               )}
             </div>

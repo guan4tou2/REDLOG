@@ -438,6 +438,8 @@
   "settings.vpnNamePlaceholder": "名稱",
   "settings.vpnPatternPlaceholder": "正規表達式",
   "settings.overlayGroup": "HUD",
+  "settings.hudSaveFailed": "這項 HUD 設定沒有保存，重新啟動後不會保留。",
+  "settings.hudLoadFailed": "無法讀取 HUD 設定。",
   "settings.otherPlatforms": "其他平台",
   "settings.overlayAutoShow": "專案啟動時開啟 HUD",
   "settings.overlayAutoShowHint": "關閉後，從狀態列或選單列圖示開啟 HUD。",

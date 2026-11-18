@@ -136,21 +136,30 @@ export function openHudPrefs(legacyOverlay: unknown): HudPrefs {
  *  any entry — Settings, the HUD, the tray and the shortcut all come through
  *  here. The attempt is answered with the real state, so a checkbox that was
  *  just ticked unticks itself. */
+// True while the prefs in memory are not the ones in the file: the last write
+// failed. The next update writes even when nothing changed, so a retry of the
+// same value stores it instead of answering "already so".
+let storeFailed = false
+
 export function updateHudPrefs(partial: unknown): HudPrefs {
+  return updateAndStoreHudPrefs(partial).prefs
+}
+
+function updateAndStoreHudPrefs(partial: unknown): { prefs: HudPrefs; stored: boolean } {
   const refused = overlayIpExposed && !!partial && typeof partial === 'object'
     && (partial as { passThrough?: unknown }).passThrough === true
   if (refused) partial = { ...(partial as object), passThrough: false }
   const next = mergeHudPrefs(prefs, partial)
   const changed = JSON.stringify(next) !== JSON.stringify(prefs)
-  if (changed || (prefsDir && !hasHudPrefs(prefsDir))) {
+  if (changed || storeFailed || (prefsDir && !hasHudPrefs(prefsDir))) {
     prefs = next
     if (prefsDir) {
-      try { writeHudPrefs(prefsDir, prefs) } catch (e) { console.error('[hud] could not store HUD settings:', e) }
+      try { writeHudPrefs(prefsDir, prefs); storeFailed = false } catch (e) { storeFailed = true; console.error('[hud] could not store HUD settings:', e) }
     }
   }
   if (changed) applyHudPrefs()
   if (changed || refused) _ctx?.send(_ctx.getMainWindow(), 'hudPrefs:changed', hudPrefs())
-  return hudPrefs()
+  return { prefs: hudPrefs(), stored: !storeFailed }
 }
 
 // §8: the single operator toggle for pass-through, shared by the Settings
@@ -243,10 +252,18 @@ export function registerOverlayIpc(
   prefsDir = opts.prefsDir ?? null
   onPrefsApplied = opts.onPrefsApplied ?? null
   prefs = prefsDir ? readHudPrefs(prefsDir) : { ...DEFAULT_HUD_PREFS }
+  storeFailed = false
 
   // Settings ▸ HUD. Not the project config: these do not change with it.
   ipcMain.handle('hudPrefs:get', () => hudPrefs())
-  ipcMain.handle('hudPrefs:set', (_e, partial: unknown) => updateHudPrefs(partial))
+  // A write that failed is refused, so the page can say the change did not
+  // stick; it may still be in effect until the next launch, which the page
+  // shows by reading the prefs back.
+  ipcMain.handle('hudPrefs:set', (_e, partial: unknown) => {
+    const result = updateAndStoreHudPrefs(partial)
+    if (!result.stored) throw new Error('hud-prefs-not-stored')
+    return result.prefs
+  })
   // The HUD's own view at mount. `passThrough` is what the window is doing;
   // later changes arrive on the per-key channels applyHudPrefs sends.
   ipcMain.handle('overlay:getPrefs', () => ({

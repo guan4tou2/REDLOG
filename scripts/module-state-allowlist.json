@@ -966,6 +966,10 @@
       "class": "machine",
       "reason": "HUD preferences of this computer."
     },
+    "src/main/ipc/overlay.ts#storeFailed": {
+      "class": "machine",
+      "reason": "Whether this computer's HUD preferences file missed the last write."
+    },
     "src/main/ipc/overlay.ts#onPrefsApplied": {
       "class": "app",
       "reason": "Callback wired once."
