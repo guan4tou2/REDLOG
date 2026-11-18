@@ -370,6 +370,8 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                     <p className="text-redlog-text-faint text-xs">{t('targets.noEvidence')}</p>
                   ) : (
                     <>
+                      {/* Counted from what is loaded: while the target has more,
+                          each chip is a lower bound and says so. */}
                       <div className="flex flex-wrap gap-2 mb-2">
                         {Object.entries(
                           evidence.reduce<Record<string, number>>((acc, e) => {
@@ -378,7 +380,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                           }, {})
                         ).map(([type, count]) => (
                           <span key={type} className="text-xs text-redlog-text-dim bg-redlog-elevated px-1.5 py-0.5 rounded">
-                            {agentTypeLabel(type, t)}: {count}
+                            {agentTypeLabel(type, t)}: {hasMore || tgt.eventCount > evidence.length ? `${count}+` : count}
                           </span>
                         ))}
                       </div>

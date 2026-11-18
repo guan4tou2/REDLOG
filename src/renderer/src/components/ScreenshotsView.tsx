@@ -165,6 +165,9 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
   // What triggers exist, counted over the unfiltered load. A filtered load holds
   // only one trigger, so counting from it would leave no way to leave the filter.
   const [triggerTotals, setTriggerTotals] = useState<Array<[string, number]>>([])
+  // The totals are counted from the first unfiltered page; when that page was
+  // not everything, every chip is a lower bound and says so.
+  const [triggerTotalsPartial, setTriggerTotalsPartial] = useState(false)
   const [query, setQuery] = useState('')
   const [mode, setMode] = useState<ViewMode>(readViewMode)
   const triggerFilterRef = useRef(triggerFilter)
@@ -194,7 +197,10 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
         ...(cursor ? { cursor } : {}),
         trigger: triggerFilter
       })
-      if (!cursor && triggerFilter === null && !signal.cancelled) setTriggerTotals(countTriggers(page.items))
+      if (!cursor && triggerFilter === null && !signal.cancelled) {
+        setTriggerTotals(countTriggers(page.items))
+        setTriggerTotalsPartial(page.hasMore)
+      }
       return { rows: page.items, nextCursor: page.hasMore ? page.nextCursor : null }
     },
     rowKey: shotKey
@@ -304,8 +310,8 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
         <div data-testid="screenshots-toolbar" className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded border border-redlog-border bg-redlog-surface p-2">
           <div className="flex flex-wrap items-center gap-1">
             <span className="mr-1 text-xs text-redlog-text-faint">{t('screenshots.triggerFilter')}</span>
-            {[{ id: null as string | null, label: t('screenshots.all'), count: hasMore ? `${totalAll}+` : String(totalAll) },
-              ...triggerTotals.map(([id, count]) => ({ id: id as string | null, label: triggerLabel(id), count: String(count) }))].map((chip) => (
+            {[{ id: null as string | null, label: t('screenshots.all'), count: triggerTotalsPartial ? `${totalAll}+` : String(totalAll) },
+              ...triggerTotals.map(([id, count]) => ({ id: id as string | null, label: triggerLabel(id), count: triggerTotalsPartial ? `${count}+` : String(count) }))].map((chip) => (
               <button
                 key={chip.id ?? 'all'}
                 type="button"
