@@ -228,3 +228,37 @@ describe('a screenshot row', () => {
     expect(within(preview).getByTestId('screenshot-delete').textContent).toBe('Delete file')
   })
 })
+
+// Ruling 7: screenshots are taken only when asked. The chips are the triggers
+// the recorded data has (old periodic ones keep their label); with one, there
+// is nothing to choose between. The title strip has the camera, so the
+// toolbar does not repeat Capture.
+describe('after ruling 7', () => {
+  it('shows no trigger chips when the data has one trigger', async () => {
+    const one = [shot('s1', 'manual'), shot('s2', 'manual')]
+    ;(window as unknown as { redlog: unknown }).redlog = {
+      events: { queryScreenshotPage: vi.fn(async () => ({ items: one, hasMore: false, nextCursor: null })), onNewBatch: () => () => {} },
+      screenshot: { deleteFile: vi.fn(async () => ({ ok: true })) }, artifacts: { reveal: vi.fn(async () => true) }
+    }
+    mount()
+    await screen.findByTestId('screenshot-list')
+    expect(screen.queryByText('Taken by')).toBeNull()
+    expect(screen.queryByRole('button', { name: /^All/ })).toBeNull()
+    expect(screen.getByTestId('screenshots-search')).toBeTruthy()
+  })
+
+  it('keeps a recorded periodic trigger on offer beside manual', async () => {
+    install()
+    mount()
+    await screen.findByTestId('screenshot-list')
+    expect(screen.getByRole('button', { name: /^periodic/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /^manual/ })).toBeTruthy()
+  })
+
+  it('has no Capture in the toolbar', async () => {
+    install()
+    mount()
+    const toolbar = await screen.findByTestId('screenshots-toolbar')
+    expect(within(toolbar).queryByRole('button', { name: 'Capture Now' })).toBeNull()
+  })
+})

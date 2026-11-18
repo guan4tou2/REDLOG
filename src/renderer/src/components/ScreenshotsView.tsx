@@ -284,7 +284,11 @@ export function ScreenshotsView(): JSX.Element {
       )}
       {!noShots && (
         <div data-testid="screenshots-toolbar" className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded border border-redlog-border bg-redlog-surface p-2">
-          <div className="flex flex-wrap items-center gap-1">
+          {/* The triggers the recorded data has — manual and API are what can
+              still occur (ruling 7); old periodic and after-command shots keep
+              their label. With one, there is nothing to choose between. A
+              chosen filter keeps the row, so it can be left. */}
+          {triggerTotals.length > 1 || triggerFilter !== null ? <div className="flex flex-wrap items-center gap-1">
             <span className="mr-1 text-xs text-redlog-text-faint">{t('screenshots.triggerFilter')}</span>
             {/* "All" has no count: the project's is on the Evidence tab, once. */}
             {[{ id: null as string | null, label: t('screenshots.all'), count: null as string | null },
@@ -299,7 +303,7 @@ export function ScreenshotsView(): JSX.Element {
                 }`}
               >{chip.label}{chip.count !== null && <> <span className="text-redlog-text-faint">&middot;{chip.count}</span></>}</button>
             ))}
-          </div>
+          </div> : <span />}
           <div className="flex items-center gap-2">
             <label className="relative">
               <span className="sr-only">{t('screenshots.searchLabel')}</span>
@@ -318,7 +322,6 @@ export function ScreenshotsView(): JSX.Element {
               <button type="button" data-testid="screenshots-view-grid" aria-pressed={mode === 'grid'} title={t('screenshots.viewGrid')} aria-label={t('screenshots.viewGrid')}
                 onClick={() => chooseMode('grid')} className={`inline-flex h-6 w-6 items-center justify-center rounded ${mode === 'grid' ? 'bg-redlog-surface text-redlog-text' : 'text-redlog-text-faint hover:text-redlog-text'}`}><LayoutGrid size={14} aria-hidden /></button>
             </div>
-            <Button size="compact" onClick={() => { void captureScreenshotWithFeedback(t) }}>{t('screenshots.captureNow')}</Button>
           </div>
         </div>
       )}
