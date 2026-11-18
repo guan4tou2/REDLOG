@@ -40,7 +40,9 @@ it('lists each node with tool, address, route and last seen — no arrows, no he
   install(async () => two); await expanded()
   const block = await screen.findByTestId('hud-pivot-nodes')
   const text = block.textContent ?? ''
-  expect(text).toContain('2 relay node(s) detected'.toUpperCase())
+  // The heading is sentence case since the simple-1112 restyle (§2: section
+  // headings are no longer all caps); it used to be upper-cased here.
+  expect(text).toContain('2 relay node(s) detected from commands')
   expect(text).toContain('ligolo-ng')
   expect(text).toContain('192.0.2.24:11601')
   expect(text).toContain('subnet route: 172.16.10.0/24')

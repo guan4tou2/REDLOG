@@ -81,7 +81,9 @@ test.describe.serial('HUD overlay geometry', () => {
   test('reported width covers the rendered content', async () => {
     const fit = await hud.evaluate(() => {
       // The measured element is the one autosize reports on.
-      const el = document.querySelector('#root > div > div > div > div:last-child') as HTMLElement | null
+      // (It used to be reached by a DOM path that landed on the expand/hide
+      // cluster instead; the restyle named the measured block.)
+      const el = document.querySelector('[data-testid="hud-content"]') as HTMLElement | null
       const inner = el ?? (document.getElementById('root') as HTMLElement)
       return { need: inner.scrollWidth, have: document.documentElement.clientWidth }
     })
