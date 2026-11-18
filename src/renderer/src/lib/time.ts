@@ -219,12 +219,18 @@ export function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
 
-/** `UTC` or `Local (UTC+8)`: the zone every time on this page is drawn in. */
-export function zoneLabel(zone: 'local' | 'utc', t: (k: string) => string): string {
+/** `UTC` or `UTC+8` / `UTC+5:30`: the display zone as its offset alone, for
+ *  where the full label does not fit. */
+export function zoneOffset(zone: 'local' | 'utc'): string {
   if (zone === 'utc') return 'UTC'
   const off = -new Date().getTimezoneOffset()
   const sign = off >= 0 ? '+' : '-'
   const abs = Math.abs(off)
   const hm = `${Math.trunc(abs / 60)}${abs % 60 ? `:${String(abs % 60).padStart(2, '0')}` : ''}`
-  return `${t('filter.localTime')} (UTC${sign}${hm})`
+  return `UTC${sign}${hm}`
+}
+
+/** `UTC` or `Local (UTC+8)`: the zone every time on this page is drawn in. */
+export function zoneLabel(zone: 'local' | 'utc', t: (k: string) => string): string {
+  return zone === 'utc' ? 'UTC' : `${t('filter.localTime')} (${zoneOffset(zone)})`
 }

@@ -135,11 +135,13 @@ test.describe.serial('view-reachability', () => {
     await expect(viewRoot()).toHaveAttribute('data-view', 'timeline')
   })
 
-  test('the activity page names itself, its time zone and offers a source filter', async () => {
+  test('the activity page names itself, offers source kinds, and the status bar names the time zone', async () => {
     await page.locator('nav [data-view-btn="search"]').first().click()
     await expect(page.getByTestId('activity-title')).toHaveText('Activity')
-    await expect(page.getByTestId('activity-zone')).toContainText(/Time zone: (UTC|local \(UTC[+-]\d)/)
-    await expect(page.getByTestId('activity-source')).toHaveValue('')
+    // 2026-11-18: the zone left the page header for the status bar (wide only).
+    await expect(page.getByTestId('statusbar-zone')).toHaveText(/^(UTC|local \(UTC[+-]\d)/)
+    await expect(page.getByTestId('activity-source').getByRole('button')).toHaveText(['Commands', 'AI', 'Files', 'Markers'])
+    await expect(page.getByTestId('activity-source').locator('[aria-pressed="true"]')).toHaveCount(0)
     // The collapsed "more filters" entrance is the existing shared FilterBar.
     await expect(page.getByRole('button', { name: /Filters?/ }).first()).toHaveAttribute('aria-expanded', 'false')
   })

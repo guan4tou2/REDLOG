@@ -189,14 +189,13 @@ export function SearchPanel({ onOpenInTimeline, active = true, browse = false, c
   const { t } = useI18n()
   const parse: ParseOutcome | null = useMemo(() => query.trim() ? parseQuery(query) : null, [query])
 
-  const [operationExport,setOperationExport] = useState<ExportRequest['subset'] | null>(null)
+  // Export is always the current view; an expanded activity does not narrow it.
   const exportQuery = controlledQuery ?? query
-  const selectedOperation = mode === 'activities' && exportQuery === submitted ? operationExport : null
-  const exportRequest = useMemo<ExportRequest>(() => ({ format: 'json', subset: selectedOperation ?? {
+  const exportRequest = useMemo<ExportRequest>(() => ({ format: 'json', subset: {
     kind: 'selection', projection: 'events', filter: { ...toEventFilter(sharedFilter), ...(effectiveTypeFilter ? { agentType: effectiveTypeFilter } : {}) }, query: exportQuery,
     ...(browse && mode === 'activities' ? { excludeHousekeeping: true } : {})
-  } }), [sharedFilter, effectiveTypeFilter, exportQuery, mode, selectedOperation, browse])
-  useContributeExport(active ? { label: t(selectedOperation ? `activity.export.${selectedOperation.kind}` : mode === 'activities' ? 'activity.exportMatches' : 'export.current'), request: exportRequest,
+  } }), [sharedFilter, effectiveTypeFilter, exportQuery, mode, browse])
+  useContributeExport(active ? { label: t(mode === 'activities' ? 'activity.exportMatches' : 'export.current'), request: exportRequest,
     ...(browse || exportQuery.trim() ? {} : { disabledReason: t('export.enterQuery') }) } : null)
 
   const filtered = results
@@ -388,7 +387,7 @@ export function SearchPanel({ onOpenInTimeline, active = true, browse = false, c
         )}
         {(browse || mode === 'activities') && (browse || submitted.trim()) && (() => {
           const parsed = parseQuery(submitted)
-          return parsed.ok ? <div hidden={mode !== 'activities'}><ActivityResults active={active && mode === 'activities'} statsSlot={statsSlot} onExportSelection={setOperationExport} onClearQuery={onClearQuery} onClearConditions={clearConditions} locateEventId={locateEventId} onLocateEnd={onLocateEnd} request={{ parsed: parsed.parsed, filter: buildSearchOpts(), ...(browse ? { excludeHousekeeping: true } : {}) }} onOpen={onOpenInTimeline} /></div> : null
+          return parsed.ok ? <div hidden={mode !== 'activities'}><ActivityResults active={active && mode === 'activities'} statsSlot={statsSlot} onClearQuery={onClearQuery} onClearConditions={clearConditions} locateEventId={locateEventId} onLocateEnd={onLocateEnd} request={{ parsed: parsed.parsed, filter: buildSearchOpts(), ...(browse ? { excludeHousekeeping: true } : {}) }} onOpen={onOpenInTimeline} /></div> : null
         })()}
         <SearchCoverage coverage={bodyCoverage} />
         {mode === 'events' && toolSession && (

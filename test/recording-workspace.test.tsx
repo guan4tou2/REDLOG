@@ -15,8 +15,11 @@ vi.mock('../src/renderer/src/components/SourceSessionPicker', () => ({default: (
 // The title row reads capture health for a failing source; null unless a test sets one.
 const capture = vi.hoisted(() => ({ health: null as unknown }))
 vi.mock('../src/renderer/src/lib/useCaptureHealth', () => ({ useCaptureHealthState: () => ({ health: capture.health, status: 'ok', lastOkAt: null, refresh: () => {} }) }))
+// The page's source choice is the filter context's one agent type.
+const source = vi.hoisted(() => ({ agentType: null as string | null, set: (_: string | null) => {} }))
+vi.mock('../src/renderer/src/lib/FilterContext', () => ({ useSharedFilter: () => ({ filter: { agentType: source.agentType }, setAgentType: (v: string | null) => source.set(v), knownAgentTypes: ['shell', 'agent', 'dns'] }) }))
 beforeEach(() => { (window as any).redlog = { recording: { get: async () => true, onChange: () => () => {} } } })
-afterEach(() => { cleanup(); capture.health = null })
+afterEach(() => { cleanup(); capture.health = null; source.agentType = null; source.set = () => {} })
 
 describe('recording workspace', () => {
   it('opens a requested reader without losing its query or mounted reading position', async () => {
@@ -66,11 +69,11 @@ describe('recording workspace title row (2026-11-14)', () => {
   // The status bar says recording and the project's event count on every
   // page; the chip beside the title said the same two things again, plus a
   // caption, and did nothing when clicked.
-  it('has no recording chip: the title shares one row with the search, the source and the time zone', () => {
+  it('has no recording chip: the title shares one row with the search and the source', () => {
     render(<I18nProvider><RecordingWorkspace onOpenInTimeline={vi.fn()} /></I18nProvider>)
     expect(screen.queryByTestId('activity-recording')).toBeNull()
     const row = screen.getByTestId('activity-title-row')
-    for (const id of ['activity-title', 'search-input', 'activity-source', 'activity-zone']) {
+    for (const id of ['activity-title', 'search-input', 'activity-source']) {
       expect(row.contains(screen.getByTestId(id)), id).toBe(true)
     }
     expect(row.className).toContain('flex-wrap')
@@ -85,12 +88,49 @@ describe('recording workspace title row (2026-11-14)', () => {
   })
 })
 
+// 2026-11-18: the source <select> became one button per kind the page can map
+// to a single agent type. HTTP has none: proxy traffic is `scanner`, which
+// also holds connection and C2 rows, and browser navigation is its own type.
+describe('recording workspace source kinds (2026-11-18)', () => {
+  const kinds = (): HTMLElement[] => Array.from(screen.getByTestId('activity-source').querySelectorAll('button'))
+  it('offers commands, AI, files and marks as single-select buttons, none pressed when nothing is chosen', () => {
+    render(<I18nProvider><RecordingWorkspace onOpenInTimeline={vi.fn()} /></I18nProvider>)
+    expect(screen.getByTestId('activity-source').getAttribute('role')).toBe('group')
+    expect(screen.queryByRole('combobox', { name: 'Source' })).toBeNull()
+    expect(kinds().map((b) => b.textContent)).toEqual(['Commands', 'AI', 'Files', 'Markers'])
+    expect(kinds().map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'false', 'false'])
+  })
+
+  it('sets the one source the filter holds, and pressing the active one clears it', () => {
+    const set = vi.fn()
+    source.set = set
+    const { unmount } = render(<I18nProvider><RecordingWorkspace onOpenInTimeline={vi.fn()} /></I18nProvider>)
+    fireEvent.click(screen.getByRole('button', { name: 'Commands' }))
+    expect(set).toHaveBeenLastCalledWith('shell')
+    fireEvent.click(screen.getByRole('button', { name: 'Files' }))
+    expect(set).toHaveBeenLastCalledWith('file_transfer')
+    unmount()
+    source.agentType = 'agent'
+    render(<I18nProvider><RecordingWorkspace onOpenInTimeline={vi.fn()} /></I18nProvider>)
+    expect(screen.getByRole('button', { name: 'AI' }).getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: 'AI' }))
+    expect(set).toHaveBeenLastCalledWith(null)
+  })
+
+  it('presses none of them for a source that is not one of the four', () => {
+    source.agentType = 'dns'
+    render(<I18nProvider><RecordingWorkspace onOpenInTimeline={vi.fn()} /></I18nProvider>)
+    expect(kinds().map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'false', 'false'])
+  })
+})
+
 describe('recording workspace density (2026-11-14)', () => {
-  it('states the time zone once, for every reading', () => {
+  // 2026-11-18: the zone is the status bar's, once for every page and reading.
+  it('does not state the time zone in the page header', () => {
     render(<I18nProvider><RecordingWorkspace onOpenInTimeline={vi.fn()} onOpenTimeline={vi.fn()} /></I18nProvider>)
-    expect(screen.getAllByText(/Time zone:/)).toHaveLength(1)
-    fireEvent.click(screen.getByRole('tab', { name: 'Input / output' }))
-    expect(screen.getAllByText(/Time zone:/)).toHaveLength(1)
+    expect(screen.queryByText(/Time zone/)).toBeNull()
+    expect(screen.queryByText(/\(UTC[+-]/)).toBeNull()
+    expect(screen.queryByTestId('activity-zone')).toBeNull()
   })
 
   it('puts the activity count in the tab row beside the way to the Timeline, outside the tablist', () => {
