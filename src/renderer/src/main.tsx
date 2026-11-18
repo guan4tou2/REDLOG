@@ -6,6 +6,8 @@ import './styles/fonts'
 import './styles/index.css'
 import { applyDensity, resolveDensity, storedDensity } from './lib/density'
 import { UI_SCALE_KEY, parseUiScale, zoomFor } from './lib/uiScale'
+import { installCaptionInsets } from './lib/captionInsets'
+import { isMac } from './lib/platform'
 
 // Apply the saved UI zoom and density before first paint so there's no visible
 // resize on load. Settings ▸ 一般 lets them change both; this reads whatever
@@ -17,6 +19,10 @@ try {
   // chose, which is the same one the settings page compares.
   applyDensity(resolveDensity(scale, storedDensity()))
 } catch { /* localStorage disabled — index.css carries the same default */ }
+
+// Where the OS draws its window buttons, as two root custom properties — after
+// the zoom above, because the reservation is divided by it.
+installCaptionInsets(isMac)
 
 // A file dropped outside a drop zone would otherwise make the browser open it,
 // navigating away from the app. Only the default action is cancelled; React
