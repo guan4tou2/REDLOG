@@ -3,7 +3,7 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 
-vi.mock('../src/core/fs-acl', () => ({ restrictToOwner: vi.fn() }))
+vi.mock('../src/core/fs-acl', () => ({ restrictToOwner: vi.fn(), restrictToOwnerOnce: vi.fn() }))
 
 import { restrictToOwner } from '../src/core/fs-acl'
 import { claudeCodeAdapter } from '../optional-plugins/claude-code/adapter'
