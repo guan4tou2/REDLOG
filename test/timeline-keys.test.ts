@@ -144,6 +144,14 @@ describe('resolveTimelineKey', () => {
   })
 
   it('ignores unrelated keys', () => {
-    expect(resolveTimelineKey(key('a'), CTX({ hasDetail: true }))).toBe('none')
+    expect(resolveTimelineKey(key('q'), CTX({ hasDetail: true }))).toBe('none')
+  })
+
+  // The detail bar's secondary action, 在活動紀錄開啟, has a key of its own.
+  it('a opens the selection in the activity log, and needs a selection and no modifier', () => {
+    expect(resolveTimelineKey(key('a'), CTX({ hasSelection: true }))).toBe('open-activity')
+    expect(resolveTimelineKey(key('a'), CTX())).toBe('none')
+    expect(resolveTimelineKey(key('a', { metaKey: true }), CTX({ hasSelection: true }))).toBe('none')
+    expect(resolveTimelineKey(key('a'), CTX({ hasSelection: true, inField: true }))).toBe('none')
   })
 })

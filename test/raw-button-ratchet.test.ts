@@ -22,7 +22,10 @@ const ROOT = path.join(__dirname, '..')
 // Earlier, 2026-11-11 (the #677 jump links and the #561 session picker trigger added one each; the
 // Network page's custom VPN adapter remove became an IconButton), excluding the two files that implement
 // the shared controls (they render the one raw <button> each).
-const RAW_BUTTON_BASELINE = 213
+// 2026-11-18: measured on the merged tree after the Timeline strip's retry links became Buttons, the
+// Terminal strip lost its font/find buttons, and the Evidence change made a screenshot row one target
+// and moved verification out of Settings.
+const RAW_BUTTON_BASELINE = 209
 const IMPLEMENTATIONS = new Set([
   'src/renderer/src/components/Button.tsx',
   'src/renderer/src/components/IconButton.tsx'

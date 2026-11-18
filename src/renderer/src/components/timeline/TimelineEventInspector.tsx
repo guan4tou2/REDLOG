@@ -1,4 +1,6 @@
 import { Button } from '../Button'
+import { writeClipboard } from '../../lib/clipboard'
+import { toast } from '../Toast'
 // The Timeline's detail panel body: everything shown for the selected event,
 // below the resize handle. Moved out of Timeline.tsx (UI/UX audit F13); every
 // value arrives as a prop, so — like MarkerDetail — nothing here can read a
@@ -11,7 +13,7 @@ import type { DetailLayout } from '../../lib/detailLayout'
 import { CausalGraph } from './CausalGraph'
 import { EventNoteField } from './EventNoteField'
 import { formatDateTime, formatTime } from '../../lib/time'
-import { LANE_COLORS, toLane, type EventBadge, type PluginEventType } from '../../lib/timelineDomain'
+import { LANE_COLORS, LANE_LABEL_KEYS, toLane, type EventBadge, type PluginEventType } from '../../lib/timelineDomain'
 import type { MarkerFold, MarkerValues } from '../../lib/markerFold'
 import { isMarkerAmendment } from '../../lib/markerFold'
 import { TierBadge } from '../TierBadge'
@@ -79,6 +81,7 @@ export function TimelineEventInspector({
   // row an operator clicks through.
   const [graphOpen, setGraphOpen] = useState(false)
   const kindReader = eventReader(event)
+  const lane = toLane(event.agentType, event.data?.subtype as string | undefined, pluginTypes)
   return (
     <>
       {/* Pinned to the top of the pane, not scrolled with the body — so
@@ -99,9 +102,11 @@ export function TimelineEventInspector({
           the two actions drop to their own when there is no room for both. */}
       <div className="sticky top-0 z-10 -mx-4 px-4 pt-3 pb-2 mb-1 bg-redlog-surface border-b border-redlog-border/50 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[toLane(event.agentType, event.data?.subtype as string | undefined, pluginTypes)] }} />
-          <span className="text-xs font-mono font-semibold uppercase tracking-wider shrink-0 whitespace-nowrap" style={{ color: LANE_COLORS[toLane(event.agentType, event.data?.subtype as string | undefined, pluginTypes)] }}>
-            {event.agentType}
+          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[lane] }} />
+          {/* The kind by the name the detail bar and the legend use, not the
+              raw stored agentType beside it: one name per kind. */}
+          <span className="text-xs font-semibold shrink-0 whitespace-nowrap" style={{ color: LANE_COLORS[lane] }}>
+            {t(LANE_LABEL_KEYS[lane])}
           </span>
           {/* The one thing here allowed to lose characters rather than lines:
               an operator id is long, arbitrary, and already in the tooltip. */}
@@ -122,6 +127,9 @@ export function TimelineEventInspector({
             data-testid="detail-around-event"
             onClick={onAround}
           >{t('filter.around')}</Button>
+          <Button size="compact" level="quiet" type="button" data-testid="detail-copy-ref"
+            onClick={() => { void writeClipboard(`event:${event.id}`).then((ok) => ok ? toast(t('common.copied'), 'success') : toast(t('common.copyFailed'), 'error')) }}
+          >{t('timeline.copyRef')}</Button>
           <Button size="compact" level="quiet" aria-pressed={!!dneFlag}
             type="button"
             title={dneFlag ? t('timeline.doNotExportHint') : t('timeline.doNotExport')}

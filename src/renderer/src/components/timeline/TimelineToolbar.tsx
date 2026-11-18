@@ -4,7 +4,6 @@ import { TimeRangeFields } from '../TimeRangeFields'
 import { HighlightInput } from './TimelineStatusStrips'
 import { AttributionStatus } from './AttributionStatus'
 import { TypeLegend } from './TypeLegend'
-import { formatTime } from '../../lib/time'
 import type { TimeRange } from '../../lib/FilterContext'
 import type { TimelineMode } from '../../lib/timelineMode'
 import type { LaneId } from '../../lib/timelineDomain'
@@ -46,10 +45,10 @@ function Kbd({ k }: { k: string }): JSX.Element {
  *  badge and the panel's own view toggles come in as slots. */
 export function TimelineToolbar({
   t, timeRange, setTimeRange, hasMore, loadedCount, loadedSpanMs, projectSpanMs, total, onRetryTotal, onLoadMore,
-  zoom, onZoomOut, onZoomIn, onResetZoom, anchorTs,
+  zoom, onZoomOut, onZoomIn, onResetZoom,
   mode, onModeChange,
   filterQuery, onFilterQueryChange, searchInputRef,
-  onHelp, attributionBlind, lanes, moreItems, followBadge
+  onHelp, attributionBlind, pausedMs, lanes, moreItems, followBadge
 }: {
   t: Translate
   timeRange: TimeRange | null
@@ -67,7 +66,6 @@ export function TimelineToolbar({
   onZoomOut: () => void
   onZoomIn: () => void
   onResetZoom: () => void
-  anchorTs: number | null
   mode: TimelineMode
   onModeChange: (mode: TimelineMode) => void
   filterQuery: string
@@ -76,6 +74,8 @@ export function TimelineToolbar({
   onHelp: () => void
   /** Traffic arrived and the command join resolved none of it. */
   attributionBlind: boolean
+  /** Recording paused within the visible range, in ms. */
+  pausedMs: number
   /** Event types among the loaded rows, for the legend. */
   lanes: ReadonlySet<LaneId>
   /** The panel's own view toggles, drawn inside 更多. */
@@ -173,12 +173,6 @@ export function TimelineToolbar({
             {t('timeline.loadMore')}
           </Button>
         )}
-        {anchorTs != null && (
-          <span className="flex items-center gap-1.5 text-xs text-redlog-text-faint whitespace-nowrap">
-            <span>{t('timeline.anchor.label')}</span>
-            <span data-testid="timeline-anchor" className="font-mono tabular-nums text-redlog-text">{formatTime(anchorTs, { seconds: true })}</span>
-          </span>
-        )}
         {/* v0.6.91 W1: the `/` highlight box. The input stays mounted so `/`
             and ⌘F can focus it; it is only drawn while it is open, has text,
             or has focus. 更多 ▸ 搜尋區間 opens it too. */}
@@ -193,6 +187,11 @@ export function TimelineToolbar({
           />
         </div>
         <div className="ml-auto shrink-0 flex items-center gap-2">
+          {pausedMs > 0 && (
+            <span data-testid="timeline-paused-total" className="text-xs font-mono tabular-nums whitespace-nowrap text-amber-400">
+              {t('timeline.pausedTotal', { minutes: pausedMs < 60_000 ? '<1' : Math.round(pausedMs / 60_000) })}
+            </span>
+          )}
           <AttributionStatus blind={attributionBlind} t={t} />
           <TypeLegend lanes={lanes} t={t} buttonClassName={ghost} />
           {followBadge}

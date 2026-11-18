@@ -32,7 +32,7 @@ describe.each(['standard', 'lanes'] as const)('Timeline header count (%s mode)',
     b.queryPage.mockResolvedValue(page([makeEvent('e2', T0 - 1000), makeEvent('e3', T0)], true, 'older'))
     b.count.mockResolvedValue(250)
     draw()
-    await waitFor(() => expect(screen.getByTestId('timeline-range-status').textContent).toBe('2 of 250 events · scroll back for older'))
+    await waitFor(() => expect(screen.getByTestId('timeline-range-status').textContent).toBe('2 of 250 events'))
   })
 
   it('does not present the loaded count as the total when the total cannot be read', async () => {

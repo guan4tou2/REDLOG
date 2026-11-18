@@ -34,6 +34,43 @@ export async function captionState(page: Page): Promise<CaptionState> {
   })
 }
 
+/** Why the overlay rectangle cannot be trusted yet, or '' when it can. After a
+ *  window resize Chromium can still report the previous size's rectangle for a
+ *  moment (800 wide, window now 1400: the "buttons" would be 713 px), and the
+ *  app republishes `--wco-inset-right` a frame or two later. The bound is the
+ *  one in lib/captionInsets.ts (`maxButtonsReachPx`): smaller of 40% of the
+ *  window and 400 px. */
+async function staleness(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const api = (navigator as unknown as { windowControlsOverlay?: { visible: boolean; getTitlebarAreaRect: () => DOMRect } }).windowControlsOverlay
+    if (!api || !api.visible) return '' // nothing to be stale: the caller reports visibility
+    const r = api.getTitlebarAreaRect()
+    const strip = window.innerWidth - (r.x + r.width)
+    const max = Math.min(0.4 * window.innerWidth, 400)
+    const zoomRaw = parseFloat(document.body.style.getPropertyValue('--app-zoom')) || parseFloat(getComputedStyle(document.body).zoom) || 0.9
+    const published = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wco-inset-right'))
+    const expected = strip / zoomRaw
+    const rect = `titlebar area x=${r.x} width=${r.width}, innerWidth=${window.innerWidth}, buttons strip ${strip.toFixed(1)}px (limit ${max.toFixed(1)}), --wco-inset-right=${published}px, expected ${expected.toFixed(1)}px at zoom ${zoomRaw}`
+    if (!(strip > 0) || strip > max) return `the overlay rectangle is not consistent with the window: ${rect}`
+    if (!Number.isFinite(published) || Math.abs(published - expected) > 1) return `the published inset does not match the rectangle: ${rect}`
+    return ''
+  })
+}
+
+/** `captionState`, once the overlay rectangle is consistent with the window and
+ *  the published inset follows it. If it never becomes so, the rectangle stayed
+ *  stale — an app bug, not a slow window, and the message says so. */
+export async function settledCaptionState(page: Page): Promise<CaptionState> {
+  await expect
+    .poll(() => staleness(page), {
+      timeout: 5_000,
+      intervals: [50, 100, 200, 400],
+      message: 'the window controls overlay rectangle stayed stale after the resize (the app never converged on it)'
+    })
+    .toBe('')
+  return captionState(page)
+}
+
 const INTERACTIVE = 'button, a, input, select, textarea, [role=button], [role=tab], [tabindex]'
 
 /**
@@ -43,7 +80,7 @@ const INTERACTIVE = 'button, a, input, select, textarea, [role=button], [role=ta
  * `elementFromPoint` at the middle of the overlap says who is on top.
  */
 export async function expectClearOfCaptionControls(page: Page, label: string): Promise<void> {
-  const state = await captionState(page)
+  const state = await settledCaptionState(page)
   expect(state.visible, `${label}: the window controls overlay is not visible (${state.note})`).toBe(true)
   const strip = state.strip!
   const hits = await page.evaluate(({ strip, selector }) => {

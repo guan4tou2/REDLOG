@@ -56,12 +56,28 @@ describe('what the Timeline says about the project, under a filter and a partial
     b.queryPage.mockImplementation(async (opts: { agentType?: string; cursor?: string | null }) =>
       opts.cursor ? new Promise(() => {}) : page(project.filter((e) => !opts.agentType || e.agentType === opts.agentType)))
   }
-  const pausedBand = (): HTMLElement | null => screen.queryByText('⏸ paused')
+  const pausedBand = (): HTMLElement | null => screen.queryByText(/^⏸ paused/)
 
   it('(pin) draws the paused-recording minute when the Timeline is unfiltered', async () => {
     serve()
     mount()
     await waitFor(() => expect(pausedBand()).not.toBeNull())
+  })
+
+  // A pause is a fact about the record, not a view preference: 工作階段邊界
+  // governs the terminal bands only. The pause is drawn in the warning colour
+  // with a hatch, says its start and end, and the toolbar totals it.
+  it('keeps the pause when session boundaries are switched off, with its times and a total', async () => {
+    serve()
+    mount()
+    await waitFor(() => expect(pausedBand()).not.toBeNull())
+    fireEvent.click(screen.getByTestId('timeline-more-menu'))
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Session boundaries/ }))
+    expect(pausedBand(), 'the pause after switching session boundaries off').not.toBeNull()
+    const band = screen.getByTestId('timeline-paused-band')
+    expect(band.getAttribute('title')).toMatch(/^⏸ paused \d{2}:\d{2}:30–\d{2}:\d{2}:30$/)
+    expect(band.innerHTML).toContain('repeating-linear-gradient')
+    expect(screen.getByTestId('timeline-paused-total').textContent).toBe('1 min paused')
   })
 
   it.fails('keeps the paused-recording minute after the page is filtered to the Shell type', async () => {

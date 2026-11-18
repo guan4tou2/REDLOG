@@ -4,7 +4,7 @@ import { join, dirname, basename } from 'node:path'
 import http from 'node:http'
 import { spawn, spawnSync } from 'node:child_process'
 import { makeTempHome, openView, expectAppBuild } from './helpers'
-import { captionState, expectClearOfCaptionControls } from './caption-geometry'
+import { settledCaptionState, expectClearOfCaptionControls } from './caption-geometry'
 import { readCastSlice } from '../src/core/cast-slice'
 import { operationPairKey } from '../src/core/operation-pair-key'
 
@@ -130,7 +130,7 @@ test.describe('packaged app', () => {
       // there a missing overlay is a failure, not a skip.
       if (process.platform !== 'darwin') {
         await test.step('nothing the page draws sits under the OS window buttons', async () => {
-          const state = await captionState(page)
+          const state = await settledCaptionState(page)
           if (!state.visible && process.platform !== 'win32') {
             test.info().annotations.push({ type: 'not-exercised', description: `window controls overlay not visible on ${process.platform} (${state.note})` })
             return

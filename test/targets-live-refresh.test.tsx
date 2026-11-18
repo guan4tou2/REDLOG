@@ -37,12 +37,12 @@ describe('the Targets page while recording', () => {
       { target: '10.0.0.1', eventCount: 1, firstSeen: T0, lastSeen: T0 }
     ]
     mountPage()
-    await waitFor(() => expect(screen.queryAllByText('OUT')).toHaveLength(1))
+    await waitFor(() => expect(screen.queryAllByText('Out of scope')).toHaveLength(1))
     expect(screen.getAllByText('In scope')).toHaveLength(1)
     await act(async () => { b.emitBatch([makeEvent('l1', T0 + 1, 'shell', { targetId: 'a.example' })]) })
     await act(async () => { vi.advanceTimersByTime(2500) })
     await act(async () => { await Promise.resolve() })
-    expect(screen.queryAllByText('OUT')).toHaveLength(1)
+    expect(screen.queryAllByText('Out of scope')).toHaveLength(1)
     expect(screen.getAllByText('In scope')).toHaveLength(1)
     expect(screen.queryByText('Not set')).toBeNull()
   })
@@ -80,12 +80,12 @@ describe('the Targets page while recording', () => {
     r.config = { get: vi.fn(async () => ({ scope })), save: async () => true }
     r.events.aggregateTargets = async () => [{ target: 'a.example', eventCount: 1, firstSeen: T0, lastSeen: T0 }]
     mountPage()
-    await waitFor(() => expect(screen.queryAllByText('OUT')).toHaveLength(1))
+    await waitFor(() => expect(screen.queryAllByText('Out of scope')).toHaveLength(1))
     scope = { targets: ['a.example'], excludeTargets: [] }
     await act(async () => {
       b.emitBatch([makeEvent('s1', T0 + 1, 'system', { data: { subtype: 'scope_recomputed' } })])
     })
-    await waitFor(() => expect(screen.queryAllByText('OUT')).toHaveLength(0))
+    await waitFor(() => expect(screen.queryAllByText('Out of scope')).toHaveLength(0))
     expect(screen.getAllByText('In scope')).toHaveLength(1)
   })
 

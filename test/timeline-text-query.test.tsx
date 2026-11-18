@@ -150,7 +150,8 @@ describe('the Timeline filter box on the query contract', () => {
     mount()
     await waitFor(() => expect(dots()).toHaveLength(2))
     type('nmap')
-    await screen.findByTestId('timeline-query-failed')
+    const failed = await screen.findByTestId('timeline-query-failed')
+    expect(failed.querySelector('svg')).not.toBeNull()
     expect(dimmedDots()).toHaveLength(0)
   })
 
@@ -260,6 +261,7 @@ describe('the Timeline filter box on the query contract', () => {
     fireEvent.click(await screen.findByTestId('timeline-earlier-matches'))
     const failed = await screen.findByTestId('timeline-loadback-failed')
     expect(failed.textContent).toContain('Retry')
+    expect(failed.querySelector('svg')).not.toBeNull()
     expect(dots()).toHaveLength(2)
   })
 

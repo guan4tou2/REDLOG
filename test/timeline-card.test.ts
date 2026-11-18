@@ -18,11 +18,19 @@ const ctx = { t, titleOf: (e: RedLogEvent) => eventTitle(e), pluginTypes: [] }
 describe('buildCard', () => {
   it('shell command_end: exit code and duration, cwd as the detail, title from titleOf', () => {
     const c = buildCard(ev('shell', { subtype: 'command_end', command: 'ls', exit_code: 2, duration_sec: 1.5, cwd: '/tmp' }), ctx)
-    expect(c.title).toBe('$ ls → exit 2')
+    // The exit code is the card's right-hand meta; the title does not say it
+    // a second time on the same line.
+    expect(c.title).toBe('$ ls')
     expect(c.typeTag).toBe('timeline.shell')
     expect(c.meta).toEqual(['transcript.metaExit{"code":2}', '1.5s'])
     expect(c.detail).toBe('/tmp')
     expect(c.lane).toBe('shell')
+  })
+
+  it('a command_end with no recorded exit code keeps the title\'s "exit ?" — the meta has nothing to say it', () => {
+    const c = buildCard(ev('shell', { subtype: 'command_end', command: 'ls' }), ctx)
+    expect(c.title).toBe('$ ls → exit ?')
+    expect(c.meta).toEqual([])
   })
 
   it('shell command_start has no result and no detail without a cwd', () => {

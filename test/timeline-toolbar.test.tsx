@@ -14,10 +14,10 @@ function Harness(over: Partial<Props>): JSX.Element {
   const props: Props = {
     t, timeRange: null, setTimeRange: vi.fn(), hasMore: false, loadedCount: 3, loadedSpanMs: 90 * 60_000, projectSpanMs: null,
     total: { state: 'ok', value: 3 }, onRetryTotal: vi.fn(), onLoadMore: vi.fn(),
-    zoom: 1, onZoomOut: vi.fn(), onZoomIn: vi.fn(), onResetZoom: vi.fn(), anchorTs: null,
+    zoom: 1, onZoomOut: vi.fn(), onZoomIn: vi.fn(), onResetZoom: vi.fn(),
     mode: 'standard', onModeChange: vi.fn(),
     filterQuery: '', onFilterQueryChange: vi.fn(), searchInputRef: createRef<HTMLInputElement>(),
-    onHelp: vi.fn(), attributionBlind: false, lanes: new Set(),
+    onHelp: vi.fn(), attributionBlind: false, pausedMs: 0, lanes: new Set(),
     moreItems: <span data-testid="more-slot" />, followBadge: <span data-testid="follow-slot" />,
     ...over
   }
@@ -92,13 +92,13 @@ describe('TimelineToolbar', () => {
     expect([onZoomOut, onZoomIn, onResetZoom].map((f) => f.mock.calls.length)).toEqual([1, 1, 1])
   })
 
-  it('anchor is absent with no selection (no placeholder) and the event time with one', () => {
-    draw()
+  // The selected event's time is on its card, the ruler and the detail bar;
+  // the toolbar repeating it as 當前錨點 was a fourth copy of one fact.
+  it('never repeats the selected event\'s time', () => {
+    draw({ anchorTs: Date.UTC(2026, 0, 2, 3, 4, 5) } as Partial<Props>)
     expect(screen.queryByTestId('timeline-anchor')).toBeNull()
     expect(screen.queryByText('Current anchor')).toBeNull()
-    cleanup()
-    draw({ anchorTs: Date.UTC(2026, 0, 2, 3, 4, 5) })
-    expect(screen.getByTestId('timeline-anchor').textContent).toMatch(/\d{2}:\d{2}:05/)
+    expect(screen.getByTestId('timeline-toolbar').textContent).not.toMatch(/\d{2}:\d{2}:05/)
   })
 
   // Reported from the real app: the Timeline said "Total 170" while the status
@@ -121,7 +121,7 @@ describe('TimelineToolbar', () => {
     cleanup()
     draw({ hasMore: true, loadedCount: 2, total: { state: 'ok', value: 250 } })
     const text = screen.getByTestId('timeline-range-status').textContent ?? ''
-    expect(text).toBe('2 of 250 events · scroll back for older')
+    expect(text).toBe('2 of 250 events')
     expect(text).not.toContain('Total')
     expect(screen.getByText('Load more')).toBeTruthy()
   })

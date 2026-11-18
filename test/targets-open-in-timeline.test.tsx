@@ -55,6 +55,28 @@ describe('opening a target in the Timeline', () => {
     expect(filterApi.filter.targetId).toBe('10.0.0.5')
   })
 
+  it('opens the target in Activity as its one primary action, scoped by the shared target', async () => {
+    // The expansion leads to the Activity page too, through the same shared target.
+    const r = (window as unknown as { redlog: Record<string, Record<string, unknown>> }).redlog
+    r.config = { get: async () => ({ scope: { targets: ['10.0.0.0/24'], excludeTargets: [] } }), save: async () => true }
+    const navigate = vi.fn()
+    window.addEventListener('redlog:navigate', navigate)
+    try {
+      render(<I18nProvider><FilterProvider><Probe /><TargetView onOpenInTimeline={() => {}} /></FilterProvider></I18nProvider>)
+      fireEvent.click(await screen.findByText('10.0.0.5'))
+      const actions = await screen.findByTestId('target-actions')
+      const buttons = Array.from(actions.querySelectorAll('button'))
+      expect(buttons[0].dataset.testid).toBe('target-open-activity')
+      expect(buttons[0].textContent).toBe('Open in Activity')
+      expect(buttons.filter((b) => b.className.includes('bg-redlog-accent ')).map((b) => b.dataset.testid)).toEqual(['target-open-activity'])
+      expect(buttons[1].dataset.testid).toBe('target-locate')
+      fireEvent.click(buttons[0])
+      expect(filterApi.filter.targetId).toBe('10.0.0.5')
+      expect(navigate).toHaveBeenCalledTimes(1)
+      expect((navigate.mock.calls[0][0] as CustomEvent).detail).toBe('search')
+    } finally { window.removeEventListener('redlog:navigate', navigate) }
+  })
+
   // T058 (SC-002): a live row joins the Targets list through the page's own
   // predicates. It was `evt.targetId === selected`, which missed the other
   // casing and let in a plumbing row that carried the target.
@@ -110,15 +132,15 @@ describe('the Targets page as the proposal lays it out', () => {
     expect(screen.getAllByText('Not set')).toHaveLength(2)
     expect(screen.queryByText('Scope unknown')).toBeNull()
     expect(screen.queryByText('In scope')).toBeNull()
-    expect((screen.getByRole('button', { name: 'In Scope' }) as HTMLButtonElement).disabled).toBe(true)
-    expect((screen.getByRole('button', { name: 'All' }) as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByRole('button', { name: /^In Scope/ }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: /^All / }) as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('judges targets against the declared rules and filters by that judgement', async () => {
     setup({ targets: ['10.0.0.5'], excludeTargets: [] })
     mount()
     await screen.findByText('In scope')
-    fireEvent.click(screen.getByRole('button', { name: 'Out of Scope' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Out of Scope/ }))
     expect(screen.queryByText('10.0.0.5')).toBeNull()
     expect(screen.getByText('api.example')).toBeTruthy()
   })
@@ -151,9 +173,13 @@ describe('the Targets page as the proposal lays it out', () => {
     expect(screen.queryByText('Not set')).toBeNull()
   })
 
-  it('says the list is ordered by recent activity', async () => {
+  // The note that said so is gone (it explained the screen); the order is the fact.
+  it('lists the most recently seen target first', async () => {
     setup({ targets: ['10.0.0.5'], excludeTargets: [] })
     mount()
-    expect(await screen.findByText('Most recent activity first')).toBeTruthy()
+    await screen.findByText('10.0.0.5')
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual([
+      expect.stringContaining('10.0.0.5'), expect.stringContaining('api.example')
+    ])
   })
 })

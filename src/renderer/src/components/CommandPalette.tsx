@@ -1,17 +1,15 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { flushSync } from 'react-dom'
-import { SectionLabel } from './SectionLabel'
-import {
-  Gauge, ChevronRight, Rows3, AlignLeft, Image, Crosshair, Ban, Gem, Bookmark, ArrowLeftRight,
-  Settings as SettingsIcon, Search, Play, Pause, FolderOpen, Rows2, UserRound, type LucideIcon,
-  Globe, FilePlus
-} from 'lucide-react'
+import { Search } from 'lucide-react'
 import { useI18n } from '../i18n'
 import type { HostAggregate } from '../../../core/db/events'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { DEFAULT_ORDER, primaryLabelKey, NUMBERED_SLOTS } from '../lib/sidebarOrder'
 import { applyDensity, resolveDensity, storedDensity, DENSITY_KEY } from '../lib/density'
-import { formatTime } from '../lib/time'
+import { formatTime, formatFreshness } from '../lib/time'
+import { paletteSettingsHits } from '../lib/paletteSettings'
+import { settingsTarget } from '../lib/navigation'
+import { landOnSetting } from '../lib/settingsFind'
 import { parseQuery } from '../../../core/query/contract'
 import { configInvalidDetail } from '../../../core/config-invalid'
 import { toast } from './Toast'
@@ -41,41 +39,49 @@ import { isComposing } from '../lib/ime'
 // In-page filtering is ⌘F, the convention every other desktop app has already
 // taught.
 
-type Section = 'nav' | 'action' | 'view' | 'project' | 'operator' | 'host' | 'search'
+type Kind = 'nav' | 'action' | 'project' | 'operator' | 'host' | 'setting' | 'search'
 
 interface Item {
   id: string
-  section: Section
-  icon: LucideIcon
+  kind: Kind
   label: string
+  /** Mark the part of the label the query matched. Event rows are found by the
+   *  store's query language, not by this substring, so they are not marked. */
+  mark: boolean
   /** Right-hand detail: a shortcut, a timestamp, a path. */
   hint?: string
   run: () => void
 }
 
-// ⌘9 is Settings', so the sidebar's numbered run stops at seven — read from
-// sidebarOrder so the palette cannot advertise a chord the sidebar does not.
-// Same detection App uses; read defensively because this module is imported
-// in tests where the preload bridge may be absent.
-
-
-// One icon per view id, the same ones the sidebar draws — a view that fell
-// back to the dashboard gauge here (search, HTTP, bookmarks did) told the
-// operator they were about to open the dashboard.
-const NAV_ICONS: Record<string, LucideIcon> = {
-  dashboard: Gauge, terminal: ChevronRight, timeline: Rows3, transcript: AlignLeft,
-  screenshots: Image, targets: Crosshair, scope: Ban, loot: Gem, bookmarks: Bookmark,
-  search: Search, http_history: ArrowLeftRight
+const KIND_KEY: Record<Kind, string> = {
+  nav: 'palette.kindPage',
+  action: 'palette.kindAction',
+  project: 'palette.kindProject',
+  operator: 'palette.kindOperator',
+  host: 'palette.kindHost',
+  setting: 'palette.kindSetting',
+  search: 'palette.kindEvent'
 }
 
-const SECTION_KEY: Record<Section, string> = {
-  nav: 'palette.sectionNav',
-  action: 'palette.sectionAction',
-  view: 'palette.sectionView',
-  project: 'palette.sectionProject',
-  operator: 'palette.sectionOperator',
-  host: 'palette.sectionHost',
-  search: 'palette.sectionSearch'
+// A kind is listed once, in this order; the score only orders rows inside it.
+// With nothing typed the menu leads with what the operator does, not with the
+// pages the sidebar already lists. Hosts, settings and events wait for a query.
+const ORDER_TYPED: Kind[] = ['nav', 'action', 'project', 'operator', 'host', 'setting', 'search']
+const ORDER_EMPTY: Kind[] = ['action', 'project', 'nav', 'operator']
+
+/** Settings rows shown for one query; the rest are said, not hidden. */
+const SETTINGS_LIMIT = 8
+
+function Marked({ text, query }: { text: string; query: string }): JSX.Element {
+  const i = query ? text.toLowerCase().indexOf(query.toLowerCase()) : -1
+  if (i < 0) return <>{text}</>
+  return (
+    <>
+      {text.slice(0, i)}
+      <mark className="bg-transparent text-redlog-text underline underline-offset-2">{text.slice(i, i + query.length)}</mark>
+      {text.slice(i + query.length)}
+    </>
+  )
 }
 
 /** Newest event matches the palette lists; Search has them all. */
@@ -219,14 +225,24 @@ export function CommandPalette({
   const shownEvents = searchPending ? NO_EVENTS : events
   const shownSearchState = searchPending ? 'idle' : searchState
 
+  // Settings text is local and cheap to search, so it needs no debounce, but a
+  // single character matches too much to be a jump.
+  const trimmed = query.trim()
+  const { hits: settingsHits, hasMore: settingsHasMore } = useMemo(
+    () => (trimmed.length >= 2
+      ? paletteSettingsHits(trimmed, t, window.redlog.platform, SETTINGS_LIMIT)
+      : { hits: [], hasMore: false }),
+    [trimmed, t]
+  )
+
   const items = useMemo<Item[]>(() => {
     const q = query.trim()
     const out: Item[] = []
+    const add = (item: Omit<Item, 'mark'> & { mark?: boolean }): void => { out.push({ mark: true, ...item }) }
 
     for (const [i, view] of DEFAULT_ORDER.entries()) {
-      const label = t(primaryLabelKey(view))
-      out.push({
-        id: `nav:${view}`, section: 'nav', icon: NAV_ICONS[view] ?? Gauge, label,
+      add({
+        id: `nav:${view}`, kind: 'nav', label: t(primaryLabelKey(view)),
         // Only primary workspaces are numbered. ⌘9 belongs to Settings, which is
         // pinned outside the reorderable run — the ninth sidebar row has no
         // chord, and claiming one here would advertise a key that does
@@ -235,33 +251,21 @@ export function CommandPalette({
         run: () => onNavigate(view)
       })
     }
-    for(const view of ['transcript','scope','loot','bookmarks'])out.push({id:`nav:${view}`,section:'nav',icon:NAV_ICONS[view],label:t(`sidebar.${view}`),run:()=>onNavigate(view)})
-    out.push({
-      id: 'nav:settings', section: 'nav', icon: SettingsIcon,
-      label: t('sidebar.settings'), hint: `${MOD}9`, run: () => onNavigate('settings')
-    })
+    for (const view of ['transcript', 'scope', 'loot', 'bookmarks']) add({ id: `nav:${view}`, kind: 'nav', label: t(`sidebar.${view}`), run: () => onNavigate(view) })
+    add({ id: 'nav:settings', kind: 'nav', label: t('sidebar.settings'), hint: `${MOD}9`, run: () => onNavigate('settings') })
 
-    out.push({
-      id: 'action:recording', section: 'action', icon: recording ? Pause : Play,
+    add({
+      id: 'action:recording', kind: 'action',
       label: recording ? t('palette.pauseRecording') : t('palette.resumeRecording'),
       hint: `${MOD}.`,
       run: () => { void toggleRecordingWithFeedback(t) }
     })
-    out.push({
-      id: 'action:screenshot', section: 'action', icon: Image,
-      label: t('screenshots.captureNow'),
-      run: () => { void captureScreenshotWithFeedback(t) }
-    })
-
-    out.push({
-      id: 'action:addArtifact', section: 'action', icon: FilePlus,
-      label: t('artifacts.add'),
-      run: () => { void addArtifactsWithFeedback(t, onOpenEvent) }
-    })
+    add({ id: 'action:screenshot', kind: 'action', label: t('screenshots.captureNow'), run: () => { void captureScreenshotWithFeedback(t) } })
+    add({ id: 'action:addArtifact', kind: 'action', label: t('artifacts.add'), run: () => { void addArtifactsWithFeedback(t, onOpenEvent) } })
 
     const density = resolveDensity(1, storedDensity())
-    out.push({
-      id: 'view:density', section: 'view', icon: Rows2,
+    add({
+      id: 'view:density', kind: 'action',
       label: density === 'tight' ? t('palette.densityComfortable') : t('palette.densityTight'),
       run: () => {
         const next = density === 'tight' ? 'comfortable' : 'tight'
@@ -271,17 +275,17 @@ export function CommandPalette({
     })
 
     for (const p of projects.filter((q) => q.id !== activeProjectId).slice(0, 8)) {
-      out.push({
-        id: `project:${p.id}`, section: 'project', icon: FolderOpen,
-        label: p.name, hint: formatTime(p.lastOpened),
+      add({
+        id: `project:${p.id}`, kind: 'project',
+        label: p.name, hint: formatFreshness(p.lastOpened, t),
         run: () => { void switchProject({ id: p.id, name: p.name }, t, onProjectClosed) }
       })
     }
 
     for (const op of operators) {
       if (op.revokedAt) continue
-      out.push({
-        id: `operator:${op.id}`, section: 'operator', icon: UserRound,
+      add({
+        id: `operator:${op.id}`, kind: 'operator',
         label: op.name,
         hint: op.isPrimary ? t('palette.operatorPrimary') : undefined,
         // Filtering the timeline by operator is the question worth asking of
@@ -294,36 +298,49 @@ export function CommandPalette({
     // host — the after-action question "what happened on this host". The
     // busiest hosts sort first (the aggregation orders by count).
     for (const h of hosts) {
-      out.push({
-        id: `host:${h.host}`, section: 'host', icon: Globe,
+      add({
+        id: `host:${h.host}`, kind: 'host',
         label: h.host,
         hint: t('palette.hostHits', { count: h.count }),
         run: () => { onNavigate('timeline'); setTimeout(() => window.dispatchEvent(new CustomEvent('redlog:filter-host', { detail: h.host })), 0) }
       })
     }
 
+    for (const h of settingsHits) {
+      add({
+        id: `setting:${h.page}:${h.key}`, kind: 'setting', label: h.text,
+        run: () => { onNavigate(settingsTarget(h.page)); landOnSetting(h.page, h.key, h.text) }
+      })
+    }
+
     for (const e of shownEvents) {
       const d = e.data as Record<string, unknown> | undefined
       const label = String(d?.command ?? d?.title ?? d?.url ?? d?.description ?? e.agentType)
-      out.push({
-        id: `search:${e.id}`, section: 'search', icon: Search,
+      add({
+        id: `search:${e.id}`, kind: 'search', mark: false,
         label, hint: formatTime(e.timestamp, { seconds: true }),
         run: () => onOpenEvent(e.id, e.timestamp)
       })
     }
 
+    const rank = (kind: Kind): number => (q ? ORDER_TYPED : ORDER_EMPTY).indexOf(kind)
     if (!q) {
-      // With no query, the search + host sections stay hidden and the rest is a
-      // menu. Hosts can number in the hundreds — they belong behind a query,
-      // like event search, not in the empty menu.
-      return out.filter((i) => i.section !== 'search' && i.section !== 'host')
+      // With no query, the search, host and settings kinds stay hidden and the
+      // rest is a menu. Hosts can number in the hundreds — they belong behind a
+      // query, like event search, not in the empty menu.
+      return out.filter((i) => rank(i.kind) >= 0).sort((a, b) => rank(a.kind) - rank(b.kind))
     }
+    // Array.prototype.sort is stable: rows of equal score keep their own order,
+    // which is how events stay newest-first.
     return out
-      .map((i) => ({ i, s: i.section === 'search' ? 900 : score(i.label, q) }))
+      // A settings row was matched by the settings index, and is listed whatever
+      // this substring score makes of it: a hit the count already includes must
+      // not vanish here, or the "more match" line would be said over a short list.
+      .map((i) => ({ i, s: i.kind === 'search' ? 900 : i.kind === 'setting' ? Math.max(1, score(i.label, q)) : score(i.label, q) }))
       .filter((x) => x.s > 0)
-      .sort((a, b) => b.s - a.s)
+      .sort((a, b) => rank(a.i.kind) - rank(b.i.kind) || b.s - a.s)
       .map((x) => x.i)
-  }, [query, shownEvents, projects, activeProjectId, operators, hosts, recording, t, onNavigate, onOpenEvent, onProjectClosed])
+  }, [query, shownEvents, settingsHits, projects, activeProjectId, operators, hosts, recording, t, onNavigate, onOpenEvent, onProjectClosed])
 
   useEffect(() => { setCursor(0) }, [query])
   // Keep the keyboard selection on screen: ↓ past the fold used to move an
@@ -350,11 +367,9 @@ export function CommandPalette({
     if (e.key === 'Enter') { e.preventDefault(); activate(items[cursor]) }
   }
 
-  let lastSection: Section | null = null
-
   return (
     <div
-      className="fixed inset-0 z-[150] flex items-start justify-center pt-[12vh] bg-black/50 backdrop-blur-sm select-text"
+      className="fixed inset-0 z-[150] flex items-start justify-center pt-[12vh] bg-black/50 select-text"
       onClick={onClose}
     >
       <div
@@ -362,7 +377,7 @@ export function CommandPalette({
         role="dialog"
         aria-modal="true"
         aria-label={t('palette.title')}
-        className="w-full max-w-xl mx-4 bg-redlog-surface border border-redlog-border rounded-xl shadow-2xl overflow-hidden"
+        className="w-full max-w-xl mx-4 bg-redlog-surface border border-redlog-border rounded-xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={onKeyDown}
       >
@@ -400,41 +415,39 @@ export function CommandPalette({
               {t('palette.searchSubset', { count: EVENT_LIMIT })}
             </p>
           )}
+          {settingsHasMore && (
+            <p data-testid="palette-settings-subset" role="status" className="px-4 py-2 text-xs text-redlog-text-faint">
+              {t('palette.settingsSubset')}
+            </p>
+          )}
           {items.length === 0 && !searchPending && shownSearchState !== 'failed' && shownSearchState !== 'unparsable' && (
             <p className="px-4 py-6 text-xs text-redlog-text-faint text-center">
               {t('palette.noMatches', { query })}
             </p>
           )}
-          {items.map((item, i) => {
-            const header = item.section !== lastSection ? item.section : null
-            lastSection = item.section
-            return (
-              <div key={item.id}>
-                {header && (
-                  <SectionLabel className="px-3 pt-2 pb-1">
-                    {t(SECTION_KEY[header])}
-                  </SectionLabel>
-                )}
-                <button
-                  id={`palette-opt-${i}`}
-                  data-command-id={item.id}
-                  role="option"
-                  aria-selected={i === cursor}
-                  onMouseMove={() => setCursor(i)}
-                  onClick={() => activate(item)}
-                  className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left ${
-                    i === cursor ? 'bg-redlog-elevated' : ''
-                  }`}
-                >
-                  <item.icon size={16} strokeWidth={1.5} aria-hidden className="shrink-0 text-redlog-text-faint" />
-                  <span title={item.label} className="flex-1 min-w-0 truncate text-xs text-redlog-text">{item.label}</span>
-                  {item.hint && (
-                    <span className="shrink-0 text-xs font-mono text-redlog-text-faint tabular-nums">{item.hint}</span>
-                  )}
-                </button>
-              </div>
-            )
-          })}
+          {items.map((item, i) => (
+            <button
+              key={item.id}
+              id={`palette-opt-${i}`}
+              data-command-id={item.id}
+              data-kind={item.kind}
+              role="option"
+              aria-selected={i === cursor}
+              onMouseMove={() => setCursor(i)}
+              onClick={() => activate(item)}
+              className={`w-full flex items-center gap-3 px-3 py-1.5 text-left ${
+                i === cursor ? 'bg-redlog-elevated' : ''
+              }`}
+            >
+              <span data-testid="palette-where" className="w-14 shrink-0 text-xs text-redlog-text-faint">{t(KIND_KEY[item.kind])}</span>
+              <span title={item.label} className="flex-1 min-w-0 truncate text-xs text-redlog-text">
+                {item.mark ? <Marked text={item.label} query={trimmed} /> : item.label}
+              </span>
+              {item.hint && (
+                <span className="shrink-0 text-xs font-mono text-redlog-text-faint tabular-nums">{item.hint}</span>
+              )}
+            </button>
+          ))}
         </div>
       </div>
     </div>

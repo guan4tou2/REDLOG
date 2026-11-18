@@ -8,6 +8,9 @@ import { render, cleanup, screen, fireEvent, waitFor, act } from '@testing-libra
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { CommandPalette } from '../src/renderer/src/components/CommandPalette'
 import { toast, toastUndo } from '../src/renderer/src/components/Toast'
+import { isSettingControlKey, looksLikeLabel, paletteSettingsHits } from '../src/renderer/src/lib/paletteSettings'
+import { searchSettings } from '../src/renderer/src/lib/settingsSearch'
+import en from '../src/renderer/src/i18n/en.json'
 
 vi.mock('../src/renderer/src/components/Toast', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/renderer/src/components/Toast')>()),
@@ -150,11 +153,23 @@ describe('command palette', () => {
     expect(await screen.findByTestId('palette-search-subset')).toBeTruthy()
   })
 
-  it('navigates and closes on Enter', async () => {
-    const { onNavigate, onClose } = open()
+  // With nothing typed the menu leads with actions, so Enter runs the first one;
+  // a page is one query away.
+  it('runs the highlighted row and closes on Enter', async () => {
+    const { onNavigate, onClose } = open({ recording: true })
     await screen.findAllByRole('option')
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Enter' })
-    expect(onNavigate).toHaveBeenCalledOnce()
+    await waitFor(() => expect(bridge.recording.toggle).toHaveBeenCalledOnce())
+    expect(onNavigate).not.toHaveBeenCalled()
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('navigates to a page picked by name', async () => {
+    const { onNavigate, onClose } = open()
+    type('bookmarks')
+    await screen.findAllByRole('option')
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Enter' })
+    expect(onNavigate).toHaveBeenCalledWith('bookmarks')
     expect(onClose).toHaveBeenCalledOnce()
   })
 
@@ -356,5 +371,135 @@ describe('operator search', () => {
     expect(onClose).not.toHaveBeenCalled()
     fireEvent.keyDown(box, { key: 'Escape' })
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+})
+
+const kinds = (): string[] => screen.queryAllByRole('option').map((o) => o.getAttribute('data-kind') ?? '')
+const t = (k: string): string => (en as Record<string, string>)[k] ?? k
+
+// A result is one line: where | what | key. Section headings and per-row icons
+// went; the "where" is a quiet column on the row itself.
+describe('one line per result', () => {
+  it('has no section headings and no per-row icon', async () => {
+    bridge.project.list.mockResolvedValue([{ id: 'b', name: 'project-b', lastOpened: Date.now() }])
+    open()
+    const options = await screen.findAllByRole('option')
+    expect(screen.getByRole('listbox').querySelectorAll('svg'), 'icons inside the list').toHaveLength(0)
+    // Every row names its kind in its own line.
+    for (const o of options) expect(o.querySelector('[data-testid="palette-where"]')?.textContent, o.textContent ?? '').toBeTruthy()
+    expect(screen.queryByText('Go to')).toBeNull()
+  })
+
+  it('never lists a kind twice, whatever the scores', async () => {
+    bridge.project.list.mockResolvedValue([{ id: 'b', name: 'timeline project', lastOpened: Date.now() }])
+    bridge.events.distinctHosts.mockResolvedValue([{ host: 'time.example.com', count: 3 }] as never)
+    open()
+    // "time" is a substring of a page, an action's neighbour, a project and a host,
+    // each at a different position so score order alone would interleave them.
+    type('time')
+    await screen.findByText(/time\.example|example\.com/)
+    const seen = kinds()
+    expect(new Set(seen).size, `kind order was ${seen.join(',')}`).toBe(seen.filter((k, i) => i === 0 || k !== seen[i - 1]).length)
+    expect(seen.length).toBeGreaterThan(2)
+    expect(seen.every(Boolean), 'every row names its kind').toBe(true)
+  })
+
+  it('marks the matched part of the name with a <mark>', async () => {
+    open()
+    type('mark')
+    await screen.findAllByRole('option')
+    const option = document.querySelector('[data-command-id="nav:bookmarks"]') as HTMLElement
+    expect(option.querySelector('mark')?.textContent.toLowerCase()).toBe('mark')
+  })
+
+  it('shows actions and recent projects before pages on an empty query', async () => {
+    bridge.project.list.mockResolvedValue([{ id: 'b', name: 'project-b', lastOpened: Date.now() }])
+    open()
+    await screen.findByText('project-b')
+    const seen = kinds().filter((k, i, a) => i === 0 || k !== a[i - 1])
+    expect(seen).toEqual(['action', 'project', 'nav', 'operator'])
+  })
+
+  it('dates a project last opened days ago, not by a clock time', async () => {
+    bridge.project.list.mockResolvedValue([{ id: 'b', name: 'project-b', lastOpened: Date.now() - 3 * 86_400_000 }])
+    open()
+    const row = (await screen.findByText('project-b')).closest('[role="option"]') as HTMLElement
+    expect(row.querySelector('.font-mono')?.textContent).toBe('3d ago')
+  })
+
+  it('draws a flat panel: no backdrop blur and no drop shadow', async () => {
+    open()
+    const panel = screen.getByRole('dialog')
+    expect(panel.className).not.toMatch(/shadow/)
+    expect(panel.parentElement?.className).not.toMatch(/backdrop-blur/)
+  })
+})
+
+describe('settings in the palette', () => {
+  const hit = searchSettings('proxy', t, 1)[0]
+
+  it('finds a setting by its text and opens its page', async () => {
+    expect(hit, 'fixture: some setting text contains "proxy"').toBeTruthy()
+    const { onNavigate } = open()
+    type('proxy')
+    const rows = (await screen.findAllByRole('option')).filter((o) => o.getAttribute('data-kind') === 'setting')
+    expect(rows.length).toBeGreaterThan(0)
+    expect(rows[0].querySelector('[data-testid="palette-where"]')?.textContent).toBe('Setting')
+    fireEvent.click(rows[0])
+    expect(onNavigate).toHaveBeenCalledWith(expect.stringMatching(/^settings\/[A-Za-z]+/))
+  })
+
+  it('does not search settings for one character', async () => {
+    open()
+    type('p')
+    await screen.findAllByRole('option')
+    expect(kinds()).not.toContain('setting')
+  })
+
+  it('caps the settings rows and says when there are more', async () => {
+    const q = ['capture', 'settings', 'proxy', 'event', 'the', 'port', 'ip', 'on'].find((w) => paletteSettingsHits(w, t, undefined, 8).hasMore)
+    expect(q, 'fixture: a query with more than 8 setting matches').toBeTruthy()
+    open()
+    type(q!)
+    expect(await screen.findByTestId('palette-settings-subset')).toBeTruthy()
+    expect(kinds().filter((k) => k === 'setting')).toHaveLength(8)
+  })
+})
+
+describe('settings rows are things to set', () => {
+  it('lists the loot settings group, not its load-failure message or hint', async () => {
+    open()
+    type('loot')
+    await screen.findAllByRole('option')
+    const labels = screen.getAllByRole('option')
+      .filter((o) => o.getAttribute('data-kind') === 'setting')
+      .map((o) => o.querySelector('[title]')?.getAttribute('title'))
+    expect(labels).toContain(t('settings.lootGroup'))
+    expect(labels).not.toContain(t('settings.lootRulesFailed'))
+    expect(labels).not.toContain(t('settings.lootHint'))
+  })
+
+  it('tells controls from messages by key', () => {
+    for (const k of ['settings.lootRulesFailed', 'settings.lootHint', 'settings.lootRuleStopped', 'settings.lootBuiltin']) expect(isSettingControlKey(k), k).toBe(false)
+    for (const k of ['settings.lootGroup', 'httpCapture.caReady']) expect(isSettingControlKey(k), k).toBe(true)
+  })
+
+  it('lists a label, not a sentence that happens to contain the word', () => {
+    expect(looksLikeLabel('AI agent capture')).toBe(true)
+    expect(looksLikeLabel('Only web-traffic capture needs this. You can record commands without it.')).toBe(false)
+    expect(looksLikeLabel('截圖品質')).toBe(true)
+    expect(looksLikeLabel('只有網路流量擷取需要這個。沒有它也能記錄指令。')).toBe(false)
+    const { hits } = paletteSettingsHits('capture', t, undefined, 50)
+    expect(hits.length).toBeGreaterThan(0)
+    for (const h of hits) expect(looksLikeLabel(h.text), h.key).toBe(true)
+  })
+
+  it('renders every setting hit it counted, however late the word sits in the label', async () => {
+    const q = ['capture', 'settings', 'proxy', 'event', 'port'].find((w) => paletteSettingsHits(w, t, undefined, 8).hits.length > 0)!
+    const { hits } = paletteSettingsHits(q, t, undefined, 8)
+    open()
+    type(q)
+    await screen.findAllByRole('option')
+    expect(kinds().filter((k) => k === 'setting')).toHaveLength(hits.length)
   })
 })

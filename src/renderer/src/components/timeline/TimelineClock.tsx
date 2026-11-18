@@ -34,12 +34,17 @@ export function FollowBadge({ latestTs, isLive, onPause, onResume, t }: {
       data-testid="timeline-follow-badge"
       onClick={() => { if (isLive) onPause(); else onResume() }}
       title={isLive ? t('timeline.follow.pauseHint') : t('timeline.follow.resumeHint', { time: formatBehind(behindMs) })}
+      // Live and following is the normal state, so it is the quiet one: a dot
+      // and a word. Falling behind keeps its warning tint.
       className={`whitespace-nowrap text-xs font-mono px-1.5 py-0.5 min-h-7 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 ${
         isLive
-          ? 'text-emerald-100 bg-emerald-600/40 ring-1 ring-emerald-500/40'
+          ? 'inline-flex items-center gap-1.5 text-redlog-text-dim hover:text-redlog-text'
           : 'text-amber-300 bg-amber-500/10 hover:bg-amber-500/20'
       }`}
-    >{isLive ? t('timeline.follow.live') : t('timeline.follow.behindFmt', { time: formatBehind(behindMs) })}</button>
+    >
+      {isLive && <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
+      {isLive ? t('timeline.follow.live') : t('timeline.follow.behindFmt', { time: formatBehind(behindMs) })}
+    </button>
   )
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildSessionBands, type SessionBandLabels } from '../src/renderer/src/lib/timelineSessionBands'
+import { buildSessionBands, pausedMsWithin, type SessionBandLabels } from '../src/renderer/src/lib/timelineSessionBands'
 
 const labels: SessionBandLabels = {
   termLabel: (id) => `T:${id}`,
@@ -74,5 +74,29 @@ describe('buildSessionBands', () => {
     ]
     const bands = buildSessionBands(events, linear, labels, 400)
     expect(bands.every((b) => b.row === 0)).toBe(true)
+  })
+
+  // A pause is a fact about the record: the band carries when it started and
+  // ended, so it can say so, and whether it is still open.
+  it('a paused band carries its start and end times, and says when it is still open', () => {
+    const events = [
+      { id: 'p1', timestamp: 10000, agentType: 'system', data: { subtype: 'recording_paused' } },
+      { id: 'r1', timestamp: 20000, agentType: 'system', data: { subtype: 'recording_resumed' } },
+      { id: 'p2', timestamp: 30000, agentType: 'system', data: { subtype: 'recording_paused' } }
+    ]
+    const bands = buildSessionBands(events, linear, labels, 40000)
+    expect(bands.map((b) => [b.from, b.to, b.open])).toEqual([[10000, 20000, false], [30000, 40000, true]])
+  })
+})
+
+describe('pausedMsWithin', () => {
+  const band = (from: number, to: number, kind: 'paused' | 'term' = 'paused') =>
+    ({ id: `${kind}-${from}`, x0: from, x1: to, from, to, open: false, label: '', kind, row: 0 })
+
+  it('sums only the paused time that overlaps the range', () => {
+    const bands = [band(0, 100), band(200, 300), band(0, 1000, 'term')]
+    expect(pausedMsWithin(bands, 50, 250)).toBe(100)
+    expect(pausedMsWithin(bands, 400, 500)).toBe(0)
+    expect(pausedMsWithin(bands, -1000, 1000)).toBe(200)
   })
 })

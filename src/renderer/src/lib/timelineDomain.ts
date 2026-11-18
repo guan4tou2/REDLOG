@@ -48,8 +48,10 @@ export const LANE_COLORS: Record<LaneId, string> = Object.fromEntries(
 // The Timeline composes these into strings with a hex alpha appended
 // (`${colour}40`), so they stay hex here — this module is where the
 // Timeline's inline colours live (test/design-palette.test.ts allows it).
-/** Session band labels: a paused stretch in neutral, a session in indigo. */
-export const SESSION_BAND_LABEL_COLOR = { paused: '#cbd5e1', session: '#a5b4fc' } as const
+/** Session band labels: a paused stretch in the warning colour (amber-400 in
+ *  styles/index.css; a pause is a gap in the record, not a view setting), a
+ *  session in indigo. */
+export const SESSION_BAND_LABEL_COLOR = { paused: '#d4ac5a', session: '#a5b4fc' } as const
 
 // ── Types ────────────────────────────────────────────────────────────
 

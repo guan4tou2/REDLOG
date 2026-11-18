@@ -39,13 +39,11 @@ it('shows both counts on the tabs, and moves between the pages', async () => {
   expect(screen.getByRole('tab', { selected: true }).textContent).toContain('Targets')
 })
 
-it('says the rules are set, with how many allow and exclude', async () => {
+it('says the rules are set, and lists them', async () => {
   install(async () => ({ scope: { targets: ['a', 'b', 'c'], excludeTargets: ['x'] } }))
   mount()
   expect(await screen.findByText('Scope rules are set')).toBeTruthy()
-  const strip = screen.getByTestId('scope-context')
-  expect(strip.textContent).toContain('Allowed 3')
-  expect(strip.textContent).toContain('Excluded 1')
+  expect(screen.getAllByTestId('scope-rule').map((r) => `${r.dataset.kind}:${r.dataset.rule}`)).toEqual(['allow:a', 'allow:b', 'allow:c', 'exclude:x'])
 })
 
 it('says scope is not set, and offers the settings', async () => {
@@ -54,7 +52,7 @@ it('says scope is not set, and offers the settings', async () => {
   expect(await screen.findByText('Scope is not set')).toBeTruthy()
   // Not set has no count to give: a dash, not a 0 that reads as a measurement.
   expect(screen.getByTestId('tab-count-scope').textContent).toBe('—')
-  fireEvent.click(screen.getByRole('button', { name: 'Go to settings' }))
+  fireEvent.click(screen.getByTestId('targets-scope-settings'))
   expect(onOpenSettings).toHaveBeenCalledOnce()
 })
 
