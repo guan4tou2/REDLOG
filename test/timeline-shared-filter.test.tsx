@@ -140,7 +140,12 @@ describe('the Timeline on the shared filter', () => {
     await waitFor(() => expect(status()).toMatch(/\b1 event/))
     b.matchIds.mockRejectedValueOnce(new Error('busy'))
     await act(async () => { b.emitBatch([makeEvent('live-1', T0 + 1)]) })
-    await screen.findByTestId('timeline-live-failed')
+    const failed = await screen.findByTestId('timeline-live-failed')
+    // A failed read gets the error treatment: a shape as well as a colour,
+    // announced, with its retry beside it.
+    expect(failed.getAttribute('role')).toBe('alert')
+    expect(failed.querySelector('svg')).not.toBeNull()
+    expect(within(failed).getByRole('button', { name: 'Retry' })).toBeTruthy()
   })
 
   it('clears and explains a selection the new filter excludes', async () => {

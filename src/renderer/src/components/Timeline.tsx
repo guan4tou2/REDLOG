@@ -22,7 +22,7 @@ import { useSharedFilter, toEventFilter, describeActiveConditions } from '../lib
 import { windowAround } from '../lib/timeRangeInput'
 import { LoadingSpinner } from './Feedback'
 import { getLastVerifyResult, VERIFY_UPDATED_EVENT, type FullVerifyResult } from '../lib/verifyResultCache'
-import { BrokenChainBanner, FocusChainBadge } from './timeline/TimelineStatusStrips'
+import { BrokenChainBanner, FocusChainBadge, StripAlert } from './timeline/TimelineStatusStrips'
 import { TimelineToolbar } from './timeline/TimelineToolbar'
 import { TimelineEventLog } from './timeline/TimelineEventLog'
 import { TimelineLanesHeader, laneCountText } from './timeline/TimelineLanesHeader'
@@ -1993,13 +1993,8 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
             <span data-testid="timeline-query-matching" role="status" className="text-redlog-text-faint">{t('timeline.matching')}</span>
           )}
           {parsedQuery && boxState === 'failed' && (
-            <div role="alert" data-testid="timeline-query-failed" className="text-red-300">
-              {t('timeline.queryFailed')}{' '}
-              <button
-                onClick={() => { matchCacheRef.current = freshMatchCache(null); setBoxRetry((n) => n + 1) }}
-                className="underline hover:text-red-200"
-              >{t('common.retry')}</button>
-            </div>
+            <StripAlert testId="timeline-query-failed" message={t('timeline.queryFailed')} t={t}
+              onRetry={() => { matchCacheRef.current = freshMatchCache(null); setBoxRetry((n) => n + 1) }} />
           )}
           {parsedQuery && boxState === 'matched' && (
             <span data-testid="timeline-match-count" className="sr-only" aria-live="polite">
@@ -2017,10 +2012,8 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
             >{t('timeline.earlierMatches', { count: earlier.count })}</button>
           )}
           {parsedQuery && earlier.state === 'failed' && (
-            <div role="alert" data-testid="timeline-earlier-failed" className="text-red-300">
-              {t('timeline.earlierFailed')}{' '}
-              <button onClick={() => setEarlierRetry((n) => n + 1)} className="underline hover:text-red-200">{t('common.retry')}</button>
-            </div>
+            <StripAlert testId="timeline-earlier-failed" message={t('timeline.earlierFailed')} t={t}
+              onRetry={() => setEarlierRetry((n) => n + 1)} />
           )}
           {loadBack?.state === 'loading' && (
             <span data-testid="timeline-loadback-progress" role="status" className="text-redlog-text-dim">
@@ -2034,33 +2027,20 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
             </span>
           )}
           {loadBack?.state === 'failed' && (
-            <div role="alert" data-testid="timeline-loadback-failed" className="text-red-300">
-              {t('timeline.loadBackFailed')}{' '}
-              <button
-                onClick={() => { const id = loadBack.eventId; setLoadBack(null); void loadBackTo(id) }}
-                className="underline hover:text-red-200"
-              >{t('common.retry')}</button>
-            </div>
+            <StripAlert testId="timeline-loadback-failed" message={t('timeline.loadBackFailed')} t={t}
+              onRetry={() => { const id = loadBack.eventId; setLoadBack(null); void loadBackTo(id) }} />
           )}
           {loadError && rawEvents.length > 0 && (
-            <div role="alert" data-testid="timeline-page-failed" className="text-red-300">
-              {t('timeline.pageFailed')}{' '}
-              <Button size="compact" level="quiet" className="ml-1" onClick={loadMore} >{t('common.retry')}</Button>
-            </div>
+            <StripAlert testId="timeline-page-failed" message={t('timeline.pageFailed')} t={t} onRetry={loadMore} />
           )}
           {liveError && (
-            <div role="alert" data-testid="timeline-live-failed" className="text-amber-300">
-              {t('timeline.liveAdmissionFailed')}{' '}
-              <button
-                onClick={() => {
-                  const batch = liveError.ids
-                  setLiveError(null)
-                  if (batch.length > 0) void admitLiveRef.current(batch).catch(() => {})
-                  else loadFirstPage()
-                }}
-                className="underline hover:text-amber-200"
-              >{t('common.retry')}</button>
-            </div>
+            <StripAlert testId="timeline-live-failed" tone="warn" message={t('timeline.liveAdmissionFailed')} t={t}
+              onRetry={() => {
+                const batch = liveError.ids
+                setLiveError(null)
+                if (batch.length > 0) void admitLiveRef.current(batch).catch(() => {})
+                else loadFirstPage()
+              }} />
           )}
           {outsideFilter && (
             <div role="status" data-testid="timeline-outside-filter" className="text-redlog-text-dim flex items-center gap-2">

@@ -5,9 +5,29 @@ import { Button, FIELD_FOCUS_RING } from '../Button'
 // behaviour — the panel still owns every value they show.
 
 import type { RefObject } from 'react'
+import { TriangleAlert } from 'lucide-react'
 import type { FullVerifyResult } from '../../lib/verifyResultCache'
 
 type Translate = (key: string, vars?: Record<string, string | number>) => string
+
+/** A read that failed, in the message strip: a shape as well as a colour,
+ *  announced, and its retry beside the words. `warn` is for a live batch
+ *  that could not be checked — rows held back, not lost. */
+export function StripAlert({ testId, message, onRetry, tone = 'danger', t }: {
+  testId: string
+  message: string
+  onRetry: () => void
+  tone?: 'danger' | 'warn'
+  t: Translate
+}): JSX.Element {
+  return (
+    <div role="alert" data-testid={testId} className={`flex items-center gap-1.5 ${tone === 'danger' ? 'text-red-300' : 'text-amber-300'}`}>
+      <TriangleAlert size={14} strokeWidth={1.5} aria-hidden="true" className="shrink-0" />
+      <span>{message}</span>
+      <Button size="compact" level="quiet" type="button" onClick={onRetry}>{t('common.retry')}</Button>
+    </div>
+  )
+}
 
 /** Sticks above the header so a broken chain cannot be missed. Dismiss hides
  *  it for this mount only; the verify cache still holds the result. */
