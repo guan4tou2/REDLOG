@@ -412,7 +412,7 @@ test.describe('activity-return-state', () => {
 
     await openView(page, 'search')
     await page.getByTestId('search-input').fill('marker')
-    await page.getByTestId('activity-source').selectOption('shell')
+    await page.getByTestId('activity-source').getByRole('button', { name: 'Commands' }).click()
     await page.getByTestId('activity-row').nth(3).click()
     await page.getByTestId('activity-read').first().click()
     await expect(page.getByTestId('activity-reader')).toBeVisible()
@@ -438,7 +438,7 @@ test.describe('activity-return-state', () => {
     await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'search')
     await expect(page.getByTestId('activity-reader')).toBeVisible()
     await expect(page.getByTestId('search-input')).toHaveValue('marker')
-    await expect(page.getByTestId('activity-source')).toHaveValue('shell')
+    await expect(page.getByTestId('activity-source').getByRole('button', { name: 'Commands' })).toHaveAttribute('aria-pressed', 'true')
     await expect(find).toHaveValue('marker-tail-find')
     await expect(output).toHaveText(readingWindow!)
     expect(Math.abs(await output.evaluate(el => el.scrollTop) - readingPosition)).toBeLessThan(4)

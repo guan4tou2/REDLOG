@@ -219,20 +219,9 @@ test.describe.serial('visual-reference', () => {
             await page.getByTestId('settings-back').click()
           }
           if (view === 'terminal') {
-            await expect(page.getByTestId('terminal-header').locator('..')).toHaveCSS('background-color', 'rgb(18, 18, 20)')
-            await page.getByTestId('terminal-about-open').click()
-            const dialog = page.getByTestId('terminal-about')
-            await expect(dialog).toHaveCSS('border-radius', '12px')
-            await expectHairline(dialog)
-            await expect(dialog).toHaveCSS('background-color', 'rgb(26, 26, 29)')
-            const fits = await dialog.evaluate(el => {
-              const box = el.getBoundingClientRect()
-              return box.left >= 0 && box.right <= window.innerWidth && box.top >= 0 && box.bottom <= window.innerHeight
-            })
-            expect(fits, 'terminal dialog stays inside the window at larger text').toBe(true)
-            await capture(join(dir, '12-terminal-dialog.png'))
-            await page.keyboard.press('Escape')
-            await expect(dialog).toHaveCount(0)
+            // No page header and no capture dialog: the tab strip is the first row.
+            await expect(page.getByTestId('terminal-tabs').locator('..')).toHaveCSS('background-color', 'rgb(18, 18, 20)')
+            await expect(page.getByTestId('terminal-header')).toHaveCount(0)
           }
         }
       } catch (e) {

@@ -20,8 +20,9 @@ const ROOT = path.join(__dirname, '..')
 // Counted 2026-11-11 (the #677 jump links and the #561 session picker trigger added one each; the
 // Network page's custom VPN adapter remove became an IconButton), excluding the two files that implement
 // the shared controls (they render the one raw <button> each).
-// 2026-11-18: 219 — the Timeline message strip's four retry links became StripAlert's Button.
-const RAW_BUTTON_BASELINE = 219
+// 2026-11-18: the Timeline message strip's four retry links became StripAlert's Button, and the
+// Terminal strip lost its font/find buttons and gained one ▾ — measured on the merged tree.
+const RAW_BUTTON_BASELINE = 216
 const IMPLEMENTATIONS = new Set([
   'src/renderer/src/components/Button.tsx',
   'src/renderer/src/components/IconButton.tsx'

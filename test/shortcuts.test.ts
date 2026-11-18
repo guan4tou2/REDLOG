@@ -93,7 +93,7 @@ describe('the cheatsheet table', () => {
   it('documents the app- and terminal-scoped bindings', () => {
     const rows = appShortcuts(SIDEBAR_ORDER, true).filter((r) => r.scope !== 'nav')
     expect(rows.map((r) => r.keys)).toEqual([
-      '⌘K', '⌘F', '⌘.', '⌘⇧M', '⌘⇧2', '⌘⇧⌥↑↓←→', '⌘⇧P', '⌘T', '⌘W', '⌘⇧[ ]'
+      '⌘K', '⌘F', '⌘.', '⌘⇧M', '⌘⇧2', '⌘⇧⌥↑↓←→', '⌘⇧P', '⌘T', '⌘W', '⌘⇧[ ]', '⌘= ⌘- ⌘0'
     ])
   })
 })
