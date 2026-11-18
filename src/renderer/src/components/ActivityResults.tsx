@@ -16,9 +16,10 @@ import { ActivityAround } from './ActivityAround'
 import { narrowsEvents } from '../lib/filterNarrowing'
 
 const ROW_GRID = 'grid grid-cols-[72px_130px_minmax(0,1fr)_24px] gap-x-3 items-center'
-/** A list row is `--row-h` tall (UIUX-STANDARD §3: 40px, 32px tight), a
- *  minimum rather than a fixed height so nothing it shows is cut. */
-const ROW_BOX = 'min-h-[var(--row-h)] py-1 px-3'
+/** A list row is 36px over a 1px rule, a 37px pitch (01-activity prototype),
+ *  a minimum rather than a fixed height so nothing it shows is cut. The
+ *  global `--row-h` is other lists'. */
+const ROW_BOX = 'min-h-9 py-1 px-3'
 
 export function SearchCoverage({ coverage }: { coverage?: BodySearchCoverage }): JSX.Element | null {
   const { t } = useI18n()
@@ -140,19 +141,14 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
         // workspace's tab row) it goes there instead of taking a row of its
         // own, and only while this reading is the one shown.
         const stats = <div data-testid="activity-stats" className={`flex flex-wrap items-center gap-2 text-xs text-redlog-text-dim ${statsSlot ? '' : 'mb-2 justify-between'}`}>
-          <span>{t('activity.count', { groups: page.totalGroups, matches: page.totalMatches })}
+          <span>{t('activity.count', { groups: page.totalGroups })}
             {filtering && onClearQuery && <button type="button" data-testid="activity-clear-filter" onClick={onClearQuery} className="ml-2 underline hover:text-redlog-text focus-visible:outline focus-visible:outline-red-400">{t('activity.clearFilter')}</button>}
           </span>
-          {newEvents > 0 && <button type="button" data-testid="activity-new-events" onClick={refresh} className="flex items-center gap-1.5 rounded border border-redlog-border bg-redlog-elevated px-2 py-0.5 text-redlog-text hover:border-redlog-text-dim focus-visible:outline focus-visible:outline-red-400"><span aria-hidden className="text-emerald-400">↑</span>{t('workspace.newActivity', { count: newEvents })}</button>}
+          {newEvents > 0 && <button type="button" data-testid="activity-new-events" onClick={refresh} className="underline underline-offset-2 text-redlog-text-dim hover:text-redlog-text focus-visible:outline focus-visible:outline-red-400">{t('workspace.newActivity', { count: newEvents })}</button>}
         </div>
         if (!statsSlot) return stats
         return active ? createPortal(stats, statsSlot) : null
       })()}
-      {page.items.length > 0 && <div aria-hidden="true" className={`${ROW_GRID} px-2 py-1 text-xs uppercase text-redlog-text-faint select-none`}>
-        <span>{t('activity.col.time')}</span><span>{t('activity.col.source')}</span><span>{t('activity.col.content')}</span>{/* The column is the 24px chevron's; the label may be wider, so it stays on
-            one line and reaches left into the gap instead of stacking 檢/視. */}
-        <span className="justify-self-end whitespace-nowrap">{t('activity.col.view')}</span>
-      </div>}
       {page.items.length === 0 && (() => {
         // Three different empties: the filter bar's conditions emptied it, a
         // typed query matched nothing, or there is nothing recorded to match.
@@ -162,17 +158,17 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
           {narrowed && onClearConditions && <button type="button" data-testid="activity-clear-conditions" onClick={onClearConditions} className="ml-2 underline hover:text-redlog-text focus-visible:outline focus-visible:outline-red-400">{t('filter.clearAll')}</button>}
         </p>
       })()}
-      <div className="flex flex-col gap-1">
+      <div data-testid="activity-list" className="flex flex-col">
         {(() => {
           const day = (at: number): JSX.Element | null => (at === 0 || formatDate(page.items[at - 1].firstAt) !== formatDate(page.items[at].firstAt))
-            ? <div data-testid="activity-day" role="separator" className="flex items-center gap-2 px-2 py-1.5 text-xs text-redlog-text-dim select-none">
-              <span className="rounded border border-redlog-border px-2 py-0.5 font-mono">{formatDate(page.items[at].firstAt)}{formatDate(page.items[at].firstAt) === formatDate(Date.now()) && <span className="font-sans text-redlog-text-dim"> ({t('activity.today')})</span>}</span><span className="h-px flex-1 bg-redlog-border-subtle" />
+            ? <div data-testid="activity-day" role="separator" className="mt-2 flex h-7 items-center gap-3 px-3 font-mono text-xs text-redlog-text-dim select-none">
+              <span className="h-px w-4 bg-redlog-border-subtle" /><span>{formatDate(page.items[at].firstAt) === formatDate(Date.now()) && `${t('activity.today')} `}{formatDate(page.items[at].firstAt)}</span><span className="h-px flex-1 bg-redlog-border-subtle" />
             </div>
             : null
           const row = (item: ActivitySummary, at: number, withDay: boolean): JSX.Element => <div key={item.id} className="min-w-0">
           {withDay && day(at)}
-          <div className={`rounded-lg transition-colors ${expanded === item.id ? 'bg-redlog-elevated' : 'bg-redlog-surface hover:bg-redlog-elevated'}`}>
-          <button type="button" data-testid="activity-row" aria-expanded={expanded === item.id} className={`${ROW_GRID} ${ROW_BOX} w-full text-left rounded-lg focus-visible:outline focus-visible:outline-red-400`}
+          <div className={`border-b border-redlog-border-subtle transition-colors ${expanded === item.id ? 'bg-redlog-elevated' : 'hover:bg-redlog-elevated'}`}>
+          <button type="button" data-testid="activity-row" aria-expanded={expanded === item.id} className={`${ROW_GRID} ${ROW_BOX} w-full text-left focus-visible:outline focus-visible:outline-red-400`}
             onClick={() => setExpanded(expanded === item.id ? null : item.id)}>
             <time className="font-mono text-xs text-redlog-text-dim">{formatTime(item.firstAt, { seconds: true })}</time>
             {(() => {
@@ -222,20 +218,24 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
             return <div key={`fold:${seg.key}`} className="min-w-0">
               {day(seg.at)}
               <button type="button" data-testid="activity-system-fold" aria-expanded={open} onClick={toggle}
-                className={`${ROW_GRID} ${ROW_BOX} w-full text-left rounded-lg bg-redlog-surface/60 hover:bg-redlog-elevated focus-visible:outline focus-visible:outline-red-400`}>
+                className={`${ROW_GRID} ${ROW_BOX} w-full text-left border-b border-redlog-border-subtle hover:bg-redlog-elevated focus-visible:outline focus-visible:outline-red-400`}>
                 <time className="font-mono text-xs text-redlog-text-faint">{formatTime(seg.items[0].firstAt, { seconds: true })}</time>
                 <span className="flex min-w-0"><span className="inline-block rounded px-1.5 py-0.5 text-xs bg-redlog-elevated text-redlog-text-faint">{t('timeline.system')}</span></span>
                 <span className="min-w-0 pr-2 text-sm text-redlog-text-dim">{t('activity.systemFold', { count: seg.items.length })}</span>
                 <span aria-hidden="true" className={`text-right text-redlog-text-dim transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
               </button>
-              {open && <div className="mt-1 flex flex-col gap-1 pl-3 border-l border-redlog-border-subtle">
+              {open && <div className="flex flex-col pl-3 border-l border-redlog-border-subtle">
                 {seg.items.map((it, k) => row(it, seg.at + k, false))}
               </div>}
             </div>
           })
         })()}
       </div>
-      {page.hasMore && <Button disabled={busy} onClick={() => void more()}>{t('search.loadMore')}</Button>}
+      {/* A paged list must not look complete: say how much of it is here. */}
+      {page.hasMore && <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-redlog-text-faint">
+        <span data-testid="activity-loaded" className="font-mono">{t('activity.loaded', { shown: page.items.length, total: page.totalGroups })}</span>
+        <Button size="compact" disabled={busy} onClick={() => void more()}>{t('search.loadMore')}</Button>
+      </div>}
       {readerIndex >= 0 && <ActivityReader items={page.items} index={readerIndex} request={request} snapshot={page.snapshot} active={active} filtering={filtering}
         hasMore={page.hasMore} loading={busy}
         onStep={step} onClose={() => setReaderId(null)}

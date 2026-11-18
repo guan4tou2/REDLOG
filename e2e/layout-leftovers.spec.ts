@@ -23,7 +23,11 @@ import { launchWithTempHome, openTestProject, openView, resizeMainWindow, resetT
 // Measured in a real macOS window, not derived: 4 in this seeded state (the
 // tab row carries the live count and wraps), 5 with the visual-reference seed.
 // It was 2 before the header was merged and the rows brought to --row-h.
-const ACTIVITY_ROWS = 4
+// 2026-11-18: the column header row went and the pitch dropped from 44px
+// (40 + a 4px gap) to 37px (36 over a 1px rule). Not yet measured in a real
+// window: derived from those sizes against the 4 measured, so CI's run of this
+// spec is the measurement.
+const ACTIVITY_ROWS = 5
 
 interface Box { left: number; right: number; top: number; bottom: number }
 
