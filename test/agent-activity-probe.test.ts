@@ -61,7 +61,9 @@ describe('findRecentActivity', () => {
     const root = path.join(tmp, 'root')
     for (let i = 0; i < 1000; i++) file(path.join(root, 'proj', `s${String(i).padStart(4, '0')}.jsonl`), NOW - 3600_000)
     const f = counting()
-    expect(await findRecentActivity(root, NOW, { windowMs: WINDOW, fs: f })).toBeNull()
+    // A frozen clock: only the call bound may stop the scan. On the real clock a
+    // slow runner (Windows CI: 297 calls, not 400) spends the 1s time budget first.
+    expect(await findRecentActivity(root, NOW, { windowMs: WINDOW, fs: f, clock: () => 0 })).toBeNull()
     expect(f.calls).toBe(PROBE_BOUND.maxCalls)
   })
 
@@ -99,7 +101,7 @@ describe('findRecentActivity', () => {
     for (let p = 0; p < 20; p++) for (let s = 0; s < 100; s++) file(path.join(root, `p${p}`, `s${s}.jsonl`), NOW - 3600_000)
     const f = counting()
     const t0 = performance.now()
-    await findRecentActivity(root, NOW, { windowMs: WINDOW, fs: f })
+    await findRecentActivity(root, NOW, { windowMs: WINDOW, fs: f, clock: () => 0 })
     const ms = performance.now() - t0
     console.log(`[probe] 2000 entries, nothing fresh: ${f.calls} fs calls, ${ms.toFixed(1)} ms wall`)
     expect(f.calls).toBeLessThanOrEqual(PROBE_BOUND.maxCalls)
