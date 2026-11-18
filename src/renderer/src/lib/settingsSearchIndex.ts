@@ -390,27 +390,6 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.ipProviders',
     'settings.ipProvidersHint'
   ],
-  integrity: [
-    'settings.integrity',
-    'settings.integrityHint',
-    'settings.integrityAnchoring',
-    'settings.integrityAnchorNow',
-    'settings.integrityVerifying',
-    'settings.integrityVerifyFull',
-    'settings.integrityUpgradeAll',
-    'settings.integrityFullWalked',
-    'settings.integrityFullSignatures',
-    'settings.integrityFullAuthFailed',
-    'settings.integrityFullBrokenAt',
-    'settings.integrityFullReason',
-    'settings.integrityHeadHash',
-    'settings.integrityFullAnchorMatch',
-    'settings.integrityFullAnchorMismatch',
-    'settings.integrityFullNoAnchor',
-    'settings.integrityFullClockAnomalies',
-    'settings.integrityNoAnchors',
-    'settings.integrityEvents'
-  ],
   plugins: [
     'plugins.profilesStale',
     'plugins.failedWhy',

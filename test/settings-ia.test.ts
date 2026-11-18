@@ -25,7 +25,7 @@ const SETTINGS_DIR = path.join(ROOT, 'src/renderer/src/components/settings')
 
 const PAGES = [
   'hooks', 'captureControl', 'browser',
-  'scope', 'network', 'loot', 'retention', 'integrity',
+  'scope', 'network', 'loot', 'retention',
   'general', 'hud', 'plugins', 'about'
 ]
 
@@ -79,6 +79,14 @@ describe('settings information architecture', () => {
     const zh = JSON.parse(R('src/renderer/src/i18n/zh-TW.json')) as Record<string, string>
     expect(en['settings.pageNetwork']).not.toMatch(/browser|proxy/i)
     expect(zh['settings.pageNetwork']).not.toMatch(/瀏覽器|代理/)
+  })
+
+  // Ruling 6 (2026-11-12): verification is looked at where the evidence is.
+  // A Settings page for it was a second home, and the only one most links
+  // reached — three clicks from the record it was about.
+  it('keeps chain verification out of settings', () => {
+    expect(SRC).not.toMatch(/'integrity'|IntegrityPanel/)
+    expect(fs.existsSync(path.join(SETTINGS_DIR, 'IntegrityPanel.tsx'))).toBe(false)
   })
 
   it('keeps exporting out of settings', () => {

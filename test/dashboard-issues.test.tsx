@@ -49,7 +49,7 @@ describe('DashboardIssues', () => {
     const { anchorNow } = install()
     raiseIssue({
       id: 'integrity', tier: 'attention', title: 'No anchor for 2 days',
-      view: 'settings:integrity', fix: 'anchor-now'
+      view: 'screenshots', fix: 'anchor-now'
     })
     show()
     fireEvent.click(screen.getByTestId('dashboard-issue-fix-integrity'))
@@ -83,10 +83,10 @@ describe('DashboardIssues', () => {
   it('routes to where the condition is dealt with', () => {
     install()
     const onNavigate = vi.fn()
-    raiseIssue({ id: 'integrity', tier: 'attention', title: 'Chain drifted', view: 'settings:integrity' })
+    raiseIssue({ id: 'integrity', tier: 'attention', title: 'Chain drifted', view: 'screenshots' })
     show(onNavigate)
     fireEvent.click(screen.getByText('Open'))
-    expect(onNavigate).toHaveBeenCalledWith('settings:integrity')
+    expect(onNavigate).toHaveBeenCalledWith('screenshots')
   })
 
   it('keeps the store’s order — attention above pending', () => {

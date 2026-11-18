@@ -17,7 +17,6 @@ import CaptureControlPage from './settings/CaptureControlPage'
 import CapturePackGroup from './settings/CapturePackGroup'
 import HooksPanel from './settings/HooksPanel'
 import PluginsPanel, { isHiddenPlugin } from './settings/PluginsPanel'
-import IntegrityPanel from './settings/IntegrityPanel'
 import LootRulesGroup from './settings/LootRulesGroup'
 import RetentionPage from './settings/RetentionPage'
 import { searchSettings } from '../lib/settingsSearch'
@@ -26,7 +25,7 @@ import { applyConfigPatch, diffConfig, rebaseDraft, valueAtPath, type ConfigPatc
 // Existing settings routes. A typo must fail typechecking, not open an empty pane.
 export type SettingsPage =
   | 'hooks' | 'captureControl' | 'browser'
-  | 'scope' | 'network' | 'loot' | 'retention' | 'integrity'
+  | 'scope' | 'network' | 'loot' | 'retention'
   | 'general' | 'hud' | 'plugins' | 'about'
 
 type HomeBadge = 'local' | 'project' | 'perProject'
@@ -43,7 +42,7 @@ const HOME_SECTIONS: Array<{ key: 'capture' | 'project' | 'other'; rows: HomeRow
     { id: 'scope', label: 'settings.pageScope', badge: 'project' }, { id: 'network', label: 'settings.pageNetwork', badge: 'project' }, { id: 'loot', label: 'settings.pageLoot', badge: 'project' }
   ] },
   { key: 'other', rows: [
-    { id: 'plugins', label: 'settings.pagePlugins' }, { id: 'retention', label: 'settings.pageRetention' }, { id: 'integrity', label: 'settings.pageIntegrity' }, { id: 'general', label: 'settings.pageGeneral' }, { id: 'hud', label: 'settings.pageHud' }, { id: 'about', label: 'settings.pageAbout' }
+    { id: 'plugins', label: 'settings.pagePlugins' }, { id: 'retention', label: 'settings.pageRetention' }, { id: 'general', label: 'settings.pageGeneral' }, { id: 'hud', label: 'settings.pageHud' }, { id: 'about', label: 'settings.pageAbout' }
   ] }
 ]
 
@@ -476,7 +475,6 @@ export default function Settings({ request = null }: { request?: { page: Setting
           focusSource={captureFocus} onFocusHandled={() => setCaptureFocus(null)} />}
         {tab === 'loot' && <LootRulesGroup config={config} setConfig={setConfig} t={t} />}
         {tab === 'retention' && <RetentionPage config={config} setConfig={setConfig} t={t} />}
-        {tab === 'integrity' && <IntegrityPanel t={t} />}
         {tab === 'plugins' && <PluginsPanel t={t} config={config} focus={pluginFocus} onFocusHandled={() => setPluginFocus(null)}
           selectedId={pluginDetail} onSelect={setPluginDetail}
           onOpenCaptureSources={(agentKind) => { setCaptureFocus(`agent-${agentKind}`); setTab('captureControl') }} />}

@@ -351,7 +351,9 @@ export function ScreenshotsView(): JSX.Element {
           reason={t('screenshots.emptyReason')}
           action={{
             label: t('screenshots.captureNow'),
-            onClick: () => { void captureScreenshotWithFeedback(t) }
+            onClick: () => { void captureScreenshotWithFeedback(t) },
+            // Verify, above the tabs, is the Evidence page's primary.
+            level: 'secondary'
           }}
         />
       ) : (

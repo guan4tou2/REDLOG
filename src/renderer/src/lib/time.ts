@@ -129,6 +129,15 @@ export function formatDateTime(ms: number, opts: { seconds?: boolean; year?: boo
   return `${ymd(c, opts.year !== false)} ${hm(c, opts.seconds)}${mark(c)}`
 }
 
+/** The time alone for today, the date as well for any other day (both in the
+ *  display zone). A bare `14:12` on a row from last week reads as today. */
+export function formatWhen(ms: number, opts: { seconds?: boolean; now?: number } = {}): string {
+  if (!Number.isFinite(ms)) return ''
+  return formatDate(ms) === formatDate(opts.now ?? Date.now())
+    ? formatTime(ms, opts)
+    : formatDateTime(ms, opts)
+}
+
 /**
  * Age, for freshness fields only. Everything else takes an absolute time.
  * `t` is passed in rather than imported, so the strings stay translatable

@@ -185,7 +185,6 @@ describe('UI copy: no redundant descriptions', () => {
         'update.method.downloadPageMac',
         'plugins.consentBody',
         'bookmarks.emptyReason',
-        'settings.integrityHint',
         'settings.rotationHint'
       ])
       for (const [k, v] of Object.entries(dict)) {

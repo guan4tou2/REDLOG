@@ -545,8 +545,17 @@ describe('renderer views render without throwing', () => {
   it('an issue that names a Settings page opens it', async () => {
     renderView(<App />)
     await screen.findByTestId('view-root')
-    act(() => { window.dispatchEvent(new CustomEvent('redlog:navigate', { detail: 'settings/integrity' })) })
-    expect(await screen.findByText('Verify full chain')).toBeTruthy()
+    act(() => { window.dispatchEvent(new CustomEvent('redlog:navigate', { detail: 'settings/retention' })) })
+    expect(await screen.findByText('Retention and disk budgets')).toBeTruthy()
+  })
+
+  // Ruling 6: the chain issues point at the Evidence page, whose verification
+  // block is above every tab.
+  it('the chain issues\' target opens the verification block', async () => {
+    renderView(<App />)
+    await screen.findByTestId('view-root')
+    act(() => { window.dispatchEvent(new CustomEvent('redlog:navigate', { detail: 'screenshots' })) })
+    expect(await screen.findByRole('button', { name: 'Verify' })).toBeTruthy()
   })
 
   // Ruling 7: screenshots are taken only when asked, so the empty state has

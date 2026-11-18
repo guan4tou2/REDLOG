@@ -7,9 +7,9 @@ vi.mock('../src/renderer/src/components/Toast', () => ({
   toast: (message: string, opts: unknown) => { toasts.push({ message, opts }) }
 }))
 
-import IntegrityPanel from '../src/renderer/src/components/settings/IntegrityPanel'
+import { EvidenceVerify } from '../src/renderer/src/components/EvidenceVerify'
 import { anchorNowWithFeedback } from '../src/renderer/src/lib/chainActions'
-import { I18nProvider, useI18n } from '../src/renderer/src/i18n'
+import { I18nProvider } from '../src/renderer/src/i18n'
 import { _resetIssues } from '../src/renderer/src/lib/issues'
 
 // Writes that used to reject into nowhere: the failure is said, and the
@@ -17,13 +17,14 @@ import { _resetIssues } from '../src/renderer/src/lib/issues'
 
 function install(chain: Record<string, unknown>): void {
   ;(window as unknown as { redlog: unknown }).redlog = {
-    chain: { anchors: vi.fn(async () => []), verify: vi.fn(), anchorNow: vi.fn(), upgrade: vi.fn(), ...chain }
+    events: { onNewBatch: () => () => {} },
+    project: { active: vi.fn(async () => ({ id: 'p1', name: 'demo' })) },
+    chain: { anchors: vi.fn(async () => []), length: vi.fn(async () => 0), verify: vi.fn(), anchorNow: vi.fn(), upgrade: vi.fn(), ...chain }
   }
 }
 
 function Panel(): JSX.Element {
-  const { t } = useI18n()
-  return <IntegrityPanel t={t} />
+  return <EvidenceVerify />
 }
 
 describe('Anchor now when the IPC call rejects', () => {
@@ -36,7 +37,7 @@ describe('Anchor now when the IPC call rejects', () => {
     expect(toasts).toEqual([{ message: 'settings.anchorFailed', opts: expect.objectContaining({ type: 'error', detail: 'ipc down' }) }])
   })
 
-  it('Settings ▸ Integrity: the button comes back instead of staying busy', async () => {
+  it('Evidence ▸ verification: the button comes back instead of staying busy', async () => {
     install({ anchorNow: vi.fn(async () => { throw new Error('ipc down') }) })
     render(<I18nProvider><Panel /></I18nProvider>)
     const button = screen.getByText('Anchor now').closest('button')!

@@ -162,7 +162,7 @@ describe('Settings is one column', () => {
     expect(row.textContent?.trim().endsWith('›')).toBe(true)
     expect(home.textContent).not.toMatch(/管理|前往範圍設定|查看/)
     // Every page is still one click away, including the ones the prototype has no row for.
-    for (const id of ['hooks', 'browser', 'captureControl', 'scope', 'network', 'loot', 'retention', 'integrity', 'general', 'hud', 'plugins', 'about']) {
+    for (const id of ['hooks', 'browser', 'captureControl', 'scope', 'network', 'loot', 'retention', 'general', 'hud', 'plugins', 'about']) {
       expect(home.querySelector(`[data-settings-page="${id}"]`), id).not.toBeNull()
     }
   })

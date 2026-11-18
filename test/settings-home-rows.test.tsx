@@ -13,7 +13,7 @@ import { join } from 'node:path'
 // one name (five pages had two). A value whose read failed is not shown,
 // rather than shown as 0.
 
-const PAGES = ['hooks', 'browser', 'captureControl', 'scope', 'network', 'loot', 'plugins', 'retention', 'integrity', 'general', 'hud', 'about']
+const PAGES = ['hooks', 'browser', 'captureControl', 'scope', 'network', 'loot', 'plugins', 'retention', 'general', 'hud', 'about']
 const CONFIG = {
   engagement: { id: 'proj-a', name: 'A' }, operator: { id: 'op' }, overlay: {}, packs: {}, screenshot: {},
   processMonitor: {}, connectionMonitor: {}, fileWatcher: {},
