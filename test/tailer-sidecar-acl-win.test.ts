@@ -7,9 +7,12 @@ import { claudeCodeAdapter } from '../optional-plugins/claude-code/adapter'
 import { registerAdapter, configureHost, registerSession, catchUpSession, stopHost, _sessionsForTest } from '../src/main/services/tailer-host'
 import { initDB, closeDB } from '../src/core/db/index'
 import { createOperator, generateToken } from '../src/core/db/operators'
+import { useRealIcacls } from './helpers/icacls'
 
 // The same scenario as tailer-sidecar-acl.test.ts, against the real icacls.
-// Windows only: it is the one test that says what NTFS ends up holding.
+// Windows only: it is the one test that says what NTFS ends up holding, so it
+// runs icacls itself instead of test/setup.ts's record.
+useRealIcacls()
 
 const IS_WIN = process.platform === 'win32'
 const OP = 'operator-1'

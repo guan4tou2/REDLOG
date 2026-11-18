@@ -2,7 +2,7 @@ import http from 'http'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { restrictToOwner } from './fs-acl'
+import { restrictToOwner, restrictToOwnerOnce } from './fs-acl'
 import { isExternalEventAllowed } from './external-event-policy'
 import { mkdirPrivate } from './private-fs'
 import { queryEvents, queryEventById, queryBuiltinTerminalSessionStart, getEventCount, executeEventQuery, PAUSE_EXEMPT_AGENT_TYPES } from './db/events'
@@ -174,7 +174,7 @@ function writePrimaryToken(): string {
   const token = generateToken()
   mkdirPrivate(path.dirname(TOKEN_PATH))
   fs.writeFileSync(TOKEN_PATH, token, { mode: 0o600 })
-  try { restrictToOwner(TOKEN_PATH) } catch { /* best-effort on win32 */ }
+  try { restrictToOwnerOnce(TOKEN_PATH) } catch { /* best-effort on win32 */ }
   primaryToken = token
   return token
 }
@@ -969,7 +969,9 @@ export function onApiProjectOpen(): void {
     primaryToken = token
     mkdirPrivate(path.dirname(TOKEN_PATH))
     fs.writeFileSync(TOKEN_PATH, token, { mode: 0o600 })
-    try { restrictToOwner(TOKEN_PATH) } catch { /* best-effort on win32 */ }
+    // Rewritten in place on every open, which keeps the file's ACL: icacls runs
+    // again only when the file is not the one this process already restricted.
+    try { restrictToOwnerOnce(TOKEN_PATH) } catch { /* best-effort on win32 */ }
   } catch { /* keep the bootstrap token from startApiServer */ }
   ensurePrimaryOperator(primaryOperatorId, primaryOperatorName, primaryToken)
   projectOpen = true

@@ -1,16 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { requires } from './helpers/requires'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-
-// restrictToOwner is an `icacls` child process on Windows (execFileSync, 5 s
-// timeout), and this file reaches it 5, 3 and 2 times in its three tests: the
-// project token, the mirrored ~/.redlog/api-token on every open, and a new
-// operator's key. A Windows runner that is slow to start processes spent 15 s on
-// tests that read a few rows. What the ACL does is test/fs-acl.test.ts's to
-// prove; nothing here asserts it.
-vi.mock('../src/core/fs-acl', () => ({ restrictToOwner: () => {} }))
 
 // Per-project token isolation (docs/archive/DESIGN-OPEN-ITEMS.md §2, PRD A3): each
 // engagement carries its own API secret, so a token from one project does not

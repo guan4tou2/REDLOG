@@ -350,6 +350,10 @@
       "class": "app",
       "reason": "WeakMap/WeakSet keyed by the database handle: entries die with the handle and hold no project id."
     },
+    "src/core/fs-acl.ts#restricted": {
+      "class": "machine",
+      "reason": "Files and directories already restricted to their owner on this computer, by identity."
+    },
     "src/core/ingest/nesting-ceiling.ts#windows": {
       "class": "app",
       "reason": "WeakMap keyed by the database handle: the open refusal window of each project, gone with the handle."
@@ -713,10 +717,6 @@
     "src/core/shell-flavour.ts#POSIX_SHELLS": {
       "class": "constant",
       "reason": "Lookup table filled at declaration; nothing mutates it afterwards."
-    },
-    "src/core/signing.ts#restrictedKeysDirs": {
-      "class": "machine",
-      "reason": "Key directories already restricted on this computer."
     },
     "src/core/signing.ts#keyCache": {
       "class": "machine",
