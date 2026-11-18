@@ -406,7 +406,7 @@ export function ScreenshotsView(): JSX.Element {
               >
                 {showsImage
                   ? <img src={thumbs[shot.id]} alt="" className="max-w-[90vw] max-h-[78vh] object-contain rounded-lg" onError={() => actions.markUnreadable(shot.id)} />
-                  : <div className="flex h-48 w-80 max-w-[90vw] items-center justify-center rounded-lg border border-redlog-border bg-black/30"><Thumb shot={shot} a={actions} /></div>}
+                  : <div className="flex h-48 w-80 items-center justify-center rounded-lg border border-redlog-border bg-black/30"><Thumb shot={shot} a={actions} /></div>}
                 <div className="flex flex-wrap items-center justify-center gap-3 text-xs text-redlog-text-dim">
                   <button type="button" onClick={() => step(-1)} disabled={at <= 0} aria-label={t('screenshots.prev')} className="px-2 py-1 rounded bg-redlog-elevated hover:bg-redlog-elevated-hover disabled:opacity-40">←</button>
                   <span className="font-mono">{formatWhen(shot.timestamp, { seconds: true })}</span>
