@@ -151,9 +151,13 @@ describe('the Targets page as the proposal lays it out', () => {
     expect(screen.queryByText('Not set')).toBeNull()
   })
 
-  it('says the list is ordered by recent activity', async () => {
+  // The note that said so is gone (it explained the screen); the order is the fact.
+  it('lists the most recently seen target first', async () => {
     setup({ targets: ['10.0.0.5'], excludeTargets: [] })
     mount()
-    expect(await screen.findByText('Most recent activity first')).toBeTruthy()
+    await screen.findByText('10.0.0.5')
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual([
+      expect.stringContaining('10.0.0.5'), expect.stringContaining('api.example')
+    ])
   })
 })
