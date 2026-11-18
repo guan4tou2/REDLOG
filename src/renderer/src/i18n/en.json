@@ -524,7 +524,7 @@
   "settings.integrityUpgradeAll": "Upgrade pending",
   "settings.integrityUpgraded": "Upgraded {{n}} of {{m}} pending anchors",
   "settings.integritySkippedOffline": "Skipped: this project is offline",
-  "settings.integrityNoAnchors": "No anchors yet. Click Anchor now to submit the current chain head.",
+  "settings.integrityNoAnchors": "Nothing anchored.",
   "settings.integrityStatusComplete": "COMPLETE",
   "settings.integrityStatusPartial": "PARTIAL",
   "settings.integrityStatusFailed": "FAILED",

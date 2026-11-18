@@ -4,7 +4,7 @@
 // pipeline degrades. The chain was not: drift, a failed anchor and a broken
 // sample row were computed in exactly two places, both of which the operator
 // has to walk to — the dashboard's stat tile, and the Verify button in
-// Settings ▸ Integrity. So a twelve-hour engagement could run with a drifted
+// the Evidence page's verification block. So a twelve-hour engagement could run with a drifted
 // chain, a dead anchor loop or a broken sample and show nothing at all,
 // unless somebody happened to visit ⌘1 or ⌘9.
 //

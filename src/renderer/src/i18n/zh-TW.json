@@ -524,7 +524,7 @@
   "settings.integrityUpgradeAll": "升級待處理錨點",
   "settings.integrityUpgraded": "已升級 {{n}}/{{m}} 個待處理錨點",
   "settings.integritySkippedOffline": "已略過：此專案為離線模式",
-  "settings.integrityNoAnchors": "還沒有錨點。點「立即錨定」提交目前的鏈頭。",
+  "settings.integrityNoAnchors": "沒有錨定任何東西。",
   "settings.integrityStatusComplete": "完成",
   "settings.integrityStatusPartial": "部分",
   "settings.integrityStatusFailed": "失敗",

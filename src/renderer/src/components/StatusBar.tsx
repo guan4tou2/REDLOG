@@ -95,7 +95,7 @@ export default function StatusBar(): JSX.Element {
   const prevVerdict = useRef<'healthy' | 'partial' | 'dark' | null>(null)
   useEffect(() => {
     // The chain gets the same tick. Until now it was checked only when the
-    // operator pressed Verify in Settings ▸ Integrity or happened to look at
+    // operator pressed Verify on the Evidence page or happened to look at
     // the dashboard tile, so a drifted chain or a dead anchor loop could run
     // the length of an engagement in silence — and unlike a capture outage,
     // which costs the events it drops, a chain fault costs the defensibility

@@ -92,4 +92,9 @@ describe.each(Object.keys(LOCALES) as (keyof typeof LOCALES)[])('copy facts (%s)
     ]
     for (const k of DELETED) expect(d[k], k).toBeUndefined()
   })
+
+  it('the toast for Anchor now on an empty chain does not tell the operator to press the button they just pressed', () => {
+    expect(d['settings.integrityNoAnchors']).not.toMatch(/Click|點「/)
+    expect(d['settings.integrityNoAnchors']).toMatch(loc === 'en' ? /Nothing anchored/ : /沒有錨定/)
+  })
 })
