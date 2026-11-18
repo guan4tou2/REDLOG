@@ -54,7 +54,8 @@ export const MIN_FOLD_CHILDREN = 3
 export function neverFold(e: RedLogEvent): boolean {
   const d = (e.data ?? {}) as Record<string, unknown>
   if (d.inScope === false || d.violation === true) return true
-  if (typeof d.exitCode === 'number' && d.exitCode !== 0) return true
+  // Commands record `exit_code`; a terminal's session_end records `exitCode`.
+  if ([d.exit_code, d.exitCode].some((c) => typeof c === 'number' && c !== 0)) return true
   if (d.severity === 'critical' || d.severity === 'important') return true
   if (['marker', 'loot', 'scope', 'screenshot', 'credential_use'].includes(e.agentType)) return true
   if (Array.isArray(d.set_cookies) && d.set_cookies.length > 0) return true
