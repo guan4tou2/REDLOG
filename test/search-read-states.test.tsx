@@ -190,3 +190,27 @@ describe('an empty event search says when the filter bar emptied it', () => {
     expect(screen.queryByRole('button', { name: 'filter.clearAll' })).toBeNull()
   })
 })
+
+// Back on the Activity page from the Timeline: the page stays mounted but
+// hidden, and Chromium drops the offset of a hidden scroller. The list is the
+// one `useKeepScroll` is attached to; this is the wiring, since jsdom cannot
+// scroll and the hook's own behaviour is in keep-scroll.test.tsx.
+describe('the results list keeps its scroll offset while the page is hidden', () => {
+  beforeEach(() => vi.clearAllMocks())
+  afterEach(() => { cleanup(); vi.unstubAllGlobals() })
+
+  it('puts the offset back when the page is active again', async () => {
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => setTimeout(() => cb(0), 0) as unknown as number)
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => clearTimeout(id))
+    installBridge({ castIndexStatus: vi.fn().mockResolvedValue({ total: 0, indexed: 0, pending: 0 }) })
+    const { rerender } = render(<SearchPanel active browse viewMode="activities" controlledQuery="" />)
+    const list = screen.getByTestId('search-results')
+    Object.defineProperty(list, 'scrollHeight', { configurable: true, get: () => 3000 })
+    Object.defineProperty(list, 'clientHeight', { configurable: true, get: () => 400 })
+    list.scrollTop = 900; fireEvent.scroll(list)
+    rerender(<SearchPanel active={false} browse viewMode="activities" controlledQuery="" />)
+    list.scrollTop = 0 // what display:none does to it
+    rerender(<SearchPanel active browse viewMode="activities" controlledQuery="" />)
+    await waitFor(() => expect(list.scrollTop).toBe(900))
+  })
+})

@@ -16,7 +16,7 @@ import { currentTrail, trailToActivity, trailToTimeline } from '../src/renderer/
 const h = vi.hoisted(() => {
   const mounts: Record<string, number> = {}
   const flags = { modalOpen: false }
-  const seen: { timelineFocus?: string; workspaceActive?: boolean } = {}
+  const seen: { timelineFocus?: string; workspaceActive?: boolean; externalQuery?: { text: string; eventId?: string } | null } = {}
   type Jump = (a: unknown, b: unknown) => void
   const page = (name: string) => function StandIn(props: { onOpenInTimeline?: Jump; active?: boolean }): JSX.Element {
     const [open, setOpen] = useState(false)
@@ -46,8 +46,9 @@ vi.mock('../src/renderer/src/components/Timeline', () => ({
   }
 }))
 vi.mock('../src/renderer/src/components/RecordingWorkspace', () => ({
-  default: ({ active, onOpenInTimeline }: { active: boolean; onOpenInTimeline: (id: string, ts: number) => void }) => {
+  default: ({ active, onOpenInTimeline, externalQuery }: { active: boolean; externalQuery?: { text: string; eventId?: string } | null; onOpenInTimeline: (id: string, ts: number) => void }) => {
     h.seen.workspaceActive = active
+    h.seen.externalQuery = externalQuery
     return <div data-testid="workspace-standin"><button data-testid="activity-to-timeline" onClick={() => onOpenInTimeline('ev-other', 9)}>timeline</button></div>
   }
 }))
@@ -112,6 +113,20 @@ async function lootToActivity(): Promise<HTMLInputElement> {
   expect(viewOf()).toBe('search')
   return input
 }
+
+describe('Timeline to Activity hands the event over', () => {
+  beforeEach(() => { installBridge(); window.localStorage.setItem('redlog-locale', 'en'); h.seen.externalQuery = undefined })
+  afterEach(() => { cleanup(); window.localStorage.clear() })
+
+  // The query finds the activity; the id says which event it was for, so the
+  // page can open that activity and give the operator's own query back after.
+  it('names the event as well as the query that finds it', async () => {
+    await mountApp()
+    fireEvent.click(screen.getByTestId('nav-timeline'))
+    fireEvent.click(screen.getByTestId('timeline-to-activity'))
+    expect(h.seen.externalQuery).toMatchObject({ text: 'event:ev-left', eventId: 'ev-left' })
+  })
+})
 
 describe('App return trail', () => {
   beforeEach(() => {

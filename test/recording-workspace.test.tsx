@@ -8,7 +8,7 @@ import RecordingWorkspace from '../src/renderer/src/components/RecordingWorkspac
 // ActivityResults does, so the row it lands in can be checked here.
 vi.mock('../src/renderer/src/components/SearchPanel', async () => {
   const { createPortal } = await import('react-dom')
-  return { SearchPanel: ({ controlledQuery, viewMode, active, browse, statsSlot }: any) => <div data-testid="workspace-search" data-active={active} data-mode={viewMode} data-browse={browse}>{controlledQuery}{statsSlot && active ? createPortal(<span data-testid="activity-stats">3 activities</span>, statsSlot) : null}</div> }
+  return { SearchPanel: ({ controlledQuery, viewMode, active, browse, statsSlot, locateEventId, onLocateEnd }: any) => <div data-testid="workspace-search" data-active={active} data-mode={viewMode} data-browse={browse} data-locate={locateEventId}>{controlledQuery}<button data-testid="stand-in-close-located" aria-label="close located" onClick={onLocateEnd} />{statsSlot && active ? createPortal(<span data-testid="activity-stats">3 activities</span>, statsSlot) : null}</div> }
 })
 vi.mock('../src/renderer/src/components/TranscriptView', () => ({ default: ({ reading, externalQuery, active }: any) => <div data-testid={`workspace-${reading}`} data-active={active}><input aria-label={`position-${reading}`} defaultValue="" />{externalQuery}</div> }))
 vi.mock('../src/renderer/src/components/SourceSessionPicker', () => ({default: () => null}))
@@ -105,5 +105,72 @@ describe('recording workspace density (2026-11-14)', () => {
     // Only while the activity reading is the one shown.
     fireEvent.click(screen.getByRole('tab', { name: 'Input / output' }))
     expect(screen.queryByTestId('activity-stats')).toBeNull()
+  })
+})
+
+// Arriving from a Timeline event puts `event:<id>` in the box so the page reads
+// the activity that holds it. It is borrowed: the operator's own query comes
+// back when they leave the located record, and is never overwritten for good.
+describe('recording workspace arrival from a Timeline event', () => {
+  const arrival = (at: number, id = 'E1') => ({ text: `event:${id}`, at, eventId: id })
+  const box = (): HTMLInputElement => screen.getByRole('searchbox') as HTMLInputElement
+  const located = (): string | undefined => screen.getByTestId('workspace-search').dataset.locate
+  const mount = (props: Record<string, unknown> = {}) => {
+    const ui = (extra: Record<string, unknown>) => <I18nProvider><RecordingWorkspace onOpenInTimeline={vi.fn()} {...props} {...extra} /></I18nProvider>
+    const view = render(ui({}))
+    return { ...view, show: (extra: Record<string, unknown>) => view.rerender(ui(extra)) }
+  }
+
+  it('asks the list to open the located record, and shows the query that finds it', () => {
+    const { show } = mount()
+    show({ externalQuery: arrival(1) })
+    expect(box().value).toBe('event:E1')
+    expect(located()).toBe('E1')
+  })
+
+  it('gives the operator\'s own query back when the located record is closed', () => {
+    const { show } = mount()
+    fireEvent.change(box(), { target: { value: 'sqlmap' } })
+    show({ externalQuery: arrival(1) })
+    expect(box().value).toBe('event:E1')
+    fireEvent.click(screen.getByTestId('stand-in-close-located'))
+    expect(box().value).toBe('sqlmap')
+    expect(located()).toBeUndefined()
+  })
+
+  it('gives it back when the operator leaves the page, so the way back finds what they had', () => {
+    const { show } = mount()
+    fireEvent.change(box(), { target: { value: 'sqlmap' } })
+    show({ externalQuery: arrival(1), active: true })
+    show({ externalQuery: arrival(1), active: false })
+    expect(box().value).toBe('sqlmap')
+    expect(located()).toBeUndefined()
+  })
+
+  it('keeps the first query across a second arrival that did not leave in between', () => {
+    const { show } = mount()
+    fireEvent.change(box(), { target: { value: 'sqlmap' } })
+    show({ externalQuery: arrival(1) })
+    show({ externalQuery: arrival(2, 'E2') })
+    expect(located()).toBe('E2')
+    fireEvent.click(screen.getByTestId('stand-in-close-located'))
+    expect(box().value).toBe('sqlmap')
+  })
+
+  it('lets go once the operator types: their text is theirs, nothing is restored over it', () => {
+    const { show } = mount()
+    fireEvent.change(box(), { target: { value: 'sqlmap' } })
+    show({ externalQuery: arrival(1) })
+    fireEvent.change(box(), { target: { value: 'event:E1 nmap' } })
+    expect(located()).toBeUndefined()
+    show({ externalQuery: arrival(1), active: false })
+    expect(box().value).toBe('event:E1 nmap')
+  })
+
+  it('restores an empty box as empty', () => {
+    const { show } = mount()
+    show({ externalQuery: arrival(1) })
+    fireEvent.click(screen.getByTestId('stand-in-close-located'))
+    expect(box().value).toBe('')
   })
 })

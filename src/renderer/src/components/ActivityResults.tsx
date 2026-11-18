@@ -36,8 +36,13 @@ export function SearchCoverage({ coverage }: { coverage?: BodySearchCoverage }):
 }
 
 /** Same parsed query and EventFilter as raw Search; grouping happens in SQL. */
-/** What the list is told about the filter bar. */
+/** What the list is told about an arrival and about the filter bar. */
 interface ActivityListHooks {
+  /** The event the operator came from. The activity holding it is opened once
+   *  the page answers the request that names it. */
+  locateEventId?: string
+  /** The located activity was closed: the host gives the operator's own query back. */
+  onLocateEnd?: () => void
   /** Clears the filter bar's conditions, when an empty list is theirs to answer for. */
   onClearConditions?: () => void
 }
@@ -54,7 +59,7 @@ export function ActivityResults({ request, onOpen, onExportSelection, onClearQue
   if (!project.state.value) return <span role="status">{t('search.loading')}</span>
   return <ActivityList key={`${project.state.value}:${JSON.stringify(request)}`} active={active} request={{ ...request, projectId: project.state.value }} onOpen={onOpen} onExportSelection={onExportSelection} onClearQuery={onClearQuery} statsSlot={statsSlot} {...hooks} />
 }
-function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active, statsSlot, onClearConditions }: { active: boolean; statsSlot?: HTMLElement | null; onClearQuery?: () => void; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: ActivityRequest; onOpen?: (id: string, ts: number) => void } & ActivityListHooks): JSX.Element {
+function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active, statsSlot, locateEventId, onLocateEnd, onClearConditions }: { active: boolean; statsSlot?: HTMLElement | null; onClearQuery?: () => void; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: ActivityRequest; onOpen?: (id: string, ts: number) => void } & ActivityListHooks): JSX.Element {
   const { t } = useI18n()
   const read = useReadState(() => window.redlog.events.activityPage({ ...request, limit: 50 }))
   const [exportKind,setExportKind] = useState<'activity' | 'session'>('activity')
@@ -95,6 +100,24 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
       void more().then((added) => { if (added.length > 0 && alive.current) { setReaderId(added[0].id); setExpanded(added[0].id) } })
     }
   }
+  // Arriving from a Timeline event. Only the request that names the event
+  // counts: the one on screen while the typed query catches up is not it.
+  const locating = locateEventId && request.parsed.conditions.some((c) => c.field === 'event' && c.value === locateEventId) ? locateEventId : null
+  const located = useRef<string | null>(null)
+  const locatedFor = useRef<string | null>(null)
+  useEffect(() => {
+    if (!locating || !page || locatedFor.current === locating) return
+    locatedFor.current = locating
+    const holder = page.items.find((item) => item.matchedPreview.ids.includes(locating) || item.sourcePreview.ids.includes(locating) || item.anchor.id === locating)
+    if (!holder) return
+    located.current = holder.id
+    setExpanded(holder.id)
+  }, [locating, page])
+  // Closing the row is leaving the record; stepping in the Reader moves the
+  // open row but does not.
+  useEffect(() => {
+    if (located.current && expanded === null) { located.current = null; onLocateEnd?.() }
+  }, [expanded]) // eslint-disable-line react-hooks/exhaustive-deps
   const anchorId = selectedActivity?.anchor.id
   const hasSession = selectedActivity ? sourceSessionKey(selectedActivity.anchor)!==null : false
   useEffect(()=>{

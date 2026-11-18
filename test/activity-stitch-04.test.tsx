@@ -90,6 +90,53 @@ it('sizes each activity row by the list-row token, not by its own padding', asyn
   expect(row.className).not.toMatch(/\bpy-2(\.5)?\b/)
 })
 
+// Arriving from a Timeline event: the activity that holds the event is the one
+// shown open, the way a click on its row shows it, and it stays the operator's
+// to close. The page is told which event it was asked for; it acts only on the
+// request that names that event, never on the one still on screen while the
+// typed query catches up.
+const holding = (id: string, events: string[]) => ({ ...summary(id), matchedPreview: { ids: events, hasMore: false }, sourcePreview: { ids: events, hasMore: false } })
+const eventQuery = (id: string) => ({ text: '', conditions: [{ field: 'event', value: id }], tokens: [] })
+
+function mountLocating(over: { items?: unknown[]; request?: unknown; locateEventId?: string; onLocateEnd?: () => void } = {}) {
+  api.activityPage.mockResolvedValue({ items: over.items ?? [holding('first', ['first']), holding('second', ['second', 'wanted'])], hasMore: false, nextCursor: null, totalGroups: 2, totalMatches: 2, snapshot: {} })
+  api.activityMembers.mockResolvedValue({ items: [], hasMore: false, nextCursor: null, sourceCount: 0, matchedCount: 0, snapshot: {} })
+  api.query.mockResolvedValue([])
+  ;(window as any).redlog = {
+    config: { get: vi.fn().mockResolvedValue({ engagement: { id: 'p' } }) },
+    events: { onNewBatch: () => () => {}, ...api },
+    content: { list: vi.fn().mockResolvedValue({ ok: true, value: [] }), read: vi.fn() }
+  }
+  return render(<ActivityResults request={(over.request ?? { parsed: eventQuery('wanted') }) as any} locateEventId={over.locateEventId ?? 'wanted'} onLocateEnd={over.onLocateEnd} />)
+}
+
+it('opens the activity that holds the located event, not the first one listed', async () => {
+  mountLocating()
+  const rows = await screen.findAllByTestId('activity-row')
+  expect(await screen.findByTestId('activity-summary')).toBeTruthy()
+  expect(rows.map((r) => r.getAttribute('aria-expanded'))).toEqual(['false', 'true'])
+})
+
+it('opens nothing for a request that does not name the located event', async () => {
+  mountLocating({ request: { parsed: { text: '', conditions: [], tokens: [] } } })
+  await screen.findAllByTestId('activity-row')
+  expect(screen.queryByTestId('activity-summary')).toBeNull()
+})
+
+it('says the located record was left when its row is collapsed, once, and not while the Reader steps', async () => {
+  const onLocateEnd = vi.fn()
+  mountLocating({ onLocateEnd })
+  const rows = await screen.findAllByTestId('activity-row')
+  await screen.findByTestId('activity-summary')
+  fireEvent.click(await screen.findByTestId('activity-read'))
+  await screen.findByTestId('activity-reader')
+  expect(onLocateEnd).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByTestId('reader-close'))
+  expect(onLocateEnd).not.toHaveBeenCalled()
+  fireEvent.click(rows[1])
+  expect(onLocateEnd).toHaveBeenCalledTimes(1)
+})
+
 // The filter bar's conditions are what an empty list may owe its emptiness to.
 const emptyPage = { items: [], hasMore: false, nextCursor: null, totalGroups: 0, totalMatches: 0, snapshot: {} }
 function mountEmpty(request: unknown, onClearConditions?: () => void) {
