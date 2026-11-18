@@ -1,3 +1,4 @@
+import { MARK_HIT_PX } from './timelineGeometry'
 import type { TimelineInterval, TimelineIntervalSet } from './timelineIntervals'
 
 export type IntervalStartCap = 'mark' | 'unloaded'
@@ -109,8 +110,7 @@ export function layoutIntervalMarks(input: IntervalLayoutInput): IntervalMark[] 
       const candidate: WorkingMark = { unionEnd: Math.max(x0, end), mark: {
         key: iv.id, row, kind: point ? 'point' : 'span', x0, x1: point ? x0 : end,
         y: row * laneH + TRACK_LINE_Y,
-        // S2 has no hit targets. S3 assigns the interactive geometry.
-        hitLeft: x0 - 4, hitWidth: Math.max(8, end - x0),
+        hitLeft: x0 - MARK_HIT_PX / 2, hitWidth: Math.max(MARK_HIT_PX, end - x0 + MARK_HIT_PX),
         intervals: [iv], startCap: unloaded ? 'unloaded' : 'mark', endCap,
         failed: endCap === 'failed' ? 1 : 0, open: iv.endBasis === 'open' ? 1 : 0, label: null
       } }
@@ -145,7 +145,7 @@ export function layoutIntervalMarks(input: IntervalLayoutInput): IntervalMark[] 
         cells.pop()
       }
     }
-    const placed: WorkingMark[] = []
+    let placed: WorkingMark[] = []
     let active: WorkingMark[] = []
     for (const candidate of cells) {
       active = active.filter((a) => a.mark.x1 > candidate.mark.x0)
@@ -154,6 +154,29 @@ export function layoutIntervalMarks(input: IntervalLayoutInput): IntervalMark[] 
         placed.push(candidate)
         if (candidate.mark.x1 > candidate.mark.x0) active.push(candidate)
       }
+    }
+    // Depth capping can create a count after the cell pass. Settle the same
+    // footprint again, including the 27px minimum targets on either side.
+    const settled: WorkingMark[] = []
+    for (const candidate of placed) {
+      settled.push(candidate)
+      while (settled.length > 1) {
+        const b = settled[settled.length - 1], a = settled[settled.length - 2]
+        if (a.mark.kind !== 'cluster' && b.mark.kind !== 'cluster') break
+        if (b.mark.x0 - a.mark.x0 >= MARK_HIT_PX) break
+        merge(a, b)
+        settled.pop()
+      }
+    }
+    placed = settled
+    for (let i = 0; i < placed.length; i++) {
+      const m = placed[i].mark, prev = placed[i - 1]?.mark, next = placed[i + 1]?.mark
+      const left = prev && (prev.kind === 'cluster' || m.kind === 'cluster')
+        ? (prev.x0 + m.x0) / 2 : m.x0 - MARK_HIT_PX / 2
+      const right = next && (next.kind === 'cluster' || m.kind === 'cluster')
+        ? (m.x0 + next.x0) / 2 : Math.max(m.x0 + MARK_HIT_PX / 2, Math.min(trackW, m.x1 + MARK_HIT_PX / 2))
+      m.hitLeft = left
+      m.hitWidth = right - left
     }
     // Geometry may place an end-only stub before a known start. Restore each
     // cluster's members to the set's chronological order in one linear pass.

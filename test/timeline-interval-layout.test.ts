@@ -83,7 +83,8 @@ it('filters horizontal geometry and visible rows plus one either side', () => {
 })
 it('SC-004: a thousand mutually overlapping commands obey depth and visible mark bounds', () => {
   const m = layout(Array.from({ length: 1000 }, (_, i) => interval(String(i), i * 15, 20000)), { trackW: 20000 })
-  expect(m).toHaveLength(2)
+  // The count also absorbs the first span when their starts are only 15px apart.
+  expect(m).toHaveLength(1)
   expect(m.flatMap((m) => m.intervals)).toHaveLength(1000)
   for (const w of [1, 14, 48, 320, 1000]) {
     for (let left = 0; left < 20000; left += 137) {
@@ -137,4 +138,24 @@ it('SC-004 also bounds short bursts and partially overlapping spans at arbitrary
     expect(marks.filter((m) => m.x0 <= x && m.x1 > x).length).toBeLessThanOrEqual(2)
     expect(filterVisibleMarks(marks, 4000, x, w, { first: 1, last: 1 }).length).toBeLessThanOrEqual(Math.ceil(3 * w / 14) + 2)
   }
+})
+
+it('depth-cap counts absorb neighbouring starts and hit areas meet at their midpoint', () => {
+  // The first two starts occupy neighbouring cells. Only the depth cap turns
+  // the second span into a count, which would cover the first start at 13px.
+  const depth = layout([interval('a', 13, 300), interval('b', 15, 200), interval('c', 56, 400)])
+  expect(depth, 'depth-created count cannot cover a neighbouring dot').toHaveLength(1)
+  expect(depth[0].intervals.map(iv => iv.id)).toEqual(['a', 'b', 'c'])
+  const marks = layout([interval('a', 100, 101), interval('b', 103, 104), interval('c', 160, 161)])
+  for (const m of marks) expect(m.hitWidth).toBeGreaterThanOrEqual(27)
+  const [count, next] = marks
+  const midpoint = (count.x0 + next.x0) / 2
+  expect(count.hitLeft + count.hitWidth, 'count hit ends at midpoint').toBe(midpoint)
+  expect(next.hitLeft, 'neighbour hit begins at midpoint').toBe(midpoint)
+})
+it('an open span reaches the right edge without adding horizontal overflow through its hit box', () => {
+  const [m] = layout([interval('a', 100, null)])
+  expect(m.x1).toBe(1000)
+  expect(m.hitLeft + m.hitWidth, 'right-edge hit area stays within the track').toBeLessThanOrEqual(1000)
+  expect(m.hitWidth).toBeGreaterThanOrEqual(27)
 })

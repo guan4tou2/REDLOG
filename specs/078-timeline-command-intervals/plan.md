@@ -251,3 +251,21 @@ export function filterVisibleMarks(
 2. 與 Activity 投影的狀態對應：`paired` 對兩端俱全、`call-only` 對只有起點、`result-only` 對只有終點、`conflicted` 對不畫區間（`src/core/db/activity-queries.ts:276-278`）。
 
 **已知的既有差異（觀察）**：Activity 不要求兩列的指令文字相等，時間軸的摺疊要求（`timelineIncremental.ts:103`）。本設計跟時間軸的摺疊，否則 FR-007 的分割不成立。074 以 `command_id` 配對時這個差異會消失。
+
+
+### S3 實作時與上述計畫不同之處
+
+- 原生記號按鈕由模組層的 `TimelineMarkButton` 共用：事件列與終端列使用相同原生入口，DOM 仍是 button；raw button 的實作數不增加，`RAW_BUTTON_BASELINE` 不調高。終端列容器不隱藏可及樹；列本身不攔截空白處指標，按鈕恢復 pointer events，標籤與繪圖墨跡不獨立接收指標。
+- `timelineKeys.ts` 原先在方向鍵分支之前就拒絕所有 Alt 組合，使原本已有的 option-arrow 分支不可達；只讓 Alt+左右鍵通過，其他修飾鍵保護不變。更新原先要求 Alt+左鍵無作用的舊測試。這是 FR-053 必需的接線修正。
+- 從外部開啟被摺疊的起點，選取改在已載入的 `rawEvents` 找列；鍵盤走訪先把起點正規化到區間的選取列。沒有修改摺疊、卡片列或 hooks。軌道已有鍵盤焦點時，走訪後把焦點交給新的單一 Tab 停留點。
+- 計數覆蓋規則在深度上限之後再做一次線性的收斂；涉及計數的相鄰起點至少隔 27px，才能同時滿足 FR-055 的最小點擊面積和中點分界。這比 FR-040 向前只檢查 12px 的墨跡規則更保守；密集重疊案例原本恰有兩個記號，現在可合成一個，但成員與最多兩段重疊的不變式保留。相鄰獨立區間照開始順序疊畫。沒有更動事件列 buildClusters。
+- S1/S2 的過渡測試改為 S3 契約：可互動、不重複畫指令點、早於折疊後事件範圍的真實起點可達。FR-016 無配對資料的既有測試保留。
+- `e2e/timeline-track.spec.ts` 的 standard-mode journey 原本用無配對鍵的 whoami 點，改成完整配對的 whoami：斷言它在終端列恰有一個互動記號、包含 data-timeline-mark，事件列沒有同一指令的點。markBoxes 以 offsetParent 鏈累加 CSS 座標，並直接讀區間計數的文字，支援巢狀終端記號；既有 scanner 計數案例與泳道繪製語意不變。
+- 其他既有 e2e 無須搬動：timeline-evidence 的 command-artifact-correlation 只有 terminalId 沒有 command_id，且用泳道模式；其餘案例沒有配對鍵。timeline-density 的起訖也沒有配對鍵，且密度條不在 S3 範圍。timeline-track 的其他 describe 以無配對鍵指令、scanner 或 marker 為資料。
+- UI 字串（en、zh-TW）沒有新增、刪除或變更；區間按鈕的 aria-label 原樣沿用 S2 title。S4 再細化可及名稱、疊層與缺失終點語意；沒有提前實作。
+- 本機沒有執行 Electron、Playwright、完整 npm test 或伺服器；真實視窗仍需確認 body zoom 0.9 下的外環、點擊分界、名稱省略與五終端垂直捲動。檢視 harness 新增 `?state=s3-interaction`、`s3-count-cap`、`s3-depth`，並可用既有 `five-terminals` 驗證垂直走訪；合併前由 CI 執行 e2e。
+- 本次依 brief 疊在未合併的 S2 分支，不 fetch、commit 或 push；commit message 留在 scratchpad 指定檔案。
+
+- 收尾幾何回歸：open span 畫到右緣時，點擊框右側不再多加 13.5px；否則 100% 檢視也會產生不必要的水平 overflow。先補 layout RED（1013.5 > 1000），再限制尾端 padding，保持至少 27px 與鄰近計數的中點分界。
+
+- 外部選取 start 後的真實雙擊序列（click detail=1、click detail=2、dblclick）另補 RED：舊 firstClick 會把 raw start 帶入詳情。pickEvent 增加可選的「相同區間選取」判斷，點擊仍可取消任何成員的選取，但 firstClick 一律記錄 anchor，雙擊確實開啟 selection row。

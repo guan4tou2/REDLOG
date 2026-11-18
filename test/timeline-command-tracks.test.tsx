@@ -94,16 +94,15 @@ describe('standard mode: one row per terminal (Spec 078 S1)', () => {
     expect(screen.getByTestId('timeline-lane-scroll').style.maxHeight).toBe(`${3 * LANE_H + AXIS_H}px`)
   })
 
-  it('is drawn but not interactive, and every drawn row is still a dot (the S1 transitional state)', async () => {
+  it('commands move from the event row to interactive terminal marks (S3)', async () => {
     b.queryPage.mockResolvedValue(page(twoTerminals()))
     mount()
     await waitFor(() => expect(tracks()).toHaveLength(2))
     const layer = screen.getByTestId('timeline-command-tracks')
-    expect(layer.getAttribute('aria-hidden')).toBe('true')
-    expect(layer.className).toContain('pointer-events-none')
-    expect(layer.querySelector('button, [tabindex], [data-timeline-event]')).toBeNull()
-    // The 6 rows the fold draws (4 starts fold into their ends) are 6 dots.
-    expect(document.querySelectorAll('[data-timeline-event]').length).toBe(6)
+    expect(layer.getAttribute('aria-hidden')).toBeNull()
+    expect(layer.className).not.toContain('pointer-events-none')
+    expect(layer.querySelectorAll('button[data-timeline-event]')).toHaveLength(6)
+    expect(document.querySelectorAll('[data-timeline-event]')).toHaveLength(6)
   })
 
   it('draws a line per command: solid when it ended, dashed to the next start when not, to the right edge when last (Q4)', async () => {
@@ -149,11 +148,7 @@ describe('standard mode: one row per terminal (Spec 078 S1)', () => {
     expect(lineOf('c1')).toBeNull()
   })
 
-  // TRANSITIONAL (S1/S2): the time range is still computed from the drawn
-  // rows, which no longer include a folded start, so a long command's start
-  // can fall left of the track. S2 retains that coordinate; S3 widens the range to
-  // include interval starts (FR-065) and this case changes.
-  it('S2 transitional: an off-track start retains its true geometry until S3 extends the domain', async () => {
+  it('includes an interval start older than the drawn rows in the domain (FR-065)', async () => {
     b.queryPage.mockResolvedValue(page([
       cmd('s', T0 - 600 * S, 'command_start', 'ta', 'c1', 'nmap -p- 10.0.0.5'),
       cmd('e', T0 + 42 * S, 'command_end', 'ta', 'c1', 'nmap -p- 10.0.0.5'),
@@ -161,7 +156,7 @@ describe('standard mode: one row per terminal (Spec 078 S1)', () => {
     ]))
     mount()
     await waitFor(() => expect(tracks()).toHaveLength(1))
-    expect(px(lineOf('c1')!.style.left)).toBeLessThan(0)
+    expect(px(lineOf('c1')!.style.left)).toBeGreaterThan(0)
   })
 
   it('the built-in terminal keeps its session-band label', async () => {
@@ -333,8 +328,8 @@ describe('S2 mark rendering', () => {
     expect(title).toContain('exit 2')
     expect(title).not.toBe(name.textContent)
     expect(title).toContain(formatDateTime(T0, { seconds: true }))
-    expect(r.container.querySelector('button, [tabindex]')).toBeNull()
-    expect(screen.getByTestId('timeline-command-tracks').getAttribute('aria-hidden')).toBe('true')
+    expect(r.container.querySelector('button[data-timeline-interval]')).not.toBeNull()
+    expect(screen.getByTestId('timeline-command-tracks').getAttribute('aria-hidden')).toBeNull()
   })
   it('short commands keep an 8px start and the state shape, with no line', () => {
     const r = draw(setFor(null), 1000, 0.1)
