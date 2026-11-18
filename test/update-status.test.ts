@@ -246,10 +246,7 @@ describe('the quit that an update ends with', () => {
     expect(branch).not.toContain('clearUpdateMarker')
   })
 
-  it('looks by itself at launch only when the operator has not switched it off', () => {
-    const index = fs.readFileSync(path.join(__dirname, '../src/main/index.ts'), 'utf8')
-    expect(index).toMatch(/if \(autoCheckEnabled\(\)\) checkForUpdates\(\)/)
-    // The switch is not consulted for a press of the button.
-    expect(index).toMatch(/ipcMain\.handle\('app:checkForUpdates', \(\) => checkForUpdates\(\{ manual: true \}\)\)/)
-  })
+  // Ruling 7's "only when pressed" is pinned in test/timed-capture-removed-main
+  // (one call site, the IPC handler) and test/update-check-on-press (the
+  // check asks the release server whenever it is called).
 })

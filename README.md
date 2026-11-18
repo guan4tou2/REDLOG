@@ -129,7 +129,7 @@ Penetration testers need a tamper-evident record of what they did during an enga
 - **Commands** from a connected shell: command, exit code, duration and working directory. Ordinary **Bash and Zsh** commands also record bounded output automatically. Native/interactive exceptions remain metadata-only; explicit `redlog-session` records a PTY session with merged streams. PowerShell output uses its transcript integration.
 - **Deliberate exceptions:** `nc`, `ncat`, editors, pagers and the `claude` and `codex` CLIs retain native terminal behavior, with metadata instead of captured output. The AI conversation is recorded from its local transcript only when AI conversation capture is enabled (see below); otherwise only the launch command is. Zsh routes `ssh`, `socat` and `pwncat-cs` through a separate PTY recorder; Bash requires an explicit `redlog-session` for that class. PTY streams are merged and local suspension differs. `redlog class list` shows the effective rules, including operator overrides.
 - **HTTP(S)** that goes through RedLog's proxy — the capture browser, or a tool pointed at the proxy. Traffic that does not use the proxy (raw TCP, SMB, nmap SYN scans) is not recorded as HTTP.
-- **Optional sources**, off until you turn them on: process, connection and file monitoring; AI agent transcripts; periodic screenshots.
+- **Optional sources**, off until you turn them on: process, connection and file monitoring; AI agent transcripts.
 
 Markers, bookmarks and findings are still yours to write. RedLog keeps the record; it does not write the report.
 
@@ -164,7 +164,7 @@ Markers, bookmarks and findings are still yours to write. RedLog keeps the recor
 | Cleanup auto-detector | `history -c`, `journalctl --vacuum`, `wevtutil cl`, `shred`, `touch -t`, `chattr +i` → `cleanup` events | NIST SP 800-86 anti-forensics tracking |
 | File-transfer auto-detector | `curl -o`, `wget -O`, `scp`, `rsync`, `python -m http.server` → `file_transfer` events | T1105 ingress / T1041 exfil |
 | Browser CDP monitor | Every URL change in the built-in browser → `http_navigation` (T1071.001) | Filters `chrome://`, `about:`, `devtools:`, `view-source:` |
-| Screenshot agent | Periodic + on-demand desktop captures | SHA-256 in event, quality configurable |
+| Screenshot agent | On-demand desktop captures (shortcut, marker, `POST /api/screenshot`) | SHA-256 in event, quality configurable |
 | IP monitor | External IP + safety hysteresis (safe/exposed/unknown) | `system.ip_transition` on every state or IP change |
 | OPSEC state monitor | VPN interfaces (utun/tun/tap/wg/ppp/…), DNS resolvers, primary MAC, hostname | `system.opsec_state_changed` on any drift (30 s poll) |
 | Scope monitor | Command targets vs allowed scope | Own `scope` lane; `warn` (violation) or `log` (silent record) enforcement |

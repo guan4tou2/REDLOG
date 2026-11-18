@@ -73,16 +73,6 @@ function UpdateBlock({ t }: { t: T }): JSX.Element | null {
           {t('update.checkedAt', { time: formatDateTime(status.checkedAt) })}
         </p>
       )}
-      <CheckRow
-        inputTestId="update-auto-check"
-        checked={status.autoCheck}
-        label={t('update.autoCheck')}
-        onChange={(on) => {
-          // Shown at once, then main's answer replaces it: it owns the flag.
-          setStatus({ ...status, autoCheck: on })
-          void window.redlog.app.setAutoUpdateCheck(on).then(setStatus, () => window.redlog.app.updateStatus().then(setStatus))
-        }}
-      />
       <div className="flex flex-wrap gap-2">
         <Button level="secondary" disabled={busy} onClick={() => void window.redlog.app.checkForUpdates()} data-testid="update-check">
           {status.stage === 'checking' ? t('update.checking') : status.stage === 'failed' ? t('update.retry') : t('settings.checkUpdate')}

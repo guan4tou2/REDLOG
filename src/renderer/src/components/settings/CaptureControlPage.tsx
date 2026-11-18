@@ -1,11 +1,9 @@
-import { useEffect, useRef } from 'react'
-import { Button } from '../Button'
+import { useEffect } from 'react'
 import { FieldGroup, NumberField, ListField, type ConfigState } from './SettingsShared'
 import CapturePackGroup, { PackMember } from './CapturePackGroup'
 import AgentsPanel from './AgentsPanel'
 import ExternalCaptureGroup from './ExternalCaptureGroup'
 import { SourceLastSeen } from './SourceLastSeen'
-import { CheckRow } from './CheckRow'
 import { useCaptureHealth } from '../../lib/useCaptureHealth'
 import { landOnSourceRow, SOURCE_ROW } from '../../lib/sourceRow'
 
@@ -16,16 +14,6 @@ const MEMBER_HEALTH_ID: Record<string, string> = {
   processMonitor: 'process-monitor',
   connectionMonitor: 'connection-monitor'
 }
-
-/** The page's four groups, in page order (#557). The landmark's name is not a
- *  setting; it is held in a constant so the search index does not list it. */
-const JUMP_NAV = 'settings.captureJump'
-const JUMPS = [
-  { id: 'agents', label: 'settings.agents' },
-  { id: 'screenshot', label: 'settings.screenshotGroup' },
-  { id: 'hostMonitors', label: 'settings.packHostMonitors' },
-  { id: 'external', label: 'settings.externalCapture' }
-] as const
 
 export default function CaptureControlPage({
   config, setConfig, t, onOpenPlugins, onOpenIntegration, focusSource, onFocusHandled
@@ -68,68 +56,23 @@ export default function CaptureControlPage({
     return () => { observer.disconnect(); clearTimeout(giveUp) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusSource])
-  // #557: four groups on one page. A jump per group, in page order; the labels
-  // are the group titles, so the buttons need no copy of their own.
-  const groups = useRef<Record<string, HTMLElement | null>>({})
-  const group = (id: string) => (el: HTMLElement | null): void => { groups.current[id] = el }
   return (
     <>
-      <nav aria-label={t(JUMP_NAV)} className="flex flex-wrap gap-1.5">
-        {JUMPS.map(({ id, label }) => (
-          <Button key={id} size="compact" level="quiet" data-testid={`capture-jump-${id}`}
-            onClick={() => groups.current[id]?.scrollIntoView?.({ block: 'start' })}>{t(label)}</Button>
-        ))}
-      </nav>
       {/* Spec 049: the four-bullet "what every project records" list is gone.
           It had no control, no state and no link, and it held the first screen
           of this page. The same four sources are rows in the Dashboard's
           capture inventory, where they carry whether they are actually feeding
           the record — which is what an operator came here to find out. */}
       {/* Optional AI integrations are installed per tool and authorized per project. */}
-      <div ref={group('agents')} className="scroll-mt-4">
-        <AgentsPanel config={config} setConfig={setConfig} t={t} onOpenPlugins={onOpenIntegration} focusAgentKind={agentKind} onFocusHandled={onFocusHandled} />
-      </div>
+      <AgentsPanel config={config} setConfig={setConfig} t={t} onOpenPlugins={onOpenIntegration} focusAgentKind={agentKind} onFocusHandled={onFocusHandled} />
 
-      <div ref={group('screenshot')} data-source-id="screenshot" tabIndex={-1} className={SOURCE_ROW}>
+      <div data-source-id="screenshot" tabIndex={-1} className={SOURCE_ROW}>
       <FieldGroup title={t('settings.screenshotGroup')}>
-        <div className="flex items-center gap-2 flex-wrap">
-          {[
-            { v: 0, k: 'settings.screenshot.interval.off' },
-            { v: 30, k: 'settings.screenshot.interval.30s' },
-            { v: 60, k: 'settings.screenshot.interval.60s' },
-            { v: 300, k: 'settings.screenshot.interval.5m' }
-          ].map((opt) => (
-            <button
-              key={opt.v}
-              aria-pressed={(config.screenshot?.intervalSec ?? 0) === opt.v}
-              onClick={() => setConfig({ ...config, screenshot: { ...config.screenshot, intervalSec: opt.v } })}
-              className={`px-3 py-1 text-xs rounded ${
-                (config.screenshot?.intervalSec ?? 0) === opt.v
-                  ? 'bg-redlog-elevated text-redlog-text border border-redlog-border'
-                  : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
-              }`}
-            >{t(opt.k)}</button>
-          ))}
-        </div>
-
-        {/* The screenshot source is a source like the others: when it last
-            delivered a frame is a fact about the record, not about the
-            switch. */}
-        <SourceLastSeen
-          source={healthOf('screenshot')}
-          active={(config.screenshot?.intervalSec ?? 0) > 0 || config.screenshot?.captureOnCommand === true}
-          t={t}
-        />
-
-        <CheckRow
-          align="start"
-          checked={config.screenshot?.captureOnCommand ?? false}
-          onChange={(on) => setConfig({ ...config, screenshot: { ...config.screenshot, captureOnCommand: on } })}
-          label={t('settings.screenshot.onCommand')}
-        />
-        <details>
-          <summary className="min-h-8 content-center cursor-pointer text-xs text-redlog-text-dim">{t('settings.screenshot.options')}</summary>
-          <div className="space-y-2 pt-2">
+        {/* Ruling 7 (2026-11-12): no timed capture and no capture when a
+            command ends. Screenshots are taken when the operator asks; the
+            quality below is the one setting those use. Nothing is supposed to
+            be arriving on its own, so "nothing received yet" is not said. */}
+        <SourceLastSeen source={healthOf('screenshot')} active={false} t={t} />
         <NumberField
           label={t('settings.jpegQuality')}
           value={config.screenshot?.quality ?? 85}
@@ -139,37 +82,9 @@ export default function CaptureControlPage({
           invalid={t('settings.numberInvalidRange', { min: 1, max: 100 })}
           pending={t('settings.numberPending')}
         />
-
-        <label className="text-xs text-redlog-text-dim mt-3 block">{t('settings.screenshot.diffLabel')}</label>
-        <div className="flex items-center gap-2 flex-wrap">
-          {[
-            { v: 0, k: 'settings.screenshot.diff.off' },
-            { v: 5, k: 'settings.screenshot.diff.standard' },
-            { v: 12, k: 'settings.screenshot.diff.major' }
-          ].map((opt) => (
-            <button
-              key={opt.v}
-              aria-pressed={(config.screenshot?.diffThreshold ?? 5) === opt.v}
-              onClick={() => setConfig({ ...config, screenshot: { ...config.screenshot, diffThreshold: opt.v } })}
-              className={`px-3 py-1 text-xs rounded ${
-                (config.screenshot?.diffThreshold ?? 5) === opt.v
-                  ? 'bg-redlog-elevated text-redlog-text border border-redlog-border'
-                  : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
-              }`}
-            >{t(opt.k)}</button>
-          ))}
-        </div>
-        <p className="text-xs text-redlog-text-faint mt-2">{t('settings.screenshot.diffHint')}</p>
-
-
-
-
-          </div>
-        </details>
       </FieldGroup>
       </div>
 
-      <div ref={group('hostMonitors')} className="scroll-mt-4">
       <CapturePackGroup
         pack="hostMonitors" title={t('settings.packHostMonitors')} hint={t('settings.packHostMonitorsHint')}
         config={config} setConfig={setConfig} t={t} onOpenPlugins={onOpenPlugins}
@@ -219,7 +134,6 @@ export default function CaptureControlPage({
           config={config} setConfig={setConfig} t={t}
         />
       </CapturePackGroup>
-      </div>
 
 
       {/* Last, and the one block on this page that is not per project: what
@@ -227,7 +141,7 @@ export default function CaptureControlPage({
           than on the Plugins page because the question it answers -- "is
           anything actually recording" -- is this page's question, and because
           what ships with RedLog is not a plugin. */}
-      <div ref={group('external')} className="scroll-mt-4 empty:hidden">
+      <div className="empty:hidden">
         <ExternalCaptureGroup t={t} onOpenPlugins={onOpenPlugins} />
       </div>
 

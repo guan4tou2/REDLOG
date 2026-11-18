@@ -5,6 +5,16 @@ for full commit body + generated notes.
 
 ## Unreleased
 
+- Timed screenshots and the screenshot taken when a command ends are removed
+  (ruling 7, 2026-11-12). A project that had an interval set stops producing
+  frames after the upgrade; its `screenshot.intervalSec`, `diffThreshold` and
+  `captureOnCommand` stay in `config.yaml`, unread. Screenshots already
+  recorded are unaffected, and screenshots taken from the shortcut, a marker
+  or `POST /api/screenshot` work as before (#819).
+- The update check at launch is removed: updates are checked only when "Check
+  for updates" is pressed in About. The launch-check switch is gone with it
+  (#819).
+
 ## v0.19.0 — 2026-11-17
 
 Release. Everything merged since v0.18.6 (#490–#804). The full Chinese notes

@@ -5,7 +5,6 @@ import { SectionLabel } from './SectionLabel'
 import { useI18n } from '../i18n'
 import { formatFreshness, formatDate, formatSize } from '../lib/time'
 import { confirmChainImpact } from './ConfirmDialog'
-import { Wordmark } from './Wordmark'
 import { toast } from './Toast'
 import { runMutation } from '../lib/mutation'
 import { Button } from './Button'
@@ -18,8 +17,10 @@ type Translate = (key: string, vars?: Record<string, string | number>) => string
 
 /** What the picker shows for one project's scope (Spec 068 US2). `undefined`
  *  means the answer has not arrived: the badge is BLANK then, never "not set".
- *  "Not set" is a neutral fact, not an alarm — an empty scope is a normal state
- *  at project start (Stitch 01 draws it in the same grey as the count).
+ *  "Not set" is a neutral fact, not an alarm — an empty scope is the normal
+ *  state at project start — so it is the quietest of the three: no fill and no
+ *  border, where a count has a border. "Unknown" (the read failed) keeps a
+ *  border so it does not read as "not set"; the words differ as well.
  *  Declared at module scope: a component defined inside ProjectPicker would
  *  remount every row on every keystroke in the search box. */
 function ScopeBadge({ summary, t }: { summary: ProjectScopeSummary | undefined; t: Translate }): JSX.Element | null {
@@ -29,7 +30,7 @@ function ScopeBadge({ summary, t }: { summary: ProjectScopeSummary | undefined; 
     return <span data-testid="project-scope-badge" data-state="set" className={`${base} border-redlog-border text-redlog-text-dim`}>{t(summary.count === 1 ? 'project.scope.one' : 'project.scope.many', { count: summary.count })}</span>
   }
   if (summary.state === 'unset') {
-    return <span data-testid="project-scope-badge" data-state="unset" title={t('project.scope.unsetWhy')} className={`${base} border-redlog-border bg-redlog-elevated text-redlog-text-dim`}>{t('project.scope.unset')}</span>
+    return <span data-testid="project-scope-badge" data-state="unset" title={t('project.scope.unsetWhy')} className={`${base} border-transparent text-redlog-text-faint`}>{t('project.scope.unset')}</span>
   }
   return <span data-testid="project-scope-badge" data-state="unknown" title={t('project.scope.unknownWhy')} className={`${base} border-redlog-border text-redlog-text-faint`}>{t('project.scope.unknown')}</span>
 }
@@ -46,10 +47,6 @@ function summaryFor(answer: Record<string, ProjectScopeSummary> | null, id: stri
 
 interface ProjectPickerProps {
   onProjectOpen: (project: { id: string; name: string }) => void
-}
-
-function Kbd({ children }: { children: React.ReactNode }): JSX.Element {
-  return <kbd className="rounded border border-redlog-border bg-redlog-elevated px-1.5 py-0.5 font-mono text-xs text-redlog-text-dim">{children}</kbd>
 }
 
 export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JSX.Element {
@@ -204,12 +201,10 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
         className="h-10 shrink-0"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       />
-      <div className="flex-1 overflow-y-auto px-4 py-10 flex flex-col" style={{ justifyContent: 'safe center' }}>
-      <div className="shrink-0 mb-8 text-center select-none">
-        <Wordmark className="text-4xl" />
-        <p className="mt-1.5 font-mono text-xs tracking-[0.25em] text-redlog-text-dim">{t('project.tagline')}</p>
-      </div>
-      <div className="w-full max-w-[740px] mx-auto bg-redlog-surface border border-redlog-border-subtle rounded-xl p-6 shadow-2xl flex flex-col">
+      {/* The panel is as tall as its content, up to the window: past that the
+          list scrolls inside it, so it shows as many rows as fit. */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-10 flex flex-col" style={{ justifyContent: 'safe center' }}>
+      <div className="w-full max-w-[740px] mx-auto min-h-0 bg-redlog-surface border border-redlog-border-subtle rounded-xl p-6 shadow-2xl flex flex-col">
         {bridgeMissing && <p role="alert" className="mb-3 text-red-300 text-xs">{t('project.bridgeMissing')}</p>}
         <div className="flex flex-wrap items-center justify-between gap-3 pb-4 mb-4 border-b border-redlog-border-subtle">
           <div className="flex items-center gap-2.5"><SectionLabel>{t('project.recent')}</SectionLabel><span data-testid="project-search-count" role="status" className="px-2 py-0.5 text-xs font-mono font-bold rounded bg-redlog-elevated border border-redlog-border">{searching ? `${filtered.length} / ${projects.length}` : filtered.length}</span></div>
@@ -222,13 +217,17 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
           <input type="search" data-testid="project-search" aria-label={t('project.search')} placeholder={t('project.searchPlaceholder')} value={search} onChange={e => setSearch(e.target.value)} onKeyDown={onSearchKeyDown}
             className="w-full bg-redlog-bg border border-redlog-border-subtle rounded-lg pl-9 pr-3.5 py-2 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-redlog-accent/40" />
         </div>
-        <div ref={listRef} role="listbox" aria-label={t('project.recent')} data-testid="project-list" className="space-y-1.5 max-h-[380px] overflow-y-auto pr-1 py-1" aria-busy={!!opening} onKeyDown={onListKeyDown}>
+        <div ref={listRef} role="listbox" aria-label={t('project.recent')} data-testid="project-list" className="min-h-0 space-y-1 overflow-y-auto pr-1 py-1" aria-busy={!!opening} onKeyDown={onListKeyDown}>
           {filtered.map(p => {
             const isSel = selected?.id === p.id
+            // Last opened: how long ago, and the date as well once it was not
+            // today. When it was created is the row's title.
+            const opened = formatFreshness(p.lastOpened, t)
+            const openedDay = formatDate(p.lastOpened)
             return <div key={p.id} role="option" aria-selected={isSel} data-testid="project-row" data-selected={isSel || undefined}
+              title={t('project.created', { date: formatDate(p.createdAt) })}
               onClick={() => { setSelectedId(p.id); void handleOpen(p.id) }}
-              className={`group flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-3 transition-colors ${isSel ? 'bg-redlog-elevated border-redlog-border' : 'border-transparent hover:bg-redlog-elevated/60 hover:border-redlog-border-subtle'}`}>
-            <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${isSel ? 'bg-redlog-accent' : 'bg-redlog-accent/60 group-hover:bg-redlog-accent'}`} />
+              className={`group flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-1.5 transition-colors ${isSel ? 'bg-redlog-elevated border-redlog-border' : 'border-transparent hover:bg-redlog-elevated/60 hover:border-redlog-border-subtle'}`}>
             {renamingId === p.id ? <input autoFocus aria-label={t('project.rename')} value={renameValue} onChange={e => setRenameValue(e.target.value)} onClick={e => e.stopPropagation()} onKeyDown={e => {
               if (isComposing(e)) return
               if (e.key === 'Enter') { e.preventDefault(); void handleRenameCommit(p.id) }
@@ -241,13 +240,15 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
                 <span title={p.name} className="truncate font-mono text-xs font-medium text-redlog-text">{p.name}</span>
                 <ScopeBadge summary={scopeFor(p.id)} t={t} />
               </span>
-              <span className="mt-0.5 block font-mono text-xs text-redlog-text-faint">{opening === p.id ? t('project.opening') : formatFreshness(p.lastOpened, t)} · {t('project.created', { date: formatDate(p.createdAt) })}</span>
               {(nameCounts.get(p.name) ?? 0) > 1 && <span className="block break-all text-xs text-redlog-text-dim font-mono">{p.path}</span>}
             </button>}
-            <span className="shrink-0 text-right font-mono text-xs text-redlog-text-dim">{p.dbSize != null ? formatSize(p.dbSize) : '—'}</span>
+            <span className="shrink-0 whitespace-nowrap font-mono text-xs text-redlog-text-faint">
+              {opening === p.id ? t('project.opening') : openedDay && openedDay !== formatDate(Date.now()) ? `${opened} · ${openedDay}` : opened}
+            </span>
+            <span className="w-16 shrink-0 text-right font-mono text-xs text-redlog-text-dim">{p.dbSize != null ? formatSize(p.dbSize) : '—'}</span>
             <span className={`flex shrink-0 items-center ${isSel ? '' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'}`}>
-              <button disabled={!!opening} onClick={(e) => { e.stopPropagation(); setRenamingId(p.id); setRenameValue(p.name) }} aria-label={t('project.rename')} className="p-2 text-redlog-muted hover:text-redlog-text focus-visible:ring-2 focus-visible:ring-redlog-accent/40">✎</button>
-              <button disabled={!!opening} onClick={(e) => { e.stopPropagation(); void handleDelete(p.id) }} aria-label={t('project.delete')} className="p-2 text-redlog-muted hover:text-red-400 focus-visible:ring-2 focus-visible:ring-redlog-accent/40">✕</button>
+              <button disabled={!!opening} onClick={(e) => { e.stopPropagation(); setRenamingId(p.id); setRenameValue(p.name) }} aria-label={t('project.rename')} className="p-1.5 text-redlog-muted hover:text-redlog-text focus-visible:ring-2 focus-visible:ring-redlog-accent/40">✎</button>
+              <button disabled={!!opening} onClick={(e) => { e.stopPropagation(); void handleDelete(p.id) }} aria-label={t('project.delete')} className="p-1.5 text-redlog-muted hover:text-red-400 focus-visible:ring-2 focus-visible:ring-redlog-accent/40">✕</button>
             </span>
           </div>
           })}
@@ -279,17 +280,13 @@ export default function ProjectPicker({ onProjectOpen }: ProjectPickerProps): JS
           </div>
         )}
 
-        <div data-testid="project-picker-footer" className="mt-4 pt-4 border-t border-redlog-border-subtle flex flex-wrap items-center justify-between gap-2 font-mono text-xs text-redlog-text-faint">
-          <span className="min-w-0 truncate" title={root ?? undefined}>{root && <>{t('project.storageDir')}<span title={root} className="text-redlog-text-dim">{root}</span></>}</span>
-          {/* Only with a row to move to and open. */}
-          {hasRecent && <span className="flex items-center gap-3 whitespace-nowrap">
-            <span>{t('project.keyPress')} <Kbd>↑</Kbd><Kbd>↓</Kbd> {t('project.keyBrowse')}</span>
-            <span>{t('project.keyPress')} <Kbd>Enter</Kbd> {t('project.keyOpen')}</span>
-          </span>}
-        </div>
+        {/* Where projects live; left out when that read failed or main is
+            older than the call. */}
+        {root && <div data-testid="project-picker-footer" className="mt-4 pt-4 border-t border-redlog-border-subtle font-mono text-xs text-redlog-text-faint">
+          <p className="min-w-0 truncate" title={root}>{t('project.storageDir')}<span className="text-redlog-text-dim">{root}</span></p>
+        </div>}
       </div>
       </div>
-      <footer className="shrink-0 border-t border-redlog-border-subtle/60 py-4 text-center font-mono text-xs text-redlog-text-faint">{t('project.pageFooter')}</footer>
       </div>
       <CreateProjectModal open={createOpen} root={root} onClose={() => setCreateOpen(false)} onCreated={onProjectOpen} />
     </div>

@@ -43,7 +43,7 @@ beforeEach(() => {
     loot: { rules: async () => [{ id: 'aws-key', type: 'credential', confidence: 'high', pluginId: null, description: 'AWS access key' }] },
     chain: { anchors: async () => [] },
     app: {
-      updateStatus: async () => ({ stage: 'idle', method: 'in-app', packaged: true, currentVersion: '1.0.0', targetVersion: null, progress: null, result: null, checkedAt: null, releaseUrl: 'https://example.test', autoCheck: true, unfinished: false }),
+      updateStatus: async () => ({ stage: 'idle', method: 'in-app', packaged: true, currentVersion: '1.0.0', targetVersion: null, progress: null, result: null, checkedAt: null, releaseUrl: 'https://example.test', unfinished: false }),
       onUpdateStatus: () => () => {}
     },
     debug: { status: async () => ({ enabled: false, path: '/tmp/x' }) }

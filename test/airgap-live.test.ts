@@ -176,7 +176,7 @@ sqlite.describe('network.offline switched on while a project is open (Spec 073 T
   async function checkUpdate(): Promise<void> {
     const platform = Object.getOwnPropertyDescriptor(process, 'platform')!
     Object.defineProperty(process, 'platform', { value: 'linux' })
-    try { const p = updater.checkForUpdates({ manual: true }); await vi.advanceTimersByTimeAsync(10); await p } finally { Object.defineProperty(process, 'platform', platform) }
+    try { const p = updater.checkForUpdates(); await vi.advanceTimersByTimeAsync(10); await p } finally { Object.defineProperty(process, 'platform', platform) }
   }
 
   it('control: with air-gap off, every one of the four reaches the network double', async () => {

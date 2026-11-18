@@ -13,7 +13,7 @@ const t = (key: string, vars?: Record<string, string | number>): string =>
 const base: UpdateStatus = {
   stage: 'idle', method: 'download-page', packaged: true, currentVersion: '1.0.0', targetVersion: null,
   progress: null, result: null, checkedAt: null, releaseUrl: 'https://example.test/releases',
-  autoCheck: true, unfinished: false
+  unfinished: false
 }
 
 function draw(initial: Partial<UpdateStatus>, platform = 'darwin') {
@@ -24,8 +24,7 @@ function draw(initial: Partial<UpdateStatus>, platform = 'darwin') {
     onUpdateStatus: vi.fn((cb: (s: UpdateStatus) => void) => { push = cb; return () => {} }),
     cancelUpdate: vi.fn(async () => true),
     installUpdate: vi.fn(async () => {}),
-    openExternal: vi.fn(async () => {}),
-    setAutoUpdateCheck: vi.fn(async (on: boolean) => ({ ...base, ...initial, autoCheck: on }))
+    openExternal: vi.fn(async () => {})
   }
   ;(window as unknown as { redlog: unknown }).redlog = {
     platform,
@@ -120,12 +119,9 @@ describe('About: update status', () => {
     expect(await state()).toBe('update.state.unfinished|version=2.0.0')
   })
 
-  it('shows the launch check as on, and turns it off with main having the last word', async () => {
-    const { app } = draw({})
-    const box = (await screen.findByTestId('update-auto-check')) as HTMLInputElement
-    expect(box.checked).toBe(true)
-    fireEvent.click(box)
-    expect(app.setAutoUpdateCheck).toHaveBeenCalledWith(false)
-    await vi.waitFor(() => expect(box.checked).toBe(false))
+  it('has no launch-check switch: the update check runs only when pressed (ruling 7)', async () => {
+    draw({})
+    expect(await screen.findByTestId('update-check')).toBeTruthy()
+    expect(screen.queryByTestId('update-auto-check')).toBeNull()
   })
 })

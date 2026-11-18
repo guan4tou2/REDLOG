@@ -132,7 +132,7 @@ describe('config apply plan: the dependency map', () => {
     ['agent thinking blocks', (c) => { c.agentTailer = { emitThinking: true } }, ['agentTailer']],
     ['the proxy port', (c) => { c.httpCapture.port = 7000 }, ['managedProxy']],
     ['the proxy listen address', (c) => { c.httpCapture.listenHost = '0.0.0.0' }, ['managedProxy']],
-    ['screenshot interval', (c) => { c.screenshot.intervalSec = 30 }, ['screenshot']],
+    ['screenshot quality', (c) => { c.screenshot.quality = 70 }, ['screenshot']],
     ['scope targets', (c) => { c.scope.targets = ['t.test'] }, ['alertRuntime', 'scopeRecompute']],
     ['scope file', (c) => { c.scope.scopeFile = '/nope.txt' }, ['alertRuntime', 'scopeRecompute']],
     ['warn on violation', (c) => { c.scope.warnOnViolation = false }, ['alertRuntime', 'scopeRecompute']],
@@ -277,6 +277,15 @@ describe('config apply: one path for every entry point', () => {
     expect(h.log.filter((c) => CAPTURE_CALLS.has(c)).sort()).toEqual(
       ['configureConnectionMonitor', 'configureFileWatcher', 'configureProcessMonitor'])
     expect(h.args.find(([n]) => n === 'configureProcessMonitor')?.[1]).toEqual({ enabled: true })
+  })
+
+  // Ruling 7 (2026-11-12): no timed capture, no capture on command end. A
+  // project file written before still carries the keys; they are read and
+  // ignored — the screenshot agent is handed the quality and nothing else.
+  it('hands the screenshot agent only the quality, whatever an old file still carries', () => {
+    h.args.length = 0
+    openWith(cfg((c) => { Object.assign(c.screenshot, { quality: 70, intervalSec: 30, captureOnCommand: true, diffThreshold: 12 }) }))
+    expect(h.args.find(([n]) => n === 'screenshotAgent.configure')?.[1]).toEqual({ identity: open, quality: 70 })
   })
 
   it('the scope recompute and audit describe the change from the file as it was', () => {

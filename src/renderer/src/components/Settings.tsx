@@ -16,12 +16,11 @@ import ScopePage from './settings/ScopePage'
 import CaptureControlPage from './settings/CaptureControlPage'
 import CapturePackGroup from './settings/CapturePackGroup'
 import HooksPanel from './settings/HooksPanel'
-import PluginsPanel from './settings/PluginsPanel'
+import PluginsPanel, { isHiddenPlugin } from './settings/PluginsPanel'
 import IntegrityPanel from './settings/IntegrityPanel'
 import LootRulesGroup from './settings/LootRulesGroup'
 import RetentionPage from './settings/RetentionPage'
 import { searchSettings } from '../lib/settingsSearch'
-import { PROSE_WIDTH } from '../lib/pageLayout'
 import { applyConfigPatch, diffConfig, rebaseDraft, valueAtPath, type ConfigPatchOp, type ConfigSaveResult } from '../../../core/config-patch'
 
 // Existing settings routes. A typo must fail typechecking, not open an empty pane.
@@ -31,52 +30,83 @@ export type SettingsPage =
   | 'general' | 'hud' | 'plugins' | 'about'
 
 type HomeBadge = 'local' | 'project' | 'perProject'
-interface HomeRow { id: SettingsPage; label: string; badge?: HomeBadge; action?: 'manage' | 'view' | 'openScope' }
+interface HomeRow { id: SettingsPage; label: string; badge?: HomeBadge }
 
-/** The settings home, as the Stitch prototype lays it out (#590): three
- *  blocks, each row a title, where it applies, one line on what it holds, and
- *  one button. Pages the prototype has no row for (loot rules, integrity, the
- *  HUD) stay reachable as plain rows in the block they belong to. */
+/** The settings home: blocks of one-line rows, each the page's own name (the
+ *  same string as the page's heading), the page's current value when it is
+ *  cheap and certain, and `›`. */
 const HOME_SECTIONS: Array<{ key: 'capture' | 'project' | 'other'; rows: HomeRow[] }> = [
   { key: 'capture', rows: [
     { id: 'hooks', label: 'settings.pageHooks', badge: 'local' }, { id: 'browser', label: 'settings.pageBrowser', badge: 'project' }, { id: 'captureControl', label: 'settings.pageCaptureControl', badge: 'perProject' }
   ] },
   { key: 'project', rows: [
-    { id: 'scope', label: 'settings.pageScope', badge: 'project', action: 'openScope' }, { id: 'network', label: 'settings.pageNetwork', badge: 'project' }, { id: 'loot', label: 'settings.pageLoot', badge: 'project' }
+    { id: 'scope', label: 'settings.pageScope', badge: 'project' }, { id: 'network', label: 'settings.pageNetwork', badge: 'project' }, { id: 'loot', label: 'settings.pageLoot', badge: 'project' }
   ] },
   { key: 'other', rows: [
-    { id: 'plugins', label: 'settings.pagePlugins' }, { id: 'retention', label: 'settings.pageRetention' }, { id: 'integrity', label: 'settings.pageIntegrity' }, { id: 'general', label: 'settings.pageGeneral' }, { id: 'hud', label: 'settings.pageHud' }, { id: 'about', label: 'settings.pageAbout', action: 'view' }
+    { id: 'plugins', label: 'settings.pagePlugins' }, { id: 'retention', label: 'settings.pageRetention' }, { id: 'integrity', label: 'settings.pageIntegrity' }, { id: 'general', label: 'settings.pageGeneral' }, { id: 'hud', label: 'settings.pageHud' }, { id: 'about', label: 'settings.pageAbout' }
   ] }
 ]
-/** One line on what each page holds. Literal keys, so the copy guard can see
- *  they are rendered. A page missing here shows its plain page name. */
-const HOME_DESC: Partial<Record<SettingsPage, string>> = {
-  hooks: 'settings.home.hooks.desc', browser: 'settings.home.browser.desc', captureControl: 'settings.home.captureControl.desc',
-  network: 'settings.home.network.desc', plugins: 'settings.home.plugins.desc', retention: 'settings.home.retention.desc',
-  general: 'settings.home.general.desc', about: 'settings.home.about.desc'
-}
-const HOME_WITH_COPY = new Set<SettingsPage>(['hooks', 'browser', 'captureControl', 'scope', 'network', 'plugins', 'retention', 'general', 'about'])
 
-function SettingsHomeRow({ row, title, desc, status, onOpen, t }: {
-  row: HomeRow; title: string; desc: string | null; status: string | null; onOpen: () => void; t: (k: string, v?: Record<string, string | number>) => string
+/** Counts the home shows that need a read from main. `null` is "not known":
+ *  still loading, or the read failed — never drawn as 0. Read again each time
+ *  the home list is shown, so a plugin installed a moment ago is counted. */
+function useHomeCounts(onHome: boolean): { lootRules: Array<{ id: string }> | null; plugins: number | null } {
+  const [lootRules, setLootRules] = useState<Array<{ id: string }> | null>(null)
+  const [plugins, setPlugins] = useState<number | null>(null)
+  useEffect(() => {
+    if (!onHome) return
+    let live = true
+    // Started inside a promise, so a bridge without the call (a window whose
+    // preload predates it) is a failed read like any other, not a crash.
+    Promise.resolve().then(() => window.redlog.loot.rules())
+      .then((r) => { if (live) setLootRules(Array.isArray(r) ? r : null) }, () => { if (live) setLootRules(null) })
+    Promise.resolve().then(() => window.redlog.plugins.list() as Promise<unknown>)
+      .then((r) => { if (live) setPlugins(Array.isArray(r) ? r.filter((p) => !isHiddenPlugin(p as { id: string; status: string })).length : null) },
+        () => { if (live) setPlugins(null) })
+    return () => { live = false }
+  }, [onHome])
+  return { lootRules, plugins }
+}
+
+function SettingsHomeRow({ row, title, value, onOpen, t }: {
+  row: HomeRow; title: string; value: string | null; onOpen: () => void; t: (k: string, v?: Record<string, string | number>) => string
 }): JSX.Element {
   return (
     <button
       data-settings-page={row.id}
       onClick={onOpen}
-      className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-white/[0.03] first:rounded-t-lg last:rounded-b-lg"
+      className="w-full text-left px-4 py-2.5 flex items-center gap-3 hover:bg-white/[0.03] first:rounded-t-lg last:rounded-b-lg"
     >
-      <span className="flex-1 min-w-0">
-        <span className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-redlog-text">{title}</span>
-          {row.badge && <span className="text-xs px-1.5 rounded border border-redlog-border-subtle text-redlog-text-dim">{t(`settings.home.badge.${row.badge}`)}</span>}
-          {status && <span className="text-xs text-redlog-text-dim">{status}</span>}
-        </span>
-        {desc && <span className="block text-xs text-redlog-text-faint mt-0.5">{desc}</span>}
+      <span className="flex-1 min-w-0 flex items-center gap-2">
+        <span data-testid={`settings-home-title-${row.id}`} className="text-sm font-medium text-redlog-text truncate" title={title}>{title}</span>
+        {row.badge && <span className="shrink-0 text-xs px-1.5 rounded border border-redlog-border-subtle text-redlog-text-dim">{t(`settings.home.badge.${row.badge}`)}</span>}
       </span>
-      <span className="shrink-0 text-xs text-redlog-text-dim">{t(`settings.home.${row.action ?? 'manage'}`)} ›</span>
+      {value && <span className="shrink-0 text-xs text-redlog-text-dim tabular-nums">{value}</span>}
+      <span aria-hidden="true" className="shrink-0 text-xs text-redlog-text-dim">›</span>
     </button>
   )
+}
+
+/** A home row's current value, or null when there is none cheap and certain
+ *  to show. Config values come from the read this page already made; counts
+ *  that needed their own read show nothing until that read has succeeded. */
+function homeValue(id: SettingsPage, config: ConfigState, counts: { lootRules: Array<{ id: string }> | null; plugins: number | null },
+  t: (k: string, v?: Record<string, string | number>) => string): string | null {
+  switch (id) {
+    case 'scope': return t('settings.home.scope.status', { n: config.scope?.targets?.length ?? 0, m: config.scope?.excludeTargets?.length ?? 0 })
+    case 'loot': {
+      if (!counts.lootRules) return null
+      const off = new Set(config.loot?.disabledRules ?? [])
+      return t('settings.home.value.lootRules', { n: counts.lootRules.filter((r) => !off.has(r.id)).length })
+    }
+    case 'plugins': return counts.plugins === null ? null : t('settings.home.value.plugins', { n: counts.plugins })
+    case 'retention': {
+      const days = config.retention?.loggedTier?.keepDays
+      return typeof days === 'number' && days > 0 ? t('settings.home.value.days', { n: days }) : null
+    }
+    case 'about': return `v${__APP_VERSION__}`
+    default: return null
+  }
 }
 
 /** What Settings had not managed to save when it was left. Kept until a save
@@ -168,6 +198,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
   const [hooks, setHooks] = useState<HookInfo[]>([])
   const { t } = useI18n()
+  const homeCounts = useHomeCounts(tab === null)
 
   useEffect(() => {
     loadConfig()
@@ -354,22 +385,19 @@ export default function Settings({ request = null }: { request?: { page: Setting
   const hits = searchSettings(pageQuery, t, 30, window.redlog.platform)
   // Page-name matches and field matches share one result list.
   const matchedPages = HOME_SECTIONS.flatMap(section => section.rows)
-    .filter(row => q && (pageLabel.get(row.id)?.toLowerCase().includes(q) ||
-      (HOME_WITH_COPY.has(row.id) && t(`settings.home.${row.id}.title`).toLowerCase().includes(q))))
+    .filter(row => q && pageLabel.get(row.id)?.toLowerCase().includes(q))
   for (const row of matchedPages) {
     if (!hits.some(hit => hit.page === row.id)) hits.push({ page: row.id, key: row.label, text: pageLabel.get(row.id)! })
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* The right pane is a column: content scrolls, the save bar stays put. */}
-      <div ref={pane} data-testid="settings-content" data-page={tab ?? 'home'} className="flex-1 min-w-0 min-h-0 overflow-y-auto p-pad space-y-4 [overflow-wrap:anywhere]">
+    <div className="relative flex flex-col h-full">
+      {/* Content scrolls; its bottom padding leaves room for the save bar, so
+          the last field can be scrolled clear of it. */}
+      <div ref={pane} data-testid="settings-content" data-page={tab ?? 'home'} className="flex-1 min-w-0 min-h-0 overflow-y-auto p-pad pb-12 space-y-4 [overflow-wrap:anywhere]">
         {tab === null ? (
           <div className="space-y-4" data-testid="settings-home">
-            <header>
-              <h1 className="text-lg font-semibold text-redlog-text">{t('sidebar.settings')}</h1>
-              <p className={`text-xs text-redlog-text-dim ${PROSE_WIDTH}`}>{t('settings.home.subtitle')}</p>
-            </header>
+            <h1 className="text-lg font-semibold text-redlog-text">{t('sidebar.settings')}</h1>
             <input
               value={pageQuery}
               onChange={(e) => setPageQuery(e.target.value)}
@@ -377,7 +405,7 @@ export default function Settings({ request = null }: { request?: { page: Setting
               aria-label={t('settings.searchSettings')}
               className={`w-full px-3 py-2 bg-redlog-elevated border border-redlog-border rounded text-sm text-redlog-text placeholder-redlog-muted focus:border-redlog-accent/60 ${FIELD_FOCUS_RING}`}
             />
-            {q !== '' && hits.length === 0 && !HOME_SECTIONS.some((sec) => sec.rows.some((r) => pageLabel.get(r.id)?.toLowerCase().includes(q) || t(`settings.home.${r.id}.title`).toLowerCase().includes(q))) && (
+            {q !== '' && hits.length === 0 && (
               <p className="py-4 text-xs text-redlog-text-faint text-center">
                 {t('settings.noSettingMatches', { query: pageQuery })}
               </p>
@@ -390,16 +418,12 @@ export default function Settings({ request = null }: { request?: { page: Setting
                   <section key={sec.key} aria-label={t(`settings.home.group.${sec.key}`)}>
                     <p className="pb-1 text-xs font-semibold text-redlog-muted tracking-[0.18em]">{t(`settings.home.group.${sec.key}`)}</p>
                     <div className="divide-y divide-redlog-border-subtle rounded-lg border border-redlog-border-subtle bg-redlog-surface">
-                      {rows.map((row) => {
-                        const own = HOME_WITH_COPY.has(row.id)
-                        const status = row.id === 'scope'
-                          ? t('settings.home.scope.status', { n: config.scope?.targets?.length ?? 0, m: config.scope?.excludeTargets?.length ?? 0 })
-                          : null
-                        return <SettingsHomeRow key={row.id} row={row} t={t}
-                          title={own ? t(`settings.home.${row.id}.title`) : (pageLabel.get(row.id) ?? row.id)}
-                          desc={own && HOME_DESC[row.id] ? t(HOME_DESC[row.id]!) : null}
-                          status={status} onOpen={() => setTab(row.id)} />
-                      })}
+                      {rows.map((row) => (
+                        <SettingsHomeRow key={row.id} row={row} t={t}
+                          title={pageLabel.get(row.id) ?? row.id}
+                          value={homeValue(row.id, config, homeCounts, t)}
+                          onOpen={() => setTab(row.id)} />
+                      ))}
                     </div>
                   </section>
                 )
@@ -459,26 +483,24 @@ export default function Settings({ request = null }: { request?: { page: Setting
         {tab === 'about' && <AboutPage t={t} />}
       </div>
 
-      {/* Plugins are enabled, installed and trusted through their own calls,
-          each answered at once; nothing on that page is a setting this form
-          saves. The bar still appears there for a save already in flight. */}
-      {(tab !== 'plugins' || saveState !== 'idle') && <div data-testid="settings-save-bar" className="px-4 py-2 border-t border-redlog-border shrink-0 flex flex-wrap items-center gap-x-3">
-        {tab !== 'plugins' && <span className="text-redlog-text-faint text-xs">{t('settings.autoSaveHint')}</span>}
-        {saveState !== 'idle' && (
-          <span
-            data-testid={`settings-save-${saveState}`}
-            role="status"
-            className={`text-xs ${saveState === 'failed' ? 'text-red-400' : saveState === 'saving' ? 'text-redlog-text-dim' : 'text-emerald-400'}`}
-          >
-            {t(`settings.save.${saveState}`)}
-            {saveState === 'failed' && (
-              <button
-                onClick={retry}
-                className="ml-2 underline hover:text-red-300"
-              >{t('settings.save.retry')}</button>
-            )}
-          </span>
-        )}
+      {/* The bar exists only while it has something to say: a write in
+          flight, one that landed, one that failed. It floats over the bottom
+          of the page rather than taking a row from the column, so the pane
+          does not shrink — and the page does not jump — when it appears. */}
+      {saveState !== 'idle' && <div data-testid="settings-save-bar" className="absolute inset-x-0 bottom-0 px-4 py-2 border-t border-redlog-border bg-redlog-surface flex flex-wrap items-center gap-x-3">
+        <span
+          data-testid={`settings-save-${saveState}`}
+          role="status"
+          className={`text-xs ${saveState === 'failed' ? 'text-red-400' : saveState === 'saving' ? 'text-redlog-text-dim' : 'text-emerald-400'}`}
+        >
+          {t(`settings.save.${saveState}`)}
+          {saveState === 'failed' && (
+            <button
+              onClick={retry}
+              className="ml-2 underline hover:text-red-300"
+            >{t('settings.save.retry')}</button>
+          )}
+        </span>
       </div>}
     </div>
   )

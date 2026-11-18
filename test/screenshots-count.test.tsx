@@ -41,14 +41,14 @@ const summary = (): { shown: number; total: number } => {
 
 it('says "Showing 5 of 5" once all five are loaded (the pin: the line exists and is exact before anything arrives)', async () => {
   install([5, 4, 3, 2, 1].map(shot))
-  render(<I18nProvider><ScreenshotsView onNavigate={() => {}} /></I18nProvider>)
+  render(<I18nProvider><ScreenshotsView /></I18nProvider>)
   await screen.findByTestId('screenshot-list')
   expect(summary()).toEqual({ shown: 5, total: 5 })
 })
 
 it.fails('never shows more screenshots than the total it states, after a live one arrives', async () => {
   install([5, 4, 3, 2, 1].map(shot))
-  render(<I18nProvider><ScreenshotsView onNavigate={() => {}} /></I18nProvider>)
+  render(<I18nProvider><ScreenshotsView /></I18nProvider>)
   await screen.findByTestId('screenshot-list')
   act(() => { for (const cb of listeners) cb([shot(6)]) })
   await waitFor(() => expect(screen.getAllByRole('button', { name: /^Screenshot at/ })).toHaveLength(6))

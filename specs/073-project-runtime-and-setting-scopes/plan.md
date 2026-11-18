@@ -140,7 +140,7 @@ schema: 1
 operator: { id: alice, name: Alice }
 network: { blacklist: [], checkInterval: 60, providers: [], confirmations: 3, ipMode: auto, showWifiName: false, vpnAdapters: [...] }
 personalTraffic: []
-screenshot: { quality: 85, diffThreshold: 5 }
+screenshot: { quality: 85 }   # diffThreshold 已依裁定 7 刪除（2026-11-18）
 terminal: { maxCastBytes: 52428800 }
 clipboard: { pollMs: 1500 }
 browser: { binary: ..., proxy: ..., cdpPort: 9222, isolateProfile: true, ignoreCertErrors: false, extraArgs: [] }
@@ -497,8 +497,8 @@ export function bindingState(e: TerminalEnrollment, openEngagementId: string | n
 | `network.vpnAdapters` | 機器 | ✔ | |
 | `scope.warnOnViolation`、`targets`、`excludeTargets`、`scopeFile` | 專案 | | |
 | `scope.personalDomains` → `personalTraffic` | 機器 | ✔ | 改名；預設空；舊檔一律視為覆寫 |
-| `screenshot.quality`、`diffThreshold` | 機器 | ✔ | |
-| `screenshot.intervalSec`、`captureOnCommand` | 專案 | | 擷取政策 |
+| `screenshot.quality` | 機器 | ✔ | |
+| ~~`screenshot.diffThreshold`、`intervalSec`、`captureOnCommand`~~ | — | | 已依裁定 7 刪除（2026-11-18）；舊檔的值保留不讀 |
 | `terminal.maxCastBytes` | 機器 | ✔ | 本機磁碟預算 |
 | `clipboard.pollMs` | 機器 | ✔ | |
 | `clipboard.storePreview` | 專案 | | 隱私選擇屬於任務 |

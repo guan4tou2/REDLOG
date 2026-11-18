@@ -69,7 +69,7 @@ const OWNED_ELSEWHERE = new Set<string>([
 // Spec 066: the official AI integrations are no longer hidden here. This page is
 // the one place they are installed, updated and removed; Capture sources keeps
 // only the per-project settings and points back at this row.
-const isHidden = (p: { id: string; status: string }): boolean =>
+export const isHiddenPlugin = (p: { id: string; status: string }): boolean =>
   OWNED_ELSEWHERE.has(p.id) && p.status !== 'disabled'
 
 // The manifests describe these packs to whoever maintains them: spec
@@ -175,7 +175,7 @@ export default function PluginsPanel({ t, config, focus, onFocusHandled, onOpenC
   }
   useEffect(() => { void load() }, [])
 
-  const shown = useMemo(() => plugins.filter((p) => !isHidden(p)), [plugins])
+  const shown = useMemo(() => plugins.filter((p) => !isHiddenPlugin(p)), [plugins])
   const vms = useMemo(() => new Map<string, PluginViewModel>(shown.map((p) => [p.id, pluginViewModel(p, describe)])), [shown, describe])
   // A plugin that no longer exists cannot stay selected.
   useEffect(() => { if (selectedId !== null && !vms.has(selectedId)) setSelectedId(null) }, [vms, selectedId])

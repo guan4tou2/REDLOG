@@ -39,7 +39,7 @@ it('drops a "load more" page that belonged to the trigger chosen before', async 
       : { items: all, hasMore: true, nextCursor: 'n' }
   })
   install(query)
-  render(<I18nProvider><ScreenshotsView onNavigate={() => {}} /></I18nProvider>)
+  render(<I18nProvider><ScreenshotsView /></I18nProvider>)
   await screen.findByTestId('screenshot-list')
   fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
   await waitFor(() => expect(query).toHaveBeenCalledWith(expect.objectContaining({ cursor: 'n' })))
@@ -52,7 +52,7 @@ it('drops a "load more" page that belonged to the trigger chosen before', async 
 
 it('puts a live screenshot at the top and keeps saying the list is partial', async () => {
   install(vi.fn(async () => ({ items: all, hasMore: true, nextCursor: 'n' })))
-  render(<I18nProvider><ScreenshotsView onNavigate={() => {}} /></I18nProvider>)
+  render(<I18nProvider><ScreenshotsView /></I18nProvider>)
   await screen.findByTestId('screenshot-list')
   expect(rows()).toHaveLength(3)
   act(() => { for (const cb of listeners) cb([shot('s9', 'manual')]) })

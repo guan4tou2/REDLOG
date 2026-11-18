@@ -47,9 +47,6 @@ const DEFAULTS: Record<string, Check> = {
 
   // 2.4 screenshot
   'screenshot.quality': 85,
-  'screenshot.intervalSec': 0,
-  'screenshot.diffThreshold': 5,
-  'screenshot.captureOnCommand': false,
 
   // 2.6 terminal / retention
   'terminal.maxCastBytes': 52_428_800,

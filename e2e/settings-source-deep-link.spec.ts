@@ -40,7 +40,7 @@ test('dashboard warning opens the source row; repairing it brings a new event', 
     await openView(page, 'dashboard')
     // Core capture is not verified yet, so the dashboard is the first-run view,
     // which keeps the capture card behind a toggle.
-    await page.getByRole('button', { name: 'Prepare other capture sources (AI agents, screenshots)' }).click()
+    await page.getByRole('button', { name: 'Prepare other capture sources (AI agents)' }).click()
     const link = page.getByTestId('capture-open-agent-claude-code')
     await expect(link).toBeVisible()
     await link.click()
@@ -63,7 +63,14 @@ test('dashboard warning opens the source row; repairing it brings a new event', 
   } finally { await app.close() }
 })
 
-test('an empty Screenshots view opens the screenshot group, scrolled to and focused', async () => {
+// The empty Screenshots view used to carry this link; ruling 7 removed timed
+// capture and the link with it. What still asks for the screenshot row is a
+// failing screenshot source: its status-bar issue routes through
+// captureIssueView (lib/captureIssue.ts) to this target and is dispatched on
+// `redlog:navigate`, the app's one router (StatusBar.tsx). Making the screen
+// grab fail on the CI runner is not reliable, so the step sends that route on
+// the same channel the issue button uses.
+test('a link to the screenshot source opens its group, scrolled to and focused', async () => {
   const { app, page } = await launchWithTempHome()
   try {
     await page.evaluate(() => localStorage.setItem('redlog-locale', 'en'))
@@ -71,8 +78,8 @@ test('an empty Screenshots view opens the screenshot group, scrolled to and focu
     await openTestProject(page, 'screenshot-deep-link')
     // Short enough that the group is below the fold when the page opens.
     await resizeMainWindow(app, 900, 520)
-    await openView(page, 'screenshots')
-    await page.getByRole('button', { name: 'Periodic capture settings →' }).click()
+    await openView(page, 'dashboard')
+    await page.evaluate(() => { window.dispatchEvent(new CustomEvent('redlog:navigate', { detail: 'settings/captureControl?source=screenshot' })) })
     await expect(page.getByTestId('settings-content')).toHaveAttribute('data-page', 'captureControl')
     const group = page.locator('[data-source-id="screenshot"]')
     await expect(group).toBeFocused()

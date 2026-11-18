@@ -99,7 +99,7 @@ export const CONFIG_SCHEMA: Node = obj({
     vpnAdapters: { t: 'array', of: obj({ name: str, pattern: str, enabled: bool }) }
   }),
   scope: obj({ warnOnViolation: bool, targets: strs, excludeTargets: strs, personalDomains: strs, scopeFile: { t: 'nullable', of: str } }),
-  screenshot: obj({ quality: num, intervalSec: num, diffThreshold: num, captureOnCommand: bool }),
+  screenshot: obj({ quality: num }),
   terminal: obj({ maxCastBytes: num }),
   browser: obj({ binary: str, proxy: str, cdpPort: num, isolateProfile: bool, ignoreCertErrors: bool, startUrl: str, extraArgs: strs }),
   httpCapture: obj({ port: num, listenHost: str, routeTerminals: bool }),

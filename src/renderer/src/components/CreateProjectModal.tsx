@@ -150,10 +150,7 @@ export function CreateProjectModal({ open, onClose, onCreated, root }: {
       panelClassName="w-full max-w-xl m-4 flex max-h-[calc(92vh/var(--app-zoom,0.9))] flex-col rounded-xl border border-redlog-border-subtle bg-redlog-surface shadow-2xl">
       <form data-testid="create-project-form" onSubmit={(e) => { e.preventDefault(); void handleCreate() }} className="flex min-h-0 flex-1 flex-col">
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-redlog-border-subtle px-6 py-4">
-          <div>
-            <h2 id={titleId} className="text-sm font-semibold tracking-wider text-redlog-text">{t('project.newTitle')}</h2>
-            <p className="mt-0.5 text-xs text-redlog-text-dim">{t('project.newSubtitle')}</p>
-          </div>
+          <h2 id={titleId} className="text-sm font-semibold tracking-wider text-redlog-text">{t('project.newTitle')}</h2>
           <button type="button" data-testid="create-project-close" aria-label={t('common.close')} disabled={busy} onClick={close}
             className="rounded-lg p-1 text-redlog-text-dim hover:bg-redlog-elevated hover:text-redlog-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-redlog-accent/40">
             <X size={18} aria-hidden />
@@ -178,7 +175,6 @@ export function CreateProjectModal({ open, onClose, onCreated, root }: {
                 <FolderOpen size={14} aria-hidden className="shrink-0" />
                 <span className="truncate" title={root}>{root}</span>
               </div>
-              <p className="mt-1 text-xs text-redlog-text-faint">{t('project.storageFolderNote')}</p>
             </div>
           )}
 
