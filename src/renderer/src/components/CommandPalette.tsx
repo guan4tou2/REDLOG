@@ -146,6 +146,9 @@ export function CommandPalette({
   // An empty result list means three different things, and only one of them
   // is "nothing matched". The palette says which.
   const [searchState, setSearchState] = useState<'idle' | 'answered' | 'failed' | 'unparsable'>('idle')
+  // The query the search state above answers. Until it is the current one,
+  // the search is still out, and an empty list is not "nothing matches".
+  const [answeredFor, setAnsweredFor] = useState<string | null>(null)
   // Constitution IV: the palette lists the newest EVENT_LIMIT matches and says
   // so when the store has more.
   const [eventsHasMore, setEventsHasMore] = useState(false)
@@ -167,6 +170,7 @@ export function CommandPalette({
     setQuery('')
     setCursor(0)
     setEvents([])
+    setAnsweredFor(null)
     window.redlog.project.list().then(setProjects).catch(() => {})
     window.redlog.project.active().then((p) => setActiveProjectId(p?.id ?? null)).catch(() => setActiveProjectId(null))
     // §10 lists operator among what ⌘K covers. It needs no aggregation and no
@@ -189,10 +193,10 @@ export function CommandPalette({
       // query learned there means the same thing here. A half-typed condition
       // never becomes a store query; a failed query is not an empty result.
       const outcome = parseQuery(q)
-      if (!outcome.ok) { setEvents([]); setSearchState('unparsable'); return }
+      if (!outcome.ok) { setEvents([]); setSearchState('unparsable'); setAnsweredFor(q); return }
       window.redlog.events.runQuery({ parsed: outcome.parsed, limit: EVENT_LIMIT })
-        .then((page) => { setEvents(page.items); setEventsHasMore(page.hasMore); setSearchState('answered') })
-        .catch(() => { setEvents([]); setSearchState('failed') })
+        .then((page) => { setEvents(page.items); setEventsHasMore(page.hasMore); setSearchState('answered'); setAnsweredFor(q) })
+        .catch(() => { setEvents([]); setSearchState('failed'); setAnsweredFor(q) })
     }, 140)
     return () => { if (debounce.current) clearTimeout(debounce.current) }
   }, [query, open])
@@ -319,6 +323,8 @@ export function CommandPalette({
 
   if (!open) return null
 
+  const searchPending = query.trim().length >= 2 && answeredFor !== query.trim()
+
   const onKeyDown = (e: React.KeyboardEvent): void => {
     // An input method owns Enter, Escape and the arrows while it composes.
     if (isComposing(e)) return
@@ -378,7 +384,7 @@ export function CommandPalette({
               {t('palette.searchSubset', { count: EVENT_LIMIT })}
             </p>
           )}
-          {items.length === 0 && searchState !== 'failed' && searchState !== 'unparsable' && (
+          {items.length === 0 && !searchPending && searchState !== 'failed' && searchState !== 'unparsable' && (
             <p className="px-4 py-6 text-xs text-redlog-text-faint text-center">
               {t('palette.noMatches', { query })}
             </p>

@@ -42,6 +42,10 @@ beforeEach(() => {
   bridge.project.list.mockResolvedValue([])
   bridge.project.active.mockResolvedValue(null)
   bridge.project.open.mockResolvedValue(null)
+  // clearAllMocks keeps queued once-implementations: a test that fails before
+  // its search runs would hand its answer to the next test.
+  bridge.events.runQuery.mockReset()
+  bridge.events.runQuery.mockImplementation(async () => ({ items: [], hasMore: false, nextCursor: null }))
 })
 afterEach(() => {
   cleanup()
@@ -158,7 +162,8 @@ describe('command palette', () => {
     open()
     type('zzzznotathing')
     await waitFor(() => expect(screen.queryAllByRole('option')).toHaveLength(0))
-    expect(screen.getByText(/zzzznotathing/)).toBeTruthy()
+    // Said once the event search has answered for this query, not before.
+    expect(await screen.findByText(/zzzznotathing/)).toBeTruthy()
   })
 
   it('waits before hitting the database, and not at all for one character', async () => {
@@ -202,6 +207,24 @@ describe('command palette', () => {
     // "No matches for admin" would be a claim about the engagement the palette
     // could not make — the query never answered.
     expect(screen.queryByText(/no matches/i)).toBeNull()
+  })
+
+  // The event search waits 140 ms and then waits on the store. Until it has
+  // answered for this query, an empty list is not "nothing matches".
+  it('does not say nothing matches before the event search has answered', async () => {
+    let answer: (v: unknown) => void = () => {}
+    bridge.events.runQuery.mockImplementationOnce(() => new Promise((r) => { answer = r }) as never)
+    vi.useFakeTimers()
+    open()
+    type('zzzznotathing')
+    await act(async () => { vi.advanceTimersByTime(50) })
+    expect(screen.queryByText(/Nothing matches/), 'inside the debounce').toBeNull()
+    await act(async () => { vi.advanceTimersByTime(200) })
+    expect(bridge.events.runQuery).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText(/Nothing matches/), 'while the store has not answered').toBeNull()
+    await act(async () => { answer({ items: [], hasMore: false, nextCursor: null }) })
+    vi.useRealTimers()
+    expect(screen.getByText(/Nothing matches/)).toBeTruthy()
   })
 
   it('does not run a half-typed condition, and says why', async () => {
