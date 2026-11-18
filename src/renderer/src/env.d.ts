@@ -709,7 +709,7 @@ interface RedLogConfigPartial {
   operator?: { id?: string; name?: string }
   network?: { whitelist?: string[]; blacklist?: string[]; checkInterval?: number; ipMode?: 'dns' | 'http' | 'auto' }
   scope?: { warnOnViolation?: boolean; targets?: string[]; excludeTargets?: string[]; scopeFile?: string | null; personalDomains?: string[] }
-  screenshot?: { quality?: number; intervalSec?: number }
+  screenshot?: { quality?: number }
 }
 
 /** A plugin-registered event type, as `plugins:eventTypes` returns it. */

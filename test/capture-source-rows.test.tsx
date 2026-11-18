@@ -18,7 +18,7 @@ const initial = {
   engagement: { id: 'capture-source-rows' },
   packs: { hostMonitors: true },
   packMembers: { fileWatcher: true },
-  screenshot: { intervalSec: 30 }
+  screenshot: { quality: 85 }
 } as unknown as ConfigState
 
 function draw(overrides: Record<string, unknown> = {}) {
@@ -57,8 +57,12 @@ describe('capture source rows', () => {
   })
 
   it('says a source has never delivered rather than showing nothing', async () => {
+    health.mockResolvedValue({
+      verdict: 'healthy', hasRecorded: true, lastEventAt: null, checkedAt: Date.now(), dbErrorTotal: 0, dbErrorFirstAt: null,
+      sources: [{ id: 'file-watcher', installed: true, enabled: true, lastEventAt: null, state: 'ready' }]
+    })
     draw()
-    const row = await screen.findByTestId('source-last-screenshot')
+    const row = await screen.findByTestId('source-last-file-watcher')
     expect(row.textContent).toContain('settings.source.neverReceived')
   })
 
@@ -68,8 +72,10 @@ describe('capture source rows', () => {
     expect(screen.queryByTestId('source-last-process-monitor')).toBeNull()
   })
 
-  it('says nothing about a source that is switched off and has never delivered', async () => {
-    draw({ screenshot: { intervalSec: 0 } })
+  // Screenshots are taken only when the operator asks (ruling 7): nothing is
+  // supposed to arrive on its own, so a source that never delivered is not news.
+  it('says nothing about a source that is not supposed to be delivering and never has', async () => {
+    draw()
     await screen.findByTestId('source-last-file-watcher')
     expect(screen.queryByTestId('source-last-screenshot')).toBeNull()
   })

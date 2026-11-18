@@ -157,12 +157,15 @@ async function statusBar(): Promise<void> {
 async function controlPage(): Promise<void> {
   bridge({ plugins: { list: async () => [{ id: 'pack-host-monitors', source: 'bundled', status: 'active' }, CLAUDE_PLUGIN], officialAgents: async () => [CLAUDE_ENTRY] } })
   function Harness(): JSX.Element {
-    const [config, setConfig] = useState({ engagement: { id: 'p' }, packs: { hostMonitors: true }, screenshot: { intervalSec: 30 }, agentTailer: { sources: { 'claude-code': CLAUDE_CONFIG } } } as never)
+    const [config, setConfig] = useState({ engagement: { id: 'p' }, packs: { hostMonitors: true }, screenshot: { quality: 85 }, agentTailer: { sources: { 'claude-code': CLAUDE_CONFIG } } } as never)
     return <I18nProvider><CaptureControlPage config={config} setConfig={setConfig} t={t} /></I18nProvider>
   }
   render(<Harness />)
-  said['control.screenshot'] = text(await screen.findByTestId('source-last-screenshot'))
   const agent = await screen.findByTestId('agent-source-claude-code')
+  // Screenshots are on demand only (ruling 7): a source that never delivered
+  // draws no "last received" line on its row.
+  const shot = screen.queryByTestId('source-last-screenshot')
+  said['control.screenshot'] = shot ? text(shot) : ''
   said['control.claudeCode.record'] = (screen.getByTestId('agent-enabled-claude-code') as HTMLInputElement).checked ? 'on' : 'off'
   said['control.claudeCode.folder'] = text(within(agent).getByText('Transcript folder not found'))
 }
@@ -240,9 +243,9 @@ describe('what each surface says about one machine (Spec 075 T005)', () => {
     expect(said['http.checks']).toBe('HTTPS○ Not verified')
   })
 
-  it('5 capture control: the screenshot row says "Nothing received yet" (no failure); the AI row has recording on and says its folder was not found', async () => {
+  it('5 capture control: the screenshot row says nothing (on demand, never delivered, no failure); the AI row has recording on and says its folder was not found', async () => {
     await controlPage()
-    expect(said['control.screenshot']).toBe('Nothing received yet')
+    expect(said['control.screenshot']).toBe('')
     expect(said['control.claudeCode.record']).toBe('on')
     expect(said['control.claudeCode.folder']).toBe('Transcript folder not found')
   })
@@ -290,8 +293,8 @@ describe('do the surfaces agree about the same source? (Spec 075 T005, US2)', ()
     expect(said['firstRun.http']).toContain('Not verified')
   })
 
-  // Dashboard: "failing". Capture control, the page that configures it: "Nothing
-  // received yet". Phase 4/5 (T040, T054): both read the source's own status.
+  // Dashboard: "failing". Capture control, the page that configures it: no
+  // line at all. Phase 4/5 (T040, T054): both read the source's own status.
   it.fails('a failing screenshot source is failing on the card AND on its own row in capture control', async () => {
     await card(); cleanup(); await controlPage()
     expect(said['card.screenshot']).toBe('failing')

@@ -5,7 +5,6 @@ import CapturePackGroup, { PackMember } from './CapturePackGroup'
 import AgentsPanel from './AgentsPanel'
 import ExternalCaptureGroup from './ExternalCaptureGroup'
 import { SourceLastSeen } from './SourceLastSeen'
-import { CheckRow } from './CheckRow'
 import { useCaptureHealth } from '../../lib/useCaptureHealth'
 import { landOnSourceRow, SOURCE_ROW } from '../../lib/sourceRow'
 
@@ -92,44 +91,11 @@ export default function CaptureControlPage({
 
       <div ref={group('screenshot')} data-source-id="screenshot" tabIndex={-1} className={SOURCE_ROW}>
       <FieldGroup title={t('settings.screenshotGroup')}>
-        <div className="flex items-center gap-2 flex-wrap">
-          {[
-            { v: 0, k: 'settings.screenshot.interval.off' },
-            { v: 30, k: 'settings.screenshot.interval.30s' },
-            { v: 60, k: 'settings.screenshot.interval.60s' },
-            { v: 300, k: 'settings.screenshot.interval.5m' }
-          ].map((opt) => (
-            <button
-              key={opt.v}
-              aria-pressed={(config.screenshot?.intervalSec ?? 0) === opt.v}
-              onClick={() => setConfig({ ...config, screenshot: { ...config.screenshot, intervalSec: opt.v } })}
-              className={`px-3 py-1 text-xs rounded ${
-                (config.screenshot?.intervalSec ?? 0) === opt.v
-                  ? 'bg-redlog-elevated text-redlog-text border border-redlog-border'
-                  : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
-              }`}
-            >{t(opt.k)}</button>
-          ))}
-        </div>
-
-        {/* The screenshot source is a source like the others: when it last
-            delivered a frame is a fact about the record, not about the
-            switch. */}
-        <SourceLastSeen
-          source={healthOf('screenshot')}
-          active={(config.screenshot?.intervalSec ?? 0) > 0 || config.screenshot?.captureOnCommand === true}
-          t={t}
-        />
-
-        <CheckRow
-          align="start"
-          checked={config.screenshot?.captureOnCommand ?? false}
-          onChange={(on) => setConfig({ ...config, screenshot: { ...config.screenshot, captureOnCommand: on } })}
-          label={t('settings.screenshot.onCommand')}
-        />
-        <details>
-          <summary className="min-h-8 content-center cursor-pointer text-xs text-redlog-text-dim">{t('settings.screenshot.options')}</summary>
-          <div className="space-y-2 pt-2">
+        {/* Ruling 7 (2026-11-12): no timed capture and no capture when a
+            command ends. Screenshots are taken when the operator asks; the
+            quality below is the one setting those use. Nothing is supposed to
+            be arriving on its own, so "nothing received yet" is not said. */}
+        <SourceLastSeen source={healthOf('screenshot')} active={false} t={t} />
         <NumberField
           label={t('settings.jpegQuality')}
           value={config.screenshot?.quality ?? 85}
@@ -139,33 +105,6 @@ export default function CaptureControlPage({
           invalid={t('settings.numberInvalidRange', { min: 1, max: 100 })}
           pending={t('settings.numberPending')}
         />
-
-        <label className="text-xs text-redlog-text-dim mt-3 block">{t('settings.screenshot.diffLabel')}</label>
-        <div className="flex items-center gap-2 flex-wrap">
-          {[
-            { v: 0, k: 'settings.screenshot.diff.off' },
-            { v: 5, k: 'settings.screenshot.diff.standard' },
-            { v: 12, k: 'settings.screenshot.diff.major' }
-          ].map((opt) => (
-            <button
-              key={opt.v}
-              aria-pressed={(config.screenshot?.diffThreshold ?? 5) === opt.v}
-              onClick={() => setConfig({ ...config, screenshot: { ...config.screenshot, diffThreshold: opt.v } })}
-              className={`px-3 py-1 text-xs rounded ${
-                (config.screenshot?.diffThreshold ?? 5) === opt.v
-                  ? 'bg-redlog-elevated text-redlog-text border border-redlog-border'
-                  : 'bg-redlog-elevated text-redlog-text-dim hover:bg-redlog-elevated-hover'
-              }`}
-            >{t(opt.k)}</button>
-          ))}
-        </div>
-        <p className="text-xs text-redlog-text-faint mt-2">{t('settings.screenshot.diffHint')}</p>
-
-
-
-
-          </div>
-        </details>
       </FieldGroup>
       </div>
 
