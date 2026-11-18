@@ -35,7 +35,6 @@ describe('the project picker without its explanations', () => {
     await screen.findByText('Client-Q3')
     const picker = screen.getByTestId('project-picker')
     expect(picker.querySelector('[aria-label="REDLOG"]')).toBeNull()
-    expect(picker.textContent).not.toContain('RED TEAM OPERATION LOG')
     expect(picker.querySelector('kbd')).toBeNull()
     expect(picker.querySelector('footer')).toBeNull()
     expect(picker.textContent).not.toMatch(/to browse|to open|local-first storage/)
@@ -48,8 +47,10 @@ describe('the project picker without its explanations', () => {
     await screen.findByText('Client-Q3')
     fireEvent.click(screen.getByTestId('project-new'))
     expect((await screen.findByTestId('create-project-root')).textContent).toBe('/home/op/.redlog/projects')
-    const form = screen.getByTestId('create-project-form')
-    expect(form.textContent).not.toMatch(/Initialise a local operation log|RedLog names it from the project name/)
+    // The title stands alone in its header, and nothing follows the directory.
+    const title = screen.getByTestId('create-project-form').querySelector('h2') as HTMLElement
+    expect(title.parentElement!.querySelector('p')).toBeNull()
+    expect(screen.getByTestId('create-project-root').nextElementSibling).toBeNull()
   })
 
   it('ships none of the removed strings', () => {
