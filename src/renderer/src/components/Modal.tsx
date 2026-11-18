@@ -46,7 +46,7 @@ export function Modal({
   if (!open) return null
   return (
     <div
-      className={backdropClassName ?? 'fixed inset-0 z-50 flex items-center justify-center bg-black/60'}
+      className={backdropClassName ?? 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 pt-caption'}
       onClick={(e) => { if (dismissOnBackdrop && e.target === e.currentTarget) onClose() }}
       role="presentation"
     >

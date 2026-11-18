@@ -187,7 +187,7 @@ export function ActivityReader({ items, index, request, snapshot, active, filter
   const atStart = index <= 0
   const atEnd = index >= items.length - 1 && !hasMore
   return (
-    <div className="fixed inset-0 z-50 flex justify-center bg-black/60 p-3" role="presentation"
+    <div className="fixed inset-0 z-50 flex justify-center bg-black/60 px-3 pb-3 pt-caption [--caption-floor:0.75rem]" role="presentation"
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div ref={root} role="dialog" aria-modal="true" aria-label={t('activity.reader.title')} data-testid="activity-reader" tabIndex={-1}
         onKeyDown={e => {

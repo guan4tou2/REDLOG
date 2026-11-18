@@ -401,7 +401,7 @@ export function ScreenshotsView({ onNavigate }: { onNavigate: (v: string) => voi
             onClose={() => setExpanded(null)}
             label={t('screenshots.previewLabel')}
             testId="screenshot-lightbox"
-            backdropClassName="fixed inset-0 bg-black/80 z-50 flex items-center justify-center"
+            backdropClassName="fixed inset-0 bg-black/80 z-50 flex items-center justify-center pt-caption"
             panelClassName="flex flex-col items-center gap-2 max-w-[92vw]"
           >
             {shot && (
