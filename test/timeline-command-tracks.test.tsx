@@ -178,6 +178,45 @@ describe('standard mode: one row per terminal (Spec 078 S1)', () => {
   })
 })
 
+// Found in the harness, not in jsdom: the track scroller stretched to the
+// capped height and clipped its own rows (overflow-y-hidden), so the lane
+// scroller never overflowed and rows past the cap could not be reached by any
+// means. With terminal rows the scroller takes its content's height, and the
+// cap makes room for its horizontal scrollbar where the platform draws one
+// (classic scrollbars), so three rows do not overflow by the bar's 10px and
+// turn the wheel vertical. With no terminal rows nothing changes (FR-016).
+describe('the scroller with terminal rows', () => {
+  let b: TimelineBridge
+  const proto = HTMLElement.prototype
+  const saved = Object.getOwnPropertyDescriptor(proto, 'offsetHeight')!
+  beforeEach(() => {
+    b = installTimelineBridge({ timelineMode: 'standard' })
+    try { localStorage.clear() } catch { /* ignore */ }
+    // A 10px horizontal scrollbar: the track scroller's box is 10px taller
+    // than its client area.
+    Object.defineProperty(proto, 'offsetHeight', { configurable: true, get(this: HTMLElement) { return this.classList.contains('cursor-grab') ? 10 : 0 } })
+  })
+  afterEach(() => { Object.defineProperty(proto, 'offsetHeight', saved) })
+
+  it('takes its content height and leaves room for the horizontal scrollbar', async () => {
+    b.queryPage.mockResolvedValue(page(twoTerminals()))
+    mount()
+    await waitFor(() => expect(tracks()).toHaveLength(2))
+    const lanes = screen.getByTestId('timeline-lane-scroll')
+    expect((lanes.firstElementChild as HTMLElement).classList.contains('self-start')).toBe(true)
+    await waitFor(() => expect(lanes.style.maxHeight).toBe(`${3 * LANE_H + AXIS_H + 10}px`))
+  })
+
+  it('is unchanged with no terminal rows (FR-016)', async () => {
+    b.queryPage.mockResolvedValue(page([makeEvent('e1', T0 - 1000), makeEvent('e2', T0)]))
+    mount()
+    await waitFor(() => expect(document.querySelectorAll('[data-timeline-event]').length).toBe(2))
+    const lanes = screen.getByTestId('timeline-lane-scroll')
+    expect((lanes.firstElementChild as HTMLElement).classList.contains('self-start')).toBe(false)
+    expect(lanes.style.maxHeight).toBe(`${LANE_H + AXIS_H}px`)
+  })
+})
+
 describe('more terminals than fit (Q1: three visible, the rest by vertical scroll)', () => {
   let b: TimelineBridge
   beforeEach(() => {

@@ -1491,6 +1491,20 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
   // scroll so the timestamp that was under the pointer stays under the pointer.
   useLayoutEffect(afterLayout, [afterLayout, loading])
 
+  // Spec 078: with terminal rows the track scroller takes its content's
+  // height (below), so the lane scroller is what overflows past the Q1 cap.
+  // Stretched to the cap instead, it clipped its own rows and nothing could
+  // reach them. Its horizontal scrollbar, where the platform draws one, is
+  // then part of that content, and the cap makes room for it: otherwise three
+  // rows overflow by the bar and the wheel turns vertical.
+  const terminalRows = timelineMode === 'standard' && trackOrder.length > 0
+  const [hScrollbarH, setHScrollbarH] = useState(0)
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    const h = terminalRows && el ? Math.max(0, el.offsetHeight - el.clientHeight) : 0
+    if (h !== hScrollbarH) setHScrollbarH(h)
+  })
+
   const toggleBand = useCallback((band: BandId) => {
     setCollapsedBands((prev) => {
       const next = new Set(prev)
@@ -2240,7 +2254,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
           ref={laneScrollRef}
           data-testid="timeline-lane-scroll"
           className="min-h-0 flex overflow-x-hidden overflow-y-auto"
-          style={{ maxHeight: (timelineMode === 'standard' ? Math.min(visibleRows.length, 1 + MAX_VISIBLE_TERMINAL_ROWS) : visibleRows.length) * laneH + axisH }}
+          style={{ maxHeight: (timelineMode === 'standard' ? Math.min(visibleRows.length, 1 + MAX_VISIBLE_TERMINAL_ROWS) : visibleRows.length) * laneH + axisH + hScrollbarH }}
           // The cluster popover is placed outside this scroller; a vertical
           // scroll would leave it beside the wrong dot.
           onScroll={() => setCluster(null)}
@@ -2305,7 +2319,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
           {/* Scrollable track */}
           <div
             ref={scrollRef}
-            className="flex-1 overflow-x-auto overflow-y-hidden cursor-grab"
+            className={`flex-1 overflow-x-auto overflow-y-hidden cursor-grab${terminalRows ? ' self-start' : ''}`}
             onMouseDown={handleMouseDown}
             onScroll={updateView}
             onDoubleClick={(e) => {
