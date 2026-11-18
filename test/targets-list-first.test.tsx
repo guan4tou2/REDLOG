@@ -11,6 +11,9 @@ import { I18nProvider } from '../src/renderer/src/i18n'
 import { TargetView } from '../src/renderer/src/components/TargetView'
 import { TargetsScopeHeader } from '../src/renderer/src/components/TargetsScopeHeader'
 import { ScopeStatus } from '../src/renderer/src/components/ScopeStatus'
+import StatusBar from '../src/renderer/src/components/StatusBar'
+import { _resetCaptureHealth } from '../src/renderer/src/lib/captureHealthStore'
+import { _resetIssues } from '../src/renderer/src/lib/issues'
 import { FilterProvider, useSharedFilter } from '../src/renderer/src/lib/FilterContext'
 import { installTimelineBridge } from './helpers/timeline-bridge'
 
@@ -285,5 +288,43 @@ describe('G5: the expanded target', () => {
     mountWithProbe()
     await expand('10.0.0.5')
     expect(screen.queryByTestId('target-matched-rule')).toBeNull()
+  })
+})
+
+describe('G6: the status bar scope chip leads to what it counts', () => {
+  function installBar(observations: number): void {
+    const named: Record<string, Record<string, unknown>> = {
+      capture: { health: async () => ({ verdict: 'healthy', hasRecorded: true, sources: [], lastEventAt: Date.now(), checkedAt: Date.now(), dbErrorTotal: 0, dbErrorFirstAt: null }) },
+      events: { getCount: async () => 5, onNewBatch: () => noop },
+      recording: { get: async () => true, onChange: () => noop },
+      scope: { getObservationCount: async () => observations, isConfigured: async () => true, getLastRecompute: async () => null },
+      project: { active: async () => ({ createdAt: Date.now() - 60_000 }) }
+    }
+    const area = (name: string): unknown => new Proxy(named[name] ?? {}, {
+      get: (target, fn: string) => fn in target ? target[fn] : fn.startsWith('on') ? () => noop : async () => undefined
+    })
+    ;(window as unknown as { redlog: unknown }).redlog = new Proxy({}, { get: (_t, name: string) => area(name) })
+  }
+  const clickChip = async (word: string): Promise<string | undefined> => {
+    const navigate = vi.fn()
+    window.addEventListener('redlog:navigate', navigate)
+    try {
+      render(<I18nProvider><StatusBar /></I18nProvider>)
+      await waitFor(() => expect(screen.getByTestId('status-bar-scope-state').textContent).toBe(word))
+      fireEvent.click(screen.getByTestId('status-bar-scope'))
+      return (navigate.mock.calls[0]?.[0] as CustomEvent | undefined)?.detail as string | undefined
+    } finally { window.removeEventListener('redlog:navigate', navigate) }
+  }
+  beforeEach(() => { _resetCaptureHealth(); _resetIssues() })
+
+  it('with observations, opens the scope-observations tab', async () => {
+    installBar(3)
+    expect(await clickChip('SCOPE 3')).toBe('scope')
+    expect(screen.getByTestId('status-bar-scope').getAttribute('aria-label')).toBe('Scope observations')
+  })
+
+  it('with none, still opens the scope rules in Settings', async () => {
+    installBar(0)
+    expect(await clickChip('SCOPE SET')).toBe('settings/scope')
   })
 })
