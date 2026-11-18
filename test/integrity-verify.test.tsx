@@ -60,6 +60,42 @@ describe('Integrity verify', () => {
     expect(screen.getByText('⚠ Anchor does not match the events it covers')).toBeTruthy()
   })
 
+  // One result, one conclusion: the headline used to read `ok` alone and
+  // say "Chain intact" in green above the very lines that said otherwise,
+  // while lib/chainActions reported the same result as a failed verify.
+  it('does not head an anchor mismatch with "Chain intact"', async () => {
+    install({ ok: true, walked: 3, anchor, anchorMatchesWalkedHead: false })
+    render(<I18nProvider><Panel /></I18nProvider>)
+    fireEvent.click(screen.getByText('Verify full chain'))
+    const card = (await screen.findByText('Walked 3 events')).parentElement as HTMLElement
+    expect(screen.queryByText('Chain intact')).toBeNull()
+    // The card's first line is its headline.
+    const headline = card.firstElementChild?.firstElementChild as HTMLElement
+    expect(headline.textContent).toContain('Anchor does not match the events it covers')
+    expect(headline.className).not.toContain('emerald')
+    expect(screen.getAllByText('⚠ Anchor does not match the events it covers')).toHaveLength(1)
+  })
+
+  it('does not head incomplete signatures with "Chain intact"', async () => {
+    install({
+      ok: true, walked: 3, anchor, anchorMatchesWalkedHead: true,
+      signedCount: 2, unsignedCount: 1, noPubKeyCount: 0,
+      authentication: 'failed', authenticationReasons: ['1 row has no signature'], firstUncheckedEventId: 'e3'
+    })
+    render(<I18nProvider><Panel /></I18nProvider>)
+    fireEvent.click(screen.getByText('Verify full chain'))
+    const card = (await screen.findByText('Walked 3 events')).parentElement as HTMLElement
+    expect(screen.queryByText('Chain intact')).toBeNull()
+    // The card's first line is its headline.
+    const headline = card.firstElementChild?.firstElementChild as HTMLElement
+    expect(headline.textContent).toContain('Signatures incomplete')
+    expect(headline.className).not.toContain('emerald')
+    // The reasons still name the row; the issue list is unchanged by this.
+    expect(screen.getByText('1 row has no signature')).toBeTruthy()
+    expect(screen.getAllByText('Signatures incomplete')).toHaveLength(1)
+    expect(chainIssue()).toBe(false)
+  })
+
   it('clears the chain issue when the walk and the anchor agree', async () => {
     raiseIssue({ id: 'chain', tier: 'attention', title: 'x', detail: 'y', view: 'settings' })
     install({ ok: true, walked: 3, anchor, anchorMatchesWalkedHead: true })

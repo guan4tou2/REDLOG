@@ -35,6 +35,22 @@ export interface FullVerifyResult {
   badSignatureAtEventId?: string | null
 }
 
+/** What one verify result concludes, worst first. The detail card's headline
+ *  and the chain issue below both read this, so one result cannot be headed
+ *  "intact" above lines saying the anchor or the signatures failed while the
+ *  issue list calls it broken. A chain re-hashed end to end, or cut short,
+ *  still walks cleanly; only the anchor disagrees, and that is a broken chain
+ *  too. Incomplete signatures leave the chain intact (`ok` stays true in the
+ *  walk) but are not a clean result either. */
+export type VerifyVerdict = 'broken' | 'anchor-mismatch' | 'signatures-incomplete' | 'intact'
+
+export function verifyVerdict(r: FullVerifyResult): VerifyVerdict {
+  if (!r.ok) return 'broken'
+  if (r.anchor != null && !r.anchorMatchesWalkedHead) return 'anchor-mismatch'
+  if (r.authentication === 'failed') return 'signatures-incomplete'
+  return 'intact'
+}
+
 /** Submit the current head for timestamping. Returns the anchor, so a caller
  *  showing the anchor list can reload it, or null when there was nothing to
  *  anchor. `onRetry` is offered on the failure toast. */
@@ -94,14 +110,13 @@ export async function verifyChainWithFeedback(t: T): Promise<FullVerifyResult> {
   setLastVerifyResult(r as CachedFullVerifyResult | null)
   // A chain that will not verify is the most consequential condition the
   // app can be in, so it stays on the issue list until a verify passes (SS9).
-  // A chain re-hashed end to end, or cut short, still walks cleanly; only
-  // the anchor disagrees, and that is a broken chain too.
-  const anchorBad = r.anchor != null && !r.anchorMatchesWalkedHead
-  if (r.ok && !anchorBad) clearIssue('chain')
+  // Incomplete signatures are said on the card, not raised as a broken chain.
+  const verdict = verifyVerdict(r)
+  if (verdict !== 'broken' && verdict !== 'anchor-mismatch') clearIssue('chain')
   else {
     raiseIssue({
       id: 'chain', tier: 'attention', title: t('issues.chainBroken'),
-      detail: t(r.ok ? 'issues.chainAnchorMismatchDetail' : 'issues.chainBrokenDetail'),
+      detail: t(verdict === 'anchor-mismatch' ? 'issues.chainAnchorMismatchDetail' : 'issues.chainBrokenDetail'),
       view: settingsTarget('integrity'), fix: 'verify-chain'
     })
   }

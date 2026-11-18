@@ -951,8 +951,10 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
   // [effectEventId, ...]`. Built once per events change; O(N × avg-causes).
   // Also the badges index (feature 3) so every dot render is O(1). The
   // broken-at id from the last full verify (feature 5) participates in the
-  // badge set so the `⛓️‍💥` badge lights up on the offending row.
-  const brokenAtId = verifyDismissed ? null : (verifyResult?.brokenAtEventId ?? null)
+  // badge set so the `⛓️‍💥` badge lights up on the offending row. Dismissing
+  // the banner hides the banner only: the break stays marked until a verify
+  // says otherwise.
+  const brokenAtId = verifyResult?.brokenAtEventId ?? null
   const effectsById = useTimelineDerived(effectsIndex, events)
   // ── What each marker says now (design turn 8b) ─────────────────────────
   //
