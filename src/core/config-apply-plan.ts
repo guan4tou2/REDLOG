@@ -39,6 +39,9 @@ export type ConfigApplyStep =
   | 'audit'
   | 'wifiName'
   | 'alertRuntime'
+  // Air-gap's own senders: the update check's flag and the NTP and anchoring
+  // loops. Project open does this itself (main/index.ts); this is a save.
+  | 'airgap'
   | 'screenshot'
   | 'captureHealth'
   | 'managedProxy'
@@ -106,6 +109,7 @@ export const APPLY_ORDER: readonly ConfigApplyStep[] = [
   'audit',
   'wifiName',
   'alertRuntime',
+  'airgap',
   'screenshot',
   'captureHealth',
   'managedProxy',
@@ -155,6 +159,7 @@ export const CONFIG_DEPENDENCIES: Readonly<Record<ConfigApplyStep, readonly stri
     'scope.targets', 'scope.excludeTargets', 'scope.warnOnViolation', 'scope.scopeFile',
     'operator', SCOPE_IN_FORCE
   ],
+  airgap: ['network.offline'],
   screenshot: ['screenshot'],
   // Snapshot capture-health reads every on/off switch from; invalidates a
   // cache, starts and stops nothing.

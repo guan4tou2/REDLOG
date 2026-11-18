@@ -1,5 +1,6 @@
 import { SCROLL_GUTTER } from '../lib/pageLayout'
 import { useState, useEffect, useCallback, useMemo, useRef, type HTMLAttributes } from 'react'
+import { flushSync } from 'react-dom'
 import { Image, LayoutList, LayoutGrid, Search } from 'lucide-react'
 import { EmptyState } from './EmptyState'
 import { LoadingSpinner } from './Feedback'
@@ -108,9 +109,14 @@ function ShotMeta({ shot, a }: { shot: RedLogEvent; a: ShotActions }): JSX.Eleme
 
 /** The row's own props: one click target that opens the preview. */
 function openProps(shot: RedLogEvent, a: ShotActions): HTMLAttributes<HTMLDivElement> & { tabIndex: number } {
+  // The label replaces the row's text for assistive tech, so it carries the
+  // abnormal state the thumbnail box shows.
+  const state = a.deleted(shot.id) ? a.t('screenshots.deletedKept')
+    : a.unreadable(shot.id) || !screenshotSrc(shot.data) ? a.t('screenshots.imageUnavailable') : null
+  const label = a.t('screenshots.itemLabel', { time: formatWhen(shot.timestamp, { seconds: true }) })
   return {
     role: 'button', tabIndex: 0,
-    'aria-label': a.t('screenshots.itemLabel', { time: formatWhen(shot.timestamp, { seconds: true }) }),
+    'aria-label': state ? `${label} · ${state}` : label,
     onClick: () => a.open(shot.id),
     onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); a.open(shot.id) } }
   }
@@ -235,14 +241,15 @@ export function ScreenshotsView(): JSX.Element {
         .some((v) => typeof v === 'string' && v.toLowerCase().includes(needle)))
     : screenshots, [screenshots, needle]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const remove = useCallback(async (s: RedLogEvent): Promise<void> => {
+  /** Resolves false when the operator cancelled the confirmation. */
+  const remove = useCallback(async (s: RedLogEvent): Promise<boolean> => {
     const name = typeof s.data.filename === 'string' && s.data.filename ? s.data.filename : t('screenshots.thisFile')
     const ok = await confirmDialog(t('screenshots.deleteTitle'), t('screenshots.deleteConfirm', { name }), true)
-    if (!ok) return
+    if (!ok) return false
     const fp = s.data.filePath as string | undefined
     if (!fp) {
       toast(t('screenshots.deleteFailed'), { type: 'error', why: t('screenshots.deleteFailedWhy') })
-      return
+      return true
     }
     const res = await window.redlog.screenshot.deleteFile(s.id, fp)
     if (res.ok) {
@@ -251,6 +258,7 @@ export function ScreenshotsView(): JSX.Element {
     } else {
       toast(t('screenshots.deleteFailed'), { type: 'error', why: t('screenshots.deleteFailedWhy'), detail: res.error })
     }
+    return true
   }, [t])
 
   if (loading) {
@@ -266,8 +274,10 @@ export function ScreenshotsView(): JSX.Element {
     unreadable: (id) => unreadableIds.has(id),
     markUnreadable: (id) => setUnreadableIds((prev) => prev.has(id) ? prev : new Set(prev).add(id)),
     open: (id) => setExpanded(id),
-    // The preview closes first, so the confirmation is the only dialog open.
-    remove: (s) => { setExpanded(null); void remove(s) }
+    // The preview closes first, so the confirmation is the only dialog open;
+    // cancelling returns to the preview it came from.
+    // flushSync: the preview is gone from the page before the confirmation opens.
+    remove: (s) => { flushSync(() => setExpanded(null)); void remove(s).then((confirmed) => { if (!confirmed) setExpanded(s.id) }) }
   }
   const noShots = screenshots.length === 0 && !hasMore && triggerFilter === null
 
@@ -288,7 +298,9 @@ export function ScreenshotsView(): JSX.Element {
               still occur (ruling 7); old periodic and after-command shots keep
               their label. With one, there is nothing to choose between. A
               chosen filter keeps the row, so it can be left. */}
-          {triggerTotals.length > 1 || triggerFilter !== null ? <div className="flex flex-wrap items-center gap-1">
+          {/* A partial first page may hold one trigger while older pages hold
+              others, so its chips (marked "+") stay. */}
+          {triggerTotals.length > 1 || triggerTotalsPartial || triggerFilter !== null ? <div className="flex flex-wrap items-center gap-1">
             <span className="mr-1 text-xs text-redlog-text-faint">{t('screenshots.triggerFilter')}</span>
             {/* "All" has no count: the project's is on the Evidence tab, once. */}
             {[{ id: null as string | null, label: t('screenshots.all'), count: null as string | null },

@@ -25,8 +25,10 @@ function install(chain: Record<string, unknown>): void {
 }
 
 function Panel(): JSX.Element {
-  return <EvidenceVerify />
+  return <EvidenceVerify heading={<h1>Evidence</h1>} />
 }
+/** Anchor now and Upgrade sit in the block's disclosure. */
+const openDetails = async (): Promise<void> => { fireEvent.click(await screen.findByRole('button', { name: 'Details' })) }
 
 describe('air-gapped anchoring', () => {
   afterEach(() => { cleanup(); _resetIssues(); toasts.length = 0 })
@@ -42,14 +44,19 @@ describe('air-gapped anchoring', () => {
   it('Evidence ▸ verification: Anchor now does not show the "no anchors" error', async () => {
     install({ anchorNow: vi.fn(async () => ({ skipped: 'offline' })) })
     render(<I18nProvider><Panel /></I18nProvider>)
+    await openDetails()
     fireEvent.click(screen.getByText('Anchor now'))
     await waitFor(() => expect(toasts.map((x) => x.message)).toEqual([SKIPPED]))
   })
 
   it('Evidence ▸ verification: upgrade does not read a skipped result as counts', async () => {
-    install({ upgrade: vi.fn(async () => ({ skipped: 'offline' })) })
+    // Upgrade shows only while a calendar receipt is pending.
+    const pending = { id: 'a1', headEventId: 'e1', headHash: 'f'.repeat(64), eventCount: 1, status: 'complete', createdAt: Date.now(), completedAt: null,
+      calendarReceipts: [{ calendar: 'https://a.example.org', ok: true, submittedAt: Date.now() }] }
+    install({ upgrade: vi.fn(async () => ({ skipped: 'offline' })), anchors: vi.fn(async () => [pending]) })
     render(<I18nProvider><Panel /></I18nProvider>)
-    fireEvent.click(screen.getByText('Upgrade pending'))
+    await openDetails()
+    fireEvent.click(await screen.findByText('Upgrade pending'))
     await waitFor(() => expect(toasts.map((x) => x.message)).toEqual([SKIPPED]))
   })
 })

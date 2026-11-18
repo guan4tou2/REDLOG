@@ -262,3 +262,54 @@ describe('after ruling 7', () => {
     expect(within(toolbar).queryByRole('button', { name: 'Capture Now' })).toBeNull()
   })
 })
+
+describe('round 2', () => {
+  // 150 shots: the newest 100 manual, the older 50 periodic. The first page
+  // holds one trigger but is not everything, so another may exist.
+  it('shows the trigger chips when the first page holds one trigger but is partial', async () => {
+    const one = [shot('s1', 'manual'), shot('s2', 'manual')]
+    ;(window as unknown as { redlog: unknown }).redlog = {
+      events: { queryScreenshotPage: vi.fn(async () => ({ items: one, hasMore: true, nextCursor: 'n' })), onNewBatch: () => () => {} },
+      screenshot: { deleteFile: vi.fn(async () => ({ ok: true })) }, artifacts: { reveal: vi.fn(async () => true) }
+    }
+    mount()
+    await screen.findByTestId('screenshot-list')
+    expect(screen.getByRole('button', { name: /^manual/ }).textContent).toContain('2+')
+  })
+
+  it('names an abnormal row\'s state in its accessible name', async () => {
+    install()
+    window.redlog.events.onNewBatch = ((cb: (e: unknown[]) => void) => {
+      setTimeout(() => cb([{ agentType: 'system', data: { subtype: 'screenshot_deleted', source_event: 's1' } }]), 0)
+      return () => {}
+    }) as never
+    mount()
+    await screen.findByTestId('screenshot-list')
+    await waitFor(() => expect(rowOf(/s1\.png/).getAttribute('aria-label')).toContain('File deleted · event record kept'))
+    fireEvent.error(rowOf(/s2\.png/).querySelector('img') as HTMLImageElement)
+    expect(rowOf(/s2\.png/).getAttribute('aria-label')).toContain('Image unavailable')
+    expect(rowOf(/s3\.png/).getAttribute('aria-label')).toMatch(/^Screenshot at [^·]*$/)
+  })
+})
+
+describe('keyboard and focus on a row', () => {
+  it.each(['Enter', ' '])('opens the preview on %j', async (key) => {
+    install()
+    mount()
+    await screen.findByTestId('screenshot-list')
+    fireEvent.keyDown(rowOf(/s2\.png/), { key })
+    expect(screen.getByTestId('screenshot-lightbox')).toBeTruthy()
+  })
+
+  it('returns focus to the row when the preview closes', async () => {
+    install()
+    mount()
+    await screen.findByTestId('screenshot-list')
+    const row = rowOf(/s2\.png/)
+    row.focus()
+    fireEvent.keyDown(row, { key: 'Enter' })
+    const preview = screen.getByTestId('screenshot-lightbox')
+    fireEvent.click(within(preview).getByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(document.activeElement).toBe(row))
+  })
+})

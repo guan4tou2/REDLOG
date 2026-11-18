@@ -38,6 +38,7 @@ const HttpHistoryPanel = lazy(() => import('./components/HttpHistoryPanel').then
 import { useI18n } from './i18n'
 import type { SidebarViewId } from './lib/sidebarOrder'
 import { parseTarget, settingsTarget } from './lib/navigation'
+import { noteOpenProject } from './lib/verifyResultCache'
 import { TargetsScopeHeader } from './components/TargetsScopeHeader'
 import { EvidenceHeader } from './components/EvidenceHeader'
 import type { SettingsPage } from './components/Settings'
@@ -81,6 +82,8 @@ export default function App(): JSX.Element {
   // one open. Hold the mark until the answer is in (#542 startup).
   const [restoring, setRestoring] = useState(true)
   const [view, setView] = useState<View>('dashboard')
+  // Before any page reads the verification cache: whose record is open now.
+  noteOpenProject(project?.id ?? null)
 
   // A setup command sent from Settings needs the terminal on screen to
   // receive it. The command itself is held by lib/terminalRunner until the

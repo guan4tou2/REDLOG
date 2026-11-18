@@ -46,8 +46,9 @@ export function EvidenceHeader({ page, onNavigate }: {
   }
 
   return <div data-testid="evidence-header" className="flex shrink-0 px-pad pt-3"><div className="min-w-0 flex-1 space-y-2">
-    <h1 className="text-lg font-semibold text-redlog-text">{t('sidebar.evidence')}</h1>
-    <EvidenceVerify />
+    {/* The heading and the verification line share one row; the block's
+        disclosure, when open, sits between it and the tabs. */}
+    <EvidenceVerify heading={<h1 className="shrink-0 text-lg font-semibold text-redlog-text">{t('sidebar.evidence')}</h1>} />
     <div role="tablist" aria-label={t('sidebar.evidence')} className="flex gap-4 border-b border-redlog-border">
       {PAGES.map((id, index) => {
         const count = counts[id]
