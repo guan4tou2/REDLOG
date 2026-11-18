@@ -51,4 +51,45 @@ describe.each(Object.keys(LOCALES) as (keyof typeof LOCALES)[])('copy facts (%s)
     for (const k of ['firstRun.hint', 'firstRun.eyebrow', 'firstRun.paths.intro']) expect(d[k], k).toBeUndefined()
     expect(d['firstRun.title']).toBeTruthy()
   })
+
+  it('keys with no render site stay deleted', () => {
+    const DELETED = [
+      'screenshots.title',
+      'timeline.resizeLog',
+      'targets.title',
+      'scope.title',
+      'scope.monitor',
+      'scope.active',
+      'scope.notSet',
+      'scope.evidenceLog',
+      'scope.recentObservations',
+      'timeline.showAll',
+      'timeline.showAllLanes',
+      'settings.hookActive',
+      'settings.hookEnable',
+      'settings.cdpNotConnectedTitle',
+      'settings.hookInstallFailed',
+      'export.ndjson',
+      'export.done',
+      'export.presentationNotice',
+      'timeline.detail.httpLoadFullBody',
+      'timeline.detail.httpBodyEvicted',
+      'firstRun.installManually',
+      'firstRun.http.installing',
+      'firstRun.http.installed',
+      'firstRun.http.installFailed',
+      'firstRun.http.manualInstall',
+      'firstRun.http.needsPrereq',
+      'firstRun.remediationNeeds',
+      'settings.pickFolder',
+      'settings.hookInstalled',
+      'activity.original',
+      'settings.groupCapture',
+      'settings.groupScope',
+      'settings.groupApp',
+      'settings.groupData',
+      'settings.groupSystem'
+    ]
+    for (const k of DELETED) expect(d[k], k).toBeUndefined()
+  })
 })
