@@ -14,7 +14,7 @@ import { ScopeStatus } from '../src/renderer/src/components/ScopeStatus'
 import StatusBar from '../src/renderer/src/components/StatusBar'
 import { _resetCaptureHealth } from '../src/renderer/src/lib/captureHealthStore'
 import { _resetIssues } from '../src/renderer/src/lib/issues'
-import { FilterProvider, useSharedFilter } from '../src/renderer/src/lib/FilterContext'
+import { FilterProvider } from '../src/renderer/src/lib/FilterContext'
 import { installTimelineBridge } from './helpers/timeline-bridge'
 
 type Redlog = Record<string, Record<string, unknown>>
@@ -247,34 +247,12 @@ describe('G4: the status card lists the rules', () => {
 })
 
 describe('G5: the expanded target', () => {
-  let filterApi: ReturnType<typeof useSharedFilter>
-  function Probe(): null { filterApi = useSharedFilter(); return null }
-  const mountWithProbe = (): void => {
-    render(<I18nProvider><FilterProvider><Probe /><TargetView onOpenInTimeline={noop} /></FilterProvider></I18nProvider>)
-  }
+  // The primary action, "Open in Activity", is tested in
+  // test/targets-open-in-timeline.test.tsx beside the other way out of a target.
   const expand = async (name: string): Promise<HTMLElement> => {
     fireEvent.click(await screen.findByText(name))
     return (await screen.findByTestId('target-actions'))
   }
-
-  it('opens the target in Activity as its one primary action, scoped by the shared target', async () => {
-    installTargets([{ target: '10.0.0.5', eventCount: 1, firstSeen: 1, lastSeen: 1 }], { targets: ['10.0.0.0/24'], excludeTargets: [] })
-    const navigate = vi.fn()
-    window.addEventListener('redlog:navigate', navigate)
-    try {
-      mountWithProbe()
-      const actions = await expand('10.0.0.5')
-      const buttons = Array.from(actions.querySelectorAll('button'))
-      expect(buttons[0].dataset.testid).toBe('target-open-activity')
-      expect(buttons[0].textContent).toBe('Open in Activity')
-      expect(buttons.filter((b) => b.className.includes('bg-redlog-accent ')).map((b) => b.dataset.testid)).toEqual(['target-open-activity'])
-      expect(buttons[1].dataset.testid).toBe('target-locate')
-      fireEvent.click(buttons[0])
-      expect(filterApi.filter.targetId).toBe('10.0.0.5')
-      expect(navigate).toHaveBeenCalledTimes(1)
-      expect((navigate.mock.calls[0][0] as CustomEvent).detail).toBe('search')
-    } finally { window.removeEventListener('redlog:navigate', navigate) }
-  })
 
   it('names the rule a target matched, allowed or excluded, and none where no rule decided', async () => {
     installTargets([
@@ -282,7 +260,7 @@ describe('G5: the expanded target', () => {
       { target: '10.0.0.9', eventCount: 1, firstSeen: 1, lastSeen: 2 },
       { target: 'far.test', eventCount: 1, firstSeen: 1, lastSeen: 1 }
     ], { targets: ['10.0.0.0/24'], excludeTargets: ['10.0.0.9'] })
-    mountWithProbe()
+    mountTargets()
     await expand('10.0.0.5')
     expect(screen.getByTestId('target-matched-rule').textContent).toBe('Matches 10.0.0.0/24')
     await expand('10.0.0.9')
@@ -293,7 +271,7 @@ describe('G5: the expanded target', () => {
 
   it('names no rule while none is declared', async () => {
     installTargets([{ target: '10.0.0.5', eventCount: 1, firstSeen: 1, lastSeen: 1 }])
-    mountWithProbe()
+    mountTargets()
     await expand('10.0.0.5')
     expect(screen.queryByTestId('target-matched-rule')).toBeNull()
   })
