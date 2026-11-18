@@ -714,12 +714,13 @@ test.describe.serial('timeline-detail-header: timeline detail header', () => {
 
 
   test('keeps the step and export controls on screen while the pane scrolls', async () => {
-    // A click selects and shows the bottom bar, with the step controls; the
-    // body (and its pinned header) opens on a double-click.
+    // A click selects and shows the bottom bar, with its one primary action
+    // (閱讀; stepping is the arrow keys now); the body (and its pinned
+    // header) opens on a double-click.
     await page.locator('[data-timeline-event][aria-label*="header pin event"]').first().click()
     await expect(page.getByTestId('timeline-detail-panel')).toBeVisible()
     await expect(page.getByTestId('timeline-detail-body')).toHaveCount(0)
-    await expect(page.getByTestId('detail-step-prev')).toBeVisible()
+    await expect(page.getByTestId('detail-toggle-body')).toBeVisible()
     await page.locator('[data-timeline-event][aria-label*="header pin event"]').first().dblclick()
     const panel = page.getByTestId('timeline-detail-body')
     await expect(panel).toBeVisible()

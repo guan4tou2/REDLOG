@@ -6,7 +6,7 @@
 // The bar states only facts the event carries.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import TimelinePanel from '../src/renderer/src/components/Timeline'
 import { FilterProvider } from '../src/renderer/src/lib/FilterContext'
 import { I18nProvider } from '../src/renderer/src/i18n'
@@ -28,7 +28,7 @@ function drawBar(event: RedLogEvent, over: Partial<BarProps> = {}): { toggle: ()
   render(
     <TimelineDetailBar
       event={event} pluginTypes={[]} titleOf={(e) => String(e.data?.command ?? e.id)} t={t}
-      onStep={vi.fn()} canStepPrev canStepNext onOpenInActivity={open}
+      onOpenInActivity={open}
       bodyOpen={false} onToggleBody={toggle} onOpenReader={reader} {...over}
     />
   )
@@ -102,16 +102,27 @@ describe('bar facts', () => {
 describe('bar actions', () => {
   const refd = { subtype: 'command_end', command: 'x', stdout_ref: { sha256: 'a', size: 9, file: 'f', encoding: 'text' } }
 
-  it('wires Details, copy reference and the activity link; the Reader only where there is content to read', () => {
+  // One primary action after selecting (閱讀) and one secondary (在活動紀錄
+  // 開啟). Step, copy reference, a separate Reader and Details are gone from
+  // the bar: the arrow keys step, copying is in the inspector, and 閱讀 is
+  // the one way in to the content.
+  it('has two actions: 閱讀 as the primary, and the activity link with its key', () => {
     setPolicy({ targets: [], excludeTargets: [] })
     const { toggle, reader, open } = drawBar(ev('shell', refd))
-    fireEvent.click(screen.getByTestId('detail-toggle-body'))
-    expect(toggle).toHaveBeenCalled()
-    fireEvent.click(screen.getByTestId('detail-open-reader'))
-    expect(reader).toHaveBeenCalled()
+    const buttons = screen.getByTestId('timeline-detail-panel').querySelectorAll('button')
+    expect([...buttons].map((b) => b.getAttribute('data-testid'))).toEqual(['detail-open-activity', 'detail-toggle-body'])
+    const read = screen.getByTestId('detail-toggle-body')
+    expect(read.textContent).toBe('timeline.bar.read')
+    expect(read.className).toContain('bg-redlog-accent')
+    expect(screen.getByTestId('detail-open-activity').getAttribute('aria-keyshortcuts')).toBe('a')
+    // With saved content, 閱讀 opens the Reader in the body.
+    fireEvent.click(read)
+    expect(reader).toHaveBeenCalledTimes(1)
+    expect(toggle).not.toHaveBeenCalled()
     fireEvent.click(screen.getByTestId('detail-open-activity'))
     expect(open).toHaveBeenCalledWith('x1', 1_700_000_000_000)
-    expect(screen.getByTestId('detail-copy-ref')).not.toBeNull()
+    expect(screen.queryByTestId('detail-copy-ref')).toBeNull()
+    expect(screen.queryByTestId('detail-open-reader')).toBeNull()
   })
 
   it.each([
@@ -119,16 +130,20 @@ describe('bar actions', () => {
     ['a command with no saved output', ev('shell', { subtype: 'command_end', command: 'x', stdout: 'short' })],
     ['a scanner gap', ev('scanner', { subtype: 'capture_gap' })],
     ['an HTTP response whose body is shown inline', ev('scanner', { subtype: 'http_response', response_body: { data: 'hi', encoding: 'text' } })]
-  ])('offers no Reader for %s', (_n, event) => {
+  ])('閱讀 opens the body, not a Reader, for %s', (_n, event) => {
     setPolicy({ targets: [], excludeTargets: [] })
-    drawBar(event)
-    expect(screen.queryByTestId('detail-open-reader')).toBeNull()
+    const { toggle, reader } = drawBar(event)
+    fireEvent.click(screen.getByTestId('detail-toggle-body'))
+    expect(toggle).toHaveBeenCalledTimes(1)
+    expect(reader).not.toHaveBeenCalled()
   })
 
-  it('offers the Reader for an HTTP body that is only saved', () => {
+  it('閱讀 opens the Reader for an HTTP body that is only saved', () => {
     setPolicy({ targets: [], excludeTargets: [] })
-    drawBar(ev('scanner', { subtype: 'http_response', response_body_ref: { sha256: 'a', size: 1, file: 'f', encoding: 'text' } }))
-    expect(screen.getByTestId('detail-open-reader')).not.toBeNull()
+    const { toggle, reader } = drawBar(ev('scanner', { subtype: 'http_response', response_body_ref: { sha256: 'a', size: 1, file: 'f', encoding: 'text' } }))
+    fireEvent.click(screen.getByTestId('detail-toggle-body'))
+    expect(reader).toHaveBeenCalledTimes(1)
+    expect(toggle).not.toHaveBeenCalled()
   })
 
   it('reads the scope again when it changes, and not at all for an event with no target', async () => {
@@ -262,12 +277,12 @@ describe('click contract on the track', () => {
     expect(bar()).not.toBeNull()
   })
 
-  it('the bar steps the selection without opening the body, and its Details button opens it', async () => {
+  it('→ steps the selection without opening the body, and 閱讀 opens it', async () => {
     await ready()
     fireEvent.click(dots()[0], { detail: 1 })
     await waitFor(() => expect(bar()).not.toBeNull())
     const before = bar()!.textContent
-    fireEvent.click(screen.getByTestId('detail-step-next'))
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
     await waitFor(() => expect(bar()!.textContent).not.toBe(before))
     expect(body()).toBeNull()
     fireEvent.click(screen.getByTestId('detail-toggle-body'))
@@ -304,7 +319,7 @@ describe('click contract on the track', () => {
     await ready()
     fireEvent.click(dots()[0], { detail: 1 })
     await waitFor(() => expect(bar()).not.toBeNull())
-    fireEvent.keyDown(screen.getByTestId('detail-step-next'), { key: 'Enter' })
+    fireEvent.keyDown(screen.getByTestId('detail-toggle-body'), { key: 'Enter' })
     expect(body()).toBeNull()
   })
 
@@ -330,16 +345,18 @@ describe('click contract on the track', () => {
       await ready()
       fireEvent.click(dots()[0], { detail: 1 })
       await waitFor(() => expect(bar()).not.toBeNull())
-      fireEvent.click(screen.getByTestId('detail-open-reader'))
+      fireEvent.click(screen.getByTestId('detail-toggle-body'))
       await waitFor(() => expect(body()).not.toBeNull())
       await waitFor(() => expect(screen.getAllByRole('dialog', { name: /./ })).toHaveLength(1))
     })
 
-    it('has no Reader button for an event with nothing saved', async () => {
+    it('閱讀 on an event with nothing saved opens the body and no Reader', async () => {
       await ready()
       fireEvent.click(dots()[2], { detail: 1 })
       await waitFor(() => expect(bar()).not.toBeNull())
-      expect(screen.queryByTestId('detail-open-reader')).toBeNull()
+      fireEvent.click(screen.getByTestId('detail-toggle-body'))
+      await waitFor(() => expect(body()).not.toBeNull())
+      expect(dialog()).toBeNull()
     })
 
     it('always ends expanded: from the inline Reader, and again after collapsing it', async () => {
@@ -349,11 +366,11 @@ describe('click contract on the track', () => {
       fireEvent.click(await screen.findByText('Saved content'))
       await waitFor(() => expect(list).toHaveBeenCalled())
       expect(dialog()).toBeNull()
-      fireEvent.click(screen.getByTestId('detail-open-reader'))
+      fireEvent.click(screen.getByTestId('detail-toggle-body'))
       await waitFor(() => expect(dialog()).not.toBeNull())
       fireEvent.click(screen.getByText('Close expanded reader'))
       await waitFor(() => expect(dialog()).toBeNull())
-      fireEvent.click(screen.getByTestId('detail-open-reader'))
+      fireEvent.click(screen.getByTestId('detail-toggle-body'))
       await waitFor(() => expect(dialog()).not.toBeNull())
     })
 
@@ -363,11 +380,36 @@ describe('click contract on the track', () => {
       await waitFor(() => expect(body()).not.toBeNull())
       fireEvent.click(await screen.findByText('Saved content'))
       await waitFor(() => expect(list).toHaveBeenCalledWith(expect.objectContaining({ eventId: 'e2' })))
-      fireEvent.click(screen.getByTestId('detail-step-prev'))
+      fireEvent.keyDown(window, { key: 'ArrowLeft' })
       await waitFor(() => expect(screen.getByTestId('timeline-bar-title').textContent).toContain('cmd e1'))
       await new Promise((r) => setTimeout(r, 30))
       expect(list.mock.calls.some(([req]) => (req as { eventId: string }).eventId === 'e1')).toBe(false)
     })
+  })
+
+  // Copying the reference and excluding from export live in the inspector.
+  it('the open body offers the event reference to copy, beside exclude-from-export', async () => {
+    const writeText = vi.fn(async () => true)
+    ;(window as unknown as { redlog: Record<string, unknown> }).redlog.clipboard = { writeText }
+    await ready()
+    fireEvent.doubleClick(dots()[0])
+    await waitFor(() => expect(body()).not.toBeNull())
+    fireEvent.click(within(body()!).getByTestId('detail-copy-ref'))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('event:e1'))
+    expect(within(body()!).getByRole('button', { name: /^(Exclude from export|匯出時排除)$/ })).toBeTruthy()
+  })
+
+  it('a opens the selection in the activity log', async () => {
+    cleanup()
+    const open = vi.fn()
+    render(<I18nProvider><FilterProvider><TimelinePanel onOpenInActivity={open} /></FilterProvider></I18nProvider>)
+    await waitFor(() => expect(dots()).toHaveLength(3))
+    fireEvent.keyDown(window, { key: 'a' })
+    expect(open).not.toHaveBeenCalled()
+    fireEvent.click(dots()[1], { detail: 1 })
+    await waitFor(() => expect(bar()).not.toBeNull())
+    fireEvent.keyDown(window, { key: 'a' })
+    expect(open).toHaveBeenCalledWith('e2', T0 - 1000)
   })
 
   it('closing the body with its X keeps the selection and the bar', async () => {

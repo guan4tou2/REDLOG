@@ -5,8 +5,6 @@
 
 import { useEffect, useState } from 'react'
 import { Button } from '../Button'
-import { writeClipboard } from '../../lib/clipboard'
-import { toast } from '../Toast'
 import { classifyScope } from '../../../../core/scope-evaluator'
 import type { RedLogEvent } from '../../../../core/db/event-types'
 import { formatTime } from '../../lib/time'
@@ -54,15 +52,12 @@ function scopeStateKey(target: string, policy: ScopePolicy | null | undefined): 
 const SEP = <span aria-hidden="true" className="text-redlog-text-faint"> · </span>
 
 export function TimelineDetailBar({
-  event, pluginTypes, titleOf, onStep, canStepPrev, canStepNext, onOpenInActivity,
+  event, pluginTypes, titleOf, onOpenInActivity,
   bodyOpen, onToggleBody, onOpenReader, t
 }: {
   event: RedLogEvent
   pluginTypes: PluginEventType[]
   titleOf: (e: RedLogEvent) => string
-  onStep?: (delta: -1 | 1) => void
-  canStepPrev: boolean
-  canStepNext: boolean
   onOpenInActivity?: (eventId: string, ts: number) => void
   bodyOpen: boolean
   onToggleBody: () => void
@@ -108,25 +103,19 @@ export function TimelineDetailBar({
           </p>
         )}
       </div>
+      {/* One primary, 閱讀, and one secondary. Stepping is ← → and Enter
+          toggles the body (both in the ? list); copying the reference and
+          exclude-from-export are in the inspector. 閱讀 opens the Reader
+          where there is saved content to read, and the body otherwise. */}
       <div className="flex flex-wrap items-center gap-2 ml-auto">
-        {onStep && (
-          <>
-            <Button size="compact" level="quiet" type="button" data-testid="detail-step-prev" disabled={!canStepPrev} onClick={() => onStep(-1)}>{t('timeline.stepPrev')}</Button>
-            <Button size="compact" level="quiet" type="button" data-testid="detail-step-next" disabled={!canStepNext} onClick={() => onStep(1)}>{t('timeline.stepNext')}</Button>
-          </>
-        )}
-        <Button size="compact" level="quiet" type="button" data-testid="detail-copy-ref"
-          onClick={() => { void writeClipboard(`event:${event.id}`).then((ok) => ok ? toast(t('common.copied'), 'success') : toast(t('common.copyFailed'), 'error')) }}
-        >{t('timeline.copyRef')}</Button>
-        {hasContentReader(event) && (
-          <Button size="compact" level="quiet" type="button" data-testid="detail-open-reader" onClick={onOpenReader}>{t('timeline.bar.reader')}</Button>
-        )}
         {onOpenInActivity && (
-          <Button size="compact" level="quiet" type="button" data-testid="detail-open-activity"
+          <Button size="compact" level="secondary" type="button" data-testid="detail-open-activity" aria-keyshortcuts="a"
             onClick={() => onOpenInActivity(event.id, event.timestamp)}
           >{t('timeline.openInActivity')} ↗</Button>
         )}
-        <Button size="compact" level="secondary" type="button" data-testid="detail-toggle-body" aria-expanded={bodyOpen} onClick={onToggleBody}>{t('timeline.bar.details')}</Button>
+        <Button size="compact" level="primary" type="button" data-testid="detail-toggle-body" aria-expanded={bodyOpen}
+          onClick={hasContentReader(event) ? onOpenReader : onToggleBody}
+        >{t('timeline.bar.read')}</Button>
       </div>
     </div>
   )

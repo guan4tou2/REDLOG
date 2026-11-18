@@ -1,4 +1,6 @@
 import { Button } from '../Button'
+import { writeClipboard } from '../../lib/clipboard'
+import { toast } from '../Toast'
 // The Timeline's detail panel body: everything shown for the selected event,
 // below the resize handle. Moved out of Timeline.tsx (UI/UX audit F13); every
 // value arrives as a prop, so — like MarkerDetail — nothing here can read a
@@ -125,6 +127,9 @@ export function TimelineEventInspector({
             data-testid="detail-around-event"
             onClick={onAround}
           >{t('filter.around')}</Button>
+          <Button size="compact" level="quiet" type="button" data-testid="detail-copy-ref"
+            onClick={() => { void writeClipboard(`event:${event.id}`).then((ok) => ok ? toast(t('common.copied'), 'success') : toast(t('common.copyFailed'), 'error')) }}
+          >{t('timeline.copyRef')}</Button>
           <Button size="compact" level="quiet" aria-pressed={!!dneFlag}
             type="button"
             title={dneFlag ? t('timeline.doNotExportHint') : t('timeline.doNotExport')}

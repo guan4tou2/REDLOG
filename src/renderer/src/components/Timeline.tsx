@@ -1554,6 +1554,12 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
           e.preventDefault()
           setDetailOpen((v) => !v)
           break
+        case 'open-activity':
+          // The bar's 在活動紀錄開啟, from the keyboard.
+          if (!selectedEvent || !onOpenInActivity) return
+          e.preventDefault()
+          onOpenInActivity(selectedEvent.id, selectedEvent.timestamp)
+          break
         case 'nav-prev':
         case 'nav-next':
         case 'nav-lane-prev':
@@ -1620,7 +1626,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectedEvent, detailOpen, showHelp, focusAnchorId, events, listHiddenLanes, pluginTypes, toX, TRACK_W, visibleRows, rowKeyOf])
+  }, [selectedEvent, detailOpen, showHelp, focusAnchorId, events, listHiddenLanes, pluginTypes, toX, TRACK_W, visibleRows, rowKeyOf, onOpenInActivity])
 
   // Helper: scroll the track so the given event is centred in the viewport.
   // Used by the cause/effect chips (feature 1) and any other jump-to-event
@@ -1635,22 +1641,6 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
   const scrollToEvent = useCallback((evt: RedLogEvent) => {
     scrollToTs(displayTs(evt))
   }, [scrollToTs])
-
-  // Stepping walks the list's own order, because that is the order the
-  // operator was reading when they opened the pane. The lane arrows (← →)
-  // stay lane-scoped and mean something different on purpose: one follows a
-  // single producer, this follows time.
-  const stepIndex = useMemo(
-    () => (selectedEvent ? recentEvents.findIndex((e) => e.id === selectedEvent.id) : -1),
-    [recentEvents, selectedEvent]
-  )
-  const stepTo = useCallback((delta: -1 | 1) => {
-    if (stepIndex < 0) return
-    const next = recentEvents[stepIndex + delta]
-    if (!next) return
-    setSelectedEvent(next)
-    scrollToEvent(next)
-  }, [recentEvents, stepIndex, scrollToEvent])
 
   // A click selects and shows the bar; it never opens the body. A double-click
   // is two clicks, so the second (`detail` 2+) only keeps the selection and
@@ -2842,9 +2832,6 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
             event={selectedEvent}
             pluginTypes={pluginTypes}
             titleOf={titleOf}
-            onStep={stepIndex >= 0 ? stepTo : undefined}
-            canStepPrev={stepIndex > 0}
-            canStepNext={stepIndex >= 0 && stepIndex < recentEvents.length - 1}
             onOpenInActivity={onOpenInActivity}
             bodyOpen={detailOpen}
             onToggleBody={() => setDetailOpen((v) => !v)}
