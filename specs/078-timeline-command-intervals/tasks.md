@@ -23,9 +23,9 @@
 
 ## S2 版面：狀態、名稱、密度（仍不能點）
 
-- [ ] T020 RED：`test/timeline-interval-layout.test.ts`（寬度不足 14px 是 point、同格合併與計數、聯集線、深度上限、`open` 畫到下一個起點、`endsMayBeMissing` 時只有 16px、起點未知只有 stub、名稱擇側與 48px 門檻、SC-003、SC-004）。
-- [ ] T021 `lib/timelineIntervalLayout.ts`：`layoutIntervalMarks`、`filterVisibleMarks`。
-- [ ] T022 `TimelineCommandTracks.tsx` 依 `IntervalMark` 畫 span／point／cluster、四種終點與名稱；`Timeline.tsx` 依可視範圍篩選。
+- [x] T020 RED：`test/timeline-interval-layout.test.ts`（寬度不足 14px 是 point、同格合併與計數、聯集線、深度上限、`open` 畫到下一個起點、`endsMayBeMissing` 時只有 16px、起點未知只有 stub、名稱擇側與 48px 門檻、SC-003、SC-004）。
+- [x] T021 `lib/timelineIntervalLayout.ts`：`layoutIntervalMarks`、`filterVisibleMarks`。
+- [x] T022 `TimelineCommandTracks.tsx` 依 `IntervalMark` 畫 span／point／cluster、四種終點與名稱；`Timeline.tsx` 依可視範圍篩選。
 
 ## S3 互動與切換
 

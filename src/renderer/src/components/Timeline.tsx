@@ -47,6 +47,7 @@ import {
   observationStanding as observationStandingOf, badgeIndex, sessionBoundaries, drawnMatchIndex, rowsById, commandIntervals
 } from '../lib/timelineIncremental'
 import { nextTrackOrder } from '../lib/timelineIntervals'
+import { layoutIntervalMarks, filterVisibleMarks, INTERVAL_MIN_LINE_PX } from '../lib/timelineIntervalLayout'
 import { TimelineCommandTracks } from './timeline/TimelineCommandTracks'
 import { mergeSortedRows } from '../lib/timelineMerge'
 import { TimelineHelpModal } from './TimelineHelpModal'
@@ -1190,6 +1191,14 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
     [visibleRows, rowEvents, toX, laneH, pluginTypes, singleMark]
   )
 
+  const rowOf = useMemo(() => new Map(visibleRows.map((key, i) => [key, i])), [visibleRows])
+  const endsMayBeMissing = false // S4 derives this from read completeness.
+  const intervalMarks = useMemo(() => layoutIntervalMarks({
+    set: intervalSet, rowOf, toX, trackW: TRACK_W, laneH,
+    clusterPx: INTERVAL_MIN_LINE_PX, endsMayBeMissing
+  }), [intervalSet, rowOf, toX, TRACK_W, laneH, endsMayBeMissing])
+  const [rowView, setRowView] = useState({ first: 0, last: MAX_VISIBLE_TERMINAL_ROWS })
+
   // Only terminal ends and recording pauses make a band; the domain moves on
   // every flush, so the bands are re-placed from those few rows.
   const boundaryRows = useTimelineDerived(sessionBoundaries, events)
@@ -1244,6 +1253,10 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
     () => filterVisibleClusters(clusters, TRACK_W, view.left, view.width),
     [clusters, view.left, view.width, TRACK_W]
   )
+
+  const visibleIntervalMarks = useMemo(() => filterVisibleMarks(
+    intervalMarks, TRACK_W, view.left / 100 * TRACK_W, view.width / 100 * TRACK_W, rowView
+  ), [intervalMarks, TRACK_W, view.left, view.width, rowView])
 
   // Drag across the minimap to zoom the main view to that window; click to jump.
   const onMinimapDown = useCallback((e: React.MouseEvent) => {
@@ -2257,7 +2270,13 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
           style={{ maxHeight: (timelineMode === 'standard' ? Math.min(visibleRows.length, 1 + MAX_VISIBLE_TERMINAL_ROWS) : visibleRows.length) * laneH + axisH + hScrollbarH }}
           // The cluster popover is placed outside this scroller; a vertical
           // scroll would leave it beside the wrong dot.
-          onScroll={() => setCluster(null)}
+          onScroll={(e) => {
+            setCluster(null)
+            const el = e.currentTarget
+            const first = Math.max(0, Math.floor((el.scrollTop - axisH) / laneH))
+            const last = Math.max(first, Math.ceil((el.scrollTop + el.clientHeight - axisH) / laneH) - 1)
+            setRowView((prev) => prev.first === first && prev.last === last ? prev : { first, last })
+          }}
         >
           {/* Lane labels. The standard ruler has none; the swim lanes keep
               this as the scroller's first child (the geometry suite reads it). */}
@@ -2749,10 +2768,10 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
                   <TimelineCommandTracks
                     set={intervalSet}
                     order={trackOrder}
-                    firstRow={1}
+                    marks={visibleIntervalMarks}
+                    rows={rowView}
                     laneH={laneH}
                     trackW={TRACK_W}
-                    toX={toX}
                     scrollLeft={(view.left / 100) * TRACK_W}
                     builtinLabel={termLabel}
                   />
