@@ -52,6 +52,17 @@ export const MAC_LIGHTS_REACH_PX = 72
 /** Gap kept between the lights and the first control, screen pixels. */
 export const MAC_LIGHTS_GAP_PX = 12
 
+/** The most the three OS buttons can plausibly reach in from the right edge:
+ *  40% of the window or 400 screen px, whichever is smaller. Windows' buttons
+ *  are 138 px and Linux's about 113; even a themed or scaled strip stays far
+ *  under this, and at the 800 px floor 40% (320) still clears 138 twice over.
+ *  A titlebar-area rectangle that leaves more than this to the buttons is the
+ *  PREVIOUS window size's rectangle, read before Chromium updated it (800 wide
+ *  then, 1400 now: the "buttons" would be 713 px). */
+export function maxButtonsReachPx(viewportWidth: number): number {
+  return Math.min(0.4 * viewportWidth, 400)
+}
+
 export const NO_INSET: CaptionInsets = { left: 0, right: 0, height: 0 }
 
 function validZoom(zoom: number): number {
@@ -75,6 +86,9 @@ export function captionInsets(input: {
   if (reading?.visible) {
     const { x, y, width, height } = reading.rect
     const right = Math.max(0, input.viewportWidth - (x + width))
+    if (right > maxButtonsReachPx(input.viewportWidth)) {
+      return { left: 0, right: round(FALLBACK_RIGHT_PX / zoom), height: round(FALLBACK_HEIGHT_PX / zoom) } // stale: see maxButtonsReachPx
+    }
     return { left: 0, right: round(right / zoom), height: round(Math.max(0, y + height) / zoom) }
   }
   if (reading && input.settled) return NO_INSET // reported, and nothing is drawn (full screen)
@@ -120,16 +134,39 @@ export function installCaptionInsets(isMac: boolean): () => void {
     root.style.setProperty('--wco-inset-left', `${left}px`)
   }
   const onGeometry = (): void => { settled = true; publish() }
+  // After a resize the overlay rectangle can be updated after the `resize`
+  // event, with `geometrychange` late or not at all: read again on the next
+  // frame and once more shortly after. Bounded, and cancelled by a newer
+  // resize and by the cleanup.
+  const FOLLOW_UP_MS = 150
+  let frame = 0
+  let timer: ReturnType<typeof setTimeout> | null = null
+  const cancelFollowUp = (): void => {
+    if (frame) cancelAnimationFrame(frame)
+    if (timer !== null) clearTimeout(timer)
+    frame = 0
+    timer = null
+  }
+  const onResize = (): void => {
+    publish()
+    cancelFollowUp()
+    frame = requestAnimationFrame(() => {
+      frame = 0
+      publish()
+      timer = setTimeout(() => { timer = null; publish() }, FOLLOW_UP_MS)
+    })
+  }
   publish()
   api?.addEventListener('geometrychange', onGeometry)
-  window.addEventListener('resize', publish)
+  window.addEventListener('resize', onResize)
   const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(publish)
   resize?.observe(document.body)
   const style = typeof MutationObserver === 'undefined' ? null : new MutationObserver(publish)
   style?.observe(document.body, { attributes: true, attributeFilter: ['style'] })
   return () => {
     api?.removeEventListener('geometrychange', onGeometry)
-    window.removeEventListener('resize', publish)
+    window.removeEventListener('resize', onResize)
+    cancelFollowUp()
     resize?.disconnect()
     style?.disconnect()
   }

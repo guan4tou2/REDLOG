@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   FALLBACK_HEIGHT_PX,
   FALLBACK_RIGHT_PX,
   NO_INSET,
   captionInsets,
+  maxButtonsReachPx,
   installCaptionInsets
 } from '../src/renderer/src/lib/captionInsets'
 
@@ -35,6 +36,31 @@ describe('captionInsets', () => {
   ]
   it.each(cases)('%s', (_name, input, expected) => {
     expect(captionInsets(input)).toEqual({ left: 0, ...expected })
+  })
+
+  describe('a stale rectangle is not published', () => {
+    const at = (viewportWidth: number, width: number, zoom = 1) =>
+      captionInsets({ isMac: false, reading: { visible: true, rect: { x: 0, y: 0, width, height: 40 } }, settled: true, viewportWidth, zoom })
+    it('the 800 px rectangle read in a 1400 px window falls back, not 713 px', () => {
+      expect(at(1400, 800 - 113)).toEqual({ left: 0, right: FALLBACK_RIGHT_PX, height: FALLBACK_HEIGHT_PX })
+    })
+    it('the fallback is divided by the zoom like a measured value', () => {
+      expect(at(1400, 687, 0.8).right).toBe(187.5)
+    })
+    it('normal 138 px and 113 px readings are unchanged, at the floor and wide', () => {
+      expect(at(800, 800 - 138).right).toBe(138)
+      expect(at(1400, 1400 - 113).right).toBe(113)
+      expect(at(1920, 1920 - 138).right).toBe(138)
+    })
+    it('the bound is the smaller of 40% of the window and 400 px', () => {
+      expect(maxButtonsReachPx(800)).toBe(320)
+      expect(maxButtonsReachPx(1400)).toBe(400)
+      expect(at(1400, 1400 - 400).right).toBe(400)
+      expect(at(1400, 1400 - 401).right).toBe(FALLBACK_RIGHT_PX)
+    })
+    it('left is untouched', () => {
+      expect(at(1400, 687).left).toBe(0)
+    })
   })
 
   // macOS draws its traffic lights on the left, over the page: 72 screen px of
@@ -118,5 +144,62 @@ describe('installCaptionInsets', () => {
     fakeOverlay({ visible: true, width: 1262 })
     stop = installCaptionInsets(false)
     expect(prop('--wco-inset-left')).toBe('0px')
+  })
+
+  describe('after a resize with no geometrychange', () => {
+    afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
+    function stubRaf() {
+      const queue: Array<() => void> = []
+      vi.stubGlobal('requestAnimationFrame', (cb: () => void) => { queue.push(cb); return queue.length })
+      vi.stubGlobal('cancelAnimationFrame', (id: number) => { queue[id - 1] = () => {} })
+      return { flush: () => { const q = queue.splice(0); q.forEach((f) => f()) } }
+    }
+    it('converges: the stale reading at the resize is replaced on the next frame', () => {
+      vi.useFakeTimers()
+      const raf = stubRaf()
+      document.body.style.setProperty('--app-zoom', '1')
+      setWindowWidth(800)
+      const overlay = fakeOverlay({ visible: true, width: 800 - 113 })
+      stop = installCaptionInsets(false)
+      expect(prop('--wco-inset-right')).toBe('113px')
+      setWindowWidth(1400) // the overlay still reports the 800 px rectangle
+      window.dispatchEvent(new Event('resize'))
+      expect(prop('--wco-inset-right')).toBe(`${FALLBACK_RIGHT_PX}px`)
+      overlay.setWidth(1400 - 113) // Chromium catches up, no geometrychange
+      raf.flush()
+      expect(prop('--wco-inset-right')).toBe('113px')
+    })
+    it('reads once more after the frame, then stops', () => {
+      vi.useFakeTimers()
+      const raf = stubRaf()
+      document.body.style.setProperty('--app-zoom', '1')
+      setWindowWidth(1400)
+      const overlay = fakeOverlay({ visible: true, width: 1400 - 113 })
+      stop = installCaptionInsets(false)
+      const spy = vi.spyOn(overlay.target, 'getTitlebarAreaRect')
+      window.dispatchEvent(new Event('resize'))
+      raf.flush()
+      overlay.setWidth(1400 - 138)
+      vi.advanceTimersByTime(200)
+      expect(prop('--wco-inset-right')).toBe('138px')
+      const calls = spy.mock.calls.length
+      vi.advanceTimersByTime(60_000)
+      raf.flush()
+      expect(spy.mock.calls.length).toBe(calls)
+    })
+    it('cleanup cancels the follow-up', () => {
+      vi.useFakeTimers()
+      const raf = stubRaf()
+      document.body.style.setProperty('--app-zoom', '1')
+      setWindowWidth(1400)
+      const overlay = fakeOverlay({ visible: true, width: 1400 - 113 })
+      stop = installCaptionInsets(false)
+      window.dispatchEvent(new Event('resize'))
+      raf.flush()
+      stop(); stop = null
+      const spy = vi.spyOn(overlay.target, 'getTitlebarAreaRect')
+      vi.advanceTimersByTime(1000)
+      expect(spy).not.toHaveBeenCalled()
+    })
   })
 })
