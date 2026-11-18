@@ -122,8 +122,11 @@ test('Search opens indexed Activity output and returns from original evidence wi
     await page.getByTestId('search-input').fill(shellMarker)
     await expect(page.getByTestId('activity-row')).toHaveCount(1)
     await expect(page.getByTestId('activity-row')).toContainText('1 matching · 1 context')
-    // Stitch 04: the kind of activity rides the source badge's tooltip.
-    await expect(page.getByTestId('activity-row').getByTestId('activity-source-badge')).toHaveAttribute('title', /Command operation/)
+    // The kind of activity rides the leading glyph's tooltip (2026-11-18: the
+    // source badge became a glyph by kind and the source name at the row's end).
+    await expect(page.getByTestId('activity-row').getByTestId('activity-kind')).toHaveAttribute('title', /Command operation/)
+    // exit_code 7: the code with a word, not colour alone.
+    await expect(page.getByTestId('activity-row').getByTestId('activity-result')).toHaveText('failed 7')
     await page.getByTestId('activity-row').click()
     // An operation is read in the Reader (Spec 069 T019).
     await page.getByTestId('activity-read').click()

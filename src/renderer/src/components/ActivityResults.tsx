@@ -2,7 +2,7 @@ import type { ExportRequest } from '../../../core/export-plan'
 import { sourceSessionKey } from '../../../core/operation-pair-key'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { ActivityPage, ActivityRequest, ActivitySummary } from '../../../core/activity-contract'
+import type { ActivityKind, ActivityPage, ActivityRequest, ActivitySummary } from '../../../core/activity-contract'
 import type { BodySearchCoverage } from '../../../core/http-body-index'
 import { useI18n } from '../i18n'
 import { useReadState } from '../lib/readState'
@@ -15,7 +15,12 @@ import { ActivityReader, sourceName } from './ActivityReader'
 import { ActivityAround } from './ActivityAround'
 import { narrowsEvents } from '../lib/filterNarrowing'
 
-const ROW_GRID = 'grid grid-cols-[72px_130px_minmax(0,1fr)_24px] gap-x-3 items-center'
+/** time | kind | content | target | result | source (01-activity prototype).
+ *  The list is the container; narrow, the target column goes first. */
+const ROW_GRID = 'grid grid-cols-[72px_16px_minmax(0,1fr)_96px_72px] @min-[720px]:grid-cols-[72px_16px_minmax(0,1fr)_132px_96px_72px] gap-x-3 items-center'
+/** The kind of activity as one leading mark. Chosen by the projection's kind,
+ *  not by event type: an HTTP exchange and an AI tool call are kinds already. */
+const KIND_GLYPH: Record<ActivityKind, string> = { command: '$', http: '→', tool: '◇', message: '◇', event: '·' }
 /** A list row is 36px over a 1px rule, a 37px pitch (01-activity prototype),
  *  a minimum rather than a fixed height so nothing it shows is cut. The
  *  global `--row-h` is other lists'. */
@@ -158,7 +163,7 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
           {narrowed && onClearConditions && <button type="button" data-testid="activity-clear-conditions" onClick={onClearConditions} className="ml-2 underline hover:text-redlog-text focus-visible:outline focus-visible:outline-red-400">{t('filter.clearAll')}</button>}
         </p>
       })()}
-      <div data-testid="activity-list" className="flex flex-col">
+      <div data-testid="activity-list" className="@container flex flex-col">
         {(() => {
           const day = (at: number): JSX.Element | null => (at === 0 || formatDate(page.items[at - 1].firstAt) !== formatDate(page.items[at].firstAt))
             ? <div data-testid="activity-day" role="separator" className="mt-2 flex h-7 items-center gap-3 px-3 font-mono text-xs text-redlog-text-dim select-none">
@@ -173,20 +178,22 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
             <time className="font-mono text-xs text-redlog-text-dim">{formatTime(item.firstAt, { seconds: true })}</time>
             {(() => {
               const r = activityResultLabel(item, t)
-              const kind = t(item.kind === 'tool' ? `activity.tool.${item.toolAction}` : `activity.kind.${item.kind}`)
+              const source = sourceName(item, t)
+              const kind = `${source} · ${t(item.kind === 'tool' ? `activity.tool.${item.toolAction}` : `activity.kind.${item.kind}`)}`
+              const target = item.anchor.targetId
               return <>
-                {/* Stitch 04: the source as a badge, tinted when the command failed;
-                    the kind of activity rides its tooltip. */}
-                <span className="flex min-w-0"><span data-testid="activity-source-badge" title={`${sourceName(item, t)} · ${kind}`}
-                  className={`inline-block max-w-full truncate rounded px-1.5 py-0.5 text-xs ${r?.tone === 'fail' ? 'bg-redlog-danger/10 text-red-300' : 'bg-redlog-elevated text-redlog-text-dim'}`}>{sourceName(item, t)}</span></span>
-                <span className="flex min-w-0 items-center gap-2 pr-2">
+                <span data-testid="activity-kind" role="img" aria-label={kind} title={kind} className="text-center font-mono text-xs text-redlog-text-faint">{KIND_GLYPH[item.kind] ?? '·'}</span>
+                <span data-testid="activity-content" className="flex min-w-0 items-center gap-2">
                   <span className="min-w-0 truncate font-mono text-sm text-redlog-text" title={eventTitle(item.anchor, t)}>{eventTitle(item.anchor, t)}</span>
-                  {r && <span data-testid="activity-result" className={`shrink-0 text-xs font-medium ${r.tone === 'fail' ? 'text-red-300' : r.tone === 'ok' ? 'text-emerald-300' : 'text-amber-300'}`}>{r.text}</span>}
                   {filtering && <span className="shrink-0 text-xs text-redlog-text-dim">{t('activity.sources', { matches: item.matchedCount, context: item.contextCount })}</span>}
                 </span>
+                <span data-testid="activity-target" title={target ?? undefined} className="hidden @min-[720px]:block min-w-0 truncate font-mono text-xs text-redlog-text-dim">{target ?? ''}</span>
+                {/* A failure carries a word as well as its colour; success is the
+                    code alone; a state not known shows nothing (lib/commandStatus). */}
+                <span data-testid="activity-result" className={`text-right font-mono text-xs leading-tight ${r?.tone === 'fail' ? 'font-medium text-red-300' : r?.tone === 'neutral' ? 'text-amber-300' : 'text-redlog-text-dim'}`}>{r?.text ?? ''}</span>
+                <span data-testid="activity-row-source" title={source} className="min-w-0 truncate text-right text-xs text-redlog-text-faint">{source}</span>
               </>
             })()}
-            <span aria-hidden="true" className={`text-right text-redlog-text-dim transition-transform ${expanded === item.id ? 'rotate-90' : ''}`}>›</span>
           </button>
           {expanded === item.id && <div data-testid="activity-summary" className="px-2 pb-3 space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -220,9 +227,8 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
               <button type="button" data-testid="activity-system-fold" aria-expanded={open} onClick={toggle}
                 className={`${ROW_GRID} ${ROW_BOX} w-full text-left border-b border-redlog-border-subtle hover:bg-redlog-elevated focus-visible:outline focus-visible:outline-red-400`}>
                 <time className="font-mono text-xs text-redlog-text-faint">{formatTime(seg.items[0].firstAt, { seconds: true })}</time>
-                <span className="flex min-w-0"><span className="inline-block rounded px-1.5 py-0.5 text-xs bg-redlog-elevated text-redlog-text-faint">{t('timeline.system')}</span></span>
-                <span className="min-w-0 pr-2 text-sm text-redlog-text-dim">{t('activity.systemFold', { count: seg.items.length })}</span>
-                <span aria-hidden="true" className={`text-right text-redlog-text-dim transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
+                <span aria-hidden="true" className="text-center font-mono text-xs text-redlog-text-faint">{KIND_GLYPH.event}</span>
+                <span className="col-[3/-1] min-w-0 text-sm text-redlog-text-dim">{t('activity.systemFold', { count: seg.items.length })} <span aria-hidden="true" className={`inline-block transition-transform ${open ? 'rotate-90' : ''}`}>›</span></span>
               </button>
               {open && <div className="flex flex-col pl-3 border-l border-redlog-border-subtle">
                 {seg.items.map((it, k) => row(it, seg.at + k, false))}

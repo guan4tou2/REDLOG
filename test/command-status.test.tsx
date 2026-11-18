@@ -9,14 +9,23 @@ afterEach(cleanup)
 const t = (k: string, v?: Record<string, string | number>) => `${k}${v ? JSON.stringify(v) : ''}`
 
 describe('activityResultLabel', () => {
-  it('says success, failure with the code, and ended without a code', () => {
-    expect(activityResultLabel({ kind: 'command', state: 'paired', result: { exitCode: 0 } }, t)?.tone).toBe('ok')
+  // 2026-11-18: success is the bare exit code in the result position; a
+  // failure keeps a word beside its code, so it is not carried by colour.
+  it('says success as the code alone, failure with a word and the code, and ended without a code', () => {
+    expect(activityResultLabel({ kind: 'command', state: 'paired', result: { exitCode: 0 } }, t)).toEqual({ text: '0', tone: 'ok' })
     const failed = activityResultLabel({ kind: 'command', state: 'paired', result: { exitCode: 127 } }, t)
     expect(failed).toEqual({ text: 'activity.result.failed{"code":127}', tone: 'fail' })
     expect(activityResultLabel({ kind: 'command', state: 'paired', result: { exitCode: null } }, t)?.tone).toBe('neutral')
   })
   it('treats a command with no end as running/unknown, never failed', () => {
     expect(activityResultLabel({ kind: 'command', state: 'call-only' }, t)).toEqual({ text: 'timeline.command.unfinished', tone: 'neutral' })
+  })
+  // Nothing is not 0: a command whose pairing is not known shows no result,
+  // so a bare "0" can only ever mean a recorded exit 0.
+  it('says nothing for a command with no recorded end that is not merely unfinished', () => {
+    for (const state of ['unknown', 'interrupted', 'conflicted', 'result-only', 'paired'] as const) {
+      expect(activityResultLabel({ kind: 'command', state }, t), state).toBeNull()
+    }
   })
   it('leaves other kinds alone', () => {
     expect(activityResultLabel({ kind: 'tool', state: 'call-only' }, t)).toBeNull()

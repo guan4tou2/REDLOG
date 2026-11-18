@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Stitch 04: the source as a badge with the result inline, the new-events
+// Stitch 04: the source and the result on the row, the new-events
 // banner says how many arrived, and the Reader's hash section says what it is
 // (a stored snapshot) and what it is not (a verification).
 
@@ -35,14 +35,20 @@ function mount(): void {
 beforeEach(() => { localStorage.clear(); Object.values(api).forEach((f) => f.mockReset()) })
 afterEach(() => cleanup())
 
-it('draws the source as a badge, tinted when the command failed, with the result on the same line', async () => {
+// 2026-11-18: the 130px badge became a glyph chosen by the activity's kind and
+// the source as quiet text at the row's end. A failed command reads as failed
+// from its result's word, not from a tinted badge.
+it('marks the kind with a glyph, names the source at the end, and says a failure in words', async () => {
   mount()
-  const badge = await screen.findByTestId('activity-source-badge')
-  expect(badge.className).toMatch(/text-red-300/)
+  const glyph = await screen.findByTestId('activity-kind')
+  expect(glyph.textContent).toBe('$')
+  expect(glyph.getAttribute('title')).toBe('timeline.shell · activity.kind.command')
+  expect(glyph.getAttribute('aria-label')).toBe('timeline.shell · activity.kind.command')
   const row = screen.getByTestId('activity-row')
-  expect(row.textContent).toContain('activity.result.failed')
+  expect(screen.queryByTestId('activity-source-badge')).toBeNull()
+  expect(screen.getByTestId('activity-row-source').textContent).toBe('timeline.shell')
+  expect(screen.getByTestId('activity-result').textContent).toBe('activity.result.failed {"code":2}')
   expect(row.textContent).not.toContain('activity.kind.command')
-  expect(badge.getAttribute('title')).toContain('activity.kind.command')
 })
 
 it('counts the events that arrived since the page was read, and a refresh clears the count', async () => {

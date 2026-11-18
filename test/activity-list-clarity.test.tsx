@@ -100,3 +100,44 @@ it('draws the date separator as a rule with the date, not a bordered chip', asyn
   const framed = Array.from(day.querySelectorAll('*')).filter((el) => /(^|\s)(rounded|border)\b/.test(el.getAttribute('class') ?? ''))
   expect(framed).toEqual([])
 })
+
+// The row, in the prototype's order: time | kind glyph | content | target |
+// result | source. The target is the anchor's own, already on the item.
+it('lays a row out as time, kind, content, target, result and source', async () => {
+  mount([summary('a', { result: { exitCode: 0 }, anchor: ev('a', { timestamp: Date.now(), targetId: '10.10.10.5', data: { command: 'nmap 10.10.10.5', subtype: 'command_end', exit_code: 0 } }) })])
+  const row = await screen.findByTestId('activity-row')
+  const cells = Array.from(row.children).map((el) => el.getAttribute('data-testid') ?? el.tagName.toLowerCase())
+  expect(cells).toEqual(['time', 'activity-kind', 'activity-content', 'activity-target', 'activity-result', 'activity-row-source'])
+  const target = screen.getByTestId('activity-target')
+  expect(target.textContent).toBe('10.10.10.5')
+  expect(target.getAttribute('title')).toBe('10.10.10.5')
+  expect(target.className).toContain('truncate')
+  expect(screen.getByTestId('activity-result').textContent).toBe('0')
+})
+
+it('leaves the target empty, and the result position empty, when there is none to show', async () => {
+  mount([summary('a', { state: 'unknown' })])
+  await screen.findByTestId('activity-row')
+  const target = screen.getByTestId('activity-target')
+  expect(target.textContent).toBe('')
+  expect(target.getAttribute('title')).toBeNull()
+  expect(screen.getByTestId('activity-result').textContent).toBe('')
+})
+
+// The glyph comes from the activity's kind, never from comparing event types.
+it('chooses the glyph by the kind of activity', async () => {
+  const kinds = { command: '$', http: '→', tool: '◇', message: '◇', event: '·' } as const
+  mount(Object.keys(kinds).map((kind) => summary(kind, { kind })))
+  await screen.findAllByTestId('activity-row')
+  expect(screen.getAllByTestId('activity-kind').map((g) => g.textContent)).toEqual(Object.values(kinds))
+  for (const g of screen.getAllByTestId('activity-kind')) expect(g.getAttribute('role')).toBe('img')
+})
+
+// Narrow, the target column goes first; the others keep their place.
+it('collapses the target column first when the list is narrow', async () => {
+  mount([summary('a')])
+  const row = await screen.findByTestId('activity-row')
+  expect(row.closest('[data-testid="activity-list"]')?.className).toMatch(/(^|\s)@container(\s|$)/)
+  expect(screen.getByTestId('activity-target').className).toMatch(/(^|\s)hidden(\s|$)/)
+  expect(screen.getByTestId('activity-target').className).toContain('@min-[720px]:block')
+})
