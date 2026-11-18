@@ -27,10 +27,10 @@ function Harness(over: Partial<Props>): JSX.Element {
   const props: Props = {
     t, timeRange: null, setTimeRange: vi.fn(), hasMore: false, loadedCount: 3, loadedSpanMs: null, projectSpanMs: null,
     total: { state: 'ok', value: 3 }, onRetryTotal: vi.fn(), onLoadMore: vi.fn(),
-    zoom: 1.5, onZoomOut: vi.fn(), onZoomIn: vi.fn(), onResetZoom: vi.fn(), anchorTs: null,
+    zoom: 1.5, onZoomOut: vi.fn(), onZoomIn: vi.fn(), onResetZoom: vi.fn(),
     mode: 'standard', onModeChange: vi.fn(),
     filterQuery: '', onFilterQueryChange: vi.fn(), searchInputRef: createRef<HTMLInputElement>(),
-    onHelp: vi.fn(), attributionBlind: false, lanes: new Set<LaneId>(),
+    onHelp: vi.fn(), attributionBlind: false, pausedMs: 0, lanes: new Set<LaneId>(),
     moreItems: <span data-testid="more-slot" />, followBadge: <span data-testid="follow-slot" />,
     ...over
   }
@@ -88,14 +88,6 @@ describe('the primary toolbar', () => {
     fireEvent.keyDown(screen.getByTestId('timeline-zoom-reset'), { key: 'Escape' })
     expect(screen.queryByRole('menu')).toBeNull()
     expect(document.activeElement).toBe(button)
-  })
-
-  it('shows the anchor only when one is set', () => {
-    drawToolbar()
-    expect(screen.queryByTestId('timeline-anchor')).toBeNull()
-    cleanup()
-    drawToolbar({ anchorTs: T0 })
-    expect(screen.getByTestId('timeline-anchor')).toBeTruthy()
   })
 })
 

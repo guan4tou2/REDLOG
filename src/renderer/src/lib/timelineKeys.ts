@@ -52,6 +52,7 @@ export type TimelineKeyAction =
   | 'zoom-out' // −
   | 'zoom-reset' // 0
   | 'toggle-detail' // Enter → open/close the Inspector on the selection
+  | 'open-activity' // 'a' → open the selection in the activity log
   | 'toggle-focus' // 'f'  → enter/exit focus-chain mode
 
 interface KeyLike {
@@ -121,6 +122,7 @@ export function resolveTimelineKey(e: KeyLike, ctx: TimelineKeyContext): Timelin
   if (e.key === '/') return 'focus-filter'
   if (e.key === '?') return 'toggle-help'
   if (e.key === 'f' || e.key === 'F') return 'toggle-focus'
+  if (e.key === 'a' || e.key === 'A') return ctx.hasSelection ? 'open-activity' : 'none'
 
   return 'none'
 }

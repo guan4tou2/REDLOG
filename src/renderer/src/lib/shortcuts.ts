@@ -203,7 +203,8 @@ export function timelineShortcuts(isMac: boolean): ShortcutGroup[] {
         { keys: '↑ ↓', label: 'timeline.help.walkCrossLane' },
         { keys: '⇧← ⇧→', label: 'timeline.help.walkState' },
         { keys: 'Home / End', label: 'timeline.help.walkEnds' },
-        { keys: 'Enter', label: 'timeline.help.toggleInspector' }
+        { keys: 'Enter', label: 'timeline.help.toggleInspector' },
+        { keys: 'a', label: 'timeline.help.openInActivity' }
       ]
     },
     {

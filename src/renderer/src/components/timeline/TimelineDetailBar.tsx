@@ -5,13 +5,12 @@
 
 import { useEffect, useState } from 'react'
 import { Button } from '../Button'
-import { writeClipboard } from '../../lib/clipboard'
-import { toast } from '../Toast'
 import { classifyScope } from '../../../../core/scope-evaluator'
 import type { RedLogEvent } from '../../../../core/db/event-types'
 import { formatTime } from '../../lib/time'
 import { LANE_LABEL_KEYS, toLane, type PluginEventType } from '../../lib/timelineDomain'
 import { hasContentReader } from '../../lib/timelineEvents'
+import { titleWithoutExit } from '../../lib/timelineCard'
 
 type Translate = (key: string, vars?: Record<string, string | number>) => string
 type ScopePolicy = { targets: string[]; excludeTargets: string[] }
@@ -53,15 +52,12 @@ function scopeStateKey(target: string, policy: ScopePolicy | null | undefined): 
 const SEP = <span aria-hidden="true" className="text-redlog-text-faint"> · </span>
 
 export function TimelineDetailBar({
-  event, pluginTypes, titleOf, onStep, canStepPrev, canStepNext, onOpenInActivity,
+  event, pluginTypes, titleOf, onOpenInActivity,
   bodyOpen, onToggleBody, onOpenReader, t
 }: {
   event: RedLogEvent
   pluginTypes: PluginEventType[]
   titleOf: (e: RedLogEvent) => string
-  onStep?: (delta: -1 | 1) => void
-  canStepPrev: boolean
-  canStepNext: boolean
   onOpenInActivity?: (eventId: string, ts: number) => void
   bodyOpen: boolean
   onToggleBody: () => void
@@ -74,6 +70,8 @@ export function TimelineDetailBar({
   const duration = event.data?.duration_sec
   const pid = event.data?.pid
   const stateKey = event.targetId ? scopeStateKey(event.targetId, policy) : null
+  // The exit code is a fact below; the title does not end with it again.
+  const title = titleWithoutExit(titleOf(event), exit)
   const facts: JSX.Element[] = []
   if (typeof exit === 'number') {
     facts.push(<span key="exit">{t('timeline.detail.exit')} <span data-testid="detail-exit" className={exit === 0 ? '' : 'text-amber-400'}>{exit}</span></span>)
@@ -94,10 +92,10 @@ export function TimelineDetailBar({
       className="shrink-0 border-t border-redlog-border/50 bg-redlog-surface/80 px-4 py-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5"
     >
       <div className="min-w-0 flex-1 basis-64 text-xs">
-        <p className="font-mono truncate" title={`${formatTime(event.timestamp, { seconds: true })} · ${t(LANE_LABEL_KEYS[lane])} · ${titleOf(event)}`}>
+        <p className="font-mono truncate" title={`${formatTime(event.timestamp, { seconds: true })} · ${t(LANE_LABEL_KEYS[lane])} · ${title}`}>
           <span className="tabular-nums text-redlog-text-dim">{formatTime(event.timestamp, { seconds: true })}</span>
           {SEP}<span className="text-redlog-text-dim">{t(LANE_LABEL_KEYS[lane])}</span>
-          {SEP}<span data-testid="timeline-bar-title" className="text-redlog-text">{titleOf(event)}</span>
+          {SEP}<span data-testid="timeline-bar-title" className="text-redlog-text">{title}</span>
         </p>
         {facts.length > 0 && (
           <p data-testid="timeline-bar-facts" className="mt-0.5 flex items-center gap-x-1.5 font-mono text-redlog-text-faint min-w-0">
@@ -105,25 +103,19 @@ export function TimelineDetailBar({
           </p>
         )}
       </div>
+      {/* One primary, 閱讀, and one secondary. Stepping is ← → and Enter
+          toggles the body (both in the ? list); copying the reference and
+          exclude-from-export are in the inspector. 閱讀 opens the Reader
+          where there is saved content to read, and the body otherwise. */}
       <div className="flex flex-wrap items-center gap-2 ml-auto">
-        {onStep && (
-          <>
-            <Button size="compact" level="quiet" type="button" data-testid="detail-step-prev" disabled={!canStepPrev} onClick={() => onStep(-1)}>{t('timeline.stepPrev')}</Button>
-            <Button size="compact" level="quiet" type="button" data-testid="detail-step-next" disabled={!canStepNext} onClick={() => onStep(1)}>{t('timeline.stepNext')}</Button>
-          </>
-        )}
-        <Button size="compact" level="quiet" type="button" data-testid="detail-copy-ref"
-          onClick={() => { void writeClipboard(`event:${event.id}`).then((ok) => ok ? toast(t('common.copied'), 'success') : toast(t('common.copyFailed'), 'error')) }}
-        >{t('timeline.copyRef')}</Button>
-        {hasContentReader(event) && (
-          <Button size="compact" level="quiet" type="button" data-testid="detail-open-reader" onClick={onOpenReader}>{t('timeline.bar.reader')}</Button>
-        )}
         {onOpenInActivity && (
-          <Button size="compact" level="quiet" type="button" data-testid="detail-open-activity"
+          <Button size="compact" level="secondary" type="button" data-testid="detail-open-activity" aria-keyshortcuts="a"
             onClick={() => onOpenInActivity(event.id, event.timestamp)}
           >{t('timeline.openInActivity')} ↗</Button>
         )}
-        <Button size="compact" level="secondary" type="button" data-testid="detail-toggle-body" aria-expanded={bodyOpen} onClick={onToggleBody}>{t('timeline.bar.details')}</Button>
+        <Button size="compact" level="primary" type="button" data-testid="detail-toggle-body" aria-expanded={bodyOpen}
+          onClick={hasContentReader(event) ? onOpenReader : onToggleBody}
+        >{t('timeline.bar.read')}</Button>
       </div>
     </div>
   )

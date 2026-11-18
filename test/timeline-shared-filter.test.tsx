@@ -80,7 +80,8 @@ describe('the Timeline on the shared filter', () => {
     b.count.mockResolvedValue(57)
     mount()
     await waitFor(() => expect(status()).toContain('2 of 57 events'))
-    expect(status()).toContain('scroll back for older')
+    // The count sits beside 載入更多; it does not also explain scrolling.
+    expect(status()).toBe('2 of 57 events')
     expect(lastCall(b.count)).toMatchObject({ excludeHousekeeping: true })
   })
 
@@ -113,6 +114,13 @@ describe('the Timeline on the shared filter', () => {
     // Named as the FilterBar names it (Spec 034): "Type: DNS", not `dns`.
     expect(empty.textContent).toContain('Type: DNS')
     expect(screen.queryByText('No events recorded yet')).toBeNull()
+    // The page keeps its toolbar, and the empty state offers the way out
+    // itself rather than leaving it to the FilterBar.
+    expect(screen.getByTestId('timeline-toolbar')).toBeTruthy()
+    b.queryPage.mockResolvedValue(page([makeEvent('e1', T0)]))
+    fireEvent.click(within(empty).getByRole('button', { name: 'Clear all' }))
+    await waitFor(() => expect(status()).toMatch(/\b1 event/))
+    expect(filterApi.filter.agentType).toBeFalsy()
   })
 
   it('admits live rows through the persistence layer and adds them to the total', async () => {
@@ -132,7 +140,12 @@ describe('the Timeline on the shared filter', () => {
     await waitFor(() => expect(status()).toMatch(/\b1 event/))
     b.matchIds.mockRejectedValueOnce(new Error('busy'))
     await act(async () => { b.emitBatch([makeEvent('live-1', T0 + 1)]) })
-    await screen.findByTestId('timeline-live-failed')
+    const failed = await screen.findByTestId('timeline-live-failed')
+    // A failed read gets the error treatment: a shape as well as a colour,
+    // announced, with its retry beside it.
+    expect(failed.getAttribute('role')).toBe('alert')
+    expect(failed.querySelector('svg')).not.toBeNull()
+    expect(within(failed).getByRole('button', { name: 'Retry' })).toBeTruthy()
   })
 
   it('clears and explains a selection the new filter excludes', async () => {
@@ -209,6 +222,14 @@ describe('an empty Timeline says why it is empty', () => {
     try { localStorage.clear() } catch { /* ignore */ }
   })
   afterEach(() => { cleanup(); vi.restoreAllMocks() })
+
+  it('says a project with nothing recorded is empty in one sentence', async () => {
+    try { localStorage.setItem('redlog-locale', 'en') } catch { /* ignore */ }
+    b.queryPage.mockResolvedValue(page([]))
+    mount()
+    await screen.findByText('No events recorded yet')
+    expect(screen.queryByText(/Events will appear here/)).toBeNull()
+  })
 
   it('names personal traffic when hiding it leaves nothing', async () => {
     const bridge = window as unknown as { redlog: { config: { get: () => Promise<unknown> } } }

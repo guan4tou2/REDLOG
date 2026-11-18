@@ -34,7 +34,7 @@ function drawInspector(event: RedLogEvent, onOpenInActivity?: (id: string, ts: n
     <I18nProvider>
       <TimelineDetailBar
         event={event} pluginTypes={[]} titleOf={(e) => String(e.data?.command ?? e.id)} t={(k: string) => k}
-        onStep={vi.fn()} canStepPrev canStepNext onOpenInActivity={onOpenInActivity}
+        onOpenInActivity={onOpenInActivity}
         bodyOpen={false} onToggleBody={vi.fn()} onOpenReader={vi.fn()}
       />
     </I18nProvider>
@@ -161,11 +161,9 @@ describe('from the Timeline to the activity log (Stitch 05)', () => {
     expect(screen.queryByTestId('detail-open-activity')).toBeNull()
   })
 
-  it('copies a reference that pastes back into search', async () => {
-    const write = vi.fn(async () => true)
-    ;(window as unknown as { redlog: Record<string, unknown> }).redlog.clipboard = { writeText: write }
+  // Copying the reference moved into the inspector (test/timeline-bar.test.tsx).
+  it('keeps no copy-reference button on the bar', () => {
     drawInspector(ev('evt-2', 'shell', { subtype: 'command_start', command: 'ls' }))
-    fireEvent.click(screen.getByTestId('detail-copy-ref'))
-    await waitFor(() => expect(write).toHaveBeenCalledWith('event:evt-2'))
+    expect(screen.queryByTestId('detail-copy-ref')).toBeNull()
   })
 })

@@ -113,6 +113,16 @@ function typeTagOf(evt: RedLogEvent, lane: LaneId, t: Translate): string {
   return t(LANE_LABEL_KEYS[lane])
 }
 
+/** The title without the ` → exit N` that `eventTitle` ends a finished
+ *  command with. Only for a surface that states that exit code on its own
+ *  (card meta, detail-bar facts), so it is said once; `exit ?` stays. */
+export function titleWithoutExit(title: string, exitCode: unknown): string {
+  const code = num(exitCode)
+  if (code === null) return title
+  const suffix = ` → exit ${code}`
+  return title.endsWith(suffix) ? title.slice(0, -suffix.length) : title
+}
+
 export function buildCard(evt: RedLogEvent, ctx: CardContext): EventCard {
   const lane = toLane(evt.agentType, evt.data?.subtype as string | undefined, ctx.pluginTypes)
   const card: EventCard = {
@@ -122,6 +132,9 @@ export function buildCard(evt: RedLogEvent, ctx: CardContext): EventCard {
     title: ctx.titleOf(evt),
     meta: metaOf(evt, ctx.t)
   }
+  // The meta carries the exit code; the title does not end with it again.
+  const code = num(evt.data?.exit_code)
+  if (code !== null && card.meta.includes(ctx.t('transcript.metaExit', { code }))) card.title = titleWithoutExit(card.title, code)
   const detail = detailOf(evt)
   if (detail) card.detail = detail
   if (ctx.withStdout) {

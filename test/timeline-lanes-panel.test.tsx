@@ -149,6 +149,19 @@ describe('the list in swim-lane mode', () => {
       // takes the rest, so there is no split between them to drag.
       expect(screen.queryByTestId('timeline-log-resize')).toBeNull()
     })
+
+    // Standard mode has no lane labels, so a lane hidden in lanes mode cannot
+    // be seen or undone here. The track and the cards show the same events.
+    it('a lane hidden in lanes mode hides no card: the track and the cards agree', async () => {
+      b = installTimelineBridge({ timelineMode: 'standard' })
+      localStorage.setItem('redlog-timeline-hidden-lanes:p1', JSON.stringify(['dns']))
+      b.queryPage.mockResolvedValue(page([makeEvent('e1', T0), makeEvent('e2', T0 + 1000, 'dns')]))
+      mount()
+      await waitFor(() => expect(document.querySelectorAll('[data-timeline-event]').length).toBe(2))
+      await waitFor(() => expect(screen.queryAllByTestId('rail-card')).toHaveLength(2))
+      // The saved key is lanes mode's and stays as it was.
+      expect(localStorage.getItem('redlog-timeline-hidden-lanes:p1')).toBe('["dns"]')
+    })
   })
 })
 
