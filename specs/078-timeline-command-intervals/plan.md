@@ -84,6 +84,15 @@
 - **不改的既有測試**：`timeline-geometry`、`timeline-cluster-spacing`。
 - **風險**：名稱寬度是 CSS 截斷，jsdom 量不到，「至少 6 個字元」只能在 e2e（SC-005）驗。
 
+#### S2 實作時與上述計畫不同之處
+- **型別無變更**：`IntervalMark`、`IntervalLayoutInput` 保留接縫原樣。`hitLeft`／`hitWidth` 在 S2 只是非互動的佔位資料，S3 才實作其 27px 點擊區域與相鄰分界契約。
+- **起點座標**：S1 的 `Math.max(0, x0)` 與 SC-003 的真實起點不變式衝突；S2 保留 `toX(startTs)`（可為負值），由既有捲動容器裁切，不把左緣冒充起點。擴大時間範圍仍留給 S3。SC-003 的「線起點等於起點列」只適用有起點列者；FR-006 明定的未知起點 stub 是例外。
+- **線性版面**：未知起點的幾何為 `toX(endTs) - 16`，可能早於較早的已知起點。將本來已按時間排列的已知／未知起點分成兩列，再線性合併，避免排序把工作量變為 O(n log n)；cluster 成員再以原 set 順序線性還原。
+- **名稱區**：列標籤由 S1 的 top 4px 移到 0px；名稱 top 12px、線心 28px，三者分開。名稱的相鄰界線為下一個 interval mark 的起點，自己的終點位於名稱下方，不截斷自己的名稱；前一個向右的名稱已佔用的空間不再分配給後一個向左的名稱。
+- **title 提前到 S2**：原 S4 任務還列了 title 與其 i18n，本次明確要求在 S2 完成 FR-033；可及名稱仍留給 S4。截斷檢查不接受只有祖先元素的 title，因此名稱元素也使用同一份完整 title。
+- **viewport**：既有 `view.left`／`view.width` 是百分比，呼叫 `filterVisibleMarks` 前轉成 CSS px；垂直範圍扣除上方時間尺高度，捲動只更新篩選。S1 的「五列全部掛載」測試改驗可見列加一列緩衝，捲動後仍可達其餘列；jsdom 需提供真實視窗會有的 `clientWidth`，不能把其預設 0 當成可視全軌。另以 spy 驗證水平、垂直捲動均不呼叫 layout。
+- **分支**：依本次授權疊在未合併的 S1 分支，而非共同約束所寫的另從 main 開分支；未 push。
+
 ### S3 互動與切換
 - **改 `TimelineCommandTracks.tsx`**：記號成為 `<button data-timeline-event data-timeline-interval>`，內含 `[data-timeline-mark]`（e2e 的 `markBoxes` 對每個 `[data-timeline-event]` 都取這個子元素，`e2e/timeline-track.spec.ts:827-831`）；inline `width`／`height` 不小於 27（`test/timeline-hit-targets.test.tsx` 讀 inline 尺寸）；選取外環；`onClick` 先檢查 `didPan.current`。
 - **改 `Timeline.tsx`**：

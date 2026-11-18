@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
+import * as intervalLayout from '../src/renderer/src/lib/timelineIntervalLayout'
+import { TimelineCommandTracks } from '../src/renderer/src/components/timeline/TimelineCommandTracks'
+import { buildCommandIntervals } from '../src/renderer/src/lib/timelineIntervals'
+import { layoutIntervalMarks } from '../src/renderer/src/lib/timelineIntervalLayout'
+import { formatDateTime } from '../src/renderer/src/lib/time'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import TimelinePanel from '../src/renderer/src/components/Timeline'
 import { FilterProvider } from '../src/renderer/src/lib/FilterContext'
 import { I18nProvider } from '../src/renderer/src/i18n'
@@ -47,7 +52,15 @@ const lineOf = (key: string): HTMLElement | null =>
   [...document.querySelectorAll<HTMLElement>('[data-testid="timeline-interval-line"]')].find((l) => l.dataset.intervalId?.includes(`"${key}"]`)) ?? null
 const px = (v: string): number => parseFloat(v)
 
-afterEach(() => cleanup())
+const savedClientWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')
+beforeEach(() => {
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get() { return this.classList.contains('cursor-grab') ? 2000 : 0 } })
+})
+afterEach(() => {
+  cleanup()
+  if (savedClientWidth) Object.defineProperty(HTMLElement.prototype, 'clientWidth', savedClientWidth)
+  else delete (HTMLElement.prototype as unknown as Record<string, unknown>).clientWidth
+})
 
 describe('standard mode: one row per terminal (Spec 078 S1)', () => {
   let b: TimelineBridge
@@ -136,11 +149,11 @@ describe('standard mode: one row per terminal (Spec 078 S1)', () => {
     expect(lineOf('c1')).toBeNull()
   })
 
-  // TRANSITIONAL (S1 only): the time range is still computed from the drawn
+  // TRANSITIONAL (S1/S2): the time range is still computed from the drawn
   // rows, which no longer include a folded start, so a long command's start
-  // can fall left of the track. S1 clips the line at 0; S3 widens the range to
+  // can fall left of the track. S2 retains that coordinate; S3 widens the range to
   // include interval starts (FR-065) and this case changes.
-  it('S1 transitional: a line that starts left of the track is clipped at 0', async () => {
+  it('S2 transitional: an off-track start retains its true geometry until S3 extends the domain', async () => {
     b.queryPage.mockResolvedValue(page([
       cmd('s', T0 - 600 * S, 'command_start', 'ta', 'c1', 'nmap -p- 10.0.0.5'),
       cmd('e', T0 + 42 * S, 'command_end', 'ta', 'c1', 'nmap -p- 10.0.0.5'),
@@ -148,7 +161,7 @@ describe('standard mode: one row per terminal (Spec 078 S1)', () => {
     ]))
     mount()
     await waitFor(() => expect(tracks()).toHaveLength(1))
-    expect(lineOf('c1')!.style.left).toBe('0px')
+    expect(px(lineOf('c1')!.style.left)).toBeLessThan(0)
   })
 
   it('the built-in terminal keeps its session-band label', async () => {
@@ -230,11 +243,29 @@ describe('more terminals than fit (Q1: three visible, the rest by vertical scrol
     b.queryPage.mockResolvedValue(page(rows))
   })
 
-  it('draws all five rows and caps the visible height at the event row and three terminal rows', async () => {
+  it('keeps space for five terminal rows but mounts only the visible rows plus one below', async () => {
     mount()
-    await waitFor(() => expect(tracks()).toHaveLength(5))
+    await waitFor(() => expect(tracks()).toHaveLength(4))
     expect(screen.getByTestId('timeline-standard-track').style.height).toBe(`${6 * LANE_H}px`)
     expect(screen.getByTestId('timeline-lane-scroll').style.maxHeight).toBe(`${4 * LANE_H + AXIS_H}px`)
+  })
+
+  it('scrolls to the remaining row without recomputing layout', async () => {
+    const spy = vi.spyOn(intervalLayout, 'layoutIntervalMarks')
+    try {
+      mount()
+      await waitFor(() => expect(tracks()).toHaveLength(4))
+      const calls = spy.mock.calls.length
+      const lanes = screen.getByTestId('timeline-lane-scroll')
+      Object.defineProperty(lanes, 'clientHeight', { configurable: true, value: 4 * LANE_H + AXIS_H })
+      lanes.scrollTop = 2 * LANE_H
+      fireEvent.scroll(lanes)
+      await waitFor(() => expect(tracks().map((t) => t.dataset.trackKey)).toEqual(['terminal:t4', 'terminal:t3', 'terminal:t2', 'terminal:t1', 'terminal:t0']))
+      const scroller = lanes.firstElementChild as HTMLElement
+      scroller.scrollLeft = 100
+      fireEvent.scroll(scroller)
+      expect(spy.mock.calls.length).toBe(calls)
+    } finally { spy.mockRestore() }
   })
 
   // E-1: the wheel handler asked the measured wrapper whether the rows
@@ -242,6 +273,7 @@ describe('more terminals than fit (Q1: three visible, the rest by vertical scrol
   // timeline-lane-scroll. So the wheel always panned sideways, and rows past
   // the cap were out of the wheel's reach.
   it('the wheel scrolls the rows vertically while they overflow, and pans sideways when they do not (E-1)', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get() { return this.classList.contains('cursor-grab') ? 1600 : 0 } })
     // The wheel handler is bound when the track's width changes, and jsdom
     // measures none: report a width once, as the panel's observer would.
     ;(window as unknown as { ResizeObserver: unknown }).ResizeObserver = class {
@@ -251,7 +283,7 @@ describe('more terminals than fit (Q1: three visible, the rest by vertical scrol
       disconnect(): void {}
     }
     mount()
-    await waitFor(() => expect(tracks()).toHaveLength(5))
+    await waitFor(() => expect(tracks()).toHaveLength(4))
     const lanes = screen.getByTestId('timeline-lane-scroll')
     const scroller = lanes.firstElementChild as HTMLElement
     Object.defineProperty(lanes, 'clientHeight', { configurable: true, value: 4 * LANE_H + AXIS_H })
@@ -261,5 +293,76 @@ describe('more terminals than fit (Q1: three visible, the rest by vertical scrol
     expect(fireEvent.wheel(scroller, { deltaY: 40, shiftKey: true }), 'shift+wheel still pans').toBe(false)
     Object.defineProperty(lanes, 'scrollHeight', { configurable: true, value: 4 * LANE_H + AXIS_H })
     expect(fireEvent.wheel(scroller, { deltaY: 40 }), 'no overflow: the wheel pans').toBe(false)
+  })
+})
+
+// S2's renderer also has a direct boundary: feed it the pure layout so the
+// state and copy assertions do not depend on jsdom's missing measurements.
+describe('S2 mark rendering', () => {
+  const setFor = (exitCode: number | null, open = false, extra = {}) => buildCommandIntervals([
+    cmd('s', T0, 'command_start', 'ta', 'c1', 'cat\n  config.php\u202e'),
+    ...open ? [] : [cmd('e', T0 + 42 * S, 'command_end', 'ta', 'c1', 'cat\n  config.php\u202e', { exit_code: exitCode, ...extra })]
+  ])
+  function draw(set: ReturnType<typeof setFor>, trackW = 1000, scale = 1) {
+    const marks = layoutIntervalMarks({ set, rowOf: new Map([['terminal:ta', 1]]), toX: (ts) => 100 + (ts - T0) / 1000 * scale, trackW, laneH: 44, clusterPx: 14, endsMayBeMissing: false })
+    return render(<I18nProvider><TimelineCommandTracks set={set} marks={marks} order={['terminal:ta']} rows={{ first: 0, last: 3 }} laneH={44} trackW={trackW} scrollLeft={0} builtinLabel={(id) => id} /></I18nProvider>)
+  }
+  it('success uses a filled bar, failure a cross with exit code, no result a hollow bar, open no end', () => {
+    for (const [code, open, shape] of [[0, false, 'filled-bar'], [2, false, 'cross'], [null, false, 'hollow-bar'], [null, true, null]] as const) {
+      const r = draw(setFor(code, open))
+      expect(r.container.querySelector('[data-end-shape]')?.getAttribute('data-end-shape') ?? null).toBe(shape)
+      if (code === 2) expect(r.container.querySelector('[data-testid="timeline-exit-code"]')?.textContent).toBe('2')
+      r.unmount()
+    }
+  })
+  it('omits a failure exit code when fewer than 20px remain but keeps it in the title', () => {
+    const r = draw(setFor(2), 160)
+    expect(r.container.querySelector('[data-end-shape="cross"]')).not.toBeNull()
+    expect(r.container.querySelector('[data-testid="timeline-exit-code"]')).toBeNull()
+    expect(r.container.querySelector('[data-testid="timeline-interval-mark"]')?.getAttribute('title')).toContain('exit 2')
+  })
+  it('prints a safe collapsed command with inline ellipsis width and a richer title', () => {
+    const r = draw(setFor(2))
+    const name = r.container.querySelector<HTMLElement>('[data-testid="timeline-interval-name"]')!
+    expect(name?.textContent).toBe('cat config.php⟨RLO⟩')
+    expect(name.style.maxWidth).toBe('320px')
+    expect(name.className).toContain('truncate')
+    const title = r.container.querySelector('[data-testid="timeline-interval-mark"]')?.getAttribute('title')
+    expect(title).toContain('zsh 4821')
+    expect(title).toContain('42.0s')
+    expect(title).toContain('exit 2')
+    expect(title).not.toBe(name.textContent)
+    expect(title).toContain(formatDateTime(T0, { seconds: true }))
+    expect(r.container.querySelector('button, [tabindex]')).toBeNull()
+    expect(screen.getByTestId('timeline-command-tracks').getAttribute('aria-hidden')).toBe('true')
+  })
+  it('short commands keep an 8px start and the state shape, with no line', () => {
+    const r = draw(setFor(null), 1000, 0.1)
+    expect(r.container.querySelector('[data-mark-kind="point"]')).not.toBeNull()
+    expect(r.container.querySelector<HTMLElement>('[data-testid="timeline-start-mark"]')?.style.width).toBe('8px')
+    expect(r.container.querySelector('[data-end-shape="hollow-circle"]')).not.toBeNull()
+    expect(r.container.querySelector('[data-testid="timeline-interval-line"]')).toBeNull()
+  })
+  it('unknown start titles say source-reported duration; reversed titles explain time order', () => {
+    const set = setFor(0, false, { duration_sec: 9 })
+    const orphan = buildCommandIntervals([cmd('e', T0 + S, 'command_end', 'ta', 'c1', 'id', { duration_sec: 9 })])
+    const r = draw(orphan)
+    expect(r.container.querySelector('[title]')?.getAttribute('title')).toContain('source-reported')
+    expect(r.container.querySelector('[title]')?.getAttribute('title')).toContain('9.0s')
+    expect(r.container.querySelector('[data-testid="timeline-start-mark"]')).toBeNull()
+    r.unmount()
+    const iv = set.intervals[0]
+    const reversed = { ...set, intervals: [{ ...iv, endTs: T0 - S, reversed: true }] }
+    const rev = draw(reversed)
+    expect(rev.container.querySelector('[title]')?.getAttribute('title')).toContain('end is earlier than start')
+  })
+  it('a cluster counts commands, carries failure and unknown shapes and prints no name', () => {
+    const a = setFor(2), b = setFor(null, true)
+    const set = { ...a, intervals: [a.intervals[0], { ...b.intervals[0], id: 'other' }] }
+    const r = draw(set)
+    expect(r.container.querySelector('[data-testid="timeline-interval-count"]')?.textContent).toBe('2')
+    expect(r.container.querySelector('[data-end-shape="cross"]')).not.toBeNull()
+    expect(r.container.querySelector('[data-testid="timeline-interval-count"]')?.className).toContain('border-dashed')
+    expect(r.container.querySelector('[data-testid="timeline-interval-name"]')).toBeNull()
   })
 })
