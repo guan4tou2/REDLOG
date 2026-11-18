@@ -50,10 +50,13 @@ describe('air-gapped anchoring', () => {
   })
 
   it('Evidence ▸ verification: upgrade does not read a skipped result as counts', async () => {
-    install({ upgrade: vi.fn(async () => ({ skipped: 'offline' })) })
+    // Upgrade shows only while a calendar receipt is pending.
+    const pending = { id: 'a1', headEventId: 'e1', headHash: 'f'.repeat(64), eventCount: 1, status: 'complete', createdAt: Date.now(), completedAt: null,
+      calendarReceipts: [{ calendar: 'https://a.example.org', ok: true, submittedAt: Date.now() }] }
+    install({ upgrade: vi.fn(async () => ({ skipped: 'offline' })), anchors: vi.fn(async () => [pending]) })
     render(<I18nProvider><Panel /></I18nProvider>)
     await openDetails()
-    fireEvent.click(screen.getByText('Upgrade pending'))
+    fireEvent.click(await screen.findByText('Upgrade pending'))
     await waitFor(() => expect(toasts.map((x) => x.message)).toEqual([SKIPPED]))
   })
 })

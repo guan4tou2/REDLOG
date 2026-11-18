@@ -1093,7 +1093,7 @@
   "issues.integrity.sample-broken": "A row failed its own verification",
   "issues.integrity.anchor-failed": "The last anchor failed",
   "issues.integrity.anchor-stale": "No successful anchor for {{days}} days",
-  "issues.integrityDetail": "Handed over now, this record would not verify. The Evidence page has the detail.",
+  "issues.integrityDetail": "Handed over now, this record would not verify. Verify on the Evidence page.",
   "issues.captureDetail": "Events are still being written, but at least one source has stopped producing — the gap will be in the timeline, not in an error.",
   "issues.chainBroken": "The evidence chain does not verify",
   "issues.chainBrokenDetail": "A row between the anchor and now does not hash to its successor. Export a bundle before doing anything else.",
@@ -2385,5 +2385,7 @@
   "evidence.walkedHead": "Head at the last walk: {{hash}}",
   "evidence.otsHint": "Each calendar receipt can be checked independently with the `ots` CLI.",
   "evidence.signaturesUnchecked": "{{n}} not signature-checked",
-  "evidence.noAnchorChecked": "Rows only, no anchor checked"
+  "evidence.noAnchorChecked": "Rows only, no anchor checked",
+  "evidence.upgradeFailed": "Pending anchors could not be upgraded",
+  "evidence.upgrading": "Upgrading…"
 }

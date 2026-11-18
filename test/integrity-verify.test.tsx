@@ -12,7 +12,7 @@ import { EvidenceHeader } from '../src/renderer/src/components/EvidenceHeader'
 import { ScreenshotsView } from '../src/renderer/src/components/ScreenshotsView'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { _resetIssues, raiseIssue, snapshotIssues } from '../src/renderer/src/lib/issues'
-import { setLastVerifyResult } from '../src/renderer/src/lib/verifyResultCache'
+import { noteOpenProject, setLastVerifyResult } from '../src/renderer/src/lib/verifyResultCache'
 
 const NOW = Date.now()
 const anchorAt = (over: Partial<ChainAnchorInfo> = {}): ChainAnchorInfo => ({
@@ -57,8 +57,9 @@ const openDetails = (): HTMLElement => {
 }
 const chainIssue = (): ReturnType<typeof snapshotIssues>[number] | undefined => snapshotIssues().find((i) => i.id === 'chain')
 
-beforeEach(() => { window.localStorage.setItem('redlog-locale', 'en') })
-afterEach(() => { cleanup(); batches.clear(); _resetIssues(); setLastVerifyResult(null); vi.restoreAllMocks() })
+// App notes the open project; here it is p1, the id the bridge's project.active() answers.
+beforeEach(() => { window.localStorage.setItem('redlog-locale', 'en'); noteOpenProject('p1') })
+afterEach(() => { cleanup(); batches.clear(); _resetIssues(); setLastVerifyResult(null); noteOpenProject(null); vi.restoreAllMocks() })
 
 describe('the verification block', () => {
   it('sits above the tabs on every evidence tab, with one primary Verify', async () => {
@@ -298,9 +299,11 @@ describe('what is known without verifying', () => {
 
   // Anchoring is not destructive and is not the page's verb.
   it('offers Anchor now and Upgrade after Verify, neither of them danger', async () => {
-    const { anchorNow } = install()
+    // Upgrade shows only while a calendar receipt is pending.
+    const { anchorNow } = install(undefined, { anchors: async () => [anchorAt({ calendarReceipts: [{ calendar: 'https://a.example.org', ok: true, submittedAt: NOW }] })] })
     mount()
     openDetails()
+    await screen.findByRole('button', { name: 'Upgrade pending' })
     const block = screen.getByTestId('evidence-verify')
     const names = within(block).getAllByRole('button').map((b) => b.textContent)
     expect(names.indexOf('Verify')).toBeLessThan(names.indexOf('Anchor now'))

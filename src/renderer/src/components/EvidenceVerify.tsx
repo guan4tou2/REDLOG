@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState } from 'react'
+import { useCallback, useEffect, useId, useReducer, useState } from 'react'
 import { Button } from './Button'
 import { IconButton } from './IconButton'
 import { ChevronDown, ChevronUp } from 'lucide-react'
@@ -9,7 +9,7 @@ import { useReadState } from '../lib/readState'
 import { createThrottledRead } from '../lib/throttledRead'
 import { ANCHOR_DEAD_HOURS } from '../lib/integrityPulse'
 import { anchorNowWithFeedback, upgradeAnchorsWithFeedback, verifyChainWithFeedback, verifyVerdict, type FullVerifyResult, type VerifyVerdict } from '../lib/chainActions'
-import { getLastVerification, VERIFY_UPDATED_EVENT, type VerifyRecord } from '../lib/verifyResultCache'
+import { getOpenVerification, verifyInFlight, VERIFY_UPDATED_EVENT, type VerifyRecord } from '../lib/verifyResultCache'
 
 // Is the evidence intact? The Evidence page's answer, above every tab (owner's
 // ruling 6, 2026-11-12: verification moved here from Settings).
@@ -236,24 +236,31 @@ function AnchorLine({ anchors, chainLen, t }: { anchors: ChainAnchorInfo[]; chai
 export function EvidenceVerify({ heading }: { heading: JSX.Element }): JSX.Element {
   const { t } = useI18n()
   useDisplayZone()
-  const project = useReadState(async () => (await window.redlog.project.active())?.id ?? null)
-  const chainLen = useReadState<number>(() => window.redlog.chain.length())
+  // The length carries when its read started: a length read before the last
+  // walk finished says nothing about what arrived after it.
+  const chainLen = useReadState(async () => {
+    const startedAt = Date.now()
+    return { value: await window.redlog.chain.length(), startedAt }
+  })
   const anchors = useReadState<ChainAnchorInfo[]>(() => window.redlog.chain.anchors())
-  const [record, setRecord] = useState<VerifyRecord | null>(null)
-  const [verifying, setVerifying] = useState(false)
   const [anchoring, setAnchoring] = useState(false)
+  const [upgrading, setUpgrading] = useState(false)
   const [skipped, setSkipped] = useState(false)
-  const projectId = project.state.value ?? null
   const { retry: rereadLength } = chainLen
   const { retry: rereadAnchors } = anchors
 
-  // The cache is written by every walk (here, or the dashboard's fix button).
+  // The last walk and whether one is running live in the module beside the
+  // cache (lib/verifyResultCache), read during render: a remount shows them on
+  // its first frame, and leaving the page mid-walk does not forget the walk.
+  const [, bump] = useReducer((x: number) => x + 1, 0)
+  const record = getOpenVerification()
+  const verifying = verifyInFlight() !== null
   useEffect(() => {
-    const read = (): void => setRecord(getLastVerification(projectId))
-    read()
-    window.addEventListener(VERIFY_UPDATED_EVENT, read)
-    return () => window.removeEventListener(VERIFY_UPDATED_EVENT, read)
-  }, [projectId])
+    // Every walk (here, or the dashboard's fix button) and its start and end.
+    const onUpdate = (): void => { bump(); rereadLength() }
+    window.addEventListener(VERIFY_UPDATED_EVENT, onUpdate)
+    return () => window.removeEventListener(VERIFY_UPDATED_EVENT, onUpdate)
+  }, [rereadLength])
 
   // "Added since" and "not anchored" follow the chain while the page is open:
   // at most one re-read a second under live batches, and a trailing one after
@@ -269,17 +276,13 @@ export function EvidenceVerify({ heading }: { heading: JSX.Element }): JSX.Eleme
   }, [rereadLength, rereadAnchors])
 
   const handleVerify = useCallback(async (): Promise<void> => {
-    setVerifying(true)
     try {
       await verifyChainWithFeedback(t)
     } catch (e) {
       // The walk did not run: the last result (or "not verified yet") stands.
       toast(t('evidence.verifyFailed'), { type: 'error', detail: e instanceof Error ? e.message : String(e) })
-    } finally {
-      setVerifying(false)
-      rereadLength()
     }
-  }, [t, rereadLength])
+  }, [t])
 
   const handleAnchor = async (): Promise<void> => {
     setAnchoring(true)
@@ -291,17 +294,29 @@ export function EvidenceVerify({ heading }: { heading: JSX.Element }): JSX.Eleme
   }
 
   const handleUpgrade = async (): Promise<void> => {
-    await upgradeAnchorsWithFeedback(t)
-    rereadAnchors()
+    setUpgrading(true)
+    try {
+      await upgradeAnchorsWithFeedback(t)
+    } catch (e) {
+      toast(t('evidence.upgradeFailed'), { type: 'error', detail: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setUpgrading(false)
+      rereadAnchors()
+    }
   }
 
   // A re-read keeps the last value on screen; a failed one shows nothing it
   // cannot stand behind.
-  const len = chainLen.state.phase === 'failed' ? null : chainLen.state.value
+  const lenRead = chainLen.state.phase === 'failed' ? null : chainLen.state.value
+  const len = lenRead?.value ?? null
   const anchorList = anchors.state.phase === 'failed' ? null : anchors.state.value
-  const shown = project.state.phase === 'loading' ? null : record
+  const shown = record
+  // Compared with the walk only once the length on screen was read after it.
+  const lenSinceWalk = record && lenRead && lenRead.startedAt < record.verifiedAt ? null : len
+  // Upgrade has something to do only while a calendar receipt is pending.
+  const anyPending = anchorList?.some((a) => a.calendarReceipts.some((r) => r.ok && !r.upgraded)) ?? false
   const list = findings({
-    record: shown, len, lenFailed: chainLen.state.phase === 'failed',
+    record: shown, len: lenSinceWalk, lenFailed: chainLen.state.phase === 'failed',
     anchors: anchorList, anchorsFailed: anchors.state.phase === 'failed', skipped, now: Date.now()
   }, t)
   const clean = !shown || verifyVerdict(shown.result as FullVerifyResult) === 'intact'
@@ -320,9 +335,7 @@ export function EvidenceVerify({ heading }: { heading: JSX.Element }): JSX.Eleme
         <Button level="primary" size="compact" className="shrink-0" onClick={() => { void handleVerify() }} disabled={verifying}>
           {verifying ? t('settings.integrityVerifying') : t('evidence.verify')}
         </Button>
-        {project.state.phase === 'loading'
-          ? <span data-testid="evidence-verify-result" className="min-w-0 flex-1" />
-          : <ResultLine record={shown} list={list} t={t} />}
+        <ResultLine record={shown} list={list} t={t} />
         <IconButton label={t('evidence.details')} aria-expanded={open} aria-controls={detailsId}
           className="h-7 w-7 shrink-0 border border-redlog-border text-redlog-text-dim hover:bg-redlog-elevated hover:text-redlog-text"
           onClick={() => setOpenFor({ at: resultAt, open: !open })}>
@@ -349,7 +362,9 @@ export function EvidenceVerify({ heading }: { heading: JSX.Element }): JSX.Eleme
             <Button level="quiet" size="compact" onClick={() => { void handleAnchor() }} disabled={anchoring}>
               {anchoring ? t('settings.integrityAnchoring') : t('settings.integrityAnchorNow')}
             </Button>
-            <Button level="quiet" size="compact" onClick={() => { void handleUpgrade() }}>{t('settings.integrityUpgradeAll')}</Button>
+            {anyPending && <Button level="quiet" size="compact" onClick={() => { void handleUpgrade() }} disabled={upgrading}>
+              {upgrading ? t('evidence.upgrading') : t('settings.integrityUpgradeAll')}
+            </Button>}
           </span>
         </dd>
       </dl>

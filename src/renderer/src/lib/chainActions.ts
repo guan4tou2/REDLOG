@@ -1,7 +1,7 @@
 import { toast } from '../components/Toast'
 import { runMutation } from './mutation'
 import { raiseIssue, clearIssue } from './issues'
-import { setLastVerifyResult, type FullVerifyResult as CachedFullVerifyResult } from './verifyResultCache'
+import { setLastVerifyResult, setVerifyInFlight, verifyInFlight, type FullVerifyResult as CachedFullVerifyResult } from './verifyResultCache'
 
 // The two acts that answer an integrity fault, with the toast and the issue
 // each result implies.
@@ -113,7 +113,16 @@ const activeProjectId = (): Promise<string | null> =>
 /** Walk every event, recompute each hash and check the latest anchor. Returns
  *  the full result, or null when the walk was abandoned because the open
  *  project changed while it ran; the issue it implies is raised here. */
-export async function verifyChainWithFeedback(t: T): Promise<FullVerifyResult | null> {
+export function verifyChainWithFeedback(t: T): Promise<FullVerifyResult | null> {
+  // One walk at a time, wherever it was asked for: a second ask joins it.
+  const running = verifyInFlight()
+  if (running) return running as Promise<FullVerifyResult | null>
+  const walk = walkWithFeedback(t).finally(() => setVerifyInFlight(null))
+  setVerifyInFlight(walk)
+  return walk
+}
+
+async function walkWithFeedback(t: T): Promise<FullVerifyResult | null> {
   const before = await activeProjectId()
   const r = await window.redlog.chain.verify()
   const after = await activeProjectId()

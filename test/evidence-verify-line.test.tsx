@@ -8,10 +8,15 @@
 // in words and with a shape, and the line says when there is more.
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const toastSpy = vi.hoisted(() => vi.fn())
+vi.mock('../src/renderer/src/components/Toast', async (orig) => ({
+  ...(await orig<typeof import('../src/renderer/src/components/Toast')>()), toast: toastSpy
+}))
 import { EvidenceHeader } from '../src/renderer/src/components/EvidenceHeader'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { _resetIssues } from '../src/renderer/src/lib/issues'
-import { setLastVerifyResult } from '../src/renderer/src/lib/verifyResultCache'
+import { noteOpenProject, setLastVerifyResult } from '../src/renderer/src/lib/verifyResultCache'
 
 const NOW = Date.now()
 const anchorAt = (over: Partial<ChainAnchorInfo> = {}): ChainAnchorInfo => ({
@@ -36,8 +41,8 @@ const details = (): HTMLElement | null => screen.queryByTestId('evidence-verify-
 const toggle = (): HTMLElement => within(line()).getByRole('button', { name: /^Details/ })
 const intact = { ok: true, walked: 3, anchor: anchorAt(), anchorMatchesWalkedHead: true, authentication: 'verified', signedCount: 3, unsignedCount: 0, noPubKeyCount: 0 }
 
-beforeEach(() => { window.localStorage.setItem('redlog-locale', 'en') })
-afterEach(() => { cleanup(); _resetIssues(); setLastVerifyResult(null); vi.restoreAllMocks() })
+beforeEach(() => { window.localStorage.setItem('redlog-locale', 'en'); noteOpenProject('p1') })
+afterEach(() => { cleanup(); _resetIssues(); setLastVerifyResult(null); noteOpenProject(null); toastSpy.mockClear(); vi.restoreAllMocks() })
 
 describe('the collapsed line', () => {
   it('shares one non-wrapping row with the heading, and keeps the facts behind a closed disclosure', async () => {
@@ -208,5 +213,66 @@ describe('emphasis', () => {
     const facts = within(details() as HTMLElement).getByTestId('evidence-chain-facts')
     await waitFor(() => expect(facts.textContent).toContain('Not anchored yet'))
     expect(facts.textContent).not.toContain('not anchored')
+  })
+})
+
+describe('state across renders', () => {
+  it('keeps a walk in flight across leaving the page and coming back, and starts no second one', async () => {
+    install()
+    let finish: (v: unknown) => void = () => {}
+    const walk = vi.fn(() => new Promise((resolve) => { finish = resolve }))
+    ;(window.redlog.chain as unknown as { verify: unknown }).verify = walk
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: 'Verify' }))
+    await waitFor(() => expect(walk).toHaveBeenCalledTimes(1))
+    cleanup()
+    mount()
+    const button = screen.getByRole('button', { name: 'Verifying…' }) as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+    await act(async () => { finish(intact) })
+    await waitFor(() => expect(line().textContent).toContain('Chain intact'))
+    expect(walk).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows the cached result on the first render after a remount, not "Not verified yet" first', () => {
+    setLastVerifyResult(intact, { projectId: 'p1', verifiedAt: NOW })
+    install()
+    mount()
+    expect(line().textContent).toContain('Chain intact')
+    expect(line().textContent).not.toContain('Not verified yet')
+  })
+
+  it('does not flash "changed since" when a result lands before the length is re-read', async () => {
+    let len = 3
+    install({ length: async () => len })
+    mount()
+    await waitFor(() => expect(window.redlog.chain.length).toHaveBeenCalled())
+    len = 5
+    act(() => { setLastVerifyResult({ ...intact, walked: 5 }, { projectId: 'p1', verifiedAt: Date.now() }) })
+    // The length on screen (3) was read before the walk that saw 5.
+    expect(line().textContent).not.toMatch(/Changed since|added since/)
+    await waitFor(() => expect((window.redlog.chain.length as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(1))
+    expect(line().textContent).not.toMatch(/Changed since|added since/)
+  })
+
+  it('offers Upgrade pending only when a receipt is pending, disables it while it runs, and says so when it fails', async () => {
+    const pending = anchorAt({ calendarReceipts: [{ calendar: 'https://a.example.org', ok: true, submittedAt: NOW }] })
+    install({ anchors: async () => [anchorAt()] })
+    mount()
+    fireEvent.click(toggle())
+    await waitFor(() => expect(within(details() as HTMLElement).getByRole('button', { name: 'Anchor now' })).toBeTruthy())
+    expect(within(details() as HTMLElement).queryByRole('button', { name: 'Upgrade pending' })).toBeNull()
+    cleanup()
+    install({ anchors: async () => [pending] })
+    let fail: (e: Error) => void = () => {}
+    ;(window.redlog.chain as unknown as { upgrade: unknown }).upgrade = vi.fn(() => new Promise((_, reject) => { fail = reject }))
+    mount()
+    fireEvent.click(toggle())
+    const upgrade = await within(details() as HTMLElement).findByRole('button', { name: 'Upgrade pending' })
+    fireEvent.click(upgrade)
+    await waitFor(() => expect((within(details() as HTMLElement).getByRole('button', { name: 'Upgrading…' }) as HTMLButtonElement).disabled).toBe(true))
+    await act(async () => { fail(new Error('calendar down')) })
+    await waitFor(() => expect((within(details() as HTMLElement).getByRole('button', { name: 'Upgrade pending' }) as HTMLButtonElement).disabled).toBe(false))
+    expect(toastSpy).toHaveBeenCalledWith('Pending anchors could not be upgraded', expect.objectContaining({ type: 'error', detail: 'calendar down' }))
   })
 })

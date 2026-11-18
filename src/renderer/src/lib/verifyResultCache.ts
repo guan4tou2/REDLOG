@@ -52,11 +52,6 @@ export function setLastVerifyResult(r: FullVerifyResult | null, meta: { verified
   try { window.dispatchEvent(new CustomEvent(VERIFY_UPDATED_EVENT)) } catch { /* SSR / test env */ }
 }
 
-/** The last walk, only when it was walked on `projectId`. */
-export function getLastVerification(projectId: string | null): VerifyRecord | null {
-  return cached && projectId !== null && cached.projectId === projectId ? cached : null
-}
-
 // The project the window has open, as App knows it. App notes it while it
 // renders, before any page below it reads the cache, so a page never reads
 // one project's result under another.
@@ -75,4 +70,18 @@ export function noteOpenProject(id: string | null): void {
 /** The last walk, if it was walked on the project open now. */
 export function getOpenVerification(): VerifyRecord | null {
   return cached && cached.projectId === openProject ? cached : null
+}
+
+// A walk in flight, kept here rather than in a component, so leaving the
+// Evidence page mid-walk and coming back shows it running and cannot start a
+// second one.
+let walking: Promise<unknown> | null = null
+
+export function verifyInFlight(): Promise<unknown> | null {
+  return walking
+}
+
+export function setVerifyInFlight(p: Promise<unknown> | null): void {
+  walking = p
+  try { window.dispatchEvent(new CustomEvent(VERIFY_UPDATED_EVENT)) } catch { /* SSR / test env */ }
 }
