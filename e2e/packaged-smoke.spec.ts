@@ -391,8 +391,8 @@ test.describe('packaged app', () => {
         await page.waitForLoadState('domcontentloaded')
         await page.waitForSelector('[data-testid="project-picker"], [data-testid="view-root"]', { timeout: 30_000 })
         if (await page.getByTestId('project-picker').count()) {
-          // Stitch 01: a click selects a project, a double click opens it.
-          await page.getByText('pkg-smoke').first().dblclick()
+          // One click on a row opens it.
+          await page.getByText('pkg-smoke').first().click()
           await page.waitForSelector('[data-testid="view-root"]', { timeout: 30_000 })
         }
         await expect.poll(async () => shellEnd(await events(page), 'echo redlog-ok-builtin'), { timeout: 20_000 }).toBeTruthy()

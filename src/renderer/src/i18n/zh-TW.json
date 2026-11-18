@@ -2302,7 +2302,6 @@
   "project.keyPress": "按",
   "project.keyBrowse": "瀏覽",
   "project.keyOpen": "啟動",
-  "project.openHint": "按兩下開啟",
   "project.pageFooter": "REDLOG 安全作業紀錄系統 · 本地優先儲存",
   "project.storageLabel": "預設儲存路徑",
   "project.storageFolderNote": "專案資料夾建立在這個目錄下，名稱由 RedLog 依專案名稱產生。",
