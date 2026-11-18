@@ -5,7 +5,7 @@
 // title, says what is optional, and keeps the draft when saving fails.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { LootPanel } from '../src/renderer/src/components/LootPanel'
 import { ScreenshotsView } from '../src/renderer/src/components/ScreenshotsView'
@@ -86,6 +86,19 @@ describe('screenshots', () => {
     const message = (confirmSpy.mock.calls[0] as unknown as string[])[1]
     expect(message).toMatch(/s[12]\.png/)
     expect(message).not.toContain('system.screenshot_deleted')
+  })
+
+  // The preview closes so the confirmation is the only dialog; cancelling it
+  // returns to the preview it came from, not to the list.
+  it('returns to the preview when the delete is cancelled', async () => {
+    install()
+    fireEvent.click((await screen.findByText('s2.png')).closest('[role="button"]') as HTMLElement)
+    fireEvent.click(await screen.findByTestId('screenshot-delete'))
+    expect(screen.queryByTestId('screenshot-lightbox')).toBeNull()
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalled())
+    const preview = await screen.findByTestId('screenshot-lightbox')
+    expect(preview.textContent).toContain(confirmSpy.mock.calls.length ? 'Delete file' : '')
+    expect(within(preview).getByTestId('screenshot-delete')).toBeTruthy()
   })
 })
 
