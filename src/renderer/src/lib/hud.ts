@@ -26,6 +26,7 @@ export const HUD = {
   panel: 'rgba(10, 13, 16, 0.92)',
   panelSolid: '#0a0d10',  // the click-through notice, which must not be see-through
   panelExposed: '#120a0b',
+  alarm: '#541d1e',        // the exposed flash's peak: panelExposed under 28% of danger, opaque
   border: '#2c3a40',
   borderExposed: '#5a2224',
   rule: '#3a4a52',      // hairline between the two states, and an idle tick

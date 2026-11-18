@@ -57,9 +57,24 @@ export function clampHudScale(scale: number): number {
   return Math.max(HUD_SCALE_MIN, Math.min(HUD_SCALE_MAX, scale))
 }
 
-/** Window-width band the `overlay:autosize` handler enforces in main. */
+/** Base window width at scale 1, and what the emphasized external IP adds.
+ *  490 is the owner's choice for the simple-1112 bar (2026-11-18: 「加寬到約
+ *  490，用原型字級」): 13px text and a 20px external IP. Measured in Chromium
+ *  at scale 1, the bar's natural width is 441–501 for a typical status, 601
+ *  for English "EXPOSED" with two 15-character addresses, and the external
+ *  column alone needs at most 444 (519 emphasized) — so the external IP is
+ *  whole at every scale and only the internal column ellipsizes. Emphasis
+ *  renders that IP 1.4×: ~60pt more at scale 1. */
+const HUD_BASE_W = 490
+const HUD_EMPHASIS_W = 60
+
+/** Window-width band the `overlay:autosize` handler enforces in main. The
+ *  ceiling is the formula's own value at the largest scale with emphasis
+ *  (round(490×1.75) + round(60×1.75) = 858 + 105), so no supported setting is
+ *  ever cut short. It was 720, which clipped the bar from scale 1.5 up once the
+ *  base became 490; a wider cap only matters to someone who chose 1.75. */
 export const HUD_MIN_W = 380
-export const HUD_MAX_W = 720
+export const HUD_MAX_W = 963
 /** Height floor the `overlay:autosize` handler enforces, and what
  *  `hudWindowHeight` returns for an unmeasured content block. */
 export const HUD_MIN_H = 46
@@ -69,30 +84,31 @@ export const HUD_MIN_H = 46
  *
  *  This used to be a bare `52` in `windows.ts` while `HUD_MIN_H`'s comment
  *  claimed to be "also the window's created height" — two numbers, neither
- *  matching, and nothing tying them together. Measured on Windows 11, the
- *  collapsed HUD at scale 1 settles at 58 (40pt of content + the 18 of
- *  `HUD_CONTENT_CHROME`), so being born at 52 meant every HUD grew 6px the
- *  moment it first measured itself.
+ *  matching, and nothing tying them together. The collapsed HUD at scale 1
+ *  settles at 60: the bar's 42pt minimum (OverlayApp `BAR_MIN_H`) + the 18 of
+ *  `HUD_CONTENT_CHROME`. (It was 58 with the 40pt bar before the simple-1112
+ *  restyle; being born at 52 back then meant every HUD grew 6px the moment it
+ *  first measured itself.)
  *
  *  Starting at the settled height removes that jump for the default, which is
  *  the case nearly every operator sees. A scaled or wrapped HUD still resizes
  *  on first measure — it has to; this is a starting guess, not a constraint. */
-export const HUD_INITIAL_H = 58
+export const HUD_INITIAL_H = 60
 /** Chrome around the measured content: outer 3px padding ×2, the 1px frame
- *  inset, and the corner brackets' breathing room. Added before requesting. */
+ *  ×2, and 5px above and below the content inside the frame. Added before
+ *  requesting. */
 export const HUD_CONTENT_CHROME = 18
 
 /**
- * Window width that fits the compact HUD bar at `scale`. 440pt at scale 1 is
- * the tuned base; padding and type scale with it so the box does too.
- * `emphasizeExternalIp` renders the external IP 1.4x, needing ~44pt more at
- * scale 1. The scale is clamped first (so it matches the panel, which renders
- * at the clamped scale) and the result to [380,720] (so the requested width and
- * the width main grants are always the same number).
+ * Window width that fits the compact HUD bar at `scale`: `HUD_BASE_W` at scale
+ * 1, scaled with the padding and type. The scale is clamped first (so it
+ * matches the panel, which renders at the clamped scale) and the result to
+ * [HUD_MIN_W, HUD_MAX_W] (so the requested width and the width main grants are
+ * always the same number).
  */
 export function hudWindowWidth(scale: number, emphasizeExternalIp: boolean): number {
   const s = clampHudScale(scale)
-  const raw = Math.round(440 * s) + (emphasizeExternalIp ? Math.round(44 * s) : 0)
+  const raw = Math.round(HUD_BASE_W * s) + (emphasizeExternalIp ? Math.round(HUD_EMPHASIS_W * s) : 0)
   return Math.max(HUD_MIN_W, Math.min(HUD_MAX_W, raw))
 }
 
