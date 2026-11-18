@@ -1867,6 +1867,7 @@
   "captureSetup.openPreparation": "準備缺少的擷取工具",
   "terminal.noProjectRecording": "目前沒有開啟專案。Shell 仍在執行，但這段期間的指令與輸出不會記錄。",
   "terminal.recordingFailed": "此終端機仍可操作，但無法錄製：{{reason}}",
+  "terminal.spawnFailed": "Shell 沒有啟動：{{reason}}",
   "firstRun.builtin.show": "開啟內建終端機 ↗",
   "firstRun.builtin.hide": "收合內建終端機",
   "firstRun.record.externalTerminal": "外部終端",

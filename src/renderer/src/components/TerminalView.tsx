@@ -53,7 +53,7 @@ interface PaneRuntime {
   pid: number
   castState: TerminalCastState | null
   unhookedShell: string | null
-  handlers: { pid: (pid: number) => void; state: (state: TerminalCastState) => void; exit: () => void; unhooked: (shell: string | null) => void } | null
+  handlers: { pid: (pid: number) => void; state: (state: TerminalCastState) => void; exit: () => void; unhooked: (shell: string | null) => void; spawnFailed: (error: string) => void } | null
   dispose: () => void
 }
 
@@ -693,6 +693,9 @@ function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, onUnhoo
   // working, not just inferable from an empty timeline later.
   const [unhookedShell, setUnhookedShell] = useState<string | null>(null)
   const [recordingState, setRecordingState] = useState<TerminalCastState | null>(null)
+  // Set when the shell never started: then there is no pane to use, which is
+  // not what a recording failure of a running shell says.
+  const [spawnError, setSpawnError] = useState<string | null>(null)
 
   // Right-click menu. xterm keeps its selection in its own model rather than the
   // DOM, so Chromium's context-menu event fires with an empty selection here and
@@ -807,7 +810,7 @@ function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, onUnhoo
       term, fit: fitAddon, search: searchAddon, alive: true, pid: 0,
       castState: null, unhookedShell: null, handlers: null, dispose: () => {}
     }
-    runtime.handlers = { pid: onPid, state: updateCastState, exit: onExit, unhooked: (shell) => { setUnhookedShell(shell); onUnhooked(shell) } }
+    runtime.handlers = { pid: onPid, state: updateCastState, exit: onExit, unhooked: (shell) => { setUnhookedShell(shell); onUnhooked(shell) }, spawnFailed: setSpawnError }
     if (!retained) {
       paneRuntimes.set(id, runtime)
       // Keep receiving output while detached. Only pane close/process exit
@@ -884,6 +887,7 @@ function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, onUnhoo
         .catch(error => {
           runtime.alive = false
           runtime.castState = { recording: false, castTruncated: false, paused: false, recordingReason: 'recording-failed', recordingError: String(error) }
+          runtime.handlers?.spawnFailed(String(error))
           runtime.handlers?.state(runtime.castState)
           runtime.handlers?.exit()
           if (!runtime.handlers) disposePaneRuntime(id)
@@ -924,7 +928,9 @@ function TerminalPane({ id, active, shellId, onPid, onCastState, onExit, onUnhoo
     <div className="w-full h-full flex flex-col">
       {recordingState?.recordingReason && (
         <div role="status" data-testid="terminal-recording-gap" className="shrink-0 px-3 py-2 border-b border-amber-500/30 bg-amber-500/10 text-xs text-amber-300">
-          {recordingState.recordingReason === 'no-project' ? t('terminal.noProjectRecording') : t('terminal.recordingFailed', { reason: recordingState.recordingError ?? '' })}
+          {spawnError !== null
+            ? t('terminal.spawnFailed', { reason: spawnError })
+            : recordingState.recordingReason === 'no-project' ? t('terminal.noProjectRecording') : t('terminal.recordingFailed', { reason: recordingState.recordingError ?? '' })}
         </div>
       )}
       {unhookedShell && (
