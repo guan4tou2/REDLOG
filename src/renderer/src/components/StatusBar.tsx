@@ -3,7 +3,7 @@ import { useI18n } from '../i18n'
 import { toast } from './Toast'
 import { toggleRecordingWithFeedback } from '../lib/recordingToggle'
 import { useIssues, raiseIssue, clearIssue } from '../lib/issues'
-import { formatTime, formatDateTime, useDisplayZone, zoneLabel } from '../lib/time'
+import { formatTime, formatDateTime, useDisplayZone, zoneLabel, zoneOffset } from '../lib/time'
 import { useAppCounts } from '../lib/useAppCounts'
 import { integrityFault } from '../lib/integrityPulse'
 import { scopeIssue } from '../lib/scopeIssue'
@@ -391,8 +391,10 @@ export default function StatusBar(): JSX.Element {
          *  Narrow: left to the Dashboard, to keep the line on one row.
          */}
         {/* The zone every time on screen is printed in, once for all pages.
-         *  Narrow, it goes with the count: the line stays on one row. */}
-        {!narrow && <span data-testid="statusbar-zone" className="text-redlog-text-dim">{zoneLabel(zone, t)}</span>}
+         *  Narrow, the offset alone, with the full label as its name. */}
+        {narrow
+          ? <span data-testid="statusbar-zone" role="img" title={zoneLabel(zone, t)} aria-label={zoneLabel(zone, t)} className="text-redlog-text-dim">{zoneOffset(zone)}</span>
+          : <span data-testid="statusbar-zone" className="text-redlog-text-dim">{zoneLabel(zone, t)}</span>}
         {!narrow && (
           <span
             data-testid="statusbar-event-count"
