@@ -17,7 +17,7 @@ import {
 const WIN = { visible: true, rect: { x: 0, y: 0, width: 1400 - 138, height: 40 } }
 
 describe('captionInsets', () => {
-  const cases: Array<[string, Parameters<typeof captionInsets>[0], { right: number; height: number }]> = [
+  const cases: Array<[string, Parameters<typeof captionInsets>[0], { left?: number; right: number; height: number }]> = [
     ['default zoom 0.9', { isMac: false, reading: WIN, settled: true, viewportWidth: 1400, zoom: 0.9 }, { right: 153.33, height: 44.44 }],
     ['zoom 0.8', { isMac: false, reading: WIN, settled: true, viewportWidth: 1400, zoom: 0.8 }, { right: 172.5, height: 50 }],
     ['zoom 1.0', { isMac: false, reading: WIN, settled: true, viewportWidth: 1400, zoom: 1 }, { right: 138, height: 40 }],
@@ -25,8 +25,8 @@ describe('captionInsets', () => {
     ['maximised: wider window, same buttons', { isMac: false, reading: { visible: true, rect: { x: 0, y: 0, width: 1920 - 138, height: 40 } }, settled: true, viewportWidth: 1920, zoom: 0.9 }, { right: 153.33, height: 44.44 }],
     ['narrow window at the 800 floor', { isMac: false, reading: { visible: true, rect: { x: 0, y: 0, width: 800 - 138, height: 40 } }, settled: true, viewportWidth: 800, zoom: 0.9 }, { right: 153.33, height: 44.44 }],
     ['a taller strip counts its top offset', { isMac: false, reading: { visible: true, rect: { x: 0, y: 2, width: 1262, height: 40 } }, settled: true, viewportWidth: 1400, zoom: 1 }, { right: 138, height: 42 }],
-    ['macOS reserves nothing, whatever the API says', { isMac: true, reading: WIN, settled: true, viewportWidth: 1400, zoom: 0.9 }, NO_INSET],
-    ['macOS with no API', { isMac: true, reading: null, settled: false, viewportWidth: 1400, zoom: 0.9 }, NO_INSET],
+    ['macOS reserves nothing on the right, whatever the API says', { isMac: true, reading: WIN, settled: true, viewportWidth: 1400, zoom: 0.9 }, { left: 93.33, right: 0, height: 0 }],
+    ['macOS with no API', { isMac: true, reading: null, settled: false, viewportWidth: 1400, zoom: 0.9 }, { left: 93.33, right: 0, height: 0 }],
     ['full screen: reported, nothing drawn', { isMac: false, reading: { visible: false, rect: { x: 0, y: 0, width: 0, height: 0 } }, settled: true, viewportWidth: 1400, zoom: 0.9 }, NO_INSET],
     ['not visible and not yet reported: conservative', { isMac: false, reading: { visible: false, rect: { x: 0, y: 0, width: 0, height: 0 } }, settled: false, viewportWidth: 1400, zoom: 1 }, { right: FALLBACK_RIGHT_PX, height: FALLBACK_HEIGHT_PX }],
     ['API absent on a non-Mac platform: conservative, divided by zoom', { isMac: false, reading: null, settled: false, viewportWidth: 1400, zoom: 0.9 }, { right: 166.67, height: 44.44 }],
@@ -34,7 +34,23 @@ describe('captionInsets', () => {
     ['a rect wider than the viewport never goes negative', { isMac: false, reading: { visible: true, rect: { x: 0, y: 0, width: 2000, height: 40 } }, settled: true, viewportWidth: 1400, zoom: 1 }, { right: 0, height: 40 }]
   ]
   it.each(cases)('%s', (_name, input, expected) => {
-    expect(captionInsets(input)).toEqual(expected)
+    expect(captionInsets(input)).toEqual({ left: 0, ...expected })
+  })
+
+  // macOS draws its traffic lights on the left, over the page: 72 screen px of
+  // buttons plus a 12 px gap, divided by the zoom like the right-hand side.
+  const MAC = { isMac: true, reading: null, settled: false, viewportWidth: 1400 }
+  it.each([
+    ['mac at the default zoom 0.9', 0.9, 93.33],
+    ['mac at zoom 1', 1, 84],
+    ['mac at zoom 0.8', 0.8, 105],
+    ['mac with a bad zoom falls back to the default one', 0, 93.33]
+  ])('%s', (_n, zoom, left) => {
+    expect(captionInsets({ ...MAC, zoom })).toEqual({ left, right: 0, height: 0 })
+  })
+  it('a non-mac platform reserves nothing on the left', () => {
+    expect(captionInsets({ isMac: false, reading: WIN, settled: true, viewportWidth: 1400, zoom: 0.9 }).left).toBe(0)
+    expect(captionInsets({ isMac: false, reading: null, settled: false, viewportWidth: 1400, zoom: 0.9 }).left).toBe(0)
   })
 })
 
@@ -85,10 +101,22 @@ describe('installCaptionInsets', () => {
     expect(prop('--wco-height')).toBe('0px')
   })
 
-  it('publishes zero on macOS', () => {
+  it('publishes zero on the right on macOS, and the traffic-light inset on the left, following the zoom', async () => {
+    document.body.style.setProperty('--app-zoom', '0.9')
     fakeOverlay({ visible: true, width: 1262 })
     stop = installCaptionInsets(true)
     expect(prop('--wco-inset-right')).toBe('0px')
     expect(prop('--wco-height')).toBe('0px')
+    expect(prop('--wco-inset-left')).toBe('93.33px')
+    document.body.style.setProperty('--app-zoom', '1')
+    await new Promise((r) => setTimeout(r, 0))
+    expect(prop('--wco-inset-left')).toBe('84px')
+  })
+
+  it('publishes zero on the left off macOS', () => {
+    document.body.style.setProperty('--app-zoom', '1')
+    fakeOverlay({ visible: true, width: 1262 })
+    stop = installCaptionInsets(false)
+    expect(prop('--wco-inset-left')).toBe('0px')
   })
 })
