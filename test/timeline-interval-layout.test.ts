@@ -26,6 +26,21 @@ it('merges starts in one 14px cell, counts commands and draws their union', () =
   expect(m[0].intervals).toHaveLength(2)
   expect(layout([interval('a', 28, 30), interval('b', 31, 33)])[0]).toMatchObject({ kind: 'cluster', x0: 28, x1: 28 })
 })
+it('a count takes the starts inside its own footprint, so two counts never overlap', () => {
+  // Twenty one-second commands 3px apart. Cells alone gave a count every
+  // 14px: 16px badges on top of each other, a failed one's cross under the next.
+  const m = layout(Array.from({ length: 20 }, (_, i) => interval(`c${i}`, 100 + i * 3, 101 + i * 3)))
+  expect(m.map((x) => [x.kind, x.x0, x.intervals.length])).toEqual([['cluster', 100, 9], ['cluster', 127, 9], ['cluster', 154, 2]])
+})
+it('a mark that becomes a count is folded into the start dot it would cover', () => {
+  // 13 is alone in its cell; 15 and 16 share the next one and become a count 2px away.
+  const m = layout([interval('a', 13, 14), interval('b', 15, 16), interval('c', 16, 17, { exitCode: 1 })])
+  expect(m).toHaveLength(1)
+  expect(m[0]).toMatchObject({ kind: 'cluster', x0: 13, failed: 1 })
+  expect(m[0].intervals.map((i) => i.id)).toEqual(['a', 'b', 'c'])
+  // Two lone starts in neighbouring cells stay two marks.
+  expect(layout([interval('a', 13, 14), interval('b', 15, 16)])).toHaveLength(2)
+})
 it('caps depth at two by joining the most recently started span', () => {
   const m = layout([interval('a', 0, 300), interval('b', 28, 200), interval('c', 56, 400)])
   expect(m).toHaveLength(2)

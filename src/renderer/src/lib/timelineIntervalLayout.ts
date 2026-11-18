@@ -45,6 +45,10 @@ export const LABEL_MIN_PX = 48
 export const LABEL_MAX_PX = 320
 export const OPEN_STUB_PX = 16
 export const SPAN_DEPTH = 2
+/** A count's badge (16) and, when a member failed, its ✕ (to +17), with a gap. */
+export const COUNT_FOOTPRINT_PX = 27
+/** Half a count's badge (8) plus half a start dot (4): closer, and the badge covers the dot. */
+export const COUNT_OVER_DOT_PX = 12
 
 // The set is plain data; neither layout nor viewport filtering reads events.
 interface WorkingMark { mark: IntervalMark; unionEnd: number }
@@ -58,8 +62,11 @@ function capOf(iv: TimelineInterval, missing: boolean): IntervalEndCap {
 
 function merge(target: WorkingMark, other: WorkingMark): void {
   const a = target.mark, b = other.mark
-  // Append in time order without repeatedly copying a growing cluster.
-  ;(a.intervals as TimelineInterval[]).push(...b.intervals)
+  // Append in time order without repeatedly copying a growing cluster. A
+  // loop, not `push(...b.intervals)`: a spread passes every member as an
+  // argument, and a cell holding a long session's commands overflows the stack.
+  const members = a.intervals as TimelineInterval[]
+  for (const iv of b.intervals) members.push(iv)
   a.kind = 'cluster'
   target.unionEnd = Math.max(target.unionEnd, other.unionEnd)
   a.x1 = target.unionEnd - a.x0 >= INTERVAL_MIN_LINE_PX ? target.unionEnd : a.x0
@@ -118,11 +125,25 @@ export function layoutIntervalMarks(input: IntervalLayoutInput): IntervalMark[] 
       if (u >= unloadedMarks.length || (k < known.length && known[k].mark.x0 <= unloadedMarks[u].mark.x0)) candidates.push(known[k++])
       else candidates.push(unloadedMarks[u++])
     }
+    // Starts in one cell become a count. A count is drawn wider than a start
+    // dot and a failed one carries its ✕ to the right, so a cell alone leaves
+    // counts in neighbouring cells on top of each other, and the ✕ under the
+    // next one: a count also takes every start inside its own footprint, and
+    // a mark that has just become a count is folded into the mark it now covers.
     const cells: WorkingMark[] = []
     for (const candidate of candidates) {
       const previous = cells[cells.length - 1]
-      if (previous && Math.floor(previous.mark.x0 / input.clusterPx) === Math.floor(candidate.mark.x0 / input.clusterPx)) merge(previous, candidate)
-      else cells.push(candidate)
+      const x = candidate.mark.x0
+      if (!previous || !(Math.floor(previous.mark.x0 / input.clusterPx) === Math.floor(x / input.clusterPx)
+        || (previous.mark.kind === 'cluster' && x - previous.mark.x0 < COUNT_FOOTPRINT_PX))) { cells.push(candidate); continue }
+      merge(previous, candidate)
+      for (let i = cells.length - 1; i > 0; i--) {
+        const before = cells[i - 1], count = cells[i]
+        const reach = before.mark.kind === 'cluster' ? COUNT_FOOTPRINT_PX : COUNT_OVER_DOT_PX
+        if (count.mark.x0 - before.mark.x0 >= reach) break
+        merge(before, count)
+        cells.pop()
+      }
     }
     const placed: WorkingMark[] = []
     let active: WorkingMark[] = []
