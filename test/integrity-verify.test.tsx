@@ -19,7 +19,11 @@ const anchorAt = (over: Partial<ChainAnchorInfo> = {}): ChainAnchorInfo => ({
   id: 'a1', headEventId: 'e2', headHash: 'f'.repeat(64), eventCount: 2,
   calendarReceipts: [], status: 'complete', createdAt: NOW - 60_000, completedAt: null, ...over
 })
-const anchor = anchorAt()
+// The latest anchor failed: no calendar accepted it, so it timestamps nothing.
+// Its locally stored head still matches the rows, which is what made the old
+// panel print "✓ Anchor matches" beside "✗ The last anchor failed".
+const anchor = anchorAt({ status: 'failed' })
+const accepted = anchorAt()
 
 const batches = new Set<(e: unknown[]) => void>()
 interface Bridge { verify: ReturnType<typeof vi.fn>; anchorNow: ReturnType<typeof vi.fn>; length: ReturnType<typeof vi.fn> }
@@ -32,7 +36,7 @@ function install(result: Record<string, unknown> = { ok: true, walked: 3, anchor
     events: { count: vi.fn(async () => 0), onNewBatch: (cb: (e: unknown[]) => void) => { batches.add(cb); return () => batches.delete(cb) } },
     bookmarks: { list: vi.fn(async () => []) },
     project: { active: vi.fn(async () => ({ id: over.project ?? 'p1', name: 'demo' })) },
-    chain: { anchors: vi.fn(over.anchors ?? (async () => [anchor])), length, verify, anchorNow, upgrade: vi.fn(async () => ({ upgraded: 0, scanned: 0 })) }
+    chain: { anchors: vi.fn(over.anchors ?? (async () => [accepted])), length, verify, anchorNow, upgrade: vi.fn(async () => ({ upgraded: 0, scanned: 0 })) }
   }
   return { verify, anchorNow, length }
 }
@@ -96,8 +100,25 @@ describe('the verification block', () => {
     expect(result().textContent).toContain('✓ Chain intact')
     expect(result().textContent).toContain('Walked 3 events')
     expect(result().textContent).not.toContain('added since')
-    expect(within(openDetails()).getByText('✓ Anchor matches the events it covers')).toBeTruthy()
     expect(walk).toHaveBeenCalledTimes(1)
+  })
+
+  // Two green ticks beside an anchor that timestamped nothing.
+  it('does not say the anchor matches when the anchor it was compared with failed', async () => {
+    install(undefined, { anchors: async () => [anchor] })
+    mount()
+    await verify()
+    const details = openDetails()
+    expect(details.textContent).not.toContain('✓ Anchor matches the events it covers')
+    expect(within(details).getByText(/The latest anchor was never accepted/).className).toContain('amber')
+    expect(screen.getByTestId('evidence-verify-line').textContent).toContain('✗ The last anchor failed')
+  })
+
+  it('says the anchor matches when the anchor it was compared with was accepted', async () => {
+    install({ ok: true, walked: 3, anchor: accepted, anchorMatchesWalkedHead: true }, { anchors: async () => [accepted] })
+    mount()
+    await verify()
+    expect(within(openDetails()).getByText('✓ Anchor matches the events it covers')).toBeTruthy()
   })
 
   // The tick covers the entries walked, never the chain as it is now.
@@ -205,7 +226,7 @@ describe('the verification block', () => {
 
 describe('what is known without verifying', () => {
   it('states the chain length and the latest anchor with what it leaves unanchored', async () => {
-    install(undefined, { length: 5 })
+    install(undefined, { length: 5, anchors: async () => [accepted] })
     mount()
     const facts = within(openDetails()).getByTestId('evidence-chain-facts')
     await waitFor(() => expect(facts.textContent).toContain('5 events'))

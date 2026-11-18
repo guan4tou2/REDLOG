@@ -2378,5 +2378,6 @@
   "evidence.anchorsFailed": "Anchors could not be read",
   "evidence.sinceUnknownShort": "Additions since unknown",
   "evidence.verdictMismatch": "Anchor mismatch",
-  "evidence.verifyAbandoned": "Verification abandoned: the project changed while it ran"
+  "evidence.verifyAbandoned": "Verification abandoned: the project changed while it ran",
+  "evidence.anchorNeverAccepted": "The latest anchor was never accepted by a calendar: there is no external timestamp to check against."
 }

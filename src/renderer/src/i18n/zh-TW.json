@@ -2378,5 +2378,6 @@
   "evidence.anchorsFailed": "無法讀取錨點",
   "evidence.sinceUnknownShort": "之後新增筆數不明",
   "evidence.verdictMismatch": "錨點不符",
-  "evidence.verifyAbandoned": "驗證已放棄：執行期間切換了專案"
+  "evidence.verifyAbandoned": "驗證已放棄：執行期間切換了專案",
+  "evidence.anchorNeverAccepted": "最新錨點未被任何日曆接受：沒有外部時戳可供比對。"
 }

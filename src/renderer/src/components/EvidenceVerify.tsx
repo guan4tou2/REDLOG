@@ -140,7 +140,12 @@ function ResultDetail({ r, t }: { r: FullVerifyResult; t: Translate }): JSX.Elem
     </>}
     {!r.ok && r.brokenAtEventId && <li className="break-all text-red-400">{t('settings.integrityFullBrokenAt')}: {r.brokenAtEventId}</li>}
     {!r.ok && r.brokenReason && <li className="break-all">{t('settings.integrityFullReason')}: {r.brokenReason}</li>}
-    {anchored && verdict !== 'anchor-mismatch' && r.ok && r.anchorMatchesWalkedHead && <li>{t('settings.integrityFullAnchorMatch')}</li>}
+    {/* The walk compares with the latest anchor whatever its status. A failed
+        one was never accepted by a calendar: its stored head may match, but
+        it timestamps nothing, so "matches" would be a second green tick for
+        an anchor that proves nothing. */}
+    {anchored && verdict !== 'anchor-mismatch' && r.ok && r.anchorMatchesWalkedHead && (r.anchor as ChainAnchorInfo).status !== 'failed' && <li>{t('settings.integrityFullAnchorMatch')}</li>}
+    {anchored && verdict !== 'anchor-mismatch' && r.ok && (r.anchor as ChainAnchorInfo).status === 'failed' && <li className="text-amber-400">▲ {t('evidence.anchorNeverAccepted')}</li>}
     {/* The line says "Anchor mismatch"; this is the sentence. */}
     {verdict === 'anchor-mismatch' && <li className="text-red-400">{t('settings.integrityFullAnchorMismatch')}</li>}
     {!anchored && r.ok && <li>{t('settings.integrityFullNoAnchor')}</li>}
