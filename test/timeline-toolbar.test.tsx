@@ -17,7 +17,7 @@ function Harness(over: Partial<Props>): JSX.Element {
     zoom: 1, onZoomOut: vi.fn(), onZoomIn: vi.fn(), onResetZoom: vi.fn(),
     mode: 'standard', onModeChange: vi.fn(),
     filterQuery: '', onFilterQueryChange: vi.fn(), searchInputRef: createRef<HTMLInputElement>(),
-    onHelp: vi.fn(), attributionBlind: false, lanes: new Set(),
+    onHelp: vi.fn(), attributionBlind: false, pausedMs: 0, lanes: new Set(),
     moreItems: <span data-testid="more-slot" />, followBadge: <span data-testid="follow-slot" />,
     ...over
   }

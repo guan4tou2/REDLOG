@@ -48,7 +48,7 @@ export function TimelineToolbar({
   zoom, onZoomOut, onZoomIn, onResetZoom,
   mode, onModeChange,
   filterQuery, onFilterQueryChange, searchInputRef,
-  onHelp, attributionBlind, lanes, moreItems, followBadge
+  onHelp, attributionBlind, pausedMs, lanes, moreItems, followBadge
 }: {
   t: Translate
   timeRange: TimeRange | null
@@ -74,6 +74,8 @@ export function TimelineToolbar({
   onHelp: () => void
   /** Traffic arrived and the command join resolved none of it. */
   attributionBlind: boolean
+  /** Recording paused within the visible range, in ms. */
+  pausedMs: number
   /** Event types among the loaded rows, for the legend. */
   lanes: ReadonlySet<LaneId>
   /** The panel's own view toggles, drawn inside 更多. */
@@ -185,6 +187,11 @@ export function TimelineToolbar({
           />
         </div>
         <div className="ml-auto shrink-0 flex items-center gap-2">
+          {pausedMs > 0 && (
+            <span data-testid="timeline-paused-total" className="text-xs font-mono tabular-nums whitespace-nowrap text-amber-400">
+              {t('timeline.pausedTotal', { minutes: pausedMs < 60_000 ? '<1' : Math.round(pausedMs / 60_000) })}
+            </span>
+          )}
           <AttributionStatus blind={attributionBlind} t={t} />
           <TypeLegend lanes={lanes} t={t} buttonClassName={ghost} />
           {followBadge}

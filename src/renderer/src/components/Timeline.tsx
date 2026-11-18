@@ -39,7 +39,7 @@ import { nextSelection } from '../lib/timelineSelection'
 import { computeMaxZoom, buildClusters, filterVisibleClusters, clusterBadgeSize, SINGLE_DOT_PX, MARK_HIT_PX, type TimelineCluster } from '../lib/timelineGeometry'
 import { buildTimeMap, computeDomainBounds, computeBins, densestRun, placeRulerMarkers, tickLabelAlign, type TimeMap } from '../lib/timelineTimeMap'
 import { binRange, densityAreaPath, dragMinimapWindow, peakBin, type MinimapWindow, type WindowGrip } from '../lib/minimapWindow'
-import { buildSessionBands, type SessionBand } from '../lib/timelineSessionBands'
+import { buildSessionBands, pausedMsWithin, type SessionBand } from '../lib/timelineSessionBands'
 import { mapMatchesToDrawn, STANDARD_ROW, computeWindowSlice, type ViewportWindow } from '../lib/timelineFilters'
 import {
   appendedFrom, drawnEvents, unfinishedCommands, toolPairs, laneIndex, singleTrack, swimRows, trackGap, laneGap,
@@ -1174,12 +1174,14 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
   // Only terminal ends and recording pauses make a band; the domain moves on
   // every flush, so the bands are re-placed from those few rows.
   const boundaryRows = useTimelineDerived(sessionBoundaries, events)
+  // 工作階段邊界 switches the terminal bands only. A pause is a gap in the
+  // record and is always drawn.
   const sessionBands = useMemo<SessionBand[]>(() => {
-    if (!sessionDividers) return []
-    return buildSessionBands(boundaryRows, toX, {
+    const bands = buildSessionBands(boundaryRows, toX, {
       termLabel: (id) => t('timeline.boundaries.termLabelFmt', { id }),
       pausedLabel: t('timeline.boundaries.pausedLabel')
     }, timeEnd)
+    return sessionDividers ? bands : bands.filter((b) => b.kind === 'paused')
   }, [boundaryRows, sessionDividers, toX, t, timeEnd])
 
   // Density minimap: event counts over the full range, binned into fixed cells.
@@ -1372,6 +1374,13 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
   const recentEvents = windowSlice.recent
   const windowTotal = windowSlice.total
   const hiddenByQuery = queryActive ? windowSlice.totalAll - windowSlice.total : 0
+
+  // Paused time in the visible range; an unmeasured view (no width yet) is
+  // the whole track, as the card rail reads it.
+  const pausedMs = useMemo(() => view.width <= 0
+    ? pausedMsWithin(sessionBands, -Infinity, Infinity)
+    : pausedMsWithin(sessionBands, fromX((view.left / 100) * TRACK_W), fromX(((view.left + view.width) / 100) * TRACK_W)),
+  [sessionBands, fromX, view.left, view.width, TRACK_W])
 
   const sliceExportRequest = useMemo<ExportRequest>(() => {
     const since = Math.round(fromX((view.left / 100) * TRACK_W))
@@ -1915,6 +1924,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
         searchInputRef={searchInputRef}
         onHelp={() => setShowHelp(true)}
         attributionBlind={attributionBlind}
+        pausedMs={pausedMs}
         lanes={populatedLanes}
         followBadge={
           <FollowBadge
@@ -2424,17 +2434,32 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
                 ))}
                 {/* v0.6.91 S3: session boundary bands. Rendered before the
                     current-time line and the broken-chain band so those
-                    stronger overlays win. Paused-recording bands use a
-                    diagonal stripe fill; terminal bands are a flat tint. */}
+                    stronger overlays win. A pause is drawn in the warning
+                    colour with a hatch (shape, not colour alone), always
+                    names its start and end in its `title`, and on its label
+                    when there is room; terminal bands are a flat tint. */}
                 {sessionBands.map((b) => {
                   const w = Math.max(0, b.x1 - b.x0)
                   if (w <= 0) return null
-                  const bg = b.kind === 'paused'
-                    ? 'repeating-linear-gradient(45deg, rgba(148,163,184,0.10) 0 6px, transparent 6px 12px)'
+                  const paused = b.kind === 'paused'
+                  const range = !paused ? b.label : b.open
+                    ? t('timeline.boundaries.pausedSince', { from: formatTime(b.from, { seconds: true }) })
+                    : t('timeline.boundaries.pausedRange', { from: formatTime(b.from, { seconds: true }), to: formatTime(b.to, { seconds: true }) })
+                  const label = paused && w >= 150 ? range : b.label
+                  const bg = paused
+                    ? `repeating-linear-gradient(45deg, ${SESSION_BAND_LABEL_COLOR.paused}2e 0 6px, transparent 6px 12px)`
                     : 'rgba(99, 102, 241, 0.02)'
-                  const border = b.kind === 'paused' ? 'rgba(148,163,184,0.35)' : 'rgba(99,102,241,0.30)'
+                  const border = paused ? `${SESSION_BAND_LABEL_COLOR.paused}8c` : 'rgba(99,102,241,0.30)'
                   return (
-                    <div key={b.id} className="absolute top-0 pointer-events-none" style={{ left: b.x0, width: w, height: totalH }}>
+                    <div
+                      key={b.id}
+                      data-testid={paused ? 'timeline-paused-band' : undefined}
+                      title={paused ? range : undefined}
+                      // A pause's `title` needs the pointer; a press on it
+                      // still pans the track (the pan reads `closest`).
+                      className={`absolute top-0 ${paused ? '' : 'pointer-events-none'}`}
+                      style={{ left: b.x0, width: w, height: totalH }}
+                    >
                       <div className="absolute inset-0" style={{ background: bg }} />
                       <div className="absolute inset-y-0 left-0 border-l border-dashed" style={{ borderColor: border }} />
                       <div className="absolute inset-y-0 right-0 border-l border-dashed" style={{ borderColor: border }} />
@@ -2445,8 +2470,8 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
                       {w >= 34 && (
                         <span
                           className="absolute text-xs font-mono px-1 rounded-b bg-redlog-surface/80 whitespace-nowrap"
-                          style={{ left: 2, top: b.row * 12, color: b.kind === 'paused' ? SESSION_BAND_LABEL_COLOR.paused : SESSION_BAND_LABEL_COLOR.session }}
-                        >{b.label}</span>
+                          style={{ left: 2, top: b.row * 12, color: paused ? SESSION_BAND_LABEL_COLOR.paused : SESSION_BAND_LABEL_COLOR.session }}
+                        >{label}</span>
                       )}
                     </div>
                   )

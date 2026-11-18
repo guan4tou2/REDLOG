@@ -5,6 +5,11 @@ export interface SessionBand {
   id: string
   x0: number
   x1: number
+  /** The band's start and end times; for an open pause, the end is now. */
+  from: number
+  to: number
+  /** A pause with no resume yet. */
+  open: boolean
   label: string
   kind: 'term' | 'paused'
   row: number
@@ -48,6 +53,9 @@ export function buildSessionBands(
         id: `term-${e.id}`,
         x0: toX(startTs),
         x1: toX(endTs),
+        from: startTs,
+        to: endTs,
+        open: false,
         label: labels.termLabel(tid.slice(0, 4)),
         kind: 'term',
         row: 0
@@ -65,6 +73,9 @@ export function buildSessionBands(
           id: `paused-${openPause.id}`,
           x0: toX(openPause.timestamp),
           x1: toX(e.timestamp),
+          from: openPause.timestamp,
+          to: e.timestamp,
+          open: false,
           label: labels.pausedLabel,
           kind: 'paused',
           row: 0
@@ -76,6 +87,9 @@ export function buildSessionBands(
         id: `paused-${openPause.id}`,
         x0: toX(openPause.timestamp),
         x1: toX(e.timestamp),
+        from: openPause.timestamp,
+        to: e.timestamp,
+        open: false,
         label: labels.pausedLabel,
         kind: 'paused',
         row: 0
@@ -84,10 +98,14 @@ export function buildSessionBands(
     }
   }
   if (openPause) {
+    const to = Math.min(Date.now(), timeEnd)
     bands.push({
       id: `paused-${openPause.id}-open`,
       x0: toX(openPause.timestamp),
-      x1: toX(Math.min(Date.now(), timeEnd)),
+      x1: toX(to),
+      from: openPause.timestamp,
+      to,
+      open: true,
       label: labels.pausedLabel,
       kind: 'paused',
       row: 0
@@ -103,4 +121,14 @@ export function buildSessionBands(
     b.row = row
   }
   return bands
+}
+
+/** Milliseconds of recording pause that fall inside `[lo, hi]`. */
+export function pausedMsWithin(bands: readonly SessionBand[], lo: number, hi: number): number {
+  let ms = 0
+  for (const b of bands) {
+    if (b.kind !== 'paused') continue
+    ms += Math.max(0, Math.min(b.to, hi) - Math.max(b.from, lo))
+  }
+  return ms
 }
