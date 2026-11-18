@@ -52,11 +52,12 @@ describe('HTTP History empty line', () => {
     expect(screen.queryByText('httpHistory.noMatch')).toBeNull()
   })
 
-  it('says no flows match when a shared filter leaves nothing', async () => {
-    sharedFilter.timeRange = { from: 1, to: 2 }
+  it('says no flows match when a status chip leaves nothing', async () => {
     mountEmpty()
     const { HttpHistoryPanel } = await import('../src/renderer/src/components/HttpHistoryPanel')
     render(<HttpHistoryPanel onOpenSettings={() => {}} />)
+    await screen.findByText('httpHistory.empty')
+    fireEvent.click(screen.getByRole('button', { name: '5xx' }))
     expect(await screen.findByText('httpHistory.noMatch')).toBeTruthy()
     expect(screen.queryByText('httpHistory.empty')).toBeNull()
     expect(screen.queryByText('browser.openSettings')).toBeNull()
