@@ -68,3 +68,91 @@ describe('G1: no explanation layers above the list', () => {
     await waitFor(() => expect(length).not.toHaveBeenCalled())
   })
 })
+
+describe('G2: a target is one line', () => {
+  // 2026-11-18 12:00 local: "today" is fixed so the date rule is testable.
+  const NOW = new Date(2026, 10, 18, 12, 0, 0).getTime()
+  const at = (d: number, h: number, m: number, s = 0): number => new Date(2026, 10, d, h, m, s).getTime()
+  beforeEach(() => { vi.useFakeTimers({ shouldAdvanceTime: true, now: NOW }) })
+  afterEach(() => { vi.useRealTimers() })
+
+  const rowOf = (name: string): HTMLElement => screen.getByText(name).closest('[role="option"]') as HTMLElement
+  const visible = (el: Element | null): string => (el?.querySelector('[aria-hidden="true"]')?.textContent ?? '')
+
+  it('each of the four relations has its own shape and its own word', async () => {
+    installTargets([
+      { target: 'in.test', eventCount: 1, firstSeen: NOW, lastSeen: NOW },
+      { target: 'out.test', eventCount: 1, firstSeen: NOW, lastSeen: NOW }
+    ], { targets: ['in.test'], excludeTargets: [] })
+    mountTargets()
+    await waitFor(() => expect(rowOf('out.test').textContent).toContain('Out of scope'))
+    const relation = (name: string): Element | null => rowOf(name).querySelector('[data-testid="target-relation"]')
+    expect(relation('in.test')?.textContent).toBe('●In scope')
+    expect(relation('out.test')?.textContent).toBe('▲Out of scope')
+    cleanup()
+
+    installTargets([{ target: 'any.test', eventCount: 1, firstSeen: NOW, lastSeen: NOW }])
+    mountTargets()
+    await screen.findByText('any.test')
+    await waitFor(() => expect(relation('any.test')?.textContent).toBe('–Not set'))
+    cleanup()
+
+    installTargets([{ target: 'any.test', eventCount: 1, firstSeen: NOW, lastSeen: NOW }], new Error('no config'))
+    mountTargets()
+    await screen.findByTestId('targets-scope-failed')
+    expect(relation('any.test')?.textContent).toBe('○Scope unknown')
+  })
+
+  it('first and last seen carry the date when it is not today, and only the time today', async () => {
+    installTargets([
+      { target: 'today.test', eventCount: 4, firstSeen: at(18, 9, 1, 2), lastSeen: at(18, 11, 30, 5) },
+      { target: 'days.test', eventCount: 12, firstSeen: at(17, 22, 4), lastSeen: at(18, 9, 31, 7) },
+      { target: 'once.test', eventCount: 1, firstSeen: at(12, 23, 41), lastSeen: at(12, 23, 50) }
+    ])
+    mountTargets()
+    await screen.findByText('today.test')
+    const seen = (name: string): string => visible(rowOf(name).querySelector('[data-testid="target-seen"]'))
+    expect(seen('today.test')).toBe('09:01:02 – 11:30:05')
+    expect(seen('days.test')).toBe('11-17 22:04 – 09:31:07')
+    expect(seen('once.test')).toBe('11-12 23:41 – 23:50')
+  })
+
+  it('labels are not repeated on every row: the count is a bare number with its words in the title', async () => {
+    installTargets([{ target: 'a.test', eventCount: 12, firstSeen: NOW, lastSeen: NOW }])
+    mountTargets()
+    await screen.findByText('a.test')
+    const row = rowOf('a.test')
+    const count = row.querySelector('[data-testid="target-count"]') as HTMLElement
+    expect(visible(count)).toBe('12')
+    expect(count.getAttribute('title')).toBe('12 events')
+    const shown = Array.from(row.querySelectorAll('[aria-hidden="true"]')).map((n) => n.textContent).join(' ')
+    expect(shown).not.toMatch(/First|Last|events/)
+  })
+
+  it('says "working now" on the row of the target being worked on', async () => {
+    installTargets([{ target: 'a.test', eventCount: 1, firstSeen: NOW, lastSeen: NOW }])
+    redlog().targetContext = { get: async () => 'a.test', onChange: () => noop }
+    mountTargets()
+    await waitFor(() => expect(rowOf('a.test').textContent).toContain('Working now'))
+  })
+})
+
+describe('G2: an observation carries its date when it is not today', () => {
+  const NOW = new Date(2026, 10, 18, 12, 0, 0).getTime()
+  beforeEach(() => { vi.useFakeTimers({ shouldAdvanceTime: true, now: NOW }) })
+  afterEach(() => { vi.useRealTimers() })
+
+  it('today is the time alone, another day has its date', async () => {
+    const row = (id: string, ts: number): Record<string, unknown> => ({ id, target: `${id}.example`, command: 'curl', timestamp: ts, distance: 'excluded', judged: 'live', cleared: false })
+    ;(window as unknown as { redlog: unknown }).redlog = {
+      scope: {
+        getObservations: async () => ({ rows: [row('today', new Date(2026, 10, 18, 9, 1, 2).getTime()), row('before', new Date(2026, 10, 16, 22, 4).getTime())], truncated: false }),
+        getObservationCount: async () => 2, isConfigured: async () => true, getLastRecompute: async () => null
+      },
+      events: { onNewBatch: () => noop }
+    }
+    render(<I18nProvider><ScopeStatus /></I18nProvider>)
+    await screen.findByText('today.example')
+    expect(screen.getAllByTestId('scope-observation-time').map((n) => n.textContent?.trim())).toEqual(['09:01:02', '11-16 22:04'])
+  })
+})

@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { useI18n } from '../i18n'
 import { LoadingSpinner } from './Feedback'
 import { Button } from './Button'
-import { formatTime, formatDateTime } from '../lib/time'
+import { formatDateTime } from '../lib/time'
+import { formatSeen } from '../lib/seenTime'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { useInfiniteScroll } from '../lib/useInfiniteScroll'
 import { ListFooter } from './ListFooter'
@@ -287,8 +288,8 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
                 </span>
                 <span title={v.command} className="mt-1 block text-redlog-text-dim text-xs font-mono truncate">{v.command}</span>
               </span>
-              <span className="shrink-0 text-redlog-text-faint text-xs font-mono tabular-nums">
-                {formatTime(v.sourceTs ?? v.timestamp, { seconds: true })}
+              <span data-testid="scope-observation-time" className="shrink-0 text-redlog-text-faint text-xs font-mono tabular-nums">
+                {formatSeen(v.sourceTs ?? v.timestamp)}
               </span>
             </button>
             {open && <div className="ml-9 mr-4 mb-3 border-l-2 border-redlog-border pl-3 py-1 space-y-2 text-xs" data-testid="scope-observation-detail">

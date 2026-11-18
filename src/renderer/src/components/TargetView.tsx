@@ -2,13 +2,14 @@ import { PAGE_BODY, SCROLL_GUTTER } from '../lib/pageLayout'
 import { Button, FIELD_FOCUS_RING } from './Button'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useI18n } from '../i18n'
-import { formatTime } from '../lib/time'
+import { formatDateTime, formatTime } from '../lib/time'
+import { formatSeenRange } from '../lib/seenTime'
 import { eventTitle } from '../lib/eventTitle'
 import { agentTypeLabel } from '../lib/timelineDomain'
 import { toast, toastDeferred } from './Toast'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { EmptyState } from './EmptyState'
-import { Crosshair, ChevronRight, ChevronDown } from 'lucide-react'
+import { Crosshair } from 'lucide-react'
 import { scopeConfigured, targetInScope } from '../lib/scope'
 import { useSharedFilter } from '../lib/FilterContext'
 import { createThrottledRead, type ThrottledRead } from '../lib/throttledRead'
@@ -32,6 +33,31 @@ interface TargetViewProps {
 type Aggregate = Awaited<ReturnType<typeof window.redlog.events.aggregateTargets>>
 
 const EVIDENCE_PAGE_SIZE = 200
+
+/** relation | address | first–last seen | events, one 36px line over a 1px
+ *  rule, as the Activity list's rows are. Narrow, the times go first; they are
+ *  still in the row's title. */
+const ROW_GRID = 'grid grid-cols-[112px_minmax(0,1fr)_56px] @min-[640px]:grid-cols-[112px_minmax(0,1fr)_184px_56px] gap-x-3 items-center'
+const ROW_BOX = 'min-h-9 py-1 px-4'
+
+/** The target's relation to the scope: four states, each with its own shape
+ *  as well as its word, never colour alone. Out of scope is the loud one, in
+ *  scope the quiet one; not set (no rule declared) and unknown (the rules
+ *  could not be read) are different facts. */
+function Relation({ inScope, scopeFailed }: { inScope: boolean | null; scopeFailed: boolean }): JSX.Element {
+  const { t } = useI18n()
+  const [glyph, word, tone] = inScope === true
+    ? ['●', t('targets.inScopeBadge'), 'text-redlog-text-dim']
+    : inScope === false
+      ? ['▲', t('targets.out'), 'font-medium text-amber-300']
+      : scopeFailed
+        ? ['○', t('targets.scopeUnknown'), 'text-amber-300']
+        : ['–', t('targets.scopeUnset'), 'text-redlog-text-faint']
+  return <span data-testid="target-relation" className={`flex min-w-0 items-center gap-1.5 whitespace-nowrap text-xs ${tone}`}>
+    <span aria-hidden="true" className={`w-3 shrink-0 text-center font-mono ${inScope === true ? 'text-emerald-400' : ''}`}>{glyph}</span>
+    <span className="min-w-0 overflow-hidden text-ellipsis" title={word}>{word}</span>
+  </span>
+}
 const eventKey = (event: RedLogEvent): string => event.id
 
 export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Element {
@@ -260,13 +286,6 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
     onEscape: () => setSelected(null)
   })
 
-  const badge = (inScope: boolean | null): JSX.Element => inScope === true
-    ? <span className="text-xs text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded">{t('targets.inScopeBadge')}</span>
-    : inScope === false
-      ? <span className="text-xs text-amber-300 bg-amber-400/10 px-1.5 py-0.5 rounded">{t('targets.out')}</span>
-      // Two different facts: no rule was ever declared, or the rules could not be read.
-      : <span className="text-xs text-redlog-text-dim bg-redlog-elevated px-1.5 py-0.5 rounded">{scopeFailed ? t('targets.scopeUnknown') : t('targets.scopeUnset')}</span>
-
   return (
     <div className={`p-pad h-full overflow-auto ${SCROLL_GUTTER}`}><div className={`${PAGE_BODY} space-y-4`}>
       <div className="bg-redlog-surface border border-redlog-border rounded-lg overflow-hidden">
@@ -323,7 +342,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
           />
         )
       ) : (
-        <div className="divide-y divide-redlog-border" {...listNav.containerProps} aria-label={t('targets.listLabel', { count: filtered.length })}>
+        <div className="@container divide-y divide-redlog-border-subtle" {...listNav.containerProps} aria-label={t('targets.listLabel', { count: filtered.length })}>
           {filtered.map((tgt, i) => {
             const rowProps = listNav.itemProps(i)
             const open = selected === tgt.target
@@ -333,26 +352,25 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                 {...rowProps}
                 ref={(el) => rowProps.ref(el)}
                 onClick={() => { rowProps.onClick(); loadEvidence(tgt.target) }}
-                className={`flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-redlog-elevated/60 ${open ? 'bg-redlog-elevated/40' : ''}`}
+                aria-expanded={open}
+                className={`${ROW_GRID} ${ROW_BOX} cursor-pointer transition-colors ${open ? 'bg-redlog-elevated' : 'hover:bg-redlog-elevated'}`}
               >
-                {open
-                  ? <ChevronDown size={14} className="mt-1 shrink-0 text-redlog-text-faint" aria-hidden />
-                  : <ChevronRight size={14} className="mt-1 shrink-0 text-redlog-text-faint" aria-hidden />}
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-redlog-text font-mono text-sm break-all">{tgt.target}</span>
-                    {badge(tgt.inScope)}
-                    {activeTarget === tgt.target && (
-                      <span className="text-xs text-redlog-accent bg-redlog-accent/10 px-1.5 py-0.5 rounded">{t('activeTarget.current')}</span>
-                    )}
-                  </div>
-                  <div className="mt-1 text-redlog-text-dim text-xs">
-                    {t('targets.first', { time: formatTime(tgt.firstSeen, { seconds: true }) })} · {t('targets.last', { time: formatTime(tgt.lastSeen, { seconds: true }) })}
-                  </div>
-                </div>
-                <span className="shrink-0 text-redlog-text-dim text-xs">{t('targets.events', { count: tgt.eventCount })}</span>
+                <Relation inScope={tgt.inScope} scopeFailed={scopeFailed} />
+                <span className="flex min-w-0 items-center gap-2">
+                  <span title={tgt.target} className="min-w-0 truncate font-mono text-sm text-redlog-text">{tgt.target}</span>
+                  {activeTarget === tgt.target && <span className="shrink-0 whitespace-nowrap text-xs text-redlog-accent">{t('activeTarget.current')}</span>}
+                </span>
+                {(() => {
+                  // The words once, for a pointer and a screen reader; the row shows the times alone.
+                  const full = `${t('targets.first', { time: formatDateTime(tgt.firstSeen, { seconds: true }) })} · ${t('targets.last', { time: formatDateTime(tgt.lastSeen, { seconds: true }) })}`
+                  return <span data-testid="target-seen" title={full} className="hidden @min-[640px]:block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-xs text-redlog-text-dim">
+                    <span aria-hidden="true">{formatSeenRange(tgt.firstSeen, tgt.lastSeen)}</span><span className="sr-only">{full}</span>
+                  </span>
+                })()}
+                <span data-testid="target-count" title={t('targets.events', { count: tgt.eventCount })} className="whitespace-nowrap text-right font-mono text-xs tabular-nums text-redlog-text-dim">
+                  <span aria-hidden="true">{tgt.eventCount}</span><span className="sr-only">{t('targets.events', { count: tgt.eventCount })}</span>
+                </span>
               </div>
-
               {open && (
                 <div className="ml-9 mr-4 mb-3 border-l-2 border-redlog-border pl-3 space-y-1 py-1">
                   {evidencePhase === 'loading' ? (
