@@ -55,10 +55,48 @@ it('keeps the close control visible at rest, not only on hover', async () => {
   expect(close.className).not.toContain('opacity-0')
 })
 
-it('names the shortcut in the new-tab and find tooltips', async () => {
+it('names the shortcut in the new-tab tooltip', async () => {
   await mount()
   expect(screen.getByRole('button', { name: 'New Terminal' }).getAttribute('title')).toMatch(/\((⌘T|Ctrl\+T)\)$/)
-  expect(screen.getByRole('button', { name: 'Search buffer' }).getAttribute('title')).toMatch(/\((⌘F|Ctrl\+F)\)$/)
+})
+
+// R4: the strip's right side is one control. Font size and find are
+// shortcuts (listed in the app's shortcut table), not buttons.
+it('has no font-size or find buttons, and one new-tab control at the right end', async () => {
+  await mount()
+  for (const name of ['Smaller font', 'Larger font', 'Search buffer']) expect(screen.queryByRole('button', { name })).toBeNull()
+  expect(screen.queryByText('A−')).toBeNull()
+  expect(screen.getAllByRole('button', { name: 'New Terminal' })).toHaveLength(1)
+  const strip = screen.getByTestId('terminal-tabs')
+  expect(strip.lastElementChild?.contains(screen.getByRole('button', { name: 'New Terminal' }))).toBe(true)
+})
+
+it('opens the shell menu from the one new-tab control when there is more than one shell', async () => {
+  ;(window as unknown as { redlog: { terminal: { shells: unknown } } }).redlog.terminal.shells = vi.fn(async () => [
+    { id: 'zsh', label: 'zsh', flavour: 'posix' }, { id: 'sh', label: '/bin/sh', flavour: 'none' }
+  ])
+  await mount()
+  await waitFor(() => expect(screen.getByRole('button', { name: 'New Terminal' }).getAttribute('aria-haspopup')).toBe('menu'))
+  expect(screen.queryByTestId('terminal-shell-menu')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'New Terminal' }))
+  expect(screen.getAllByRole('menuitem')).toHaveLength(2)
+})
+
+// Many tabs scroll inside the strip; they do not push the new-tab control out.
+it('scrolls the tabs sideways and keeps the new-tab control outside the scrolling part', async () => {
+  ;(window as unknown as { redlog: { terminal: { list: unknown } } }).redlog.terminal.list = vi.fn(async () =>
+    Array.from({ length: 30 }, (_, i) => ({ id: `t${i}`, pid: 100 + i, recording: true, castTruncated: false, paused: false })))
+  const { default: TerminalView } = await import('../src/renderer/src/components/TerminalView')
+  render(<I18nProvider><TerminalView /></I18nProvider>)
+  await waitFor(() => expect(screen.getAllByTestId('terminal-tab')).toHaveLength(30))
+  const scroller = screen.getByTestId('terminal-tab-scroll')
+  expect(scroller.className).toContain('overflow-x-auto')
+  expect(scroller.className).toContain('min-w-0')
+  for (const tab of screen.getAllByTestId('terminal-tab')) {
+    expect(scroller.contains(tab)).toBe(true)
+    expect(tab.className).toContain('shrink-0')
+  }
+  expect(scroller.contains(screen.getByRole('button', { name: 'New Terminal' }))).toBe(false)
 })
 
 it('opens find from anywhere on the page, not only when the terminal has focus', async () => {
@@ -106,7 +144,8 @@ it('says in the shell menu which shells have a hook and which are a PTY stream o
     { id: 'zsh', label: 'zsh', flavour: 'posix' }, { id: 'sh', label: '/bin/sh', flavour: 'none' }
   ])
   await mount()
-  fireEvent.click(await screen.findByTestId('terminal-shell-menu'))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'New Terminal' }).getAttribute('aria-haspopup')).toBe('menu'))
+  fireEvent.click(screen.getByRole('button', { name: 'New Terminal' }))
   const items = screen.getAllByRole('menuitem')
   expect(items[0].textContent).toContain('hook supported')
   expect(items[1].textContent).toContain('PTY stream only')

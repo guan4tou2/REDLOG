@@ -337,7 +337,10 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
   return (
     <div className="flex flex-col h-full bg-redlog-bg">
       {/* Tab bar */}
-      <div data-testid="terminal-tabs" className="flex items-center h-9 bg-redlog-bg border-b border-redlog-border px-pad shrink-0 gap-0.5">
+      <div data-testid="terminal-tabs" className="flex items-center h-9 bg-redlog-bg border-b border-redlog-border px-pad shrink-0 gap-1">
+        {/* Many tabs scroll here, sideways, rather than pushing the new-tab
+            control off the end of the strip. */}
+        <div data-testid="terminal-tab-scroll" className="flex flex-1 min-w-0 items-center gap-0.5 overflow-x-auto">
         {tabs.map((tab) => (
           <div
             key={tab.id}
@@ -346,7 +349,7 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
             // repeated on a second row.
             title={tabTitle(tab, tabName(tab, tabs, fallbackName(tab)))}
             onClick={() => setActiveTab(tab.id)}
-            className={`group flex items-center gap-1.5 px-3 h-7 rounded-md text-xs cursor-pointer transition-colors ${
+            className={`group flex shrink-0 items-center gap-1.5 px-3 h-7 rounded-md text-xs cursor-pointer transition-colors ${
               activeTab === tab.id
                 ? 'bg-redlog-elevated text-redlog-text'
                 : 'text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03]'
@@ -394,38 +397,29 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
             </button>
           </div>
         ))}
-        <button
-          onClick={() => addTab()}
-          disabled={!allowNew}
-          className="h-7 px-2 rounded-md flex items-center gap-1 justify-center text-redlog-text-faint hover:text-redlog-text hover:bg-white/[0.03] transition-colors text-xs"
-          title={`${t('terminal.newTab')} (${isMac ? '⌘T' : 'Ctrl+T'})`}
-          aria-label={t('terminal.newTab')}
-        >
-          <span aria-hidden className="text-sm">+</span>{t('terminal.tabWord')}
-        </button>
+        </div>
 
-        {/* Which shell the next pane opens with. Hidden when the machine only
-            offers one — a menu with a single entry is a decision the operator
-            does not have. */}
-        {allowNew && shells.length > 1 && (
-          <div className="relative">
+        {/* One control at the right end. With more than one shell on this
+            machine it opens the picker; with one, it opens a tab. */}
+        {allowNew && (
+          <div className="relative shrink-0">
             <button
-              onClick={() => setShellMenuOpen((v) => !v)}
-              data-testid="terminal-shell-menu"
-              aria-haspopup="menu"
-              aria-expanded={shellMenuOpen}
-              className="w-6 h-7 rounded-md flex items-center justify-center text-redlog-text-faint hover:text-redlog-text hover:bg-white/[0.03] transition-colors text-xs"
-              title={t('terminal.pickShell')}
-              aria-label={t('terminal.pickShell')}
+              onClick={() => shells.length > 1 ? setShellMenuOpen((v) => !v) : addTab()}
+              {...(shells.length > 1 ? { 'aria-haspopup': 'menu' as const, 'aria-expanded': shellMenuOpen } : {})}
+              className="h-7 px-2 rounded-md flex items-center gap-1 justify-center text-redlog-text-dim hover:text-redlog-text hover:bg-white/[0.03] transition-colors text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
+              title={`${t('terminal.newTab')} (${isMac ? '⌘T' : 'Ctrl+T'})`}
+              aria-label={t('terminal.newTab')}
             >
-              ▾
+              <span aria-hidden>＋</span>
+              {shells.length > 1 && <span aria-hidden className="text-xs">▾</span>}
             </button>
-            {shellMenuOpen && (
+            {shellMenuOpen && shells.length > 1 && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setShellMenuOpen(false)} />
                 <div
                   role="menu"
-                  className="absolute left-0 top-8 z-50 min-w-[210px] rounded-md border border-redlog-border bg-redlog-elevated py-1 shadow-lg"
+                  aria-label={t('terminal.pickShell')}
+                  className="absolute right-0 top-8 z-50 min-w-[210px] rounded-md border border-redlog-border bg-redlog-elevated py-1 shadow-lg"
                 >
                   {shells.map((sh) => (
                     <button
@@ -452,30 +446,6 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
             )}
           </div>
         )}
-
-        {/* Font-size + search on the right — audit findings #14 (SearchAddon)
-            and #15 (font size adjustable). */}
-        <div className="ml-auto flex items-center gap-1">
-          <button
-            onClick={() => setFontSize((s) => Math.max(8, s - 1))}
-            className="w-6 h-6 rounded flex items-center justify-center text-redlog-text-faint hover:text-redlog-text hover:bg-white/[0.03] text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
-            title={t('terminal.fontSmaller')}
-            aria-label={t('terminal.fontSmaller')}
-          >A−</button>
-          <span className="text-xs text-redlog-text-faint font-mono tabular-nums w-6 text-center">{fontSize}</span>
-          <button
-            onClick={() => setFontSize((s) => Math.min(32, s + 1))}
-            className="w-6 h-6 rounded flex items-center justify-center text-redlog-text-faint hover:text-redlog-text hover:bg-white/[0.03] text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim"
-            title={t('terminal.fontLarger')}
-            aria-label={t('terminal.fontLarger')}
-          >A+</button>
-          <button
-            onClick={() => setSearchOpen((s) => !s)}
-            className={`w-6 h-6 rounded flex items-center justify-center hover:bg-white/[0.03] text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-redlog-text-dim ${searchOpen ? 'text-redlog-text bg-white/[0.05]' : 'text-redlog-text-faint hover:text-redlog-text'}`}
-            title={`${t('terminal.searchToggle')} (${isMac ? '⌘F' : 'Ctrl+F'})`}
-            aria-label={t('terminal.searchToggle')}
-          >⌕</button>
-        </div>
       </div>
 
       {/* Search bar (visible when toggled) */}

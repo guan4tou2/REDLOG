@@ -649,7 +649,8 @@ test.describe('uiux-convergence (terminal font shortcuts)', () => {
     await terminal.focus()
     await page.keyboard.press(`${mod}+=`)
     await expect.poll(() => page.evaluate(() => Number(localStorage.getItem('redlog-terminal-fontsize')))).toBe(14)
-    await page.getByRole('button', { name: 'Search buffer', exact: true }).click()
+    // Find is a shortcut, not a button on the strip.
+    await page.keyboard.press(`${mod}+f`)
     await page.getByPlaceholder('Search terminal buffer… Enter = next, Shift+Enter = previous', { exact: true }).focus()
     await page.keyboard.press(`${mod}+-`)
     expect(await page.evaluate(() => Number(localStorage.getItem('redlog-terminal-fontsize')))).toBe(14)
