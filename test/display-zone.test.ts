@@ -88,3 +88,22 @@ describe('one display zone', () => {
     expect(time.formatTime(AT)).toBe(LOCAL_TIME)
   })
 })
+
+// The status bar's narrow form: the offset alone, the same one zoneLabel says.
+describe('zoneOffset', () => {
+  it('is UTC for the UTC zone, and the local offset otherwise, inside zoneLabel', async () => {
+    const { zoneOffset, zoneLabel } = await freshTime()
+    expect(zoneOffset('utc')).toBe('UTC')
+    expect(zoneOffset('local')).toMatch(/^UTC[+-]\d{1,2}(:\d{2})?$/)
+    expect(zoneLabel('local', (k) => k)).toBe(`filter.localTime (${zoneOffset('local')})`)
+  })
+  it('spells a half-hour offset and a negative one', async () => {
+    const { zoneOffset } = await freshTime()
+    const spy = vi.spyOn(Date.prototype, 'getTimezoneOffset')
+    spy.mockReturnValue(-330)
+    expect(zoneOffset('local')).toBe('UTC+5:30')
+    spy.mockReturnValue(240)
+    expect(zoneOffset('local')).toBe('UTC-4')
+    spy.mockRestore()
+  })
+})

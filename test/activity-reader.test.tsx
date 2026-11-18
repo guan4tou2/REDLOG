@@ -127,7 +127,7 @@ it('shows the event as stored: its identifiers, and its hashes without claiming 
   expect((await screen.findByTestId('reader-integrity')).textContent).toContain('activity.reader.notChained')
 })
 
-it('lays the list out as a column header, one separator per day, and a stats line with the way to clear', async () => {
+it('lays the list out as one separator per day and a stats line with the way to clear', async () => {
   const day = 86_400_000
   const old = summary('old', ev('old', { timestamp: 1000 }))
   mount([summary('a', ev('a', { timestamp: 5 * day })), { ...summary('b', ev('b', { timestamp: 5 * day + 1000 })), firstAt: 5 * day + 1000 }, { ...old, firstAt: 1000 }].map((i, n) => n === 0 ? { ...i, firstAt: 5 * day } : i) as any)
@@ -250,7 +250,7 @@ it('folds clean scope verdicts in search results, keeps an observation as a row,
   expect(await rows()).toHaveLength(2)
   const fold = screen.getByTestId('activity-system-fold')
   expect(fold.textContent).toContain('activity.systemFold {"count":3}')
-  expect(screen.getByTestId('activity-stats').textContent).toContain('activity.count {"groups":5,"matches":5}')
+  expect(screen.getByTestId('activity-stats').textContent).toContain('activity.count {"groups":5}')
   fireEvent.click(fold)
   expect(screen.getAllByTestId('activity-row')).toHaveLength(5)
 })

@@ -1,8 +1,6 @@
-import type { ExportRequest } from '../../../core/export-plan'
-import { sourceSessionKey } from '../../../core/operation-pair-key'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { ActivityPage, ActivityRequest, ActivitySummary } from '../../../core/activity-contract'
+import type { ActivityKind, ActivityPage, ActivityRequest, ActivitySummary } from '../../../core/activity-contract'
 import type { BodySearchCoverage } from '../../../core/http-body-index'
 import { useI18n } from '../i18n'
 import { useReadState } from '../lib/readState'
@@ -15,10 +13,16 @@ import { ActivityReader, sourceName } from './ActivityReader'
 import { ActivityAround } from './ActivityAround'
 import { narrowsEvents } from '../lib/filterNarrowing'
 
-const ROW_GRID = 'grid grid-cols-[72px_130px_minmax(0,1fr)_24px] gap-x-3 items-center'
-/** A list row is `--row-h` tall (UIUX-STANDARD §3: 40px, 32px tight), a
- *  minimum rather than a fixed height so nothing it shows is cut. */
-const ROW_BOX = 'min-h-[var(--row-h)] py-1 px-3'
+/** time | kind | content | target | result | source (01-activity prototype).
+ *  The list is the container; narrow, the target column goes first. */
+const ROW_GRID = 'grid grid-cols-[72px_16px_minmax(0,1fr)_104px_72px] @min-[720px]:grid-cols-[72px_16px_minmax(0,1fr)_132px_104px_72px] gap-x-3 items-center'
+/** The kind of activity as one leading mark. Chosen by the projection's kind,
+ *  not by event type: an HTTP exchange and an AI tool call are kinds already. */
+const KIND_GLYPH: Record<ActivityKind, string> = { command: '$', http: '→', tool: '◇', message: '◇', event: '·' }
+/** A list row is 36px over a 1px rule, a 37px pitch (01-activity prototype),
+ *  a minimum rather than a fixed height so nothing it shows is cut. The
+ *  global `--row-h` is other lists'. */
+const ROW_BOX = 'min-h-9 py-1 px-3'
 
 export function SearchCoverage({ coverage }: { coverage?: BodySearchCoverage }): JSX.Element | null {
   const { t } = useI18n()
@@ -47,7 +51,7 @@ interface ActivityListHooks {
   onClearConditions?: () => void
 }
 
-export function ActivityResults({ request, onOpen, onExportSelection, onClearQuery, active = true, statsSlot, ...hooks }: { active?: boolean; statsSlot?: HTMLElement | null; onClearQuery?: () => void; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: Omit<ActivityRequest, 'projectId'>; onOpen?: (id: string, ts: number) => void } & ActivityListHooks): JSX.Element {
+export function ActivityResults({ request, onOpen, onClearQuery, active = true, statsSlot, ...hooks }: { active?: boolean; statsSlot?: HTMLElement | null; onClearQuery?: () => void; request: Omit<ActivityRequest, 'projectId'>; onOpen?: (id: string, ts: number) => void } & ActivityListHooks): JSX.Element {
   const { t } = useI18n()
   const project = useReadState(async () => {
     const config = await window.redlog.config.get() as { engagement?: unknown }
@@ -57,12 +61,11 @@ export function ActivityResults({ request, onOpen, onExportSelection, onClearQue
   })
   if (project.state.phase === 'failed') return <div role="alert">{project.state.error} <Button onClick={project.retry}>{t('common.retry')}</Button></div>
   if (!project.state.value) return <span role="status">{t('search.loading')}</span>
-  return <ActivityList key={`${project.state.value}:${JSON.stringify(request)}`} active={active} request={{ ...request, projectId: project.state.value }} onOpen={onOpen} onExportSelection={onExportSelection} onClearQuery={onClearQuery} statsSlot={statsSlot} {...hooks} />
+  return <ActivityList key={`${project.state.value}:${JSON.stringify(request)}`} active={active} request={{ ...request, projectId: project.state.value }} onOpen={onOpen} onClearQuery={onClearQuery} statsSlot={statsSlot} {...hooks} />
 }
-function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active, statsSlot, locateEventId, onLocateEnd, onClearConditions }: { active: boolean; statsSlot?: HTMLElement | null; onClearQuery?: () => void; onExportSelection?: (subset: ExportRequest['subset'] | null) => void; request: ActivityRequest; onOpen?: (id: string, ts: number) => void } & ActivityListHooks): JSX.Element {
+function ActivityList({ request, onOpen, onClearQuery, active, statsSlot, locateEventId, onLocateEnd, onClearConditions }: { active: boolean; statsSlot?: HTMLElement | null; onClearQuery?: () => void; request: ActivityRequest; onOpen?: (id: string, ts: number) => void } & ActivityListHooks): JSX.Element {
   const { t } = useI18n()
   const read = useReadState(() => window.redlog.events.activityPage({ ...request, limit: 50 }))
-  const [exportKind,setExportKind] = useState<'activity' | 'session'>('activity')
   const [expanded, setExpanded] = useState<string | null>(null)
   // System-event folds the operator opened, by the first row's id.
   const [openFolds, setOpenFolds] = useState<ReadonlySet<string>>(() => new Set())
@@ -89,7 +92,6 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
   useEffect(() => window.redlog.events.onNewBatch((events) => setNewEvents((n) => n + (Array.isArray(events) ? events.length : 1))), [])
   const refresh = (): void => { setNewEvents(0); setError(null); read.retry() }
   const page = read.state.value
-  const selectedActivity = page?.items.find(item=>item.id===expanded)
   const readerIndex = page && readerId !== null ? page.items.findIndex(item => item.id === readerId) : -1
   // Stepping past the last loaded operation loads the next page, then reads on.
   const step = (direction: -1 | 1): void => {
@@ -118,12 +120,6 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
   useEffect(() => {
     if (located.current && expanded === null) { located.current = null; onLocateEnd?.() }
   }, [expanded]) // eslint-disable-line react-hooks/exhaustive-deps
-  const anchorId = selectedActivity?.anchor.id
-  const hasSession = selectedActivity ? sourceSessionKey(selectedActivity.anchor)!==null : false
-  useEffect(()=>{
-    onExportSelection?.(active && anchorId && page ? {kind:exportKind==='session' && hasSession ? 'session' : 'activity',projectId:request.projectId,anchorEventId:anchorId,snapshot:page.snapshot} : null)
-    return ()=>onExportSelection?.(null)
-  },[active,anchorId,page?.snapshot,exportKind,hasSession,request.projectId,onExportSelection])
   return <div className="min-w-0" aria-busy={read.state.phase === 'loading' || busy}>
     {read.state.phase === 'loading' && <span role="status">{t('search.loading')}</span>}
     {(read.state.phase === 'failed' || error) && <div role="alert" className="text-sm text-amber-300 break-words">{error ?? (read.state.phase === 'failed' ? read.state.error : '')} <Button onClick={refresh}>{t('activity.refresh')}</Button></div>}
@@ -140,19 +136,14 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
         // workspace's tab row) it goes there instead of taking a row of its
         // own, and only while this reading is the one shown.
         const stats = <div data-testid="activity-stats" className={`flex flex-wrap items-center gap-2 text-xs text-redlog-text-dim ${statsSlot ? '' : 'mb-2 justify-between'}`}>
-          <span>{t('activity.count', { groups: page.totalGroups, matches: page.totalMatches })}
+          <span>{t('activity.count', { groups: page.totalGroups })}
             {filtering && onClearQuery && <button type="button" data-testid="activity-clear-filter" onClick={onClearQuery} className="ml-2 underline hover:text-redlog-text focus-visible:outline focus-visible:outline-red-400">{t('activity.clearFilter')}</button>}
           </span>
-          {newEvents > 0 && <button type="button" data-testid="activity-new-events" onClick={refresh} className="flex items-center gap-1.5 rounded border border-redlog-border bg-redlog-elevated px-2 py-0.5 text-redlog-text hover:border-redlog-text-dim focus-visible:outline focus-visible:outline-red-400"><span aria-hidden className="text-emerald-400">↑</span>{t('workspace.newActivity', { count: newEvents })}</button>}
+          {newEvents > 0 && <button type="button" data-testid="activity-new-events" onClick={refresh} className="underline underline-offset-2 text-redlog-text-dim hover:text-redlog-text focus-visible:outline focus-visible:outline-red-400">{t('workspace.newActivity', { count: newEvents })}</button>}
         </div>
         if (!statsSlot) return stats
         return active ? createPortal(stats, statsSlot) : null
       })()}
-      {page.items.length > 0 && <div aria-hidden="true" className={`${ROW_GRID} px-2 py-1 text-xs uppercase text-redlog-text-faint select-none`}>
-        <span>{t('activity.col.time')}</span><span>{t('activity.col.source')}</span><span>{t('activity.col.content')}</span>{/* The column is the 24px chevron's; the label may be wider, so it stays on
-            one line and reaches left into the gap instead of stacking 檢/視. */}
-        <span className="justify-self-end whitespace-nowrap">{t('activity.col.view')}</span>
-      </div>}
       {page.items.length === 0 && (() => {
         // Three different empties: the filter bar's conditions emptied it, a
         // typed query matched nothing, or there is nothing recorded to match.
@@ -162,42 +153,45 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
           {narrowed && onClearConditions && <button type="button" data-testid="activity-clear-conditions" onClick={onClearConditions} className="ml-2 underline hover:text-redlog-text focus-visible:outline focus-visible:outline-red-400">{t('filter.clearAll')}</button>}
         </p>
       })()}
-      <div className="flex flex-col gap-1">
+      <div data-testid="activity-list" className="@container flex flex-col">
         {(() => {
           const day = (at: number): JSX.Element | null => (at === 0 || formatDate(page.items[at - 1].firstAt) !== formatDate(page.items[at].firstAt))
-            ? <div data-testid="activity-day" role="separator" className="flex items-center gap-2 px-2 py-1.5 text-xs text-redlog-text-dim select-none">
-              <span className="rounded border border-redlog-border px-2 py-0.5 font-mono">{formatDate(page.items[at].firstAt)}{formatDate(page.items[at].firstAt) === formatDate(Date.now()) && <span className="font-sans text-redlog-text-dim"> ({t('activity.today')})</span>}</span><span className="h-px flex-1 bg-redlog-border-subtle" />
+            ? <div data-testid="activity-day" role="separator" className="mt-2 flex h-7 items-center gap-3 px-3 font-mono text-xs text-redlog-text-dim select-none">
+              <span className="h-px w-4 bg-redlog-border-subtle" /><span>{formatDate(page.items[at].firstAt) === formatDate(Date.now()) && `${t('activity.today')} `}{formatDate(page.items[at].firstAt)}</span><span className="h-px flex-1 bg-redlog-border-subtle" />
             </div>
             : null
           const row = (item: ActivitySummary, at: number, withDay: boolean): JSX.Element => <div key={item.id} className="min-w-0">
           {withDay && day(at)}
-          <div className={`rounded-lg transition-colors ${expanded === item.id ? 'bg-redlog-elevated' : 'bg-redlog-surface hover:bg-redlog-elevated'}`}>
-          <button type="button" data-testid="activity-row" aria-expanded={expanded === item.id} className={`${ROW_GRID} ${ROW_BOX} w-full text-left rounded-lg focus-visible:outline focus-visible:outline-red-400`}
+          <div className={`border-b border-redlog-border-subtle transition-colors ${expanded === item.id ? 'bg-redlog-elevated' : 'hover:bg-redlog-elevated'}`}>
+          <button type="button" data-testid="activity-row" aria-expanded={expanded === item.id} className={`${ROW_GRID} ${ROW_BOX} w-full text-left focus-visible:outline focus-visible:outline-red-400`}
             onClick={() => setExpanded(expanded === item.id ? null : item.id)}>
             <time className="font-mono text-xs text-redlog-text-dim">{formatTime(item.firstAt, { seconds: true })}</time>
             {(() => {
               const r = activityResultLabel(item, t)
-              const kind = t(item.kind === 'tool' ? `activity.tool.${item.toolAction}` : `activity.kind.${item.kind}`)
+              const source = sourceName(item, t)
+              const kind = `${source} · ${t(item.kind === 'tool' ? `activity.tool.${item.toolAction}` : `activity.kind.${item.kind}`)}`
+              const target = item.anchor.targetId
               return <>
-                {/* Stitch 04: the source as a badge, tinted when the command failed;
-                    the kind of activity rides its tooltip. */}
-                <span className="flex min-w-0"><span data-testid="activity-source-badge" title={`${sourceName(item, t)} · ${kind}`}
-                  className={`inline-block max-w-full truncate rounded px-1.5 py-0.5 text-xs ${r?.tone === 'fail' ? 'bg-redlog-danger/10 text-red-300' : 'bg-redlog-elevated text-redlog-text-dim'}`}>{sourceName(item, t)}</span></span>
-                <span className="flex min-w-0 items-center gap-2 pr-2">
+                <span data-testid="activity-kind" role="img" aria-label={kind} title={kind} className="text-center font-mono text-xs text-redlog-text-faint">{KIND_GLYPH[item.kind] ?? '·'}</span>
+                <span data-testid="activity-content" className="flex min-w-0 items-center gap-2">
                   <span className="min-w-0 truncate font-mono text-sm text-redlog-text" title={eventTitle(item.anchor, t)}>{eventTitle(item.anchor, t)}</span>
-                  {r && <span data-testid="activity-result" className={`shrink-0 text-xs font-medium ${r.tone === 'fail' ? 'text-red-300' : r.tone === 'ok' ? 'text-emerald-300' : 'text-amber-300'}`}>{r.text}</span>}
                   {filtering && <span className="shrink-0 text-xs text-redlog-text-dim">{t('activity.sources', { matches: item.matchedCount, context: item.contextCount })}</span>}
                 </span>
+                <span data-testid="activity-target" title={target ?? undefined} className="hidden @min-[720px]:block min-w-0 truncate font-mono text-xs text-redlog-text-dim">{target ?? ''}</span>
+                {/* A failure carries a word as well as its colour; success is the
+                    code alone; a state not known shows nothing (lib/commandStatus). */}
+                <span data-testid="activity-result" title={r?.title} className={`overflow-hidden text-ellipsis whitespace-nowrap text-right font-mono text-xs ${r?.tone === 'fail' ? 'font-medium text-red-300' : r?.tone === 'neutral' ? 'text-amber-300' : 'text-redlog-text-dim'}`}>
+                  {r && r.title && r.title !== r.text ? <><span aria-hidden="true">{r.text}</span><span className="sr-only">{r.title}</span></> : r?.text ?? ''}
+                </span>
+                <span data-testid="activity-row-source" title={source} className="min-w-0 truncate text-right text-xs text-redlog-text-faint">{source}</span>
               </>
             })()}
-            <span aria-hidden="true" className={`text-right text-redlog-text-dim transition-transform ${expanded === item.id ? 'rotate-90' : ''}`}>›</span>
           </button>
           {expanded === item.id && <div data-testid="activity-summary" className="px-2 pb-3 space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-2">
                 <Button level="primary" size="compact" data-testid="activity-read" onClick={() => setReaderId(item.id)}>{t('activity.reader.open')} ↗</Button>
                 {onOpen && <Button size="compact" data-testid="activity-locate" onClick={() => onOpen(item.anchor.id, item.anchor.timestamp)}>{t('activity.reader.locate')}</Button>}
-                <select aria-label={t('export.preview.subset')} value={exportKind==='session' && hasSession ? 'session' : 'activity'} onChange={e=>setExportKind(e.target.value as 'activity'|'session')} className="bg-redlog-elevated border border-redlog-border rounded px-2 py-1 text-xs"><option value="activity">{t('activity.export.activity')}</option><option value="session" disabled={!hasSession}>{t('activity.export.session')}</option></select>
               </div>
               {/* Hit counts are on the row while a query is active, and the
                   session and PID are under 事件資訊 in the Reader. With no
@@ -222,20 +216,23 @@ function ActivityList({ request, onOpen, onExportSelection, onClearQuery, active
             return <div key={`fold:${seg.key}`} className="min-w-0">
               {day(seg.at)}
               <button type="button" data-testid="activity-system-fold" aria-expanded={open} onClick={toggle}
-                className={`${ROW_GRID} ${ROW_BOX} w-full text-left rounded-lg bg-redlog-surface/60 hover:bg-redlog-elevated focus-visible:outline focus-visible:outline-red-400`}>
+                className={`${ROW_GRID} ${ROW_BOX} w-full text-left border-b border-redlog-border-subtle hover:bg-redlog-elevated focus-visible:outline focus-visible:outline-red-400`}>
                 <time className="font-mono text-xs text-redlog-text-faint">{formatTime(seg.items[0].firstAt, { seconds: true })}</time>
-                <span className="flex min-w-0"><span className="inline-block rounded px-1.5 py-0.5 text-xs bg-redlog-elevated text-redlog-text-faint">{t('timeline.system')}</span></span>
-                <span className="min-w-0 pr-2 text-sm text-redlog-text-dim">{t('activity.systemFold', { count: seg.items.length })}</span>
-                <span aria-hidden="true" className={`text-right text-redlog-text-dim transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
+                <span aria-hidden="true" className="text-center font-mono text-xs text-redlog-text-faint">{KIND_GLYPH.event}</span>
+                <span className="col-[3/-1] min-w-0 text-sm text-redlog-text-dim">{t('activity.systemFold', { count: seg.items.length })} <span aria-hidden="true" className={`inline-block transition-transform ${open ? 'rotate-90' : ''}`}>›</span></span>
               </button>
-              {open && <div className="mt-1 flex flex-col gap-1 pl-3 border-l border-redlog-border-subtle">
+              {open && <div className="flex flex-col pl-3 border-l border-redlog-border-subtle">
                 {seg.items.map((it, k) => row(it, seg.at + k, false))}
               </div>}
             </div>
           })
         })()}
       </div>
-      {page.hasMore && <Button disabled={busy} onClick={() => void more()}>{t('search.loadMore')}</Button>}
+      {/* A paged list must not look complete: say how much of it is here. */}
+      {page.hasMore && <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-redlog-text-faint">
+        <span data-testid="activity-loaded" className="font-mono">{t('activity.loaded', { shown: page.items.length, total: page.totalGroups })}</span>
+        <Button size="compact" disabled={busy} onClick={() => void more()}>{t('search.loadMore')}</Button>
+      </div>}
       {readerIndex >= 0 && <ActivityReader items={page.items} index={readerIndex} request={request} snapshot={page.snapshot} active={active} filtering={filtering}
         hasMore={page.hasMore} loading={busy}
         onStep={step} onClose={() => setReaderId(null)}
