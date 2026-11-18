@@ -538,8 +538,8 @@ describe('renderer views render without throwing', () => {
   // the capture wizard — still lands on capture sources rather than nowhere.
   it('the capture-sources deep link still resolves after the restructure', async () => {
     renderView(<Settings request={{ page: 'captureControl' }} />)
-    // The group's heading and the jump link to it (#557) carry the same title.
-    expect((await screen.findAllByText('Pack: Host monitors')).length).toBe(2)
+    // The group's heading, once: the jump bar that repeated it (#557) is gone.
+    expect((await screen.findAllByText('Pack: Host monitors')).length).toBe(1)
   })
 
   it('an issue that names a Settings page opens it', async () => {
