@@ -374,7 +374,7 @@ export default function App(): JSX.Element {
             and this one closes a project. */}
         <ControlBoundary name={t('app.closeProject')}>
           <button
-            className={`${TITLEBAR_CONTROL} min-w-0 font-mono bg-redlog-elevated/50 border-redlog-border text-redlog-text-dim hover:bg-redlog-elevated hover:text-redlog-text focus-visible:ring-redlog-text-dim/40 ${narrow ? `flex-1 ${isMac ? '' : 'mr-36'}` : 'ml-2'}`}
+            className={`${TITLEBAR_CONTROL} min-w-0 font-mono bg-redlog-elevated/50 border-redlog-border text-redlog-text-dim hover:bg-redlog-elevated hover:text-redlog-text focus-visible:ring-redlog-text-dim/40 ${narrow ? 'flex-1 mr-caption' : 'ml-2'}`}
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             data-testid="titlebar-leave-project"
             onClick={async () => {
@@ -402,7 +402,7 @@ export default function App(): JSX.Element {
             (below), so until now a throw here unmounted the app root and left
             a black window -- with the shortcuts still working and nothing on
             screen to say what had happened. */}
-        <div className={`flex gap-2 ${narrow ? 'w-full flex-wrap justify-end' : `ml-auto shrink-0 ${isMac ? '' : 'pr-36'}`}`} style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        <div className={`flex gap-2 ${narrow ? 'w-full flex-wrap justify-end pr-caption' : 'ml-auto shrink-0 pr-caption'}`} style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           <ControlBoundary name={t('control.titlebar')}>
             {/* Each of the two stateful controls gets its own barrier, so one
                 failing leaves the other four working. These are the two that

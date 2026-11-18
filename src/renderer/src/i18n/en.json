@@ -405,6 +405,8 @@
   "settings.loading": "Loading...",
   "settings.engagementIdHint": "Generated when the project was created, stamped on every event, not editable. Include it in a bug report.",
   "settings.engagementNameHint": "Display only. Changing this renames the project — the title bar and the project picker follow.",
+  "settings.projectRenameFailed": "Could not rename the project; the new name is not saved.",
+  "settings.projectLoadFailed": "Could not read the open project, so its name cannot be changed yet.",
   "settings.operatorIdHint": "Stamped on every event as who did it. Events already recorded keep the old ID.",
   "settings.operatorNameHint": "Display only — the timeline and the bundle signature. It does not affect attribution.",
   "settings.engagement": "Engagement",
