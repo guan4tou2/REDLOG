@@ -31,7 +31,7 @@ import { TimelineEventInspector } from './timeline/TimelineEventInspector'
 import { TimelineDetailBar } from './timeline/TimelineDetailBar'
 import { KEY_OWNING_CONTROLS, resolveTimelineKey } from '../lib/timelineKeys'
 import { Rows3 } from 'lucide-react'
-import { formatTime } from '../lib/time'
+import { formatDateTime, formatTime } from '../lib/time'
 import { usePersistentState } from '../lib/usePersistentState'
 import { parseTimelineMode, type TimelineMode } from '../lib/timelineMode'
 import { pairedToolHalf } from '../lib/toolPairing'
@@ -232,12 +232,13 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
   // span once nothing older is left to load.
   const generationRef = useRef(0)
   const { total, projectBounds, requestTotal, admitCount } = useTimelineSummary(eventFilterRef, generationRef)
-  const projectSpanMs = useMemo(() => {
+  const projectEnds = useMemo(() => {
     if (!projectBounds) return null
     const first = loadedBounds ? Math.min(projectBounds.first, loadedBounds.lo) : projectBounds.first
     const last = loadedBounds ? Math.max(projectBounds.last, loadedBounds.hi) : projectBounds.last
-    return last - first
+    return { first, last }
   }, [projectBounds, loadedBounds])
+  const projectSpanMs = projectEnds ? projectEnds.last - projectEnds.first : null
   // "N of M": M counted over the same predicates as the pages. Pending until
   // it arrives, failed (with retry) rather than guessed.
   const [liveError, setLiveError] = useState<{ ids: RedLogEvent[] } | null>(null)
@@ -2083,24 +2084,26 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
           one irreplaceable job is showing gaps, and it was drawing a gap that
           was really an unread page: the operator could not tell "nothing
           happened here" from "not fetched yet", on the one surface that
-          exists to answer exactly that. It now says which it is: the ⋮ at the
-          strip's left edge and the strip's own tooltip, beside the toolbar's
-          "N of M" line. The caption row that used to sit above the strip
-          repeated the ruler's span and was removed (2026-11-14). */}
+          exists to answer exactly that. It now says which it is: a labelled
+          未載入 segment before the strip (dashed, in the warning colour; its
+          width is not to scale, because how much is unread is not known
+          here), and the project's first and last times under both ends. The
+          caption row that used to sit above the strip repeated the ruler's
+          span and was removed (2026-11-14). */}
       <div className="shrink-0 border-b border-redlog-border/80 bg-redlog-bg/40 px-1 pt-0.5">
+        <div className="flex gap-1">
+        {hasMore && (
+          <span
+            data-testid="minimap-unloaded"
+            className="h-8 shrink-0 flex items-center px-1.5 rounded-sm border border-dashed border-redlog-warn/60 text-xs text-redlog-warn whitespace-nowrap"
+          >{t('timeline.minimap.unloaded')}</span>
+        )}
         <div
           data-testid="timeline-minimap"
-          className="relative h-8 cursor-crosshair select-none overflow-hidden"
+          className="relative flex-1 min-w-0 h-8 cursor-crosshair select-none overflow-hidden"
           onMouseDown={onMinimapDown}
-          title={hasMore ? t('timeline.minimapPartialHint') : t('timeline.minimapHint')}
+          title={t('timeline.minimapHint')}
         >
-          {hasMore && (
-            <span
-              data-testid="minimap-partial"
-              aria-hidden="true"
-              className="absolute left-0.5 top-0 z-10 text-xs leading-4 text-redlog-warn pointer-events-none"
-            >&#8942;</span>
-          )}
           <svg
             className="absolute inset-x-0 bottom-0 h-7 w-full pointer-events-none"
             viewBox="0 0 800 28"
@@ -2145,6 +2148,8 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
             className="absolute inset-y-0 flex items-center justify-between rounded-sm border border-redlog-cyan/60 bg-redlog-elevated/50 cursor-move"
             style={{ left: `${view.left}%`, width: `${Math.max(1, view.width)}%` }}
             onMouseDown={(e) => onWindowDown('move', e)}
+            role="group"
+            aria-label={t('timeline.minimap.window')}
             title={t('timeline.minimap.windowHint')}
           >
             {/* The grips draw 8px wide; the ::after takes the grab past 27
@@ -2157,11 +2162,6 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
               className={`relative h-full w-2 shrink-0 flex items-center justify-center cursor-ew-resize after:absolute after:inset-y-0 ${view.width >= 25 ? 'after:-left-[10px] after:-right-[19px]' : 'after:right-0 after:-left-[19px]'}`}
               onMouseDown={(e) => onWindowDown('start', e)}
             ><span className="w-1 h-4 rounded-full bg-redlog-cyan" /></span>
-            {view.width >= 12 && (
-              <span className="px-1 rounded-sm bg-redlog-bg/80 text-xs text-redlog-text font-mono pointer-events-none whitespace-nowrap overflow-hidden">
-                {t('timeline.minimap.window')}
-              </span>
-            )}
             <span
               data-testid="minimap-window-end"
               className={`relative h-full w-2 shrink-0 flex items-center justify-center cursor-ew-resize after:absolute after:inset-y-0 ${view.width >= 25 ? 'after:-left-[19px] after:-right-[10px]' : 'after:left-0 after:-right-[19px]'}`}
@@ -2182,6 +2182,13 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
             />
           )}
         </div>
+        </div>
+        {projectEnds && (
+          <div data-testid="minimap-ends" className="flex justify-between gap-2 px-0.5 text-xs font-mono tabular-nums text-redlog-text-faint">
+            <span>{formatDateTime(projectEnds.first, { seconds: false })}</span>
+            <span>{formatDateTime(projectEnds.last, { seconds: false })}</span>
+          </div>
+        )}
       </div>
 
       {/* Timeline + event list split */}

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { FilterProvider } from '../src/renderer/src/lib/FilterContext'
 import { installTimelineBridge, makeEvent, page, type TimelineBridge } from './helpers/timeline-bridge'
+import { formatDateTime } from '../src/renderer/src/lib/time'
 
 const AT = Date.UTC(2026, 10, 8, 10, 0, 0)
 const MIN = 60_000
@@ -44,5 +45,37 @@ describe('the whole-session span', () => {
     await mount()
     await waitFor(() => expect(b.span).toHaveBeenCalled())
     await waitFor(() => expect(screen.getByTestId('timeline-range-all').textContent).toBe('Whole session'))
+  })
+})
+
+// The overview says how long the whole thing is and what is not loaded: its
+// ends are the project's first and last rows, and the unread part is a
+// labelled segment, not a ⋮ at the edge or an empty stretch of the strip.
+describe('the overview strip', () => {
+  it('labels its ends with the project span and names the unloaded part', async () => {
+    const first = AT - (25 * 60 + 7) * MIN
+    b.span.mockResolvedValue({ first, last: AT })
+    await mount()
+    await waitFor(() => expect(screen.getByTestId('minimap-ends').textContent).toContain(formatDateTime(first, { seconds: false })))
+    expect(screen.getByTestId('minimap-ends').textContent).toContain(formatDateTime(AT, { seconds: false }))
+    expect(screen.getByTestId('minimap-unloaded').textContent).toBe('Not loaded')
+    expect(screen.queryByTestId('minimap-partial')).toBeNull()
+  })
+
+  it('names the focus window for assistive technology without printing it across the strip', async () => {
+    b.span.mockResolvedValue({ first: AT - 10 * MIN, last: AT })
+    await mount()
+    const win = await screen.findByTestId('minimap-window')
+    expect(win.getAttribute('aria-label')).toBe('Focus window')
+    expect(screen.getByTestId('timeline-minimap').textContent).not.toContain('Focus window')
+  })
+
+  it('has no unloaded segment once nothing older is left', async () => {
+    b.span.mockResolvedValue({ first: AT - 10 * MIN, last: AT })
+    b.queryPage.mockResolvedValue(page([makeEvent('e2', AT), makeEvent('e1', AT - 10 * MIN)]))
+    const { default: TimelinePanel } = await import('../src/renderer/src/components/Timeline')
+    render(<I18nProvider><FilterProvider><TimelinePanel /></FilterProvider></I18nProvider>)
+    await screen.findByTestId('minimap-ends')
+    expect(screen.queryByTestId('minimap-unloaded')).toBeNull()
   })
 })
