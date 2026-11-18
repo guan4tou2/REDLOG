@@ -6,7 +6,7 @@
 // Everything else is behind a disclosure on that line — but a collapsed line
 // never says less than its state deserves: an abnormal state is on the line,
 // in words and with a shape, and the line says when there is more.
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { EvidenceHeader } from '../src/renderer/src/components/EvidenceHeader'
 import { I18nProvider } from '../src/renderer/src/i18n'
@@ -115,5 +115,37 @@ describe('the collapsed line', () => {
     const time = within(line()).getByText(/^Verified /)
     expect(time.className).toContain('truncate')
     expect(time.getAttribute('title')).toBe(time.textContent)
+  })
+})
+
+// Sustained traffic: a trailing debounce re-armed on every batch never fired
+// while batches kept coming, so "✓ intact · walked N" stood unqualified as
+// the chain grew. The re-read is paced (at most one a second), not starved.
+describe('under sustained traffic', () => {
+  it('re-reads the chain length during a stream of batches, not only after it', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: false })
+    try {
+      let len = 3
+      const listeners = new Set<(e: unknown[]) => void>()
+      install({ length: async () => len })
+      ;(window.redlog.events as unknown as { onNewBatch: unknown }).onNewBatch = (cb: (e: unknown[]) => void) => { listeners.add(cb); return () => listeners.delete(cb) }
+      setLastVerifyResult(intact, { projectId: 'p1', verifiedAt: NOW })
+      mount()
+      await act(async () => { await vi.advanceTimersByTimeAsync(50) })
+      expect(line().textContent).not.toContain('added since')
+      const seen: string[] = []
+      // A batch every 300 ms for 5 s; each adds ten rows.
+      for (let i = 0; i < 16; i++) {
+        len += 10
+        act(() => { for (const cb of listeners) cb([{ id: `e${i}`, agentType: 'command' }]) })
+        await act(async () => { await vi.advanceTimersByTimeAsync(300) })
+        seen.push(line().textContent ?? '')
+      }
+      // Before the stream ended (it is still arriving at this point), the line
+      // had already said that entries arrived after the walk.
+      expect(seen.slice(0, 10).some((s) => /\d+ added since, not verified/.test(s))).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

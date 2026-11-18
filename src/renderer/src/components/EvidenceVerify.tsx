@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useState } from 'react'
 import { Button } from './Button'
 import { IconButton } from './IconButton'
 import { ChevronDown, ChevronUp } from 'lucide-react'
@@ -6,6 +6,7 @@ import { toast } from './Toast'
 import { useI18n } from '../i18n'
 import { formatDateTime, formatWhen, useDisplayZone } from '../lib/time'
 import { useReadState } from '../lib/readState'
+import { createThrottledRead } from '../lib/throttledRead'
 import { ANCHOR_DEAD_HOURS } from '../lib/integrityPulse'
 import { anchorNowWithFeedback, upgradeAnchorsWithFeedback, verifyChainWithFeedback, verifyVerdict, type FullVerifyResult, type VerifyVerdict } from '../lib/chainActions'
 import { getLastVerification, VERIFY_UPDATED_EVENT, type VerifyRecord } from '../lib/verifyResultCache'
@@ -221,15 +222,14 @@ export function EvidenceVerify({ heading }: { heading: JSX.Element }): JSX.Eleme
     return () => window.removeEventListener(VERIFY_UPDATED_EVENT, read)
   }, [projectId])
 
-  // One re-read per burst of new events, so "added since" and "not anchored"
-  // follow the chain while the page is open.
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // "Added since" and "not anchored" follow the chain while the page is open:
+  // at most one re-read a second under live batches, and a trailing one after
+  // the last. A debounce re-armed per batch never fired under steady traffic,
+  // which left "✓ intact" unqualified while rows kept chaining.
   useEffect(() => {
-    const unsub = window.redlog.events.onNewBatch(() => {
-      if (timer.current) clearTimeout(timer.current)
-      timer.current = setTimeout(() => { rereadLength(); rereadAnchors() }, 1000)
-    })
-    return () => { unsub(); if (timer.current) clearTimeout(timer.current) }
+    const live = createThrottledRead({ read: () => { rereadLength(); rereadAnchors() }, minIntervalMs: 1000 })
+    const unsub = window.redlog.events.onNewBatch(() => live.request())
+    return () => { unsub(); live.dispose() }
   }, [rereadLength, rereadAnchors])
 
   const handleVerify = useCallback(async (): Promise<void> => {
