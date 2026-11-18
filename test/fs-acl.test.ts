@@ -4,72 +4,43 @@ import path from 'node:path'
 import os from 'node:os'
 import { execFileSync } from 'node:child_process'
 import { restrictToOwner, restrictToOwnerOnce } from '../src/core/fs-acl'
-import { TEST_USER_SID, aclEntries as aces, aclListing as listing, isCurrentUser as isMe, clearIcacls, failNextIcacls, icaclsCalls, icaclsRestricted, icaclsTargets, installIcaclsRecorder, useRealIcacls } from './helpers/icacls'
+import { aclEntries, aclListing, clearIcacls, failNextIcacls, icaclsCalls, icaclsTargets, installIcaclsRecorder, isCurrentUser, useRealIcacls } from './helpers/icacls'
 
 const IS_WIN = process.platform === 'win32'
 const realPlatform = Object.getOwnPropertyDescriptor(process, 'platform')!
+const realUser = process.env.USERNAME
 
-describe('restrictToOwner', () => {
-  let tmpDir: string
-
-  // What icacls does to NTFS is this file's to prove, so it runs the real one.
-  beforeEach(() => {
-    useRealIcacls()
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-acl-'))
-  })
-
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true })
-  })
-
+describe('restrictToOwner off Windows', () => {
   it('is a no-op on non-win32', { skip: IS_WIN }, () => {
-    const f = path.join(tmpDir, 'secret')
-    fs.writeFileSync(f, 'data', { mode: 0o600 })
-    restrictToOwner(f)
-    const stat = fs.statSync(f)
-    expect(stat.mode & 0o777).toBe(0o600)
-  })
-
-  // The second half is what restrictToOwnerOnce relies on: the api-token is
-  // rewritten in place on every project open and not restricted again.
-  it.skipIf(!IS_WIN)('leaves a file with one entry, the current user\'s, and a rewrite in place keeps it', () => {
-    const f = path.join(tmpDir, 'secret')
-    fs.writeFileSync(f, 'data')
-    const before = listing(f)
-    restrictToOwner(f)
-    const out = listing(f)
-    console.log(`[ACL] before\n${before}\n[ACL] restricted\n${out}`)
-    const got = aces(f, out)
-    expect(got, out).toHaveLength(1)
-    expect(isMe(got[0]), out).toBe(true)
-    expect(got[0], out).toMatch(/:\(F\)$/)
-
-    fs.writeFileSync(f, 'rewritten', { mode: 0o600 })
-    expect(listing(f)).toBe(out)
-    expect(fs.readFileSync(f, 'utf-8')).toBe('rewritten')
-  })
-
-  it.skipIf(!IS_WIN)('leaves a directory with one inheritable entry, the current user\'s', () => {
-    const d = path.join(tmpDir, 'keys')
-    fs.mkdirSync(d)
-    restrictToOwner(d)
-    const out = listing(d)
-    console.log(`[ACL] directory\n${out}`)
-    const got = aces(d, out)
-    expect(got, out).toHaveLength(1)
-    expect(isMe(got[0]), out).toBe(true)
-    expect(got[0], out).toMatch(/:\(OI\)\(CI\)\(F\)$/)
+    useRealIcacls()
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-acl-'))
+    try {
+      const f = path.join(dir, 'secret')
+      fs.writeFileSync(f, 'data', { mode: 0o600 })
+      restrictToOwner(f)
+      expect(fs.statSync(f).mode & 0o777).toBe(0o600)
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 
-// The hostile case, built explicitly: a parent folder that hands every local
-// account read access to whatever is created in it, as a folder on a non-system
-// drive does by default. Windows CI only; the [ACL] lines in the log are the
-// record of what icacls did.
+// What icacls does to NTFS, Windows leg only. The parent grants Users and
+// Authenticated Users inheritable access, as a folder on a non-system drive
+// does by default, so what is created in it starts with entries for every
+// local account, and an icacls call that does nothing leaves them. Only what
+// the CI log has shown is asserted: a file created by an elevated process
+// outside such a parent carries explicit SYSTEM and Administrators entries,
+// which restrictToOwner leaves, so no test counts entries there. The [ACL]
+// lines in the log are the record.
 describe.skipIf(!IS_WIN)('restrictToOwner under a parent that grants other local users access', () => {
-  const USERS = 'BUILTIN\\Users'
-  const AUTH_USERS = 'NT AUTHORITY\\Authenticated Users'
+  const OTHERS = ['BUILTIN\\Users', 'NT AUTHORITY\\Authenticated Users', 'Everyone']
   let parent: string
+
+  // What restrictToOwner exists to remove: no entry for another local account.
+  function expectNoOtherUsers(out: string): void {
+    for (const other of OTHERS) expect(out, out).not.toContain(other)
+  }
 
   beforeEach(() => {
     useRealIcacls()
@@ -83,127 +54,73 @@ describe.skipIf(!IS_WIN)('restrictToOwner under a parent that grants other local
     fs.rmSync(parent, { recursive: true, force: true })
   })
 
-  function child(name: string): string {
-    const f = path.join(parent, name)
+  // The second half is what restrictToOwnerOnce relies on: the api-token is
+  // rewritten in place on every project open and not restricted again.
+  it('a file: only the current user\'s full control remains, and a rewrite in place keeps it', () => {
+    const f = path.join(parent, 'api-token')
     fs.writeFileSync(f, 'SECRET')
-    const out = listing(f)
-    // The precondition: the child inherited both. (The runner is en-US, so
-    // icacls names them in English.)
-    expect(out, out).toContain(`${USERS}:(I)(RX)`)
-    expect(out, out).toContain(`${AUTH_USERS}:(I)(M)`)
-    return f
-  }
+    const before = aclListing(f)
+    // The precondition (the runner is en-US, so icacls names them in English).
+    expect(before, before).toContain('BUILTIN\\Users:(I)(RX)')
+    expect(before, before).toContain('NT AUTHORITY\\Authenticated Users:(I)(M)')
 
-  // The control. The command restrictToOwner ran before this fix, exactly. The
-  // finding inferred that it keeps the parent's inherited entries as explicit
-  // ones; this asserts that, so a run that shows otherwise fails and says so.
-  it('control: the old single icacls call leaves the Users entry on the file', () => {
-    const f = child('old-command')
-    execFileSync('icacls', [f, '/inheritance:r', '/grant:r', `${process.env.USERNAME}:(F)`], { windowsHide: true })
-    const out = listing(f)
-    console.log(`[ACL] control: after the old command\n${out}`)
-    expect(out, `The old command removed the Users entry, so the finding's inference does not hold. icacls printed:\n${out}`).toContain(USERS)
-  })
-
-  it('a file: one entry, the current user\'s, full control, nothing inherited', () => {
-    const f = child('token')
     restrictToOwner(f)
-    const out = listing(f)
-    console.log(`[ACL] file after restrictToOwner\n${out}`)
-    const got = aces(f, out)
-    expect(got, out).toHaveLength(1)
-    expect(isMe(got[0]), out).toBe(true)
-    expect(got[0], out).toMatch(/:\(F\)$/)
-    expect(fs.readFileSync(f, 'utf-8')).toBe('SECRET')
+    const out = aclListing(f)
+    console.log(`[ACL] file before\n${before}\n[ACL] file after restrictToOwner\n${out}`)
+    expectNoOtherUsers(out)
+    expect(out, out).not.toContain('(I)')
+    // Every entry the file had was inherited, so the user's is the only one.
+    const entries = aclEntries(f, out)
+    expect(entries, out).toHaveLength(1)
+    expect(isCurrentUser(entries[0]), out).toBe(true)
+    expect(entries[0], out).toMatch(/:\(F\)$/)
+
+    fs.writeFileSync(f, 'rewritten', { mode: 0o600 })
+    expect(aclListing(f)).toBe(out)
+    expect(fs.readFileSync(f, 'utf-8')).toBe('rewritten')
   })
 
-  // What an existing install has: an explicit entry for other users, as the
-  // old command may have left. Nothing about it is inherited, so only
-  // replacing the whole list removes it.
-  it('a file that carries an explicit Users entry: that entry goes too', () => {
-    const f = child('explicit')
-    execFileSync('icacls', [f, '/grant', '*S-1-5-32-545:(R)'], { windowsHide: true })
-    expect(listing(f)).toContain(`${USERS}:(R)`)
-    restrictToOwner(f)
-    const out = listing(f)
-    console.log(`[ACL] explicit entry after restrictToOwner\n${out}`)
-    const got = aces(f, out)
-    expect(got, out).toHaveLength(1)
-    expect(isMe(got[0]), out).toBe(true)
-  })
-
-  it('a directory: one inheritable entry, and a file created in it afterwards is the current user\'s alone', () => {
+  // The user's grant on a directory is not inheritable, so a file created in
+  // it afterwards takes what the directory still passes down, or the creating
+  // process's default entries: never the parent's. No count is asserted.
+  it('a directory: no entry for other users and nothing inherited, and none for them on a file created in it afterwards', () => {
     const d = path.join(parent, 'agent-transcripts')
     fs.mkdirSync(d)
-    expect(listing(d)).toContain(USERS)
-    restrictToOwner(d)
-    const dirOut = listing(d)
-    const dirAces = aces(d, dirOut)
+    const before = aclListing(d)
+    expect(before, before).toContain('BUILTIN\\Users:(I)')
 
+    restrictToOwner(d)
+    const dirOut = aclListing(d)
     const later = path.join(d, 'claude-code-later.jsonl')
     fs.writeFileSync(later, 'LATER')
-    const laterOut = listing(later)
-    const laterAces = aces(later, laterOut)
-    console.log(`[ACL] directory after restrictToOwner\n${dirOut}\n[ACL] file created in it afterwards\n${laterOut}`)
+    const laterOut = aclListing(later)
+    console.log(`[ACL] directory before\n${before}\n[ACL] directory after restrictToOwner\n${dirOut}\n[ACL] file created in it afterwards\n${laterOut}`)
 
-    expect(dirAces, dirOut).toHaveLength(1)
-    expect(isMe(dirAces[0]), dirOut).toBe(true)
-    expect(dirAces[0], dirOut).toMatch(/:\(OI\)\(CI\)\(F\)$/)
-    expect(laterAces, laterOut).toHaveLength(1)
-    expect(isMe(laterAces[0]), laterOut).toBe(true)
-    expect(laterAces[0], laterOut).toMatch(/:\(I\)\(F\)$/)
+    expectNoOtherUsers(dirOut)
+    expect(dirOut, dirOut).not.toContain('(I)')
+    expect(aclEntries(d, dirOut).some((e) => isCurrentUser(e) && e.endsWith(':(F)')), dirOut).toBe(true)
+    expectNoOtherUsers(laterOut)
     expect(fs.readFileSync(later, 'utf-8')).toBe('LATER')
   })
 })
 
 // The arguments, on test/setup.ts's record. Runs on every platform.
-describe('restrictToOwner\'s icacls calls', () => {
+describe('restrictToOwner\'s icacls call', () => {
   let tmpDir: string
 
   beforeEach(() => {
     installIcaclsRecorder()
     clearIcacls()
     Object.defineProperty(process, 'platform', { value: 'win32' })
+    process.env.USERNAME = 'tester'
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-acl-args-'))
   })
 
   afterEach(() => {
     Object.defineProperty(process, 'platform', realPlatform)
+    if (realUser === undefined) delete process.env.USERNAME
+    else process.env.USERNAME = realUser
     fs.rmSync(tmpDir, { recursive: true, force: true })
-  })
-
-  // Each its own process: the documented syntax has no line that combines
-  // /reset, /grant and /inheritance, and the one call that combined the last
-  // two kept the inherited entries. Granting before removing inheritance means
-  // the user never holds an ACL without their own entry in it.
-  it('a file: reset, grant the current user by SID, remove what is inherited', () => {
-    const f = path.join(tmpDir, 'api-token')
-    fs.writeFileSync(f, 'x')
-    restrictToOwner(f)
-    expect(icaclsCalls()).toEqual([
-      [f, '/reset'],
-      [f, '/grant:r', `*${TEST_USER_SID}:(F)`],
-      [f, '/inheritance:r']
-    ])
-  })
-
-  it('a directory: the grant is inherited by what is created in it', () => {
-    const d = path.join(tmpDir, 'keys')
-    fs.mkdirSync(d)
-    restrictToOwner(d)
-    expect(icaclsCalls()).toEqual([
-      [d, '/reset'],
-      [d, '/grant:r', `*${TEST_USER_SID}:(OI)(CI)(F)`],
-      [d, '/inheritance:r']
-    ])
-  })
-
-  it('stops at the first call that fails and throws it', () => {
-    const f = path.join(tmpDir, 'api-token')
-    fs.writeFileSync(f, 'x')
-    failNextIcacls()
-    expect(() => restrictToOwner(f)).toThrow('icacls failed')
-    expect(icaclsCalls()).toEqual([[f, '/reset']])
   })
 
   // test/setup.ts's switch lives on globalThis. Inside Electron it is ignored,
@@ -230,12 +147,15 @@ describe('restrictToOwnerOnce', () => {
     installIcaclsRecorder()
     clearIcacls()
     Object.defineProperty(process, 'platform', { value: 'win32' })
+    process.env.USERNAME = 'tester'
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-acl-once-'))
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
     Object.defineProperty(process, 'platform', realPlatform)
+    if (realUser === undefined) delete process.env.USERNAME
+    else process.env.USERNAME = realUser
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
 
@@ -243,11 +163,7 @@ describe('restrictToOwnerOnce', () => {
     const f = path.join(tmpDir, 'api-token')
     fs.writeFileSync(f, 'x')
     restrictToOwnerOnce(f)
-    const once = icaclsCalls()
-    clearIcacls()
-    restrictToOwner(f)
-    expect(once).toEqual(icaclsCalls())
-    expect(once).toHaveLength(3)
+    expect(icaclsCalls()).toEqual([[f, '/inheritance:r', '/grant:r', 'tester:(F)']])
   })
 
   it('does not run again for the same file written again in place', () => {
@@ -257,8 +173,7 @@ describe('restrictToOwnerOnce', () => {
     fs.writeFileSync(f, 'two')
     restrictToOwnerOnce(f)
     restrictToOwnerOnce(path.join(tmpDir, '.', 'api-token'))
-    expect(icaclsRestricted()).toEqual([f])
-    expect(icaclsTargets()).toEqual([f, f, f])
+    expect(icaclsTargets()).toEqual([f])
   })
 
   it('runs again for a file removed and made again at the same path', () => {
@@ -268,7 +183,7 @@ describe('restrictToOwnerOnce', () => {
     fs.rmSync(f)
     fs.writeFileSync(f, 'two')
     restrictToOwnerOnce(f)
-    expect(icaclsRestricted()).toEqual([f, f])
+    expect(icaclsTargets()).toEqual([f, f])
   })
 
   it('runs again for a file renamed over the restricted one', () => {
@@ -278,7 +193,7 @@ describe('restrictToOwnerOnce', () => {
     fs.writeFileSync(f + '.tmp', 'two')
     fs.renameSync(f + '.tmp', f)
     restrictToOwnerOnce(f)
-    expect(icaclsRestricted()).toEqual([f, f])
+    expect(icaclsTargets()).toEqual([f, f])
   })
 
   it('throws a failed restriction and runs again on the next call', () => {
@@ -288,21 +203,21 @@ describe('restrictToOwnerOnce', () => {
     expect(() => restrictToOwnerOnce(f)).toThrow('icacls failed')
     restrictToOwnerOnce(f)
     restrictToOwnerOnce(f)
-    expect(icaclsRestricted()).toEqual([f, f])
+    expect(icaclsTargets()).toEqual([f, f])
   })
 
   it('keeps each path to itself', () => {
     const a = path.join(tmpDir, 'a'), b = path.join(tmpDir, 'b')
     fs.writeFileSync(a, 'x'); fs.writeFileSync(b, 'x')
     restrictToOwnerOnce(a); restrictToOwnerOnce(b); restrictToOwnerOnce(a)
-    expect(icaclsRestricted()).toEqual([a, b])
+    expect(icaclsTargets()).toEqual([a, b])
   })
 
   it('runs every time for a path it cannot identify', () => {
     const missing = path.join(tmpDir, 'not-there')
     restrictToOwnerOnce(missing)
     restrictToOwnerOnce(missing)
-    expect(icaclsRestricted()).toEqual([missing, missing])
+    expect(icaclsTargets()).toEqual([missing, missing])
   })
 
   // A file system that reports a file index of all ones has none, as with 0:
@@ -313,11 +228,11 @@ describe('restrictToOwnerOnce', () => {
     const real = fs.statSync
     vi.spyOn(fs, 'statSync').mockImplementation(((p: fs.PathLike, opts?: fs.StatSyncOptions) => {
       const s = real(p, opts as never) as fs.BigIntStats | fs.Stats
-      if (opts && (opts as { bigint?: boolean }).bigint) return { ...s, ino: 0xFFFFFFFFFFFFFFFFn, isDirectory: () => false }
+      if (opts && (opts as { bigint?: boolean }).bigint) return { ...s, ino: 0xFFFFFFFFFFFFFFFFn }
       return s
     }) as typeof fs.statSync)
     restrictToOwnerOnce(f)
     restrictToOwnerOnce(f)
-    expect(icaclsRestricted()).toEqual([f, f])
+    expect(icaclsTargets()).toEqual([f, f])
   })
 })

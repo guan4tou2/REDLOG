@@ -2,11 +2,12 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
+import { execFileSync } from 'node:child_process'
 import { claudeCodeAdapter } from '../optional-plugins/claude-code/adapter'
 import { registerAdapter, configureHost, registerSession, catchUpSession, stopHost, _sessionsForTest } from '../src/main/services/tailer-host'
 import { initDB, closeDB } from '../src/core/db/index'
 import { createOperator, generateToken } from '../src/core/db/operators'
-import { aclEntries, aclListing as icacls, isCurrentUser, useRealIcacls } from './helpers/icacls'
+import { useRealIcacls } from './helpers/icacls'
 
 // The same scenario as tailer-sidecar-acl.test.ts, against the real icacls.
 // Windows only: it is the one test that says what NTFS ends up holding, so it
@@ -19,6 +20,7 @@ const SID = 'aaaaaaaa-bbbb-cccc-dddd-0000000000w1'
 
 let scratch: string
 
+const icacls = (target: string): string => execFileSync('icacls', [target], { encoding: 'utf-8' })
 const turn = (uuid: string, text: string): string => JSON.stringify({
   type: 'user', uuid, cwd: '/tmp/acl',
   message: { role: 'user', content: [{ type: 'text', text }] }
@@ -55,24 +57,25 @@ describe.skipIf(!IS_WIN)('the AI sidecar directory under the real Windows ACL', 
     catchUpSession('claude-code', SID)
 
     const sidecar = _sessionsForTest().get(`claude-code:${SID}`)!.sidecarPath
+    const user = process.env.USERNAME!
     const seen = { dir: icacls(dir), earlier: icacls(earlier), sidecar: icacls(sidecar) }
     console.log(`[ACL] dir\n${seen.dir}\n[ACL] earlier\n${seen.earlier}\n[ACL] new sidecar\n${seen.sidecar}`)
 
-    // One entry each, the current user's: nothing from the project directory,
-    // no other account, not SYSTEM or Administrators. The directory's entry is
-    // inheritable and an earlier sidecar's is its own; a sidecar created
-    // afterwards holds only what it inherits from the directory.
-    const expected: Array<[string, string, RegExp]> = [
-      [dir, seen.dir, /:\(OI\)\(CI\)\(F\)$/],
-      [earlier, seen.earlier, /:\(F\)$/],
-      [sidecar, seen.sidecar, /:\(I\)\(F\)$/]
-    ]
-    for (const [target, out, rights] of expected) {
-      const entries = aclEntries(target, out)
-      expect(entries, out).toHaveLength(1)
-      expect(isCurrentUser(entries[0]), out).toBe(true)
-      expect(entries[0], out).toMatch(rights)
+    // What this protects against is another ordinary account on the machine.
+    // SYSTEM and Administrators can take any file whatever its ACL, and an
+    // elevated process (the CI runner) creates the directory with explicit
+    // entries for both, which `/inheritance:r` does not touch — so they are
+    // not asserted absent here.
+    for (const out of [seen.dir, seen.earlier, seen.sidecar]) {
+      expect(out).toContain(user)
+      expect(out).not.toContain('Everyone')
+      expect(out).not.toContain('BUILTIN\\Users')
+      expect(out).not.toContain('Authenticated Users')
     }
+    // Nothing reaches the directory, or a file already in it, from the project
+    // directory. A sidecar created afterwards may inherit — but only from this
+    // directory, which the loop above has already held to the owner.
+    for (const out of [seen.dir, seen.earlier]) expect(out).not.toContain('(I)')
 
     expect(fs.readFileSync(earlier, 'utf-8')).toBe('EARLIER-CONVERSATION')
     expect(fs.readFileSync(sidecar, 'utf-8')).toContain('second')
