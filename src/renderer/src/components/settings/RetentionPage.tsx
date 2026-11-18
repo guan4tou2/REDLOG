@@ -1,4 +1,4 @@
-import { FieldGroup, Field, type ConfigState } from './SettingsShared'
+import { FieldGroup, NumberField, type ConfigState } from './SettingsShared'
 import UnattributedSpoolRow from './UnattributedSpoolRow'
 
 // Spec 049: retention is a deletion policy, so it is filed under Scope and
@@ -30,20 +30,24 @@ export default function RetentionPage({
         ['casts', 'settings.rotationCastStore'],
         ['screenshots', 'settings.rotationScreenshots']
       ] as const).map(([store, label]) => (
-        <Field
+        <NumberField
           key={store}
           label={t(label)}
-          value={String(Math.round((config.retention?.[store]?.maxBytes ?? 0) / 1024 / 1024))}
-          onChange={(v) => setConfig({ ...config, retention: { ...config.retention, [store]: { ...config.retention?.[store], maxBytes: Math.max(0, parseInt(v) || 0) * 1024 * 1024 } } })}
-          type="number"
+          value={Math.round((config.retention?.[store]?.maxBytes ?? 0) / 1024 / 1024)}
+          min={0}
+          onCommit={(n) => setConfig({ ...config, retention: { ...config.retention, [store]: { ...config.retention?.[store], maxBytes: n * 1024 * 1024 } } })}
+          invalid={t('settings.numberInvalidMin', { min: 0 })}
+          pending={t('settings.numberPending')}
         />
       ))}
       <p className="text-xs text-redlog-text-faint">{t('settings.retentionLoggedTierHint')}</p>
-      <Field
+      <NumberField
         label={t('settings.retentionLoggedTier')}
-        value={String(config.retention?.loggedTier?.keepDays ?? 0)}
-        onChange={(v) => setConfig({ ...config, retention: { ...config.retention, loggedTier: { ...config.retention?.loggedTier, keepDays: Math.max(0, parseInt(v) || 0) } } })}
-        type="number"
+        value={config.retention?.loggedTier?.keepDays ?? 0}
+        min={0}
+        onCommit={(n) => setConfig({ ...config, retention: { ...config.retention, loggedTier: { ...config.retention?.loggedTier, keepDays: n } } })}
+        invalid={t('settings.numberInvalidMin', { min: 0 })}
+        pending={t('settings.numberPending')}
       />
       <UnattributedSpoolRow t={t} />
     </FieldGroup>

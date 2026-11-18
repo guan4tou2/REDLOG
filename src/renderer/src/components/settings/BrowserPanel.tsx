@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { formatDateTime } from '../../lib/time'
 import { toast } from '../Toast'
-import { DEFAULT_CDP_PORT, DEFAULT_CAPTURE_PORT, DEFAULT_CAPTURE_HOST } from '../../lib/defaults'
-import { FieldGroup, Field, type ConfigState } from './SettingsShared'
+import { DEFAULT_CAPTURE_PORT, DEFAULT_CAPTURE_HOST } from '../../lib/defaults'
+import { FieldGroup, Field, NumberField, type ConfigState } from './SettingsShared'
 import { CheckRow } from './CheckRow'
 import { followCaptureEndpoint, isLoopbackHost } from '../../../../core/managed-proxy-url'
 import { DEFAULT_BROWSER } from '../../../../core/browser-defaults'
@@ -36,8 +36,6 @@ export default function BrowserPanel({
   const [proxyBusy, setProxyBusy] = useState(false)
   const [proxyActionError, setProxyActionError] = useState<string | null>(null)
   const [staleTerminals, setStaleTerminals] = useState(0)
-  const [portDraft, setPortDraft] = useState(String(httpCapture.port))
-  const [portError, setPortError] = useState<string | null>(null)
 
   useRevalidateOnFocus(() => { if (!proxyBusy) proxyRead.retry() })
   // Opening Settings may catch an auto-start already in progress. Recheck
@@ -49,11 +47,6 @@ export default function BrowserPanel({
   }, [proxyKnown, proxyBusy, proxyStatus.state, proxyRead.retry])
 
   useEffect(() => {
-    setPortDraft(String(httpCapture.port))
-    setPortError(null)
-  }, [httpCapture.port, config.engagement?.id])
-
-  useEffect(() => {
     window.redlog.browser.detect().then(setDetected).catch(() => setDetected(null))
   }, [])
 
@@ -61,15 +54,7 @@ export default function BrowserPanel({
     setConfig({ ...config, browser: { ...b, ...delta } })
   }
 
-  const commitPort = (): void => {
-    const port = Number(portDraft)
-    if (!/^\d+$/.test(portDraft) || !Number.isInteger(port) || port < 1024 || port > 65535) {
-      setPortError(t('settings.httpCapturePortInvalid'))
-      return
-    }
-    setPortError(null)
-    setPortDraft(String(port))
-    if (port === httpCapture.port) return
+  const commitPort = (port: number): void => {
     setConfig({
       ...config,
       httpCapture: { ...httpCapture, port },
@@ -110,16 +95,16 @@ export default function BrowserPanel({
         {detected ? t('settings.browserDetected', { path: detected }) : t('settings.browserNotFound')}
       </p>
       <Field label={t('settings.browserProxy')} value={b.proxy} onChange={(v) => patch({ proxy: v })} />
-      <Field
+      <NumberField
         label={t('settings.httpCapturePort')}
-        value={portDraft}
-        onChange={(value) => { setPortDraft(value); setPortError(null) }}
-        onBlur={commitPort}
-        onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur() } }}
-        error={portError}
-        type="number"
+        value={httpCapture.port}
+        min={1024}
+        max={65535}
+        onCommit={commitPort}
+        invalid={t('settings.httpCapturePortInvalid')}
+        pending={t('settings.numberPending')}
+        resetKey={config.engagement?.id}
       />
-      {portDraft !== String(httpCapture.port) && !portError && <p role="status" className="text-xs text-amber-400">{t('settings.httpCapturePortPending')}</p>}
       <p className="text-xs text-redlog-text-faint">{t('settings.httpCapturePortHint')}</p>
       <Field
         label={t('settings.httpCaptureHost')}
@@ -224,11 +209,14 @@ export default function BrowserPanel({
           )}
         </>
       )}
-      <Field
+      <NumberField
         label={t('settings.cdpPort')}
-        value={String(b.cdpPort)}
-        onChange={(v) => patch({ cdpPort: parseInt(v) || DEFAULT_CDP_PORT })}
-        type="number"
+        value={b.cdpPort}
+        min={1}
+        max={65535}
+        onCommit={(n) => patch({ cdpPort: n })}
+        invalid={t('settings.numberInvalidRange', { min: 1, max: 65535 })}
+        pending={t('settings.numberPending')}
       />
       <Field label={t('settings.browserStartUrl')} value={b.startUrl} onChange={(v) => patch({ startUrl: v })} />
       <CheckRow
