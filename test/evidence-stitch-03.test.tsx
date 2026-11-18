@@ -88,6 +88,15 @@ describe('screenshots', () => {
     expect(message).not.toContain('system.screenshot_deleted')
   })
 
+  it('closes the preview before the delete confirmation opens', async () => {
+    install()
+    let previewOpenAtConfirm: boolean | null = null
+    confirmSpy.mockImplementationOnce(async () => { previewOpenAtConfirm = document.querySelector('[data-testid="screenshot-lightbox"]') !== null; return false })
+    fireEvent.click((await screen.findByText('s1.png')).closest('[role="button"]') as HTMLElement)
+    fireEvent.click(await screen.findByTestId('screenshot-delete'))
+    await waitFor(() => expect(previewOpenAtConfirm).toBe(false))
+  })
+
   // The preview closes so the confirmation is the only dialog; cancelling it
   // returns to the preview it came from, not to the list.
   it('returns to the preview when the delete is cancelled', async () => {

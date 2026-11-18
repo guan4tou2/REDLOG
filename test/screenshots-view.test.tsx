@@ -291,3 +291,25 @@ describe('round 2', () => {
     expect(rowOf(/s3\.png/).getAttribute('aria-label')).toMatch(/^Screenshot at [^·]*$/)
   })
 })
+
+describe('keyboard and focus on a row', () => {
+  it.each(['Enter', ' '])('opens the preview on %j', async (key) => {
+    install()
+    mount()
+    await screen.findByTestId('screenshot-list')
+    fireEvent.keyDown(rowOf(/s2\.png/), { key })
+    expect(screen.getByTestId('screenshot-lightbox')).toBeTruthy()
+  })
+
+  it('returns focus to the row when the preview closes', async () => {
+    install()
+    mount()
+    await screen.findByTestId('screenshot-list')
+    const row = rowOf(/s2\.png/)
+    row.focus()
+    fireEvent.keyDown(row, { key: 'Enter' })
+    const preview = screen.getByTestId('screenshot-lightbox')
+    fireEvent.click(within(preview).getByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(document.activeElement).toBe(row))
+  })
+})

@@ -1,5 +1,6 @@
 import { SCROLL_GUTTER } from '../lib/pageLayout'
 import { useState, useEffect, useCallback, useMemo, useRef, type HTMLAttributes } from 'react'
+import { flushSync } from 'react-dom'
 import { Image, LayoutList, LayoutGrid, Search } from 'lucide-react'
 import { EmptyState } from './EmptyState'
 import { LoadingSpinner } from './Feedback'
@@ -275,7 +276,8 @@ export function ScreenshotsView(): JSX.Element {
     open: (id) => setExpanded(id),
     // The preview closes first, so the confirmation is the only dialog open;
     // cancelling returns to the preview it came from.
-    remove: (s) => { setExpanded(null); void remove(s).then((confirmed) => { if (!confirmed) setExpanded(s.id) }) }
+    // flushSync: the preview is gone from the page before the confirmation opens.
+    remove: (s) => { flushSync(() => setExpanded(null)); void remove(s).then((confirmed) => { if (!confirmed) setExpanded(s.id) }) }
   }
   const noShots = screenshots.length === 0 && !hasMore && triggerFilter === null
 

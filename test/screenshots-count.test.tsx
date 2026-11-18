@@ -70,5 +70,9 @@ it("never states another set's total under a trigger filter", async () => {
   await screen.findByTestId('screenshot-list')
   fireEvent.click(screen.getByRole('button', { name: /^API/ }))
   await waitFor(() => expect(screen.getAllByRole('button', { name: /^Screenshot at/ })).toHaveLength(1))
-  expect(screen.queryByTestId('screenshots-summary')?.textContent ?? '').not.toMatch(/of 3/)
+  // Complete and unsearched, the filtered list prints no count at all.
+  expect(screen.queryByTestId('screenshots-summary')).toBeNull()
+  // A search makes it print one, and its total is the filtered set's.
+  fireEvent.change(screen.getByTestId('screenshots-search'), { target: { value: 's' } })
+  expect(summary()).toEqual({ shown: 1, total: 1 })
 })
