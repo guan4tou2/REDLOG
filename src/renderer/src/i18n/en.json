@@ -1898,6 +1898,7 @@
   "captureSetup.openPreparation": "Prepare missing capture tools",
   "terminal.noProjectRecording": "No project is open. These shells are still running; commands and output here are not recorded.",
   "terminal.recordingFailed": "This pane is usable but is not being recorded: {{reason}}",
+  "terminal.spawnFailed": "The shell did not start: {{reason}}",
   "firstRun.builtin.show": "Open the built-in terminal ↗",
   "firstRun.builtin.hide": "Fold the built-in terminal",
   "firstRun.record.externalTerminal": "external terminal",

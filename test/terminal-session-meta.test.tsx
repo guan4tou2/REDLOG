@@ -81,6 +81,25 @@ it('says a failed recording as failed, not as not recording', async () => {
   expect(screen.getByTestId('terminal-meta-screen').getAttribute('title')).toContain('disk full')
 })
 
+// A failed spawn is not a recording failure of a running shell: there is no
+// shell. The banner used to say this pane "is usable" anyway.
+it('says a shell that did not start did not start, and not that it can be used', async () => {
+  spawn.mockReset()
+  spawn.mockRejectedValue(new Error('posix_spawnp failed'))
+  await mount()
+  const banner = await screen.findByTestId('terminal-recording-gap')
+  expect(banner.textContent).not.toMatch(/usable/i)
+  expect(banner.textContent).toMatch(/did not start/i)
+  expect(banner.textContent).toContain('posix_spawnp failed')
+})
+
+it('keeps saying a running shell that cannot record is usable', async () => {
+  await mount()
+  cast('t1', { recording: false, recordingReason: 'recording-failed', recordingError: 'disk full' })
+  const banner = screen.getByTestId('terminal-recording-gap')
+  expect(banner.textContent).toBe('This pane is usable but is not being recorded: disk full')
+})
+
 it('keeps what an ended pane\'s recording went through, instead of only "ended"', async () => {
   await mount()
   cast('t1', { paused: true, recording: false })
