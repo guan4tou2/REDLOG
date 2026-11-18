@@ -149,7 +149,7 @@ describe('Settings is one column', () => {
     expect(screen.queryByTestId('settings-back')).toBeNull()
   })
 
-  it('is laid out as the Stitch prototype: three blocks, each row a title, a button, and where it applies', async () => {
+  it('is laid out in three blocks, each row the page name, where it applies, and ›', async () => {
     draw(null)
     await ready()
     const home = screen.getByTestId('settings-home')
@@ -157,9 +157,10 @@ describe('Settings is one column', () => {
     const row = home.querySelector('[data-settings-page="hooks"]') as HTMLElement
     expect(row.textContent).toContain('指令與終端')
     expect(row.textContent).toContain('本機')
-    expect(row.textContent).toContain('管理')
-    expect((home.querySelector('[data-settings-page="scope"]') as HTMLElement).textContent).toContain('前往範圍設定')
-    expect((home.querySelector('[data-settings-page="about"]') as HTMLElement).textContent).toContain('查看')
+    // The action words (管理 / 前往範圍設定 / 查看) are gone: the row is one
+    // line ending in › (2026-11-18, settings brief A2).
+    expect(row.textContent?.trim().endsWith('›')).toBe(true)
+    expect(home.textContent).not.toMatch(/管理|前往範圍設定|查看/)
     // Every page is still one click away, including the ones the prototype has no row for.
     for (const id of ['hooks', 'browser', 'captureControl', 'scope', 'network', 'loot', 'retention', 'integrity', 'general', 'hud', 'plugins', 'about']) {
       expect(home.querySelector(`[data-settings-page="${id}"]`), id).not.toBeNull()

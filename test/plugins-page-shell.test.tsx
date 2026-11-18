@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // The Plugins page inside Settings (2026-11-14 layout leftovers): one heading,
-// one way back per level, no auto-save footer where nothing auto-saves, and
+// one way back per level, no save bar while nothing is saving, and
 // the list's two actions at one button size.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -69,12 +69,15 @@ describe('the Plugins page in Settings', () => {
     expect(screen.getByTestId('settings-home')).toBeTruthy()
   })
 
-  it('does not say changes save automatically where nothing on the page is a saved setting', async () => {
+  it('draws no save bar while nothing is being saved, here or back on the Settings list', async () => {
+    // The bar used to carry a permanent "changes save automatically" line on
+    // every page but this one; it now appears only for saving / saved / failed
+    // (test/settings-save-bar.test.tsx).
     await onPlugins()
-    expect(screen.queryByText('Changes save automatically')).toBeNull()
-    // Everywhere else in Settings the bar still says it.
+    expect(screen.queryByTestId('settings-save-bar')).toBeNull()
     fireEvent.click(screen.getByTestId('settings-back'))
-    await waitFor(() => expect(screen.getByText('Changes save automatically')).toBeTruthy())
+    await waitFor(() => expect(screen.getByTestId('settings-home')).toBeTruthy())
+    expect(screen.queryByTestId('settings-save-bar')).toBeNull()
   })
 
   it('draws Open folder and Reload at one button size, the quieter one still quieter', async () => {

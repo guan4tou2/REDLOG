@@ -39,7 +39,7 @@ All 15 are first-class Timeline lanes (empty lanes auto-collapse):
 - `http_navigation` — page loads inside the built-in CDP-connected browser
 - `dns` — DNS resolutions and probes (`subtype: dns_query` / `dns_response`)
 - `pivot` — tunnel/pivot lifecycle — RedLog auto-detects from shell (see below)
-- `screenshot` — desktop captures (periodic + on-demand, SHA-256 hashed)
+- `screenshot` — desktop captures, SHA-256 hashed, taken on demand (`trigger: manual` or `api`). `periodic` and `command` triggers appear only in data recorded before ruling 7 (decided 2026-11-12, carried out 2026-11-18) removed them
 - `file_transfer` — ingress/exfil — RedLog auto-detects from shell (see below)
 - `credential_use` — every attempted / successful credential use
 - `c2_checkin` — C2 beacon / callback

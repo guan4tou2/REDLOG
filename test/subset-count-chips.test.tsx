@@ -69,7 +69,7 @@ describe('screenshot trigger chips', () => {
 
   it('marks every chip when only the first page is loaded', async () => {
     install([shot(3, 'manual'), shot(2, 'manual'), shot(1, 'command')], true)
-    render(<I18nProvider><ScreenshotsView onNavigate={() => {}} /></I18nProvider>)
+    render(<I18nProvider><ScreenshotsView /></I18nProvider>)
     await screen.findByTestId('screenshot-list')
     await waitFor(() => expect(chipCounts()).toHaveLength(3))
     const [all, ...triggers] = chipCounts()
@@ -86,7 +86,7 @@ describe('screenshot trigger chips', () => {
     r.events.queryScreenshotPage.mockImplementation(async (req: { trigger: string | null }) => req.trigger === null
       ? { items: all, hasMore: true, nextCursor: 'more' }
       : { items: all.filter((x) => (x.data as { trigger: string }).trigger === req.trigger), hasMore: false, nextCursor: null })
-    render(<I18nProvider><ScreenshotsView onNavigate={() => {}} /></I18nProvider>)
+    render(<I18nProvider><ScreenshotsView /></I18nProvider>)
     await waitFor(() => expect(chipCounts()).toHaveLength(3))
     const commandChip = [...screen.getByTestId('screenshots-toolbar').querySelectorAll('button[aria-pressed]')]
       .find((el) => (el.textContent ?? '').startsWith('after command')) as HTMLElement
@@ -98,7 +98,7 @@ describe('screenshot trigger chips', () => {
 
   it('leaves the chips plain when the first page is everything', async () => {
     install([shot(3, 'manual'), shot(2, 'manual'), shot(1, 'command')], false)
-    render(<I18nProvider><ScreenshotsView onNavigate={() => {}} /></I18nProvider>)
+    render(<I18nProvider><ScreenshotsView /></I18nProvider>)
     await screen.findByTestId('screenshot-list')
     await waitFor(() => expect(chipCounts()).toHaveLength(3))
     for (const c of chipCounts()) expect(c).toMatch(/·\d+$/)

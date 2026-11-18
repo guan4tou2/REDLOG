@@ -538,8 +538,8 @@ describe('renderer views render without throwing', () => {
   // the capture wizard — still lands on capture sources rather than nowhere.
   it('the capture-sources deep link still resolves after the restructure', async () => {
     renderView(<Settings request={{ page: 'captureControl' }} />)
-    // The group's heading and the jump link to it (#557) carry the same title.
-    expect((await screen.findAllByText('Pack: Host monitors')).length).toBe(2)
+    // The group's heading, once: the jump bar that repeated it (#557) is gone.
+    expect((await screen.findAllByText('Pack: Host monitors')).length).toBe(1)
   })
 
   it('an issue that names a Settings page opens it', async () => {
@@ -549,14 +549,14 @@ describe('renderer views render without throwing', () => {
     expect(await screen.findByText('Verify full chain')).toBeTruthy()
   })
 
-  // The empty state's second action only navigates; it said "Turn on".
-  it('the screenshots empty state links to the capture settings', async () => {
+  // Ruling 7: screenshots are taken only when asked, so the empty state has
+  // one action — take one — and no link to a timed-capture setting.
+  it('the screenshots empty state offers a capture and no settings link', async () => {
     ;(window as unknown as { redlog: { events: Record<string, unknown> } }).redlog.events.queryScreenshotPage =
       async () => ({ items: [], hasMore: false, nextCursor: null })
-    const onNavigate = vi.fn()
-    renderView(<ScreenshotsView onNavigate={onNavigate} />)
-    fireEvent.click(await screen.findByText('Periodic capture settings →'))
-    // Lands on the screenshot group, not just the page (#590).
-    expect(onNavigate).toHaveBeenCalledWith('settings/captureControl?source=screenshot')
+    renderView(<ScreenshotsView />)
+    const empty = (await screen.findByText('Screenshots will appear here when captured')).parentElement as HTMLElement
+    expect(within(empty).getAllByRole('button').map((b) => b.textContent)).toEqual(['Capture Now'])
+    expect(empty.textContent).not.toMatch(/timer|periodic/i)
   })
 })

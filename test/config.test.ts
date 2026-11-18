@@ -32,7 +32,8 @@ describe('loadConfig', () => {
     expect(config.scope.scopeFile).toBeNull()
     expect(config.scope.warnOnViolation).toBe(false)
     expect(config.screenshot.quality).toBeNull()
-    expect(config.screenshot.captureOnCommand).toBe(true)
+    // A key nothing reads any more (ruling 7) is still read as a value.
+    expect((config.screenshot as Record<string, unknown>).captureOnCommand).toBe(true)
     expect(config.httpCapture.port).toBe(6661)
   })
 

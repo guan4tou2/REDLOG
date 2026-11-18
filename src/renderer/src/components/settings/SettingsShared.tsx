@@ -16,7 +16,7 @@ export interface ConfigState {
   operator: { id: string; name: string }
   network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto'; showWifiName?: boolean; vpnAdapters?: Array<{ name: string; pattern: string; enabled: boolean }> }
   scope: { warnOnViolation?: boolean; targets: string[]; excludeTargets: string[]; scopeFile: string; personalDomains?: string[] }
-  screenshot: { quality: number; intervalSec?: number; diffThreshold?: number; captureOnCommand?: boolean }
+  screenshot: { quality: number }
   fileWatcher?: { watchPaths?: string[]; ignorePatterns?: string[] }
   processMonitor?: { pollMs?: number; ignoreCommands?: string[] }
   connectionMonitor?: { pollMs?: number }
