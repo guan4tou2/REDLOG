@@ -150,6 +150,58 @@ export function Field({ label, value, onChange, onBlur, onKeyDown, type = 'text'
   )
 }
 
+/** A whole-number field that commits when it is left or Enter is pressed, never
+ *  per keystroke. While it is being edited it shows exactly what was typed --
+ *  including nothing -- because a field that snaps to a default the moment it is
+ *  emptied cannot be retyped. An entry that is not a whole number in range is
+ *  not committed: the field says what is allowed and the last committed value
+ *  stays in use. `pending` is shown while the typed text differs from it. */
+export function NumberField({ label, value, min, max, onCommit, invalid, pending, resetKey }: {
+  label: string; value: number; min: number; max?: number
+  onCommit: (n: number) => void
+  invalid: string
+  pending?: string
+  resetKey?: string
+}): JSX.Element {
+  const [draft, setDraft] = useState(String(value))
+  const [error, setError] = useState<string | null>(null)
+  // The committed value changing under the field (a reload, another window)
+  // replaces the draft -- decided while rendering, not in an effect. An effect
+  // runs after the paint, so a keystroke that arrived first was put back to the
+  // saved value by it: React flushes a pending effect at the start of the next
+  // render, after the keystroke's own update was already queued.
+  const [shown, setShown] = useState({ value, resetKey })
+  if (shown.value !== value || shown.resetKey !== resetKey) {
+    setShown({ value, resetKey })
+    setDraft(String(value))
+    setError(null)
+  }
+  const commit = (): void => {
+    const n = Number(draft)
+    if (!/^\d+$/.test(draft) || !Number.isInteger(n) || n < min || (max !== undefined && n > max)) {
+      setError(invalid)
+      return
+    }
+    setError(null)
+    setDraft(String(n))
+    if (n !== value) onCommit(n)
+  }
+  return (
+    <>
+      <Field
+        label={label}
+        value={draft}
+        onChange={(v) => { setDraft(v); setError(null) }}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() } }}
+        error={error}
+        type="number"
+      />
+      {pending && draft !== String(value) && !error && <p role="status" className="text-xs text-amber-400">{pending}</p>}
+    </>
+  )
+}
+
 export function ListField({ label, items, onChange, placeholder, parse, initialDraft = '', draft, onDraftChange }: {
   label: string; items: string[]; onChange: (items: string[]) => void; placeholder: string
   /** Spec 037 FR: a field that takes pasted scope splits the text on newline,

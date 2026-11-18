@@ -121,6 +121,7 @@ describe('a save writes only what the page changed', () => {
     // says nothing to the renderer.
     disk = { ...disk, scope: { ...(disk.scope as object), targets: ['in.test', 'added-elsewhere.test'] } }
     fireEvent.change(interval, { target: { value: '45' } })
+    fireEvent.blur(interval) // a number field commits when it is left
     await waitFor(() => expect(writes).toHaveLength(1), { timeout: 3000 })
     expect(at(disk, ['network', 'checkInterval'])).toBe(45)
     expect(at(disk, ['scope', 'targets'])).toEqual(['in.test', 'added-elsewhere.test'])
@@ -131,6 +132,7 @@ describe('a save writes only what the page changed', () => {
     const interval = await findInput('61')
     disk = { ...disk, network: { ...(disk.network as object), checkInterval: 90 } }
     fireEvent.change(interval, { target: { value: '45' } })
+    fireEvent.blur(interval) // a number field commits when it is left
     await failedShown()
     expect(at(disk, ['network', 'checkInterval'])).toBe(90)
     expect(inputWithValue('45')).toBeDefined()
@@ -144,6 +146,7 @@ describe('a save writes only what the page changed', () => {
     const interval = await findInput('61')
     disk = { ...disk, network: { ...(disk.network as object), checkInterval: 45 } }
     fireEvent.change(interval, { target: { value: '45' } })
+    fireEvent.blur(interval) // a number field commits when it is left
     await settle()
     expect(document.querySelector('[data-testid="settings-save-failed"]')).toBeNull()
     expect(at(disk, ['network', 'checkInterval'])).toBe(45)
@@ -154,6 +157,7 @@ describe('a save writes only what the page changed', () => {
     const interval = await findInput('61')
     disk = { ...disk, engagement: { id: 'another-project' } }
     fireEvent.change(interval, { target: { value: '45' } })
+    fireEvent.blur(interval) // a number field commits when it is left
     await failedShown()
     expect(at(disk, ['network', 'checkInterval'])).toBe(61)
   })
@@ -165,7 +169,7 @@ describe('a save writes only what the page changed', () => {
 const PAGES: Array<{ page: SettingsPage; edit: () => Promise<void>; shows: () => boolean; saved: () => boolean }> = [
   {
     page: 'network',
-    edit: async () => { fireEvent.change(await findInput('61'), { target: { value: '45' } }) },
+    edit: async () => { const i = await findInput('61'); fireEvent.change(i, { target: { value: '45' } }); fireEvent.blur(i) },
     shows: () => inputWithValue('45') !== undefined,
     saved: () => at(disk, ['network', 'checkInterval']) === 45
   },
@@ -183,7 +187,7 @@ const PAGES: Array<{ page: SettingsPage; edit: () => Promise<void>; shows: () =>
   },
   {
     page: 'retention',
-    edit: async () => { fireEvent.change(await findInput('7'), { target: { value: '30' } }) },
+    edit: async () => { const i = await findInput('7'); fireEvent.change(i, { target: { value: '30' } }); fireEvent.blur(i) },
     shows: () => inputWithValue('30') !== undefined,
     saved: () => same(at(disk, ['retention', 'loggedTier', 'keepDays']), 30)
   },
