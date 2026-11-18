@@ -4,7 +4,7 @@ import {
   appendedFrom, stepDerivation, type Derivation, type DerivationCache,
   drawnEvents, unfinishedCommands, toolPairs, laneIndex, singleTrack, swimRows, trackGap, laneGap,
   timestampExtent, latestDisplay, displayStamps, collapsibleTurnCount, effectsIndex, foldIndex,
-  observationStanding, badgeIndex, sessionBoundaries, drawnMatchIndex, rowsById
+  observationStanding, badgeIndex, sessionBoundaries, drawnMatchIndex, rowsById, commandIntervals
 } from '../src/renderer/src/lib/timelineIncremental'
 import { mapMatchesToDrawn, type DrawnMatchIndex } from '../src/renderer/src/lib/timelineFilters'
 import { binarySearchInsert, displayTs, LANES } from '../src/renderer/src/lib/timelineDomain'
@@ -33,8 +33,11 @@ function makeRow(r: () => number, n: number, ts: number): RedLogEvent {
   const cmd = Math.floor(r() * 12)
   if (pick < 0.18) {
     agentType = 'shell'
-    const sub = r() < 0.5 ? 'command_start' : r() < 0.95 ? 'command_end' : 'session_end'
-    data = { subtype: sub, command_id: `c${cmd}`, command: r() < 0.9 ? `cmd ${cmd}` : `other ${cmd}`, shell: 'zsh', terminalId: 't1', exit_code: r() < 0.5 ? 0 : 1, durationMs: 5000 }
+    // Spec 078: two terminals and a command_boundary, from the draws already
+    // made, so every other derivation sees the same sequence of rows.
+    const ending = r() < 0.5 ? 'command_start' : r() < 0.95 ? 'command_end' : 'session_end'
+    const sub = ending === 'session_end' && cmd % 3 === 0 ? 'command_boundary' : ending
+    data = { subtype: sub, command_id: `c${cmd}`, command: r() < 0.9 ? `cmd ${cmd}` : `other ${cmd}`, shell: 'zsh', terminalId: `t${cmd % 2 + 1}`, exit_code: r() < 0.5 ? 0 : 1, durationMs: 5000 }
   } else if (pick < 0.3) {
     agentType = 'agent'
     const subs = ['tool_call', 'tool_result', 'user_message', 'assistant_message', 'transcript_snapshot']
@@ -138,6 +141,8 @@ equivalent('fold index', foldIndex, () => [] as [], (s) => [...s], drawnOf(false
 equivalent('observation standing', observationStanding, () => [] as [], (s) => ({ cleared: [...s.cleared], superseded: [...s.superseded] }), drawnOf(false))
 equivalent('badge index', badgeIndex, () => [null, noBadgeSets, noBadgeSets] as [null, Set<string>, Set<string>], (s) => [...s], drawnOf(false))
 equivalent('session boundaries', sessionBoundaries, () => [] as [], (s) => s, drawnOf(false))
+// Spec 078 SC-002: from the loaded rows, as the panel reads them.
+equivalent('command intervals', commandIntervals, () => [] as [])
 
 equivalent('drawn-row match index', drawnMatchIndex, () => [] as [], (s) => ({ ids: [...s.index.ids], ends: [...s.index.endByCommand], rows: [...s.index.rowBySession] }), drawnOf(false))
 equivalent('rows by id', rowsById, () => [] as [], (s) => [...s.byId])

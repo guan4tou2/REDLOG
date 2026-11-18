@@ -44,8 +44,10 @@ import { mapMatchesToDrawn, STANDARD_ROW, computeWindowSlice, type ViewportWindo
 import {
   appendedFrom, drawnEvents, unfinishedCommands, toolPairs, laneIndex, singleTrack, swimRows, trackGap, laneGap,
   timestampExtent, latestDisplay, displayStamps, collapsibleTurnCount, effectsIndex, foldIndex,
-  observationStanding as observationStandingOf, badgeIndex, sessionBoundaries, drawnMatchIndex, rowsById
+  observationStanding as observationStandingOf, badgeIndex, sessionBoundaries, drawnMatchIndex, rowsById, commandIntervals
 } from '../lib/timelineIncremental'
+import { nextTrackOrder } from '../lib/timelineIntervals'
+import { TimelineCommandTracks } from './timeline/TimelineCommandTracks'
 import { mergeSortedRows } from '../lib/timelineMerge'
 import { TimelineHelpModal } from './TimelineHelpModal'
 import { QueryReadout } from './QueryReadout'
@@ -73,6 +75,9 @@ const MIN_LANE_H = 36
 // band 168px to draw nine pixels in — 159px of nothing per row, four rows
 // deep, while the list under it showed six lines.
 const MAX_LANE_H = 44
+// Spec 078 Q1: the standard mode shows the event row and at most this many
+// terminal rows; the rest are reached by scrolling vertically.
+const MAX_VISIBLE_TERMINAL_ROWS = 3
 // Wide enough for an indented lane label: the column carries a caret, a band
 // name, and under it a dot plus a lane name at a 24px indent. At 92px that
 // left ~60px for the name and every label past six characters rendered as an
@@ -199,6 +204,16 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
   // Keyed on rawEvents so it still finds a result the agent-turn collapse hides;
   // a partner not yet paged in is simply absent — a graceful no-op.
   const toolPairByUseId = useTimelineDerived(toolPairs, rawEvents)
+  // Spec 078: each terminal's commands as intervals, one row per terminal in
+  // the standard mode. From the loaded rows, because the fold above hides the
+  // starts. The order changes only when the set of terminals does (FR-012).
+  const intervalSet = useTimelineDerived(commandIntervals, rawEvents)
+  const trackOrderRef = useRef<string[]>([])
+  const trackOrder = useMemo(() => {
+    const next = nextTrackOrder(trackOrderRef.current, intervalSet.tracks)
+    trackOrderRef.current = next
+    return next
+  }, [intervalSet.tracks])
   const { selectedEvent, selectedRef, setSelectedEvent, detailOpen, setDetailOpen, readerMode, setReader } = useTimelineInspector()
   // A selection made in another view that is older than the drawn range: it is
   // loaded back to and opened exactly like an explicit "open in Timeline".
@@ -616,6 +631,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
   const showOperator = Object.keys(operatorNames).length > 1
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const laneScrollRef = useRef<HTMLDivElement>(null)
   const eventsMapRef = useRef(new Map<string, RedLogEvent>())
   // v0.6.95 P1-12: sorted-by-eventCompare array kept in lockstep with the map.
   // Full re-sort of 100k events per flush was 1.7M comparisons; sorted-insert
@@ -691,8 +707,10 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
   // Hiding is for the lane's dots, which are the noise; the row is the label
   // that says it is off, and clicking it again is the way back.
   const visibleRows = useMemo(() => {
-    // Standard mode: one track for everything (Spec 069 FR-008).
-    if (timelineMode === 'standard') return populatedLanes.size > 0 ? [STANDARD_ROW] : []
+    // Standard mode: one track for everything (Spec 069 FR-008), then one
+    // row per terminal that has a command interval (Spec 078 FR-011). With no
+    // interval there are no terminal rows and nothing else changes (FR-016).
+    if (timelineMode === 'standard') return populatedLanes.size > 0 ? [STANDARD_ROW, ...trackOrder] : []
     const rows: string[] = []
     for (const band of BANDS) {
       const popLanes = band.lanes.filter((l) => populatedLanes.has(l))
@@ -701,7 +719,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
       if (!collapsedBands.has(band.id)) rows.push(...popLanes)
     }
     return rows
-  }, [populatedLanes, collapsedBands, timelineMode])
+  }, [populatedLanes, collapsedBands, timelineMode, trackOrder])
 
   // Still keyed on individual lanes; retained for the zoom-ceiling scan below.
   const visibleLanes = useMemo(
@@ -1177,13 +1195,15 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
   const boundaryRows = useTimelineDerived(sessionBoundaries, events)
   // 工作階段邊界 switches the terminal bands only. A pause is a gap in the
   // record and is always drawn.
+  // A terminal's band label; the built-in terminal's row (Spec 078 Q2) says the same.
+  const termLabel = useCallback((id: string) => t('timeline.boundaries.termLabelFmt', { id }), [t])
   const sessionBands = useMemo<SessionBand[]>(() => {
     const bands = buildSessionBands(boundaryRows, toX, {
-      termLabel: (id) => t('timeline.boundaries.termLabelFmt', { id }),
+      termLabel,
       pausedLabel: t('timeline.boundaries.pausedLabel')
     }, timeEnd)
     return sessionDividers ? bands : bands.filter((b) => b.kind === 'paused')
-  }, [boundaryRows, sessionDividers, toX, t, timeEnd])
+  }, [boundaryRows, sessionDividers, toX, t, termLabel, timeEnd])
 
   // Density minimap: event counts over the full range, binned into fixed cells.
   const bins = useMemo(() => computeBins(trackStamps, timeStart, timeEnd), [trackStamps, timeStart, timeEnd])
@@ -1412,7 +1432,10 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
         // deltaY does otherwise (dragging and the minimap also still pan).
         // With no vertical overflow — the common case — behaviour is
         // unchanged.
-        const outer = containerRef.current
+        // The overflow is on the lane scroller, not the measured wrapper
+        // around it (Spec 078 E-1): asking the wrapper, which is never capped,
+        // meant the wheel always panned and capped rows were out of its reach.
+        const outer = laneScrollRef.current
         if (outer && !e.shiftKey && outer.scrollHeight > outer.clientHeight + 1) return
         e.preventDefault()
         el.scrollLeft += e.deltaY
@@ -1467,6 +1490,20 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
   // After a cursor-anchored zoom re-renders with the new TRACK_W, restore the
   // scroll so the timestamp that was under the pointer stays under the pointer.
   useLayoutEffect(afterLayout, [afterLayout, loading])
+
+  // Spec 078: with terminal rows the track scroller takes its content's
+  // height (below), so the lane scroller is what overflows past the Q1 cap.
+  // Stretched to the cap instead, it clipped its own rows and nothing could
+  // reach them. Its horizontal scrollbar, where the platform draws one, is
+  // then part of that content, and the cap makes room for it: otherwise three
+  // rows overflow by the bar and the wheel turns vertical.
+  const terminalRows = timelineMode === 'standard' && trackOrder.length > 0
+  const [hScrollbarH, setHScrollbarH] = useState(0)
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    const h = terminalRows && el ? Math.max(0, el.offsetHeight - el.clientHeight) : 0
+    if (h !== hScrollbarH) setHScrollbarH(h)
+  })
 
   const toggleBand = useCallback((band: BandId) => {
     setCollapsedBands((prev) => {
@@ -2214,9 +2251,10 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
             sits right under it (Stitch 05) instead of a block of empty track. */}
         <div ref={containerRef} className={`${timelineMode === 'standard' ? 'flex-none' : 'flex-1'} min-h-0 flex flex-col`}>
         <div
+          ref={laneScrollRef}
           data-testid="timeline-lane-scroll"
           className="min-h-0 flex overflow-x-hidden overflow-y-auto"
-          style={{ maxHeight: visibleRows.length * laneH + axisH }}
+          style={{ maxHeight: (timelineMode === 'standard' ? Math.min(visibleRows.length, 1 + MAX_VISIBLE_TERMINAL_ROWS) : visibleRows.length) * laneH + axisH + hScrollbarH }}
           // The cluster popover is placed outside this scroller; a vertical
           // scroll would leave it beside the wrong dot.
           onScroll={() => setCluster(null)}
@@ -2281,7 +2319,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
           {/* Scrollable track */}
           <div
             ref={scrollRef}
-            className="flex-1 overflow-x-auto overflow-y-hidden cursor-grab"
+            className={`flex-1 overflow-x-auto overflow-y-hidden cursor-grab${terminalRows ? ' self-start' : ''}`}
             onMouseDown={handleMouseDown}
             onScroll={updateView}
             onDoubleClick={(e) => {
@@ -2705,6 +2743,20 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
                     </button>
                   )
                 })}
+                {/* Spec 078 S1: the terminal rows' labels and command lines,
+                    after the dots and under nothing that takes the pointer. */}
+                {timelineMode === 'standard' && (
+                  <TimelineCommandTracks
+                    set={intervalSet}
+                    order={trackOrder}
+                    firstRow={1}
+                    laneH={laneH}
+                    trackW={TRACK_W}
+                    toX={toX}
+                    scrollLeft={(view.left / 100) * TRACK_W}
+                    builtinLabel={termLabel}
+                  />
+                )}
               </div>
             </div>
           </div>
