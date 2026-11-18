@@ -30,4 +30,9 @@ describe.each(Object.keys(LOCALES) as (keyof typeof LOCALES)[])('copy facts (%s)
     expect(d['settings.retentionLoggedTierHint']).toMatch(loc === 'en' ? /deleted/ : /刪除/)
     expect(d['settings.retentionLoggedTierHint']).not.toMatch(/investigative|調查脈絡/)
   })
+
+  it('warn-on-violation hint names the same-subnet rung (alert/policies.ts DEFAULT_ALERT_FLOOR)', () => {
+    expect(d['settings.warnOnViolationHint']).toMatch(loc === 'en' ? /subnet/ : /同網段/)
+    expect(d['settings.warnOnViolationHint']).not.toMatch(/root domain/)
+  })
 })

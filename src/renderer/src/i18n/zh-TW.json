@@ -512,7 +512,7 @@
   "toast.details": "詳細",
   "settings.scopeEnforcement": "範圍警告",
   "settings.warnOnViolation": "碰到範圍外目標時示警",
-  "settings.warnOnViolationHint": "指令目標在範圍外但與範圍目標同 root domain 時示警；明確排除的目標一律示警。RedLog 只記錄，不擋指令。",
+  "settings.warnOnViolationHint": "範圍外但與範圍內目標同網域或同網段時示警；已排除的一律示警。RedLog 只記錄，不擋指令。",
   "settings.inScopeTargets": "範圍內目標",
   "settings.targetsLabel": "目標（IP、CIDR、*.domain）",
   "settings.targetsPlaceholder": "例如 192.168.1.0/24 或 *.example.com",

@@ -512,7 +512,7 @@
   "toast.details": "Details",
   "settings.scopeEnforcement": "Scope Warnings",
   "settings.warnOnViolation": "Warn on out-of-scope targets",
-  "settings.warnOnViolationHint": "Warn when a command targets a host outside scope that shares a root domain with a scope target. Excluded targets always warn. RedLog records; it never blocks.",
+  "settings.warnOnViolationHint": "Warns when a command targets a host outside scope that shares a root domain or subnet with a scope target. Excluded targets always warn. RedLog records; it never blocks.",
   "settings.inScopeTargets": "In-Scope Targets",
   "settings.targetsLabel": "Targets (IPs, CIDRs, *.domain)",
   "settings.targetsPlaceholder": "e.g. 192.168.1.0/24 or *.example.com",
