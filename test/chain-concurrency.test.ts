@@ -20,6 +20,7 @@ import os from 'os'
 
 let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
+let getDB: typeof import('../src/core/db/index').getDB
 let insertEvent: typeof import('../src/core/db/events').insertEvent
 let verifyChainFullAsync: typeof import('../src/core/chain-anchor').verifyChainFullAsync
 
@@ -28,7 +29,7 @@ if (requires('better-sqlite3').ok) {
   const d = await import('../src/core/db/index')
   const e = await import('../src/core/db/events')
   const c = await import('../src/core/chain-anchor')
-  initDB = d.initDB; closeDB = d.closeDB; insertEvent = e.insertEvent
+  initDB = d.initDB; closeDB = d.closeDB; getDB = d.getDB; insertEvent = e.insertEvent
   verifyChainFullAsync = c.verifyChainFullAsync
   dbAvailable = true
 }
@@ -41,9 +42,13 @@ describeDB('chain verify vs live capture', () => {
     initDB(dir)
     // Enough rows that the walk spans several setImmediate yields — the whole
     // point is to have inserts land *inside* the iterator's lifetime.
-    for (let i = 0; i < 6000; i++) {
-      insertEvent('shell', { subtype: 'command_end', command: `seed-${i}` }, { engagementId: 'e', operatorId: 'op' })
-    }
+    // Seeding is setup, not the concurrent write under test. One commit also
+    // avoids thousands of autocommits and their recurring WAL checkpoints.
+    getDB().transaction(() => {
+      for (let i = 0; i < 6000; i++) {
+        insertEvent('shell', { subtype: 'command_end', command: `seed-${i}` }, { engagementId: 'e', operatorId: 'op' })
+      }
+    })()
 
     let insertErr: Error | null = null
     let landed = 0
