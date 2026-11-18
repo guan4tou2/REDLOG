@@ -2,8 +2,26 @@ import { useState, useEffect } from 'react'
 import { Button } from '../Button'
 import { toast } from '../Toast'
 import { formatDateTime } from '../../lib/time'
-import { anchorNowWithFeedback, upgradeAnchorsWithFeedback, verifyChainWithFeedback, type FullVerifyResult } from '../../lib/chainActions'
+import { anchorNowWithFeedback, upgradeAnchorsWithFeedback, verifyChainWithFeedback, verifyVerdict, type FullVerifyResult, type VerifyVerdict } from '../../lib/chainActions'
 import { FieldGroup } from './SettingsShared'
+
+// The headline names the worst thing the verdict found; the line that would
+// repeat it further down the card is left out.
+const VERDICT_KEY: Record<VerifyVerdict, string> = {
+  broken: 'settings.integrityFullBroken',
+  'anchor-mismatch': 'settings.integrityFullAnchorMismatch',
+  'signatures-incomplete': 'settings.integrityFullAuthFailed',
+  intact: 'settings.integrityFullOk'
+}
+const VERDICT_TEXT: Record<VerifyVerdict, string> = {
+  broken: 'text-red-400', 'anchor-mismatch': 'text-red-400', 'signatures-incomplete': 'text-amber-400', intact: 'text-emerald-400'
+}
+const VERDICT_BOX: Record<VerifyVerdict, string> = {
+  broken: 'border-red-800 bg-red-950/30',
+  'anchor-mismatch': 'border-red-800 bg-red-950/30',
+  'signatures-incomplete': 'border-amber-800 bg-amber-950/30',
+  intact: 'border-emerald-800 bg-emerald-950/30'
+}
 
 // Chain state: anchors, the two-tier counter, and verification. Read-only —
 // building the evidence pack itself moved to the shell's export control (SS10),
@@ -53,6 +71,7 @@ export default function IntegrityPanel({ t }: { t: (key: string, vars?: Record<s
     }
   }
   const statusLabel = (s: string): string => t(`settings.integrityStatus${s.charAt(0).toUpperCase() + s.slice(1)}`)
+  const verdict: VerifyVerdict | null = fullVerify ? verifyVerdict(fullVerify) : null
 
   return (
     <FieldGroup title={t('settings.integrity')}>
@@ -80,12 +99,13 @@ export default function IntegrityPanel({ t }: { t: (key: string, vars?: Record<s
       </div>
       {fullVerify && (
         <div className={`p-3 rounded border text-xs space-y-1 font-mono ${
-          fullVerify.ok ? 'border-emerald-800 bg-emerald-950/30' : 'border-red-800 bg-red-950/30'
+          VERDICT_BOX[verdict ?? 'broken']
         }`}>
           <div className="flex items-center gap-2 text-sm font-semibold">
-            <span className={fullVerify.ok ? 'text-emerald-400' : 'text-red-400'}>
-              <span aria-hidden="true">{fullVerify.ok ? '✓' : '✗'} </span>
-              <span>{t(fullVerify.ok ? 'settings.integrityFullOk' : 'settings.integrityFullBroken')}</span>
+            <span className={VERDICT_TEXT[verdict ?? 'broken']}>
+              {/* The anchor key carries its own ⚠. */}
+              {verdict !== 'anchor-mismatch' && <span aria-hidden="true">{verdict === 'intact' ? '✓' : '✗'} </span>}
+              <span>{t(VERDICT_KEY[verdict ?? 'broken'])}</span>
             </span>
           </div>
           <div className="text-redlog-text-dim">
@@ -101,7 +121,7 @@ export default function IntegrityPanel({ t }: { t: (key: string, vars?: Record<s
           )}
           {fullVerify.authentication === 'failed' && (
             <div className="text-amber-400 break-all">
-              <div>{t('settings.integrityFullAuthFailed')}</div>
+              {verdict !== 'signatures-incomplete' && <div>{t('settings.integrityFullAuthFailed')}</div>}
               {fullVerify.authenticationReasons?.map(r => <div key={r}>{r}</div>)}
               {fullVerify.firstUncheckedEventId && <div>{fullVerify.firstUncheckedEventId}</div>}
             </div>
@@ -121,7 +141,7 @@ export default function IntegrityPanel({ t }: { t: (key: string, vars?: Record<s
               {t('settings.integrityHeadHash')}: {fullVerify.currentHead.slice(0, 32)}...
             </div>
           )}
-          {fullVerify.anchor ? (
+          {fullVerify.anchor ? verdict !== 'anchor-mismatch' && (
             <div className={fullVerify.anchorMatchesWalkedHead ? 'text-emerald-400' : 'text-amber-400'}>
               {fullVerify.anchorMatchesWalkedHead
                 ? t('settings.integrityFullAnchorMatch')
