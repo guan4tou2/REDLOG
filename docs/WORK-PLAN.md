@@ -66,7 +66,7 @@ Spec 072–076 的後續階段排在這四項之後，除非它們是其中某�
 
 ### 2026-11-16 補記：兩個已定方向，未排程
 
-依 [DECISIONS](records/2026-11-16/DECISIONS.md) §1。兩者都沒有規格，也不在上面的接續順序裡；要做時先開規格。
+依 [DECISIONS](records/2026-11-16/DECISIONS.md) §1。兩者都沒有規格，也不在上面的接續順序裡；要做時先開規格。開規格前的材料：[實作與設計分析](research/RESEARCH-tool-output-facts-and-technique-tags.md)（分期、五個要擁有者決定的問題）與 [產品比較](research/PRIOR-ART-E-pentest-platforms-and-operator-tools.md)。
 
 - **工具輸出的結構化可以內建，只記工具回報的事實**（主機、port、狀態、服務），不做判斷（弱點、嚴重度、修復）。這把 `DESIGN-core-and-capture` §2.4「不做解析器」的界線移到「不判斷」。
 - **ATT&CK 技術標記走外掛**。`commandTags` 的接點已經在，但標記寫進列之後畫面、搜尋、匯出都沒有讀它，也沒有記下是哪條規則蓋的。
