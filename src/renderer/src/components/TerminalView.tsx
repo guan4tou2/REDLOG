@@ -11,11 +11,9 @@ import { castHistory, endedRecording, type CastHistory } from '../lib/terminalRe
 import { usePersistentState } from '../lib/usePersistentState'
 import { DEFAULT_FONT_SIZE, FONT_MIN, FONT_MAX, clampFontSize } from '../lib/terminalFont'
 import { createAckBatcher, createFitScheduler } from '../lib/terminalFlow'
-import { Modal } from './Modal'
 import { Button, FIELD_FOCUS_RING } from './Button'
 import { isMac } from '../lib/platform'
 import { isComposing } from '../lib/ime'
-import { PROSE_WIDTH } from '../lib/pageLayout'
 
 interface Tab {
   id: string
@@ -125,7 +123,6 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
   // fills in after mount rather than blocking anything.
   const [shells, setShells] = useState<ShellOption[]>([])
   const [shellMenuOpen, setShellMenuOpen] = useState(false)
-  const [aboutOpen, setAboutOpen] = useState(false)
   const [preferredShell, setPreferredShell] = usePersistentState<string>(SHELL_KEY, '')
   const paneSearchRefs = useRef<Map<string, SearchAddon>>(new Map())
   // Match count for the current query, as reported by the addon. It only
@@ -334,9 +331,8 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
   const current = tabs.find((tb) => tb.id === activeTab) ?? null
   return (
     <div className="flex flex-col h-full bg-redlog-bg">
-      <TerminalHeader onAbout={() => setAboutOpen(true)} onSearch={() => setSearchOpen(true)} />
       {/* Tab bar */}
-      <div className="flex items-center h-9 bg-redlog-bg border-b border-redlog-border px-pad shrink-0 gap-0.5">
+      <div data-testid="terminal-tabs" className="flex items-center h-9 bg-redlog-bg border-b border-redlog-border px-pad shrink-0 gap-0.5">
         {tabs.map((tab) => (
           <div
             key={tab.id}
@@ -546,23 +542,6 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
       )}
 
       {current && <SessionMeta tab={current} shellName={shells.find((s) => s.id === current.shellId)?.label} />}
-      <Modal open={aboutOpen} onClose={() => setAboutOpen(false)} label={t('terminal.aboutTitle')} testId="terminal-about"
-        panelClassName="w-[520px] max-w-[95vw] rounded-xl border border-redlog-border bg-redlog-surface p-pad shadow-xl">
-        <h2 className="text-sm font-semibold text-redlog-text">{t('terminal.aboutTitle')}</h2>
-        <div className="mt-3 space-y-3 text-xs text-redlog-text-dim">
-          <section className="rounded border border-redlog-border bg-redlog-elevated p-3">
-            <h3 className="font-medium text-redlog-text">{t('terminal.aboutCastTitle')}</h3>
-            <p className="mt-1">{t('terminal.aboutCastBody')}</p>
-          </section>
-          <section className="rounded border border-redlog-border bg-redlog-elevated p-3">
-            <h3 className="font-medium text-redlog-text">{t('terminal.aboutHookTitle')}</h3>
-            <p className="mt-1">{t('terminal.aboutHookBody')}</p>
-          </section>
-          <p>{t('terminal.aboutIndependent')}</p>
-          <p data-testid="terminal-about-boundary">{t('terminal.aboutBoundary')}</p>
-        </div>
-        <div className="mt-4 flex justify-end"><Button onClick={() => setAboutOpen(false)}>{t('common.close')}</Button></div>
-      </Modal>
 
       {/* Terminal panes */}
       <div className="flex-1 min-h-0 relative">
@@ -589,31 +568,13 @@ export default function TerminalView({ allowNew = true }: { allowNew?: boolean }
         {tabs.length === 0 && (
           <div data-testid="terminal-empty" className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center">
             <p className="text-sm font-medium text-redlog-text">{t('terminal.emptyTitle')}</p>
-            <p className={`text-xs text-redlog-text-dim ${PROSE_WIDTH}`}>{t('terminal.emptyBody')}</p>
-            <Button level="primary" disabled={!allowNew} onClick={() => addTab()}>
-              {(() => { const sh = shells.find((s) => s.id === preferredShell) ?? shells[0]; return sh ? t('terminal.newSessionWith', { shell: sh.label }) : t('terminal.newTab') })()}
-            </Button>
-            <p className={`text-xs text-redlog-text-faint ${PROSE_WIDTH}`}>{t('terminal.aboutBoundary')}</p>
+            {allowNew && (
+              <Button level="primary" onClick={() => addTab()}>
+                {(() => { const sh = shells.find((s) => s.id === preferredShell) ?? shells[0]; return sh ? t('terminal.newSessionWith', { shell: sh.label }) : t('terminal.newTab') })()}
+              </Button>
+            )}
           </div>
         )}
-      </div>
-    </div>
-  )
-}
-
-/** Heading with the one thing the page cannot show by itself: how capture
- *  works here. The hint gives way on a short window — the terminal needs the room. */
-function TerminalHeader({ onAbout, onSearch }: { onAbout: () => void; onSearch: () => void }): JSX.Element {
-  const { t } = useI18n()
-  return (
-    <div data-testid="terminal-header" className="flex shrink-0 items-center justify-between gap-3 border-b border-redlog-border px-pad py-1.5">
-      <div className="flex min-w-0 items-baseline gap-3">
-        <h1 className="text-sm font-semibold text-redlog-text">{t('terminal.title')}</h1>
-        <p className="hidden text-xs text-redlog-text-dim [@media(min-height:640px)]:block">{t('terminal.hint')}</p>
-      </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <Button size="compact" level="quiet" data-testid="terminal-search-open" onClick={onSearch}>{t('terminal.searchToggle')} ({isMac ? '⌘F' : 'Ctrl+F'})</Button>
-        <Button size="compact" data-testid="terminal-about-open" onClick={onAbout}>{t('terminal.about')}</Button>
       </div>
     </div>
   )

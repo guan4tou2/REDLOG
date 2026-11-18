@@ -32,8 +32,7 @@ test('an ended pane keeps saying its recording was paused for part of the sessio
     await page.keyboard.type('redlog start'); await page.keyboard.press('Enter')
     await expect.poll(() => page.evaluate(async () => (await window.redlog.terminal.list())[0].recording)).toBe(true)
     await expect(page.getByTestId('terminal-ended-recording')).toHaveCount(0)
-    // Spec 069 T019: the page names itself, and the live pane shows its own state line.
-    await expect(page.getByTestId('terminal-header').getByRole('heading', { level: 1 })).toHaveText('Terminal')
+    // Spec 069 T019: the live pane shows its own state line.
     await expect(page.getByTestId('terminal-meta-screen')).toContainText('rec')
     await expect(page.getByTestId('terminal-meta-hook')).toBeVisible()
 

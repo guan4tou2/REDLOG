@@ -68,18 +68,38 @@ it('opens find from anywhere on the page, not only when the terminal has focus',
   await waitFor(() => expect(screen.getByRole('textbox')).toBeTruthy())
 })
 
-it('says in the capture explanation that a recording state is not a promise of full output', async () => {
+// The page header and its capture dialog are gone: the tab strip is the first
+// row, and what a pause, a stop or the size cap leaves out is said by the
+// pane's own state where it applies.
+it('has no page header and no capture dialog above the tab strip', async () => {
   await mount()
-  fireEvent.click(screen.getByTestId('terminal-about-open'))
-  expect((await screen.findByTestId('terminal-about-boundary')).textContent).toMatch(/does not mean every shell command output is fully kept/)
+  expect(screen.queryByRole('heading', { level: 1 })).toBeNull()
+  expect(screen.queryByTestId('terminal-header')).toBeNull()
+  expect(screen.queryByTestId('terminal-about-open')).toBeNull()
+  expect(screen.queryByText(/does not mean every shell command output is fully kept/)).toBeNull()
 })
 
-it('opens buffer search from the header, and the meta line names the pane PID', async () => {
+it('opens buffer search with the shortcut, and the meta line names the pane PID', async () => {
   await mount()
   await waitFor(() => expect(screen.getByTestId('terminal-meta-pid').textContent).toContain('4242'))
-  fireEvent.click(screen.getByTestId('terminal-search-open'))
+  fireEvent.keyDown(window, { key: 'f', metaKey: true })
   await waitFor(() => expect(screen.getByRole('textbox')).toBeTruthy())
   expect(screen.getByText('Esc to close')).toBeTruthy()
+})
+
+it('says only its title and offers the one button when every tab is closed', async () => {
+  await mount()
+  fireEvent.click(screen.getAllByRole('button').find((b) => b.textContent === '×')!)
+  const empty = await screen.findByTestId('terminal-empty')
+  expect(empty.textContent).toBe('No terminal sessionsNew Terminal')
+})
+
+it('in the picker strip, where no tab can be opened, says only that there are none', async () => {
+  const { default: TerminalView } = await import('../src/renderer/src/components/TerminalView')
+  render(<I18nProvider><TerminalView allowNew={false} /></I18nProvider>)
+  const empty = await screen.findByTestId('terminal-empty')
+  expect(empty.textContent).toBe('No terminal sessions')
+  expect(empty.querySelector('button')).toBeNull()
 })
 
 it('says in the shell menu which shells have a hook and which are a PTY stream only', async () => {

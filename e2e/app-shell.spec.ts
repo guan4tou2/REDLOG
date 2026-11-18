@@ -192,17 +192,12 @@ test.describe.serial('view-reachability', () => {
     await expect(viewRoot()).toHaveAttribute('data-view', 'screenshots')
   })
 
-  test('the terminal names itself, explains its two capture tracks, and shows the active pane\'s state line', async () => {
+  test('the terminal opens on its tab strip, with no page header above it, and shows the active pane\'s state line', async () => {
     await page.locator('nav [data-view-btn="terminal"]').first().click()
-    await expect(page.getByTestId('terminal-header').getByRole('heading', { level: 1 })).toHaveText('Terminal')
+    await expect(page.getByTestId('terminal-tabs')).toBeVisible()
+    await expect(page.getByTestId('terminal-header')).toHaveCount(0)
     await expect(page.getByTestId('terminal-session-meta')).toBeVisible()
     await expect(page.getByTestId('terminal-meta-screen')).toBeVisible()
-    await page.getByTestId('terminal-about-open').click()
-    const about = page.getByTestId('terminal-about')
-    await expect(about).toContainText('Screen recording (.cast)')
-    await expect(about).toContainText('Command events (shell hook)')
-    await page.keyboard.press('Escape')
-    await expect(about).toHaveCount(0)
   })
 
   test('the dashboard names itself, keeps shortcuts folded, and shows relay nodes only as a read of its own', async () => {

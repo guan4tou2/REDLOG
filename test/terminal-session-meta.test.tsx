@@ -61,9 +61,8 @@ async function mount(): Promise<void> {
   await waitFor(() => expect(spawn).toHaveBeenCalled())
 }
 
-it('shows the heading, and the pane\'s recording, hook, directory and exit', async () => {
+it('shows the pane\'s recording, hook, directory and exit', async () => {
   await mount()
-  expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Terminal')
   await waitFor(() => expect(screen.getByTestId('terminal-meta-hook').textContent).toContain('not connected'))
   expect(screen.getByTestId('terminal-meta-screen').textContent).toContain('Screen')
   act(() => batch([{ agentType: 'shell', data: { source: 'builtin-terminal', subtype: 'command_end', terminalId: tid(), cwd: '/home/op/acme', exit_code: 2 } }]))
@@ -122,15 +121,4 @@ it('starts a restarted pane with none of the old session\'s history', async () =
   await waitFor(() => expect(text()).not.toContain('Session ended'))
   expect(text()).not.toContain('rec failed')
   expect(screen.getByTestId('terminal-meta-screen').textContent).toContain('rec')
-})
-
-it('explains the two capture tracks, and closes with Escape', async () => {
-  await mount()
-  fireEvent.click(screen.getByTestId('terminal-about-open'))
-  const dialog = await screen.findByTestId('terminal-about')
-  expect(dialog.textContent).toContain('Screen recording (.cast)')
-  expect(dialog.textContent).toContain('Command events (shell hook)')
-  expect(dialog.textContent).toContain('independent')
-  fireEvent.keyDown(window, { key: 'Escape' })
-  expect(screen.queryByTestId('terminal-about')).toBeNull()
 })
