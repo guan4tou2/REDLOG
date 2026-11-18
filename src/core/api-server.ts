@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { restrictToOwner, restrictToOwnerOnce } from './fs-acl'
+import { restrictOperatorKey } from './signing'
 import { isExternalEventAllowed } from './external-event-policy'
 import { mkdirPrivate } from './private-fs'
 import { queryEvents, queryEventById, queryBuiltinTerminalSessionStart, getEventCount, executeEventQuery, PAUSE_EXEMPT_AGENT_TYPES } from './db/events'
@@ -976,6 +977,7 @@ export function onApiProjectOpen(): void {
     try { restrictToOwnerOnce(TOKEN_PATH) } catch { /* best-effort on win32 */ }
   } catch { /* keep the bootstrap token from startApiServer */ }
   ensurePrimaryOperator(primaryOperatorId, primaryOperatorName, primaryToken)
+  try { restrictOperatorKey(primaryOperatorId) } catch { /* best-effort on win32 */ }
   projectOpen = true
 }
 

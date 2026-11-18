@@ -2,7 +2,7 @@ import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
 import { homedir } from 'os'
-import { restrictToOwner, restrictToOwnerOnce } from './fs-acl'
+import { restrictToOwnerOnce } from './fs-acl'
 
 // v0.6.89: per-event Ed25519 signature closes the ≤59-minute rewrite window
 // left open by hash chain + hourly OTS anchor. Each operator has a keypair;
@@ -102,6 +102,14 @@ function privateKeyFromRaw(rawPrivB64: string, rawPubB64: string): crypto.KeyObj
   })
 }
 
+/** On Windows, restrict an existing operator's private key again, once per
+ *  process: a key an earlier version restricted may still carry other
+ *  accounts' entries. Throws as restrictToOwner does. */
+export function restrictOperatorKey(operatorId: string): void {
+  const privPath = privateKeyPath(operatorId)
+  if (fs.existsSync(privPath)) restrictToOwnerOnce(privPath)
+}
+
 export interface OperatorKeyPair {
   publicKey: string        // base64 raw 32 bytes
   privateKeyPath: string   // absolute path to the .key file
@@ -135,7 +143,7 @@ export function generateOperatorKeyPair(operatorId: string): OperatorKeyPair {
   const pubB64 = pubRaw.toString('base64')
 
   fs.writeFileSync(privPath, privB64, { mode: 0o600, flag: 'wx' })
-  try { restrictToOwner(privPath) } catch { /* best-effort on win32 */ }
+  try { restrictToOwnerOnce(privPath) } catch { /* best-effort on win32 */ }
   fs.writeFileSync(pubPath, pubB64, { flag: 'wx' })
   // v0.12.1: a prior loadKeyObject call may have negative-cached this
   // operator's key as `null` (fresh operator, key not yet written) — drop
