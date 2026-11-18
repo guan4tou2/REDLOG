@@ -4,6 +4,7 @@ import { join, dirname, basename } from 'node:path'
 import http from 'node:http'
 import { spawn, spawnSync } from 'node:child_process'
 import { makeTempHome, openView, expectAppBuild } from './helpers'
+import { captionState, expectClearOfCaptionControls } from './caption-geometry'
 import { readCastSlice } from '../src/core/cast-slice'
 import { operationPairKey } from '../src/core/operation-pair-key'
 
@@ -121,6 +122,27 @@ test.describe('packaged app', () => {
           if (status.state !== 'running') throw new Error(status.error ?? 'Isolated HTTP capture did not start')
         }, isolatedProxyPort)
       })
+
+      // BEFORE the terminal step on purpose: that step has an intermittent
+      // failure of its own (docs/records/2026-11-15/CLOSEOUT.md), and this
+      // result must not depend on it. The OS draws its window buttons over the
+      // top-right of the page on Windows, where the overlay is certain, so
+      // there a missing overlay is a failure, not a skip.
+      if (process.platform !== 'darwin') {
+        await test.step('nothing the page draws sits under the OS window buttons', async () => {
+          const state = await captionState(page)
+          if (!state.visible && process.platform !== 'win32') {
+            test.info().annotations.push({ type: 'not-exercised', description: `window controls overlay not visible on ${process.platform} (${state.note})` })
+            return
+          }
+          await expectClearOfCaptionControls(page, 'packaged app, project open')
+          await page.locator('[aria-haspopup="dialog"]').first().click()
+          await expect(page.getByTestId('export-dialog')).toBeVisible()
+          await expectClearOfCaptionControls(page, 'packaged app, export dialog open')
+          await page.keyboard.press('Escape')
+          await expect(page.getByTestId('export-dialog')).toHaveCount(0)
+        })
+      }
 
       await test.step('the built-in terminal records a command with its exit code and a cast', async () => {
         // Wait for the shell's own prompt: keys typed before it starts are lost.
