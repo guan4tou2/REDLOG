@@ -156,3 +156,38 @@ describe('G2: an observation carries its date when it is not today', () => {
     expect(screen.getAllByTestId('scope-observation-time').map((n) => n.textContent?.trim())).toEqual(['09:01:02', '11-16 22:04'])
   })
 })
+
+describe('G3: the relation filters carry their numbers', () => {
+  const rows: Row[] = [
+    { target: 'in.test', eventCount: 1, firstSeen: 1, lastSeen: 3 },
+    { target: 'out-a.test', eventCount: 1, firstSeen: 1, lastSeen: 2 },
+    { target: 'out-b.test', eventCount: 1, firstSeen: 1, lastSeen: 1 }
+  ]
+  const filters = (): Record<string, { count: string; disabled: boolean }> => Object.fromEntries(
+    Array.from(screen.getByRole('group', { name: 'Scope filter' }).querySelectorAll('button')).map((b) => [
+      b.dataset.filter, { count: b.querySelector('[data-testid="targets-filter-count"]')?.textContent ?? '', disabled: b.disabled }
+    ]))
+
+  it('counts the whole project for each relation', async () => {
+    installTargets(rows, { targets: ['in.test'], excludeTargets: [] })
+    mountTargets()
+    await waitFor(() => expect(filters().in_scope.count).toBe('1'))
+    expect(filters()).toEqual({
+      all: { count: '3', disabled: false }, in_scope: { count: '1', disabled: false }, out_scope: { count: '2', disabled: false }
+    })
+  })
+
+  it('with no rule declared, or none readable, in and out are a dash and stay disabled', async () => {
+    installTargets(rows)
+    mountTargets()
+    await screen.findByText('in.test')
+    expect(filters()).toEqual({
+      all: { count: '3', disabled: false }, in_scope: { count: '—', disabled: true }, out_scope: { count: '—', disabled: true }
+    })
+    cleanup()
+    installTargets(rows, new Error('no config'))
+    mountTargets()
+    await screen.findByTestId('targets-scope-failed')
+    expect(filters().out_scope).toEqual({ count: '—', disabled: true })
+  })
+})

@@ -266,6 +266,11 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
   })
   // With no readable rule there is no in/out to filter by.
   const scopeKnown = !scopeFailed && scopeConfigured({ targets: scopeTargets })
+  const relationCounts = useMemo(() => ({
+    all: targets.length,
+    in_scope: targets.filter((tgt) => tgt.inScope === true).length,
+    out_scope: targets.filter((tgt) => tgt.inScope === false).length
+  }), [targets])
 
   // One rule for the button and for ⌘↩: an open target lands on its newest
   // evidence row, by id, so the Timeline can select it; a closed one has only
@@ -298,6 +303,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
               <button
                 key={f}
                 type="button"
+                data-filter={f}
                 disabled={f !== 'all' && !scopeKnown}
                 aria-pressed={filter === f}
                 onClick={() => setFilter(f)}
@@ -305,7 +311,12 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                   filter === f ? 'bg-redlog-elevated text-redlog-text' : 'text-redlog-text-dim hover:text-redlog-text'
                 }`}
               >
-                {f === 'all' ? t('targets.all') : f === 'in_scope' ? t('targets.inScope') : t('targets.outOfScope')}
+                {f === 'all' ? t('targets.all') : f === 'in_scope' ? t('targets.inScope') : t('targets.outOfScope')}{' '}
+                {/* Project-wide, whatever the search: with no readable rule
+                    there is no in or out to count, and 0 would say there was. */}
+                {f !== 'all' && !scopeKnown
+                  ? <span data-testid="targets-filter-count" aria-label={t('targetsScope.noCount')} className="ml-0.5 font-mono text-redlog-text-faint">—</span>
+                  : <span data-testid="targets-filter-count" className="ml-0.5 font-mono tabular-nums">{relationCounts[f]}</span>}
               </button>
             ))}
           </div>

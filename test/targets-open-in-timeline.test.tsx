@@ -110,15 +110,15 @@ describe('the Targets page as the proposal lays it out', () => {
     expect(screen.getAllByText('Not set')).toHaveLength(2)
     expect(screen.queryByText('Scope unknown')).toBeNull()
     expect(screen.queryByText('In scope')).toBeNull()
-    expect((screen.getByRole('button', { name: 'In Scope' }) as HTMLButtonElement).disabled).toBe(true)
-    expect((screen.getByRole('button', { name: 'All' }) as HTMLButtonElement).disabled).toBe(false)
+    expect((screen.getByRole('button', { name: /^In Scope/ }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: /^All / }) as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('judges targets against the declared rules and filters by that judgement', async () => {
     setup({ targets: ['10.0.0.5'], excludeTargets: [] })
     mount()
     await screen.findByText('In scope')
-    fireEvent.click(screen.getByRole('button', { name: 'Out of Scope' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Out of Scope/ }))
     expect(screen.queryByText('10.0.0.5')).toBeNull()
     expect(screen.getByText('api.example')).toBeTruthy()
   })
