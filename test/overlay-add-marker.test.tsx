@@ -46,9 +46,12 @@ describe('HUD: add marker', () => {
     expect(screen.getByTestId('hud-pass-through').textContent).toMatch(/Click-through|滑鼠穿透/)
   })
 
+  // Since 2026-11-18 the line shows while the button is hovered or focused,
+  // not permanently — still before it is pressed.
   it('says how to get out of click-through before it is pressed', async () => {
     install(vi.fn())
     await expanded()
+    fireEvent.mouseEnter(screen.getByTestId('hud-pass-through'))
     expect(screen.getByTestId('hud-pass-through-hint').textContent).toMatch(/(⌘⇧P|Ctrl\+Shift\+P)/)
     expect(overlay.setPassThrough).not.toHaveBeenCalled()
   })
@@ -62,6 +65,7 @@ describe('HUD: add marker', () => {
     vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform)
     install(vi.fn())
     await expanded()
+    fireEvent.focus(screen.getByTestId('hud-pass-through'))
     const texts = [screen.getByTestId('hud-pass-through-hint').textContent, screen.getByTestId('hud-hide').getAttribute('title')]
     for (const text of texts) {
       expect(text).toMatch(here)

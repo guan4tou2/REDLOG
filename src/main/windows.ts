@@ -4,7 +4,7 @@ import { is } from '@electron-toolkit/utils'
 import { attachContextMenu } from './context-menu'
 import { showWhenReady } from './window-show'
 import { allowNavigation } from './navigation-policy'
-import { HUD_INITIAL_H, defaultOverlayBounds } from '../core/overlay-layout'
+import { HUD_INITIAL_H, defaultOverlayBounds, hudWindowWidth } from '../core/overlay-layout'
 
 const isMac = process.platform === 'darwin'
 const isWin = process.platform === 'win32'
@@ -90,7 +90,8 @@ export function createOverlayWindow(
   opts: { show?: boolean } = {}
 ): BrowserWindow {
   const workArea = screen.getPrimaryDisplay().workArea
-  const width = 440
+  // Scale 1; the renderer resizes it to the operator's scale on first measure.
+  const width = hudWindowWidth(1, false)
   const placed = saved ?? defaultOverlayBounds(workArea, width)
 
   const win = new BrowserWindow({

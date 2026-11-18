@@ -36,15 +36,19 @@ async function expanded(): Promise<void> {
 beforeEach(() => { window.localStorage.setItem('redlog-locale', 'en') })
 afterEach(() => { cleanup(); window.localStorage.clear() })
 
+// 2026-11-18: the heading names the source and carries the count; the caveat
+// sentence under the list is gone (the list's lack of arrows and health is what
+// keeps it from claiming more — UX-005). Rows read "Route <cidr>" and the bare
+// age, with "last seen" kept as the age's title.
 it('lists each node with tool, address, route and last seen — no arrows, no health claim', async () => {
   install(async () => two); await expanded()
   const block = await screen.findByTestId('hud-pivot-nodes')
   const text = block.textContent ?? ''
-  expect(text).toContain('2 relay node(s) detected'.toUpperCase())
+  expect(text).toContain('Relay nodes 2 · detected from commands')
   expect(text).toContain('ligolo-ng')
   expect(text).toContain('192.0.2.24:11601')
-  expect(text).toContain('subnet route: 172.16.10.0/24')
-  expect(text).toContain('not checked')
+  expect(text).toContain('Route172.16.10.0/24')
+  expect(block.querySelector('[title^="last seen"]')).not.toBeNull()
   expect(text).not.toMatch(/[→▸]/)
 })
 
@@ -72,7 +76,7 @@ it('keeps the last list, marked stale, after an invalid update — and the capsu
   await expanded()
   await screen.findByTestId('hud-pivot-nodes')
   act(() => notify(null as unknown as Pivot[]))
-  expect((await screen.findByTestId('hud-pivot-error')).textContent).toContain('the 2 below are the last list read')
+  expect((await screen.findByTestId('hud-pivot-error')).textContent).toContain('Could not read; showing the last 2 read')
   const nodes = screen.getByTestId('hud-pivot-nodes')
   expect(nodes.getAttribute('data-stale')).toBe('true')
   expect(nodes.textContent).toContain(two[0].via)
