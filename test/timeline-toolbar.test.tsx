@@ -121,7 +121,7 @@ describe('TimelineToolbar', () => {
     cleanup()
     draw({ hasMore: true, loadedCount: 2, total: { state: 'ok', value: 250 } })
     const text = screen.getByTestId('timeline-range-status').textContent ?? ''
-    expect(text).toBe('2 of 250 events · scroll back for older')
+    expect(text).toBe('2 of 250 events')
     expect(text).not.toContain('Total')
     expect(screen.getByText('Load more')).toBeTruthy()
   })

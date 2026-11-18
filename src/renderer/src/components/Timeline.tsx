@@ -130,7 +130,7 @@ interface TimelinePanelProps {
   tierChip?: boolean
 }
 
-type SharedFilterSlice = Pick<ReturnType<typeof useSharedFilter>, 'filter' | 'personalDomains' | 'setTimeRange'>
+type SharedFilterSlice = Pick<ReturnType<typeof useSharedFilter>, 'filter' | 'personalDomains' | 'setTimeRange' | 'clearAll'>
 
 /** The shared filter's provider changes its value on every live batch (it
  *  counts targets as they arrive), and the App re-creates its callbacks on
@@ -138,13 +138,13 @@ type SharedFilterSlice = Pick<ReturnType<typeof useSharedFilter>, 'filter' | 'pe
  *  takes the three filter values it reads, and the callbacks through a ref,
  *  and renders when one of those, or a prop, actually changes. */
 export default function TimelinePanel(props: TimelinePanelProps = {}): JSX.Element {
-  const { filter, personalDomains, setTimeRange } = useSharedFilter()
+  const { filter, personalDomains, setTimeRange, clearAll } = useSharedFilter()
   const latest = useRef(props)
   latest.current = props
   const has = { drop: !!props.onDropMarker, inActivity: !!props.onOpenInActivity }
   const onDropMarker = useMemo(() => (has.drop ? (ts: number) => latest.current.onDropMarker?.(ts) : undefined), [has.drop])
   const onOpenInActivity = useMemo(() => (has.inActivity ? (id: string, ts: number) => latest.current.onOpenInActivity?.(id, ts) : undefined), [has.inActivity])
-  const shared = useMemo<SharedFilterSlice>(() => ({ filter, personalDomains, setTimeRange }), [filter, personalDomains, setTimeRange])
+  const shared = useMemo<SharedFilterSlice>(() => ({ filter, personalDomains, setTimeRange, clearAll }), [filter, personalDomains, setTimeRange, clearAll])
   return (
     <TimelinePanelView
       focusEventId={props.focusEventId} focusTs={props.focusTs} tierChip={props.tierChip}
@@ -157,7 +157,7 @@ export default function TimelinePanel(props: TimelinePanelProps = {}): JSX.Eleme
 const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusTs, onDropMarker, onOpenInActivity, tierChip = true, shared }: TimelinePanelProps & { shared: SharedFilterSlice }): JSX.Element {
   // Spec 038: the shared filter is applied where the events are stored, for
   // every page, count and live row. Nothing below filters on it again.
-  const { filter: sharedFilter, personalDomains, setTimeRange: setSharedTimeRange } = shared
+  const { filter: sharedFilter, personalDomains, setTimeRange: setSharedTimeRange, clearAll: clearSharedFilter } = shared
   const eventFilter = useMemo(() => toEventFilter(sharedFilter), [sharedFilter])
   const eventFilterRef = useRef(eventFilter)
   eventFilterRef.current = eventFilter
@@ -1846,6 +1846,89 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
     )
   }
 
+  // The toolbar renders what it is given; the follow badge and the panel's
+  // own view toggles close over panel state, so they come in as slots.
+  // It is drawn above an empty filtered page too, so the page does not lose
+  // its controls when the filter admits nothing.
+  const toolbar = (
+    <TimelineToolbar
+      t={t}
+      timeRange={sharedFilter.timeRange}
+      setTimeRange={setSharedTimeRange}
+      hasMore={hasMore}
+      loadedCount={rawEvents.length}
+      loadedSpanMs={loadedSpanMs}
+      projectSpanMs={projectSpanMs}
+      total={total}
+      onRetryTotal={() => requestTotal(generationRef.current)}
+      onLoadMore={loadMore}
+      zoom={zoom}
+      onZoomOut={() => setZoom((z) => Math.max(MIN_ZOOM, z - 0.25))}
+      onZoomIn={() => setZoom((z) => Math.min(maxZoom, z + 0.25))}
+      onResetZoom={() => setZoom(1)}
+      mode={timelineMode}
+      onModeChange={setTimelineMode}
+      filterQuery={filterQuery}
+      onFilterQueryChange={typeFilterQuery}
+      searchInputRef={searchInputRef}
+      onHelp={() => setShowHelp(true)}
+      attributionBlind={attributionBlind}
+      pausedMs={pausedMs}
+      lanes={populatedLanes}
+      followBadge={
+        <FollowBadge
+          latestTs={events.length > 0 ? events[events.length - 1].timestamp : 0}
+          isLive={atRightEdge && followMode}
+          onPause={() => setFollowMode(false)}
+          onResume={() => resumeFollow()}
+          t={t}
+        />
+      }
+      moreItems={
+        <>
+          <button
+            role="menuitemcheckbox"
+            aria-checked={collapseAgentTurns}
+            onClick={() => setCollapseAgentTurns((v) => !v)}
+            title={collapseAgentTurns
+              ? t('timeline.collapseAgent.hidden', { count: hiddenAgentTurnCount })
+              : t('timeline.collapseAgent.hint')}
+            className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-mono text-redlog-text hover:bg-white/5"
+          >
+            <span>{t('timeline.collapseAgent.label')}</span>
+            <span className={collapseAgentTurns ? 'text-lime-300' : 'text-redlog-text-faint'}>{collapseAgentTurns ? '✓' : ''}</span>
+          </button>
+          {(timeMap.gaps.length > 0 || compressGaps) && (
+            <button
+              role="menuitemcheckbox"
+              aria-checked={compressGaps}
+              onClick={() => {
+                const el = scrollRef.current
+                if (el) pendingCenterTs.current = fromX(el.scrollLeft + el.clientWidth / 2)
+                setCompressGaps((v) => !v)
+              }}
+              title={t('timeline.compressGaps.hint')}
+              className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-mono text-redlog-text hover:bg-white/5"
+            >
+              <span>{t('timeline.compressGaps.label')}{compressGaps && timeMap.gaps.length > 0 ? ` (${timeMap.gaps.length})` : ''}</span>
+              <span className={compressGaps ? 'text-cyan-300' : 'text-redlog-text-faint'}>{compressGaps ? '✓' : ''}</span>
+            </button>
+          )}
+          <div className="border-t border-redlog-border/50 my-0.5" />
+          <button
+            role="menuitemcheckbox"
+            aria-checked={sessionDividers}
+            onClick={() => setSessionDividers((v) => !v)}
+            className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-mono text-redlog-text hover:bg-white/5"
+          >
+            <span>⋮ {t('timeline.boundaries.toggle')}</span>
+            <span className={sessionDividers ? 'text-redlog-cyan' : 'text-redlog-text-faint'}>{sessionDividers ? '✓' : ''}</span>
+          </button>
+        </>
+      }
+    />
+  )
+
   // Nothing admitted by the filter is not the same as an empty project: say
   // which conditions are narrowing it. Personal traffic is one of them once
   // personal domains are set, though FilterContext's badge count leaves it
@@ -1853,12 +1936,17 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
   const activeConditions = describeActiveConditions(sharedFilter, t, { personalDomains })
   if (events.length === 0 && activeConditions.length > 0) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div data-testid="timeline-empty-filtered" className="flex flex-col items-center gap-2 text-center px-8">
-          <p className="text-sm text-redlog-text-dim">{t('timeline.emptyFiltered')}</p>
-          <ul className="text-xs text-redlog-text-faint font-mono">
-            {activeConditions.map((label) => <li key={label}>{label}</li>)}
-          </ul>
+      <div className="flex flex-col h-full">
+        <TimelineHelpModal open={showHelp} onClose={() => setShowHelp(false)} isMac={isMacPlatform} t={t} />
+        {toolbar}
+        <div className="flex-1 flex items-center justify-center">
+          <div data-testid="timeline-empty-filtered" className="flex flex-col items-center gap-2 text-center px-8">
+            <p className="text-sm text-redlog-text-dim">{t('timeline.emptyFiltered')}</p>
+            <ul className="text-xs text-redlog-text-faint font-mono">
+              {activeConditions.map((label) => <li key={label}>{label}</li>)}
+            </ul>
+            <Button size="compact" level="secondary" type="button" onClick={clearSharedFilter}>{t('filter.clearAll')}</Button>
+          </div>
         </div>
       </div>
     )
@@ -1872,7 +1960,6 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
             <Rows3 size={24} strokeWidth={1.5} aria-hidden className="text-redlog-muted" />
           </div>
           <p className="text-sm text-redlog-text-dim">{t('timeline.noEvents')}</p>
-          <p className="text-xs text-redlog-text-faint">{t('timeline.noEventsDesc')}</p>
         </div>
       </div>
     )
@@ -1890,84 +1977,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
           while focus mode is active. Anchored on the wrapper so it floats
           above the minimap without shifting layout. */}
       <FocusChainBadge size={focusChain?.size ?? 0} active={!!focusChain} meta={focusMeta} onExit={() => setFocusAnchorId(null)} t={t} />
-      {/* The toolbar renders what it is given; the follow badge and the panel's
-          own view toggles close over panel state, so they come in as slots. */}
-      <TimelineToolbar
-        t={t}
-        timeRange={sharedFilter.timeRange}
-        setTimeRange={setSharedTimeRange}
-        hasMore={hasMore}
-        loadedCount={rawEvents.length}
-        loadedSpanMs={loadedSpanMs}
-        projectSpanMs={projectSpanMs}
-        total={total}
-        onRetryTotal={() => requestTotal(generationRef.current)}
-        onLoadMore={loadMore}
-        zoom={zoom}
-        onZoomOut={() => setZoom((z) => Math.max(MIN_ZOOM, z - 0.25))}
-        onZoomIn={() => setZoom((z) => Math.min(maxZoom, z + 0.25))}
-        onResetZoom={() => setZoom(1)}
-        mode={timelineMode}
-        onModeChange={setTimelineMode}
-        filterQuery={filterQuery}
-        onFilterQueryChange={typeFilterQuery}
-        searchInputRef={searchInputRef}
-        onHelp={() => setShowHelp(true)}
-        attributionBlind={attributionBlind}
-        pausedMs={pausedMs}
-        lanes={populatedLanes}
-        followBadge={
-          <FollowBadge
-            latestTs={events.length > 0 ? events[events.length - 1].timestamp : 0}
-            isLive={atRightEdge && followMode}
-            onPause={() => setFollowMode(false)}
-            onResume={() => resumeFollow()}
-            t={t}
-          />
-        }
-        moreItems={
-          <>
-            <button
-              role="menuitemcheckbox"
-              aria-checked={collapseAgentTurns}
-              onClick={() => setCollapseAgentTurns((v) => !v)}
-              title={collapseAgentTurns
-                ? t('timeline.collapseAgent.hidden', { count: hiddenAgentTurnCount })
-                : t('timeline.collapseAgent.hint')}
-              className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-mono text-redlog-text hover:bg-white/5"
-            >
-              <span>{t('timeline.collapseAgent.label')}</span>
-              <span className={collapseAgentTurns ? 'text-lime-300' : 'text-redlog-text-faint'}>{collapseAgentTurns ? '✓' : ''}</span>
-            </button>
-            {(timeMap.gaps.length > 0 || compressGaps) && (
-              <button
-                role="menuitemcheckbox"
-                aria-checked={compressGaps}
-                onClick={() => {
-                  const el = scrollRef.current
-                  if (el) pendingCenterTs.current = fromX(el.scrollLeft + el.clientWidth / 2)
-                  setCompressGaps((v) => !v)
-                }}
-                title={t('timeline.compressGaps.hint')}
-                className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-mono text-redlog-text hover:bg-white/5"
-              >
-                <span>{t('timeline.compressGaps.label')}{compressGaps && timeMap.gaps.length > 0 ? ` (${timeMap.gaps.length})` : ''}</span>
-                <span className={compressGaps ? 'text-cyan-300' : 'text-redlog-text-faint'}>{compressGaps ? '✓' : ''}</span>
-              </button>
-            )}
-            <div className="border-t border-redlog-border/50 my-0.5" />
-            <button
-              role="menuitemcheckbox"
-              aria-checked={sessionDividers}
-              onClick={() => setSessionDividers((v) => !v)}
-              className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-mono text-redlog-text hover:bg-white/5"
-            >
-              <span>⋮ {t('timeline.boundaries.toggle')}</span>
-              <span className={sessionDividers ? 'text-redlog-cyan' : 'text-redlog-text-faint'}>{sessionDividers ? '✓' : ''}</span>
-            </button>
-          </>
-        }
-      />
+      {toolbar}
 
       {/* Spec 038: what the panel could not do, said where the operator is
           looking. A failed read is never shown as fewer rows (FR-010), and a
