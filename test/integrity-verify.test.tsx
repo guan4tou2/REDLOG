@@ -265,14 +265,35 @@ describe('what is known without verifying', () => {
     await waitFor(() => expect(within(openDetails()).getByTestId('evidence-chain-facts').textContent).toContain('Not anchored yet'))
   })
 
-  it('shows the latest anchor and folds the earlier ones into a disclosure', async () => {
+  // The latest anchor's head and receipts were unreachable, and a project
+  // with one anchor showed no head hash or calendar anywhere.
+  it('lists every anchor, newest first, with its head and each calendar pending or upgraded', async () => {
+    const receipt = (calendar: string, over: Partial<CalendarReceiptInfo> = {}): CalendarReceiptInfo => ({ calendar, ok: true, submittedAt: NOW, ...over })
+    const only = anchorAt({ id: 'a9', headHash: 'ab'.repeat(32), calendarReceipts: [receipt('https://a.example.org'), receipt('https://b.example.org', { upgraded: true }), receipt('https://c.example.org', { ok: false, error: 'timeout' })] })
+    install(undefined, { anchors: async () => [only] })
+    mount()
+    const details = openDetails()
+    await waitFor(() => expect(within(details).getAllByTestId('anchor-card')).toHaveLength(1))
+    const card = within(details).getByTestId('anchor-card')
+    expect(card.textContent).toContain('ab'.repeat(16))
+    expect(card.textContent).toContain('a.example.org · pending')
+    expect(card.textContent).toContain('b.example.org · upgraded')
+    expect(card.textContent).toContain('c.example.org · failed')
+    expect(details.textContent).toContain('Each calendar receipt can be checked independently with the `ots` CLI.')
+  })
+
+  it('lists all anchors, not all but the latest', async () => {
     install(undefined, { anchors: async () => [anchorAt({ id: 'a3' }), anchorAt({ id: 'a2', createdAt: NOW - 3_600_000 }), anchorAt({ id: 'a1', createdAt: NOW - 7_200_000 })] })
     mount()
-    openDetails()
-    const more = await screen.findByText('2 earlier anchors')
-    const details = more.closest('details') as HTMLDetailsElement
-    expect(details.open).toBe(false)
-    expect(details.querySelectorAll('[data-testid="anchor-card"]')).toHaveLength(2)
+    const details = openDetails()
+    await waitFor(() => expect(within(details).getAllByTestId('anchor-card')).toHaveLength(3))
+  })
+
+  it('names the head the last walk ended on', async () => {
+    install({ ok: true, walked: 3, anchor: accepted, anchorMatchesWalkedHead: true, currentHead: 'cd'.repeat(32) })
+    mount()
+    await verify()
+    expect(openDetails().textContent).toContain(`Head at the last walk: ${'cd'.repeat(32)}`)
   })
 
   // Anchoring is not destructive and is not the page's verb.

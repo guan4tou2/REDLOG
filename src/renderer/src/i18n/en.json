@@ -2371,7 +2371,6 @@
   "evidence.readFailed": "Could not be read",
   "evidence.anchorNone": "Not anchored yet",
   "evidence.unanchored": "{{n}} not anchored",
-  "evidence.olderAnchors": "{{n}} earlier anchors",
   "evidence.details": "Details",
   "evidence.sinceUnknown": "Additions since unknown: the chain length could not be read",
   "evidence.lengthFailed": "Chain length could not be read",
@@ -2379,5 +2378,10 @@
   "evidence.sinceUnknownShort": "Additions since unknown",
   "evidence.verdictMismatch": "Anchor mismatch",
   "evidence.verifyAbandoned": "Verification abandoned: the project changed while it ran",
-  "evidence.anchorNeverAccepted": "The latest anchor was never accepted by a calendar: there is no external timestamp to check against."
+  "evidence.anchorNeverAccepted": "The latest anchor was never accepted by a calendar: there is no external timestamp to check against.",
+  "evidence.receiptPending": "pending",
+  "evidence.receiptUpgraded": "upgraded",
+  "evidence.receiptFailed": "failed",
+  "evidence.walkedHead": "Head at the last walk: {{hash}}",
+  "evidence.otsHint": "Each calendar receipt can be checked independently with the `ots` CLI."
 }

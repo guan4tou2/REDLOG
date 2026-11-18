@@ -2371,7 +2371,6 @@
   "evidence.readFailed": "無法讀取",
   "evidence.anchorNone": "尚未錨定",
   "evidence.unanchored": "未錨定 {{n}} 筆",
-  "evidence.olderAnchors": "較早的錨點 {{n}} 個",
   "evidence.details": "詳情",
   "evidence.sinceUnknown": "之後新增的筆數不明：無法讀取證據鏈長度",
   "evidence.lengthFailed": "無法讀取證據鏈長度",
@@ -2379,5 +2378,10 @@
   "evidence.sinceUnknownShort": "之後新增筆數不明",
   "evidence.verdictMismatch": "錨點不符",
   "evidence.verifyAbandoned": "驗證已放棄：執行期間切換了專案",
-  "evidence.anchorNeverAccepted": "最新錨點未被任何日曆接受：沒有外部時戳可供比對。"
+  "evidence.anchorNeverAccepted": "最新錨點未被任何日曆接受：沒有外部時戳可供比對。",
+  "evidence.receiptPending": "待升級",
+  "evidence.receiptUpgraded": "已升級",
+  "evidence.receiptFailed": "失敗",
+  "evidence.walkedHead": "上次驗證時的鏈頭：{{hash}}",
+  "evidence.otsHint": "每筆日曆收據都能用 `ots` CLI 獨立驗證。"
 }

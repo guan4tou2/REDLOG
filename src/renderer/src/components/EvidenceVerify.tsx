@@ -149,13 +149,14 @@ function ResultDetail({ r, t }: { r: FullVerifyResult; t: Translate }): JSX.Elem
     {/* The line says "Anchor mismatch"; this is the sentence. */}
     {verdict === 'anchor-mismatch' && <li className="text-red-400">{t('settings.integrityFullAnchorMismatch')}</li>}
     {!anchored && r.ok && <li>{t('settings.integrityFullNoAnchor')}</li>}
+    {r.currentHead && <li className="break-all">{t('evidence.walkedHead', { hash: r.currentHead })}</li>}
     {r.clockAnomalies && r.clockAnomalies.length > 0 && (
       <li className="text-amber-400">{t('settings.integrityFullClockAnomalies', { n: String(r.clockAnomalies.length) })}</li>
     )}
   </ul>
 }
 
-/** One earlier anchor: status, time, count, head and each calendar's receipt. */
+/** One anchor: status, time, count, head and each calendar's receipt. */
 function AnchorCard({ a, t }: { a: ChainAnchorInfo; t: Translate }): JSX.Element {
   return <div data-testid="anchor-card" className="rounded border border-redlog-border bg-redlog-surface/50 p-2">
     <div className="flex items-center gap-2 text-xs">
@@ -171,7 +172,9 @@ function AnchorCard({ a, t }: { a: ChainAnchorInfo; t: Translate }): JSX.Element
         <span key={i}
           title={r.ok ? `${r.calendar} — ${r.upgradedBytes ?? r.receiptB64?.length ?? 0} B ${r.upgraded ? '(UPGRADED)' : '(pending)'}` : `${r.calendar} — ${r.error}`}
           className={`rounded px-1.5 py-0.5 font-mono text-xs ${r.upgraded ? 'bg-redlog-cyan/15 text-redlog-cyan' : r.ok ? 'bg-green-900/40 text-green-400' : 'bg-red-900/40 text-red-400'}`}>
-          {calendarHost(r.calendar)}{r.upgraded && ' ✓'}{!r.ok && ' ✗'}
+          {/* "COMPLETE" at submission means every calendar accepted a pending
+              digest; only "upgraded" is a Bitcoin attestation. */}
+          {calendarHost(r.calendar)} · {t(!r.ok ? 'evidence.receiptFailed' : r.upgraded ? 'evidence.receiptUpgraded' : 'evidence.receiptPending')}
         </span>
       ))}
     </div>}
@@ -268,7 +271,6 @@ export function EvidenceVerify({ heading }: { heading: JSX.Element }): JSX.Eleme
   // cannot stand behind.
   const len = chainLen.state.phase === 'failed' ? null : chainLen.state.value
   const anchorList = anchors.state.phase === 'failed' ? null : anchors.state.value
-  const older = anchorList ? anchorList.slice(1) : []
   const shown = project.state.phase === 'loading' ? null : record
   const list = findings({
     record: shown, len, lenFailed: chainLen.state.phase === 'failed',
@@ -323,12 +325,12 @@ export function EvidenceVerify({ heading }: { heading: JSX.Element }): JSX.Eleme
           </span>
         </dd>
       </dl>
-      {older.length > 0 && (
-        <details className="text-xs text-redlog-text-dim">
-          <summary className="cursor-pointer select-none text-redlog-text-faint hover:text-redlog-text">{t('evidence.olderAnchors', { n: older.length })}</summary>
-          <div className="mt-1 space-y-1">{older.map((a) => <AnchorCard key={a.id} a={a} t={t} />)}</div>
-        </details>
-      )}
+      {/* Every anchor, newest first: its head and each calendar's receipt are
+          what an operator hands over, so they stay reachable here. */}
+      {anchorList && anchorList.length > 0 && <div className="space-y-1">
+        {anchorList.map((a) => <AnchorCard key={a.id} a={a} t={t} />)}
+        <p className="text-xs text-redlog-text-faint">{t('evidence.otsHint')}</p>
+      </div>}
     </div>}
   </section>
 }
