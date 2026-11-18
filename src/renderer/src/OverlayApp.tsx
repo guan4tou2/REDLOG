@@ -140,6 +140,9 @@ export default function OverlayApp(): JSX.Element {
   // just ghosted the HUD sees the click-free way back out (⌘⇧P / menu bar)
   // before the chrome they would otherwise click is gone.
   const [ptHint, setPtHint] = useState(false)
+  // The click-through explanation under the action row: only while its button
+  // is hovered or focused.
+  const [ptExplain, setPtExplain] = useState(false)
   const ptHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const ptWas = useRef(passThrough)
   useEffect(() => {
@@ -267,6 +270,13 @@ export default function OverlayApp(): JSX.Element {
     color: HUD.muted
   }
   const note: React.CSSProperties = { fontFamily: HUD_FONT.ui, fontSize: fs(12), margin: `${px(4)}px 0 0` }
+  // The relay read-failure line, with its retry. A render helper, not a component.
+  const pivotError = (text: string): JSX.Element => (
+    <p data-testid="hud-pivot-error" style={{ ...note, color: HUD.amber, marginTop: px(10), display: 'flex', alignItems: 'center', gap: px(8) }}>
+      <span>⚠ {text}</span>
+      <button type="button" className="hudBtn" data-testid="hud-pivot-retry" onClick={pivotRead.retry} aria-label={t('common.retry')} title={t('common.retry')} style={{ ...noDrag, ...iconBtn, color: HUD.amber, flex: 'none' }}>↻</button>
+    </p>
+  )
 
   // Pass-through dimming — applied to individual "chrome" children instead
   // of the outer wrapper. CSS opacity on a parent forces every descendant
@@ -364,12 +374,13 @@ export default function OverlayApp(): JSX.Element {
           {expanded && (
             <div style={{ padding: `${px(2)}px ${px(14)}px ${px(12)}px`, fontSize: fs(12), ...dimStyle }}>
               {/* The label column scales with the text (v0.11.1: a fixed column
-                  wrapped "Last check" at scale 1.25+). */}
+                  wrapped "Last check" at scale 1.25+). The external address is
+                  not repeated here: the bar shows it whole (its column gives way
+                  last). Internal and network stay, because the bar can ellipsize
+                  them and leaves the network out when none is known. */}
               <div style={{ display: 'grid', gridTemplateColumns: `${px(96)}px 1fr`, rowGap: px(4), alignItems: 'baseline' }}>
                 <span style={{ color: HUD.muted }}>{t('overlay.status')}</span>
                 <span style={{ color: STATE, fontWeight: 600 }}>{STATUS_TXT}</span>
-                <span style={{ color: HUD.muted }}>{t('overlay.external')}</span>
-                <span style={{ color: HUD.value, fontSize: fsIp(12) }}>{status?.externalIP ?? '—'}</span>
                 <span style={{ color: HUD.muted }}>{t('overlay.internal')}</span>
                 <span style={{ color: HUD.value }}>{status?.internalIP ?? '—'}</span>
                 <span style={{ color: HUD.muted }}>{t('overlay.network')}</span>
@@ -378,35 +389,39 @@ export default function OverlayApp(): JSX.Element {
                 <span style={{ color: HUD.value }}>{status?.lastCheck ? formatTime(status.lastCheck, { seconds: true }) : '—'}</span>
               </div>
 
-              {/* Relay nodes seen in commands, listed — not drawn as a route. A
-                  detected node does not say which node forwards to which, nor
-                  that its channel is up, so no arrows and no health. A failed
-                  read says so instead of looking like "none"; it stays above the
-                  list because its wording points at the list "below". */}
-              {pivotRead.status === 'error' && (
-                <p data-testid="hud-pivot-error" style={{ ...note, color: HUD.amber, marginTop: px(10), display: 'flex', alignItems: 'center', gap: px(8) }}>
-                  <span>⚠ {pivotRead.pivots.length ? t('pivot.readFailedStale', { count: pivotRead.pivots.length }) : t('pivot.readFailed')}</span>
-                  <button type="button" className="hudBtn" data-testid="hud-pivot-retry" onClick={pivotRead.retry} aria-label={t('common.retry')} title={t('common.retry')} style={{ ...noDrag, ...iconBtn, color: HUD.amber, flex: 'none' }}>↻</button>
-                </p>
-              )}
-              {/* The expanded list keeps the last list read through a failed
-                  re-read, dimmed under the warning; the collapsed capsule above
-                  shows current nodes only. */}
+              {/* Relay nodes seen in commands, listed — not drawn as a route. The
+                  heading names the source; the list draws no arrows, no chain and
+                  no tunnel health, which is what keeps it from claiming more
+                  (UX-005). A failed read says so instead of looking like "none":
+                  with no list it stands alone; with the last list kept it sits
+                  under the heading, so "could not read" has its object, and only
+                  the rows dim. */}
+              {pivotRead.status === 'error' && listedPivots.length === 0 && pivotError(t('pivot.readFailed'))}
               {listedPivots.length > 0 && (
-                <div data-testid="hud-pivot-nodes" data-stale={pivotRead.status === 'error' || undefined} style={pivotRead.status === 'error' ? { opacity: 0.55 } : undefined}>
+                <div data-testid="hud-pivot-nodes" data-stale={pivotRead.status === 'error' || undefined}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: px(8), margin: `${px(12)}px 0 ${px(6)}px`, color: HUD.section }}>
                     <span>⇄ {t('pivot.detected', { count: listedPivots.length })}</span>
                     <span aria-hidden="true" style={{ flex: 1, height: 1, background: HUD.sectionRule }} />
                   </div>
-                  {listedPivots.map((p) => (
-                    <div key={p.via + p.tool + p.ts} style={{ display: 'grid', gridTemplateColumns: `${px(72)}px minmax(0, 1fr) auto`, columnGap: px(10), padding: `${px(4)}px ${px(8)}px`, marginBottom: px(4), borderLeft: `2px solid ${FRAME}`, background: HUD.nodeBg }}>
-                      <span style={{ color: HUD.muted, overflowWrap: 'anywhere' }}>{p.tool}</span>
-                      <span style={{ color: HUD.value, fontWeight: 600, overflowWrap: 'anywhere' }}>{p.via}</span>
-                      <span style={{ color: HUD.muted }}>{t('pivot.lastSeen', { when: formatFreshness(p.ts, t) })}</span>
-                      {p.route && <span style={{ gridColumn: '2 / -1', color: HUD.internal, overflowWrap: 'anywhere' }}>{t('pivot.route', { route: p.route })}</span>}
-                    </div>
-                  ))}
-                  <p style={{ ...note, color: HUD.muted }}>{t('pivot.unverified')}</p>
+                  {pivotRead.status === 'error' && pivotError(t('overlay.relayReadFailedStale', { count: listedPivots.length }))}
+                  <div style={pivotRead.status === 'error' ? { opacity: 0.55, marginTop: px(6) } : undefined}>
+                    {listedPivots.map((p) => {
+                      const seen = t('pivot.lastSeen', { when: formatFreshness(p.ts, t) })
+                      return (
+                        <div key={p.via + p.tool + p.ts} style={{ display: 'grid', gridTemplateColumns: `${px(72)}px minmax(0, 1fr) auto`, columnGap: px(10), padding: `${px(4)}px ${px(8)}px`, marginBottom: px(4), borderLeft: `2px solid ${FRAME}`, background: HUD.nodeBg }}>
+                          <span style={{ color: HUD.muted, overflowWrap: 'anywhere' }}>{p.tool}</span>
+                          <span style={{ color: HUD.value, fontWeight: 600, overflowWrap: 'anywhere' }}>{p.via}</span>
+                          <span style={{ color: HUD.muted }} title={seen} aria-label={seen}>{formatFreshness(p.ts, t)}</span>
+                          {p.route && (
+                            <span style={{ gridColumn: '2 / -1', overflowWrap: 'anywhere' }}>
+                              <span style={label}>{t('overlay.relayRoute')}</span>
+                              <span style={{ color: HUD.internal }}>{p.route}</span>
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
               )}
 
@@ -491,13 +506,20 @@ export default function OverlayApp(): JSX.Element {
                     is click-through so this button cannot turn it off; the way
                     back is the shortcut or the menu bar (both wired in main),
                     so the tooltip and the line below name it BEFORE it is
-                    pressed. The chord only releases, so it is not shown here as
-                    this button's shortcut. */}
+                    pressed — the line appears under the row while the button is
+                    hovered or focused (owner, 2026-11-18: not always on). The
+                    chord only releases, so it is not shown as this button's
+                    shortcut. */}
                 <button
                   type="button"
                   className="hudBtn"
                   data-testid="hud-pass-through"
                   onClick={() => window.redlog.overlay.setPassThrough!(true)}
+                  onMouseEnter={() => setPtExplain(true)}
+                  onMouseLeave={() => setPtExplain(false)}
+                  onFocus={() => setPtExplain(true)}
+                  onBlur={() => setPtExplain(false)}
+                  aria-describedby={ptExplain ? 'hud-pt-explain' : undefined}
                   style={textBtn}
                   title={`${t('overlay.passThrough')} — ${t(placeKey('overlay.passThroughHint'), { chord: ptChord })}`}
                 >
@@ -517,9 +539,11 @@ export default function OverlayApp(): JSX.Element {
                   {pinned ? '☑' : '☐'} {t('overlay.keepOpen')}
                 </button>
               </div>
-              <p data-testid="hud-pass-through-hint" style={{ ...noDrag, ...note, color: HUD.muted }}>
-                {t(placeKey('overlay.passThroughHint'), { chord: ptChord })}
-              </p>
+              {ptExplain && (
+                <p id="hud-pt-explain" data-testid="hud-pass-through-hint" style={{ ...noDrag, ...note, color: HUD.muted }}>
+                  {t(placeKey('overlay.passThroughHint'), { chord: ptChord })}
+                </p>
+              )}
             </div>
           )}
           </div>
