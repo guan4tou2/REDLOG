@@ -35,10 +35,13 @@ const real: AclRunner = {
 
 // Where a test-setup replacement of the icacls and whoami spawns is kept: on
 // the global, not in this module, so a test that calls vi.resetModules() and
-// imports this file again still finds it. Production never sets it.
+// imports this file again still finds it. Production never sets it, and under
+// Electron it is not read at all: nothing in the app can turn restriction into
+// a no-op through the global.
 const TEST_RUNNER = Symbol.for('redlog.test.icaclsRunner')
 
 function runner(): AclRunner {
+  if (process.versions.electron) return real
   const replaced = (globalThis as Record<symbol, unknown>)[TEST_RUNNER]
   return replaced && typeof replaced === 'object' ? replaced as AclRunner : real
 }

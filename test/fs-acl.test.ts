@@ -206,6 +206,19 @@ describe('restrictToOwner\'s icacls calls', () => {
     expect(icaclsCalls()).toEqual([[f, '/reset']])
   })
 
+  // test/setup.ts's switch lives on globalThis. Inside Electron it is ignored,
+  // so nothing in a packaged app can turn restriction into a no-op through it.
+  it('ignores the test switch when running under Electron', () => {
+    const f = path.join(tmpDir, 'api-token')
+    fs.writeFileSync(f, 'x')
+    Object.defineProperty(process.versions, 'electron', { value: '99.0.0', configurable: true, enumerable: true })
+    try {
+      try { restrictToOwner(f) } catch { /* the real icacls, or off Windows its absence */ }
+    } finally {
+      delete (process.versions as Record<string, string | undefined>).electron
+    }
+    expect(icaclsCalls()).toEqual([])
+  })
 })
 
 // The memo is what keeps project open from spawning icacls for the mirrored
