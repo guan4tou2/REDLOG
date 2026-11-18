@@ -18,21 +18,6 @@ for full commit body + generated notes.
   the NTP queries and the update check at once; before, both kept going until
   the project was reopened. Switched off again, NTP and anchoring resume as
   they do at open.
-- Security (Windows): files RedLog restricts to the current user — the API
-  token and port file in `~/.redlog`, each project's `api-token`, operator
-  private keys, and the raw AI transcripts in a project's `agent-transcripts`
-  — kept the entries they had inherited from their folder, as explicit
-  entries, instead of losing them. Under a default user profile those entries
-  are SYSTEM, Administrators and the user, so nothing changed for other
-  accounts. Where `%USERPROFILE%\.redlog` sits on a volume or folder whose
-  permissions grant other local accounts access (for example `Users` or
-  `Authenticated Users`), those accounts could still read these files. They
-  now hold exactly one entry, the current user's. Opening a project with this
-  version restricts its token and the operator key again, and its AI
-  transcript directory the next time AI capture records into it. On an
-  affected machine, treat each project's API
-  token, the operator private key and the raw AI transcripts recorded there as
-  having been readable by other local accounts.
 
 ## v0.19.0 — 2026-11-17
 
