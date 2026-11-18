@@ -89,11 +89,23 @@ describe('HUD window sizing', () => {
     }
   })
 
-  it('the historical overshoot is gone: scale 1.75 no longer requests 847pt', () => {
-    // Old formula: round(440*1.75) + round(44*1.75) = 770 + 77 = 847, which
-    // main capped to 720 — so the window came back 127pt short of the layout.
-    expect(770 + 77).toBeGreaterThan(HUD_MAX_W) // the overshoot that used to escape
-    expect(hudWindowWidth(1.75, true)).toBe(HUD_MAX_W) // now capped at the source
+  it('no supported setting is cut short by the cap', () => {
+    // The 440pt-base formula once asked for 847 at 1.75 + emphasis while main
+    // capped at 720, so the window came back 127pt short of the layout. Since
+    // the 490pt base (2026-11-18) the cap is the formula's own value at the top
+    // of the band, so the widest setting is exactly the cap and nothing below
+    // it is clamped from above.
+    expect(hudWindowWidth(1.75, true)).toBe(HUD_MAX_W)
+    for (const scale of [0.75, 1, 1.25, 1.5, 1.75]) {
+      for (const emph of [false, true]) {
+        const raw = Math.round(490 * scale) + (emph ? Math.round(60 * scale) : 0)
+        expect(hudWindowWidth(scale, emph), `scale ${scale} emph ${emph}`).toBe(Math.max(HUD_MIN_W, raw))
+      }
+    }
+  })
+
+  it('is 490pt at scale 1, the owner-chosen base', () => {
+    expect(hudWindowWidth(1, false)).toBe(490)
   })
 
   it('emphasizeExternalIp widens the box (until the cap swallows both)', () => {

@@ -109,3 +109,34 @@ it('draws solid corners when click-through is off', async () => {
   expect(frame().getAttribute('data-pass-through')).toBeNull()
   for (const c of corners()) expect(c.style.borderStyle).toBe('solid')
 })
+
+// The overlay loads no app stylesheet, so the app-wide reduced-motion rule does
+// not reach it; its own style block has to carry one.
+it('stops its animations under prefers-reduced-motion', async () => {
+  install({ safety: 'exposed' }); await mount()
+  const css = Array.from(document.querySelectorAll('style')).map((st) => st.textContent).join('\n')
+  const rule = /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.hudMotion\s*\{\s*animation:\s*none !important;/
+  expect(css).toMatch(rule)
+  // and every animated element carries the class the rule names
+  const animated = Array.from(document.querySelectorAll<HTMLElement>('*')).filter((el) => el.style.animation)
+  expect(animated.length).toBeGreaterThan(0)
+  for (const el of animated) expect(el.classList.contains('hudMotion')).toBe(true)
+})
+
+// Exposed with the flash pref on (the default): the panel itself pulses to a
+// red tint with the frame and corner marks, not only a 1px border.
+it('flashes the exposed panel background, with the frame and the corner marks', async () => {
+  install({ safety: 'exposed' }); await mount()
+  expect(frame().style.animation).toMatch(/\bhudAlarm\b(?!Mark)/)
+  for (const c of corners()) expect(c.style.animation).toMatch(/\bhudAlarmMark\b/)
+  const css = Array.from(document.querySelectorAll('style')).map((st) => st.textContent).join('\n')
+  const keyframes = /@keyframes hudAlarm \{([\s\S]*?)\n\s*\}/.exec(css)?.[1] ?? ''
+  expect(keyframes).toMatch(/background-color: #541d1e/)
+  expect(keyframes).toMatch(/border-color: #ff4d4f/)
+})
+
+it('does not flash when the flash pref is off', async () => {
+  install({ safety: 'exposed', prefs: { flashOnExposed: false } }); await mount()
+  expect(frame().style.animation).toBe('')
+  for (const c of corners()) expect(c.style.animation).toBe('')
+})

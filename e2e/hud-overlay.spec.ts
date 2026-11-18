@@ -200,9 +200,18 @@ test.describe.serial('HUD size stability', () => {
         await setScale(scale)
         await clickChevron('▼')
 
+        // The block is status + last check since 2026-11-18 (two rows, four
+        // cells); it used to be found as "the first grid with ≥ 8 children".
+        const labels = await hud2.evaluate(() => {
+          const grid = document.querySelector('[data-testid="hud-kv"]')
+          return grid ? Array.from(grid.children).filter((_, i) => i % 2 === 0).map((c) => c.textContent?.trim()) : null
+        })
+        expect(labels, 'the expanded key/value block').toHaveLength(2)
+        expect(labels![0]).toMatch(/^(Status|狀態)$/)
+        expect(labels![1]).toMatch(/^(Last check|最後檢查)$/)
+
         const wrapped = await hud2.evaluate(() => {
-          const cells = Array.from(document.querySelectorAll('div')).find((d) =>
-            getComputedStyle(d).display === 'grid' && d.children.length >= 8)
+          const cells = document.querySelector('[data-testid="hud-kv"]')
           if (!cells) return null
           return Array.from(cells.children).map((c) => {
             const el = c as HTMLElement
@@ -218,20 +227,57 @@ test.describe.serial('HUD size stability', () => {
     }
   })
 
+  // The bar's columns are `overflow: hidden`, so the width test above cannot see
+  // a column pushed past its row: it is clipped, not scrolled. This checks the
+  // external IP itself at the widest setting (largest scale, emphasis on) with
+  // the longest values the bar can be given: whole, and inside the row's
+  // content box, clear of the expand / hide pair.
+  test('the external IP stays whole and clear of the controls at the largest scale', async () => {
+    const main2 = app2.windows().find((w) => !w.url().includes('overlay'))!
+    try {
+      await main2.evaluate(async () => { await window.redlog.hudPrefs.set({ scale: 1.75, emphasizeExternalIp: true }) })
+      await hud2.waitForTimeout(600)
+      const fit = await hud2.evaluate(async () => {
+        // Longest values: 15-character addresses and the longest state words.
+        // Written into the rendered nodes; the flex layout re-runs on the change.
+        const set = (id: string, text: string): void => { const el = document.querySelector(`[data-testid="${id}"]`); if (el) el.textContent = text }
+        set('hud-ext-ip', '255.255.255.255'); set('hud-int-ip', '255.255.255.255')
+        set('hud-rec', 'PAUSED'); set('hud-ip-state', 'EXPOSED')
+        await new Promise((r) => requestAnimationFrame(() => r(null)))
+        const bar = document.querySelector('[data-testid="hud-bar"]') as HTMLElement
+        const col = document.querySelector('[data-testid="hud-ext"]') as HTMLElement
+        const ip = document.querySelector('[data-testid="hud-ext-ip"]') as HTMLElement
+        const expand = document.querySelector('[data-testid="hud-expand"]') as HTMLElement
+        const contentRight = bar.getBoundingClientRect().right - parseFloat(getComputedStyle(bar).paddingRight)
+        return {
+          ipScroll: ip.scrollWidth, ipClient: ip.clientWidth,
+          colRight: col.getBoundingClientRect().right, contentRight,
+          controlsLeft: (expand.parentElement as HTMLElement).getBoundingClientRect().left
+        }
+      })
+      expect(fit.ipScroll, `external IP needs ${fit.ipScroll}px, has ${fit.ipClient}px`).toBeLessThanOrEqual(fit.ipClient)
+      expect(fit.colRight, 'external column ends past the row content box').toBeLessThanOrEqual(fit.contentRight + 0.5)
+      expect(fit.colRight, 'external column runs under ▼ ✕').toBeLessThanOrEqual(fit.controlsLeft)
+    } finally {
+      await main2.evaluate(async () => { await window.redlog.hudPrefs.set({ scale: 1, emphasizeExternalIp: false }) })
+      await hud2.waitForTimeout(600)
+    }
+  })
+
   test('the collapsed HUD stays at its compact size', async () => {
     const b = await app2.evaluate(async ({ BrowserWindow }) => {
       const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('overlay'))!
       return w.getBounds()
     })
-    // Collapsed at scale 1 is a single row: 440px wide and, measured, 58px
-    // tall — 40pt of content plus HUD_CONTENT_CHROME. Runaway growth showed up
-    // here first as a window pinned near the cap.
+    // Collapsed at scale 1 is a single row: 490px wide and 60px tall — the
+    // bar's 42pt minimum plus HUD_CONTENT_CHROME. Runaway growth showed up here
+    // first as a window pinned near the cap.
     //
     // The bound used to be 120, more than twice the real height, which let the
     // HUD double before this test noticed — and noticing is the only reason it
     // exists. 80 keeps room for font and DPI differences across the platforms
     // this runs on while still catching a doubling.
-    expect(b.width, 'collapsed HUD should be near its 440px base, not the ceiling').toBeLessThan(560)
+    expect(b.width, 'collapsed HUD should be near its 490px base, not the ceiling').toBeLessThan(560)
     expect(b.height, 'collapsed HUD should be one row tall').toBeLessThan(80)
     // And it must not have collapsed to nothing: below the floor the bar is
     // clipped, which reads as "the HUD is broken" rather than "it is small".
