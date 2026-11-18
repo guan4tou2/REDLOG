@@ -23,15 +23,24 @@ process.env.REDLOG_KEYS_DIR = keysDir
 process.env.ZDOTDIR = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-vitest-zdotdir-'))
 
 // The project writer sets `synchronous = FULL` (spec 071), which flushes the
-// disk on every commit. On Windows that is a real flush, and tests that seed
-// rows one autocommit at a time went from about 1-5 s to 3-17 s per file on
-// green runs and past the 15 s timeout on slow runners. The suite runs the
-// writer and derived WAL indexes at NORMAL instead. A newly created index
-// can retain synchronous=FULL when switching to WAL without ever setting
-// synchronous itself, so rewriting explicit FULL alone misses that connection.
-// NORMAL still syncs at WAL checkpoints. Production is untouched;
-// `test/hash-input-pin.test.ts` is the
-// place that checks the real setting (it sets REDLOG_TEST_REAL_SYNCHRONOUS=1).
+// disk on every commit; a derived index in WAL flushes at every checkpoint.
+// On a Windows runner one flush costs about 100 ms: read against the flush
+// counts taken with a native fsync counter, the three slowest files fit that
+// figure (404 flushes, 37-50 s; 579, 50-68 s; about 15, 1.2 s), and a slow
+// spell on the runner took a 200-row loop past the 15 s timeout. Lowering
+// the writer to NORMAL removed the per-commit flush and left the checkpoint
+// ones, so the suite runs every connection at OFF: SQLite hands the pages to
+// the operating system and never waits for the disk. Nothing in the suite
+// pulls the power, so no test can tell the difference, and a killed process
+// loses nothing the operating system already holds.
+//
+// Two places set it. An explicit `synchronous = FULL` is rewritten before it
+// reaches SQLite. The derived indexes (http-body-index, cast-index) never set
+// `synchronous` at all and run at the WAL default, NORMAL, which still
+// flushes at checkpoints; a rewrite has nothing to catch there, so OFF is
+// also set right after `journal_mode = WAL`.
+// Production is untouched; `test/hash-input-pin.test.ts` is the place that
+// checks the real setting (it sets REDLOG_TEST_REAL_SYNCHRONOUS=1).
 // If the native module cannot load here, do nothing: the files that need it
 // report that through test/helpers/requires.ts, and this setup also runs for
 // the jsdom component tests.
@@ -47,7 +56,7 @@ try {
         process.env.REDLOG_TEST_REAL_SYNCHRONOUS !== '1' &&
         /^\s*synchronous\s*=\s*FULL\s*$/i.test(args[0])
       ) {
-        args[0] = 'synchronous = NORMAL'
+        args[0] = 'synchronous = OFF'
       }
       const result = realPragma.apply(this, args)
       if (
@@ -55,7 +64,7 @@ try {
         process.env.REDLOG_TEST_REAL_SYNCHRONOUS !== '1' &&
         /^\s*journal_mode\s*=\s*WAL\s*$/i.test(args[0])
       ) {
-        realPragma.call(this, 'synchronous = NORMAL')
+        realPragma.call(this, 'synchronous = OFF')
       }
       return result
     }

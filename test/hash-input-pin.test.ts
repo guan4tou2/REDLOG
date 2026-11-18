@@ -173,7 +173,7 @@ sqlite.describe('PRAGMA synchronous on the project database', () => {
   }
   let savedReal: string | undefined
   beforeAll(() => {
-    // test/setup.ts runs the suite's writer at NORMAL; this block checks production's setting.
+    // test/setup.ts runs the suite's connections at OFF; this block checks production's setting.
     savedReal = process.env.REDLOG_TEST_REAL_SYNCHRONOUS
     process.env.REDLOG_TEST_REAL_SYNCHRONOUS = '1'
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-sync-'))
@@ -239,9 +239,9 @@ sqlite.describe('PRAGMA synchronous on the project database', () => {
   })
 })
 
-// test/setup.ts relaxes the writer to NORMAL for the rest of the suite; this
+// test/setup.ts runs every connection at OFF for the rest of the suite; this
 // pins that, so suite timings are not mistaken for production ones.
-sqlite.describe('the suite relaxes the writer to synchronous=NORMAL', () => {
+sqlite.describe('the suite runs its connections at synchronous=OFF', () => {
   let dir = ''
   beforeAll(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-sync-relaxed-')) })
   afterAll(() => {
@@ -249,11 +249,11 @@ sqlite.describe('the suite relaxes the writer to synchronous=NORMAL', () => {
     fs.rmSync(dir, { recursive: true, force: true })
   })
 
-  it('reports NORMAL without REDLOG_TEST_REAL_SYNCHRONOUS', () => {
+  it('reports OFF without REDLOG_TEST_REAL_SYNCHRONOUS', () => {
     expect(process.env.REDLOG_TEST_REAL_SYNCHRONOUS).not.toBe('1')
     dbMod.initDB(dir)
     dbMod.getDB().prepare('INSERT INTO bookmarks (id, title, created_at) VALUES (?, ?, ?)').run(crypto.randomUUID(), 'sync', Date.now())
-    expect(dbMod.getDB().pragma('synchronous', { simple: true })).toBe(1)
+    expect(dbMod.getDB().pragma('synchronous', { simple: true })).toBe(0)
   })
 
   it('also relaxes a new WAL connection that never explicitly requests FULL', async () => {
@@ -261,7 +261,7 @@ sqlite.describe('the suite relaxes the writer to synchronous=NORMAL', () => {
     const index = new Database(path.join(dir, 'derived.db'))
     try {
       expect(index.pragma('journal_mode = WAL', { simple: true })).toBe('wal')
-      expect(index.pragma('synchronous', { simple: true })).toBe(1)
+      expect(index.pragma('synchronous', { simple: true })).toBe(0)
     } finally { index.close() }
   })
 
