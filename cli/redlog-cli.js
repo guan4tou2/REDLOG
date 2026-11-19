@@ -35,7 +35,14 @@ function requestRaw(method, path) {
     const req = http.request(opts, (res) => {
       const chunks = []
       res.on('data', (c) => chunks.push(c))
-      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, buffer: Buffer.concat(chunks) }))
+      res.on('end', () => {
+        const buffer = Buffer.concat(chunks)
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          console.error(`Error ${res.statusCode}: ${buffer.toString()}`)
+          process.exit(1)
+        }
+        resolve({ status: res.statusCode, headers: res.headers, buffer })
+      })
     })
     req.on('error', reject)
     req.end()
@@ -65,6 +72,10 @@ function request(method, path, body) {
       res.on('data', (c) => chunks.push(c))
       res.on('end', () => {
         const raw = Buffer.concat(chunks).toString()
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          console.error(`Error ${res.statusCode}: ${raw}`)
+          process.exit(1)
+        }
         try { resolve({ status: res.statusCode, data: JSON.parse(raw) }) }
         catch { resolve({ status: res.statusCode, data: raw }) }
       })
@@ -106,7 +117,8 @@ RedLog CLI v${VERSION}
 
 Usage:
   redlog-cli log <agent_type> [--target <id>] [--data '{"key":"val"}']
-  redlog-cli mark <title> [--severity info|low|medium|high|critical] [--notes "..."] [--target <id>]
+  redlog-cli mark <title> [--severity info|important|critical] [--notes "..."] [--target <id>]
+  redlog-cli sanitize <event-id> [<event-id> …] [--fields output,command] [--dry-run|--confirm] [--reason "..."]
   redlog-cli search <query> [--limit N]
   redlog-cli events [--agent_type <type>] [--limit N] [--target <id>]
   redlog-cli loot <text>
@@ -122,13 +134,11 @@ Usage:
   redlog-cli chain [status|anchor|verify [--full]|anchors|export-ots <id> [--out <file>]|upgrade [<id>|--all]]
   redlog-cli export bundle
 
-Environment:
-  REDLOG_TOKEN   Override the auto-detected API token
-  REDLOG_PORT    Override the auto-detected API port
+Credentials: ~/.redlog/api-token and ~/.redlog/api-port (no environment overrides).
 
 Examples:
   redlog-cli log terminal --data '{"subtype":"command","command":"nmap -sV target.com"}'
-  redlog-cli mark "Found SQLi in /api/users" --severity high --target api.example.com
+  redlog-cli mark "Found SQLi in /api/users" --severity important --target api.example.com
   redlog-cli search "password"
   redlog-cli loot "root:x:0:0:root:/root:/bin/bash"
   redlog-cli whoami
@@ -173,7 +183,7 @@ Examples:
       const res = await request('POST', '/api/marker', {
         title,
         severity: flags.severity || 'info',
-        notes: flags.notes || '',
+        notes: flags.notes || flags.note || '',
         target_id: flags.target || undefined
       })
       if (res.status === 201) {
@@ -246,7 +256,8 @@ Examples:
     case 'screenshot': {
       const res = await request('POST', '/api/screenshot')
       if (res.status === 200) {
-        console.log(res.data.captured ? `Screenshot saved: ${res.data.filePath}` : 'Screenshot failed')
+        if (!res.data.captured) { console.error(res.data.error || 'Screenshot failed'); process.exit(1) }
+        console.log(`Screenshot saved: ${res.data.filePath}`)
       } else {
         console.error(`Error ${res.status}:`, res.data)
       }

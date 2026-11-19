@@ -1,27 +1,33 @@
 {
-  "_comment": "OpenAI Function Calling / Codex tool definitions for RedLog. Use these with any OpenAI-API-compatible model or agent framework.",
+  "_comment": "Function-call schema examples, not executable tools or an MCP server. Supply your own HTTP adapter using each function's x-redlog-requests; read ~/.redlog/api-token and api-port. Parameters use API field names. Path parameters are substituted, GET parameters are query strings, POST parameters are JSON.",
   "tools": [
     {
       "type": "function",
       "function": {
         "name": "redlog_session_register",
-        "description": "Register this agent session with RedLog so the transcript tailer captures only explicitly opted-in sessions instead of every Claude Code session on the machine. Call once at session start, before any other RedLog tool. Pass the current session id (from the CLAUDE_SESSION_ID environment variable or session metadata); optionally pass the working directory to add it to the capture watch paths.",
+        "description": "Register a session ID for already enabled capture. Once the registry is nonempty, only registered IDs pass this additional filter. Does not install, enable or broaden working-directory permission.",
         "parameters": {
           "type": "object",
           "properties": {
             "session_id": {
               "type": "string",
-              "description": "The current agent session id (e.g. the value of CLAUDE_SESSION_ID)"
+              "description": "Actual current session ID from the calling tool metadata"
             },
             "cwd": {
               "type": "string",
-              "description": "Optional working directory to add to RedLog's capture watch paths"
+              "description": "Optional working directory, echoed only; grants no capture permission"
             }
           },
           "required": [
             "session_id"
           ]
-        }
+        },
+        "x-redlog-requests": [
+          {
+            "method": "POST",
+            "path": "/api/session/register"
+          }
+        ]
       }
     },
     {
@@ -44,14 +50,12 @@
               "type": "string",
               "enum": [
                 "info",
-                "low",
-                "medium",
-                "high",
+                "important",
                 "critical"
               ],
               "description": "Finding severity"
             },
-            "target": {
+            "target_id": {
               "type": "string",
               "description": "Target host, IP, or URL this relates to"
             }
@@ -59,26 +63,48 @@
           "required": [
             "title"
           ]
-        }
+        },
+        "x-redlog-requests": [
+          {
+            "method": "POST",
+            "path": "/api/marker"
+          }
+        ]
       }
     },
     {
       "type": "function",
       "function": {
         "name": "redlog_log_event",
-        "description": "Log a structured event to the RedLog timeline. Prefer standard agent_type (shell, agent, scanner, dns, credential_use, c2_checkin, file_transfer, marker, loot) and standard data keys (subtype, command, tool, dest_ip, dest_host, dest_port, user_context, mitre_ttp, description, sha256, bytes). See docs/event-schema.md.",
+        "description": "Log an external observation. Accepted agent_type values: scanner, shell, terminal, dns, external, agent, marker, process, credential_use, file_transfer, screenshot, browser, http_navigation, pcap. Derived events are produced by RedLog itself.",
         "parameters": {
           "type": "object",
           "properties": {
             "agent_type": {
               "type": "string",
-              "description": "Event source category. Prefer: shell / agent / scanner / dns / credential_use / c2_checkin / file_transfer / marker / loot"
+              "description": "External event category",
+              "enum": [
+                "scanner",
+                "shell",
+                "terminal",
+                "dns",
+                "external",
+                "agent",
+                "marker",
+                "process",
+                "credential_use",
+                "file_transfer",
+                "screenshot",
+                "browser",
+                "http_navigation",
+                "pcap"
+              ]
             },
             "data": {
               "type": "object",
               "description": "Event payload. Populate standard keys when applicable."
             },
-            "target": {
+            "target_id": {
               "type": "string",
               "description": "Target host/IP"
             }
@@ -87,7 +113,13 @@
             "agent_type",
             "data"
           ]
-        }
+        },
+        "x-redlog-requests": [
+          {
+            "method": "POST",
+            "path": "/api/events"
+          }
+        ]
       }
     },
     {
@@ -98,19 +130,25 @@
         "parameters": {
           "type": "object",
           "properties": {
-            "query": {
-              "type": "string",
-              "description": "Search query (minimum 2 characters)"
-            },
             "limit": {
               "type": "number",
               "description": "Maximum results to return (default 20)"
+            },
+            "q": {
+              "type": "string",
+              "description": "Search query (minimum 2 characters)"
             }
           },
           "required": [
-            "query"
+            "q"
           ]
-        }
+        },
+        "x-redlog-requests": [
+          {
+            "method": "GET",
+            "path": "/api/events/search"
+          }
+        ]
       }
     },
     {
@@ -122,19 +160,31 @@
           "type": "object",
           "properties": {},
           "required": []
-        }
+        },
+        "x-redlog-requests": [
+          {
+            "method": "GET",
+            "path": "/api/status"
+          }
+        ]
       }
     },
     {
       "type": "function",
       "function": {
         "name": "redlog_scope",
-        "description": "Get the current scope configuration: in-scope targets, exclusions, and any scope violations detected.",
+        "description": "Get configured targets and scope violations; the response has no exclusions field.",
         "parameters": {
           "type": "object",
           "properties": {},
           "required": []
-        }
+        },
+        "x-redlog-requests": [
+          {
+            "method": "GET",
+            "path": "/api/scope"
+          }
+        ]
       }
     },
     {
@@ -153,7 +203,13 @@
           "required": [
             "text"
           ]
-        }
+        },
+        "x-redlog-requests": [
+          {
+            "method": "POST",
+            "path": "/api/loot/scan"
+          }
+        ]
       }
     },
     {
@@ -180,7 +236,13 @@
           "required": [
             "title"
           ]
-        }
+        },
+        "x-redlog-requests": [
+          {
+            "method": "POST",
+            "path": "/api/bookmarks"
+          }
+        ]
       }
     },
     {
@@ -192,7 +254,13 @@
           "type": "object",
           "properties": {},
           "required": []
-        }
+        },
+        "x-redlog-requests": [
+          {
+            "method": "POST",
+            "path": "/api/screenshot"
+          }
+        ]
       }
     },
     {
@@ -204,7 +272,13 @@
           "type": "object",
           "properties": {},
           "required": []
-        }
+        },
+        "x-redlog-requests": [
+          {
+            "method": "GET",
+            "path": "/api/whoami"
+          }
+        ]
       }
     },
     {
@@ -216,7 +290,13 @@
           "type": "object",
           "properties": {},
           "required": []
-        }
+        },
+        "x-redlog-requests": [
+          {
+            "method": "GET",
+            "path": "/api/operators"
+          }
+        ]
       }
     },
     {
@@ -228,7 +308,13 @@
           "type": "object",
           "properties": {},
           "required": []
-        }
+        },
+        "x-redlog-requests": [
+          {
+            "method": "GET",
+            "path": "/api/chain"
+          }
+        ]
       }
     },
     {
@@ -240,7 +326,13 @@
           "type": "object",
           "properties": {},
           "required": []
-        }
+        },
+        "x-redlog-requests": [
+          {
+            "method": "POST",
+            "path": "/api/anchors"
+          }
+        ]
       }
     },
     {
@@ -252,24 +344,40 @@
           "type": "object",
           "properties": {},
           "required": []
-        }
+        },
+        "x-redlog-requests": [
+          {
+            "method": "GET",
+            "path": "/api/anchors/verify"
+          }
+        ]
       }
     },
     {
       "type": "function",
       "function": {
         "name": "redlog_chain_upgrade",
-        "description": "Fetch upgraded OpenTimestamps proofs from calendars for pending anchors. Wait at least a few hours after anchoring; the calendar has to fold your digest into a Bitcoin-anchored Merkle tree first. Omit anchor_id to upgrade all pending anchors.",
+        "description": "Fetch upgraded OpenTimestamps proofs from calendars for pending anchors. Wait at least a few hours after anchoring; the calendar has to fold your digest into a Bitcoin-anchored Merkle tree first. With id, substitute it into the specific-anchor path and send no JSON fields. Without id, use the upgrade-all path.",
         "parameters": {
           "type": "object",
           "properties": {
-            "anchor_id": {
+            "id": {
               "type": "string",
               "description": "Specific anchor id. Omit to upgrade all pending."
             }
           },
           "required": []
-        }
+        },
+        "x-redlog-requests": [
+          {
+            "method": "POST",
+            "path": "/api/anchors/:id/upgrade"
+          },
+          {
+            "method": "POST",
+            "path": "/api/anchors/upgrade-all"
+          }
+        ]
       }
     },
     {
@@ -280,7 +388,13 @@
         "parameters": {
           "type": "object",
           "properties": {}
-        }
+        },
+        "x-redlog-requests": [
+          {
+            "method": "GET",
+            "path": "/api/config"
+          }
+        ]
       }
     },
     {
@@ -293,18 +407,24 @@
           "properties": {
             "agent_type": {
               "type": "string",
-              "description": "Filter by type: shell, agent, dns, pivot, screenshot, marker, loot, cleanup, file_transfer, http_navigation, credential_use, c2_checkin, system"
-            },
-            "target": {
-              "type": "string",
-              "description": "Filter by target host/IP"
+              "description": "Filter stored events by agent_type (including derived events)"
             },
             "limit": {
               "type": "number",
-              "description": "Max results (default 50, max 500)"
+              "description": "Max results (default 100, max 1000)"
+            },
+            "target_id": {
+              "type": "string",
+              "description": "Filter by target host/IP"
             }
           }
-        }
+        },
+        "x-redlog-requests": [
+          {
+            "method": "GET",
+            "path": "/api/events"
+          }
+        ]
       }
     },
     {
@@ -315,14 +435,20 @@
         "parameters": {
           "type": "object",
           "properties": {}
-        }
+        },
+        "x-redlog-requests": [
+          {
+            "method": "GET",
+            "path": "/api/bookmarks"
+          }
+        ]
       }
     },
     {
       "type": "function",
       "function": {
         "name": "redlog_recording",
-        "description": "Control recording state: check, pause, resume, or toggle. Pauses/resumes are logged as system.recording_paused/resumed events so timeline gaps stay explainable.",
+        "description": "For action=status use GET /api/recording with no parameters. For pause/resume/toggle use POST /api/recording with JSON {action}. Pauses/resumes are logged as system.recording_paused/resumed events.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -340,7 +466,17 @@
           "required": [
             "action"
           ]
-        }
+        },
+        "x-redlog-requests": [
+          {
+            "method": "GET",
+            "path": "/api/recording"
+          },
+          {
+            "method": "POST",
+            "path": "/api/recording"
+          }
+        ]
       }
     }
   ]

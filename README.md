@@ -302,7 +302,7 @@ EOF
 source /path/to/redlog/shell/redlog-agent.sh
 
 redlog_status                           # check connection
-redlog_mark "Found SQLi" "Blind" "high" # create marker
+redlog_mark "Found SQLi" "Blind" "important" # create marker
 redlog_event "agent" '{"subtype":"scan_complete"}'
 redlog_search "password"                # search events
 redlog_scope                            # check scope
@@ -313,7 +313,7 @@ redlog_screenshot                       # manual capture
 
 ### Codex / OpenAI Function Calling
 
-See [`docs/codex-tools.json`](docs/codex-tools.json) for OpenAI-compatible function definitions usable with Codex, GPT, or any OpenAI-API-compatible model.
+See [`docs/codex-tools.json`](docs/codex-tools.json) for function-call schema examples. They require an HTTP adapter supplied by the calling framework using `x-redlog-requests`; no MCP server or executable tool dispatcher is included.
 
 ### More reading
 

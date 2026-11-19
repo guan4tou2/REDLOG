@@ -14,7 +14,7 @@ All endpoints except `GET /api/health` and `OPTIONS` require a Bearer token:
 Authorization: Bearer <token>
 ```
 
-The token is resolved to an `Operator` via `resolveOperatorByToken()`. Primary-only endpoints return `403` when called with a secondary token.
+The token is resolved to an `Operator` via `resolveOperatorByToken()`. The former secondary-operator management workflow has been removed; the current handlers do not apply a separate primary-only gate.
 
 ## Security
 
@@ -33,7 +33,7 @@ The token is resolved to an `Operator` via `resolveOperatorByToken()`. Primary-o
 
 No auth required. Liveness check.
 
-**Response:** `{ ok: true, version: "<semver>" }`
+**Response:** `{ ok: true, version: "<semver>", projectOpen: boolean }`. Other routes return `503` when no project is open.
 
 ---
 
@@ -67,13 +67,15 @@ Primary event ingestion. The server strips any `operator_id` from the body (attr
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `agent_type` | string | `"external"` | Event source: `shell`, `scanner`, `agent`, `dns`, `credential_use`, `c2_checkin`, `file_transfer`, `marker`, `loot`, `system` |
+| `agent_type` | string | `"external"` | External event source: `scanner`, `shell`, `terminal`, `dns`, `external`, `agent`, `marker`, `process`, `credential_use`, `file_transfer`, `screenshot`, `browser`, `http_navigation`, `pcap` |
 | `data` | object | `{}` | Event payload. Shell events expect `command`, `subtype` (`command_start`/`command_end`), etc. |
 | `target_id` | string | — | Target host/IP |
 
 **Auto-processing for `shell` events:** target extraction, scope violation checks, pivot detection (ssh -D/-L/-R, chisel, ligolo, proxychains, socat), cleanup detection (history -c, shred, etc.), file transfer detection, loot scanning, plugin command tagging, redaction.
 
-**Responses:** `201` (created), `200` (recording paused — event skipped), `409` (duplicate within dedup window).
+**Responses:** `201` (created), `200` (recording paused — event skipped), `400` (invalid body), `403` (disallowed event type or marker amendment), `409` (duplicate or changed engagement), `413` (body size/nesting limit). Refused event types currently mark capture health `dark` for 60 seconds.
+
+A `system` producer heartbeat is a narrow exception: `data` must contain only `subtype: "producer_heartbeat"` and a valid `producer` ID; it is not a general external event type.
 
 #### `GET /api/events`
 
@@ -105,6 +107,8 @@ read; `500` when the search itself fails — never an empty `events` list.
 #### `POST /api/marker`
 
 **Body:** `{ title, notes?, severity?, category?, target_id? }`
+
+Marker severity vocabulary: `info`, `important`, `critical`. The route currently stores other values unchanged.
 
 Defaults: `title` → `"Untitled"`, `severity` → `"info"`, `category` → `"external"`. `title` is cut at 200 characters and `notes` at 10 000, as in the app.
 
@@ -293,7 +297,7 @@ Download `.ots` proof file.
 
 #### `POST /api/export/bundle`
 
-Produce signed evidence bundle in `<projectDir>/exports/`.
+Produce a signed bundle of the whole project in `<projectDir>/exports/`. Request-body filters are not applied.
 
 Appends a chained `system.logged_tier_digest` event (when the logged tier has
 rows and a primary operator exists) and bundles both tiers as they stood at
@@ -303,6 +307,21 @@ Requests are handled one at a time; a second waits for the first.
 **Response:** `201 { outDir, manifest }`; `500 { error: "export failed" }`.
 
 ---
+
+#### `GET /api/export/har`
+
+**Query params:** `since`, `before`, `target_id`, `limit` (maximum 50000).
+
+Returns a HAR attachment subject to the configured scope and delivery redaction.
+
+#### `GET /api/http-body/<sha>`
+
+`<sha>` is a 64-character lowercase hexadecimal body hash.
+
+**Query params:** `encoding` (`text` or `base64`, default `text`).
+
+Returns `{ data, encoding, file }`. Missing or out-of-scope bodies return
+`404 { error: "body not found" }`.
 
 ### Sanitize
 
@@ -322,6 +341,28 @@ Layer 4 of four-layer redaction.
 Writes masked bytes to `sanitized_events` table + appends chained `system.sanitized` event.
 
 ---
+
+### Capture verification
+
+#### `POST /api/http-verify`
+
+Capture-adapter verification reports are validated by `parseVerifyReport` in
+`src/core/http-verify.ts`. Returns `200 { ok: true }`, or `400` for a malformed
+report. While paused it returns `200 { ok: true, skipped: "recording paused" }`.
+
+### Session registration
+
+#### `POST /api/session/register`
+
+**Body:** `{ session_id, cwd? }`
+
+Registers the ID for already enabled transcript capture. Once any ID is registered,
+only registered IDs pass this additional filter. `cwd` is echoed, not added to
+working-directory permissions. Returns `{ registered: true, session_id, cwd }`.
+
+#### `GET /api/session/registered`
+
+Returns `{ sessions }`, the registered IDs.
 
 ## Endpoint Summary
 
@@ -356,3 +397,8 @@ Writes masked bytes to `sanitized_events` table + appends chained `system.saniti
 | GET | `/api/clock` | yes | Clock |
 | POST | `/api/export/bundle` | yes | Export |
 | POST | `/api/sanitize` | yes | Redaction |
+| GET | `/api/export/har` | yes | Export |
+| GET | `/api/http-body/<sha>` | yes | Events |
+| POST | `/api/http-verify` | yes | Capture |
+| POST | `/api/session/register` | yes | Sessions |
+| GET | `/api/session/registered` | yes | Sessions |

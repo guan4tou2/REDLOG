@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# RedLog Agent Hook — source or call from AI agents (Claude, Codex, etc.)
+# RedLog Agent Helper — source or call from AI agents (Claude, Codex, etc.)
 # Sends events to RedLog's HTTP API for recording in the timeline.
 #
 # Usage:
@@ -44,6 +44,23 @@ _redlog_curl_authed() {
   esac
 }
 
+# Keep the body on HTTP failure; -f would discard the server's explanation.
+_redlog_request() {
+  local response status body rc
+  response=$(_redlog_curl_authed "$@" -sS -w '\n%{http_code}')
+  rc=$?
+  if [[ $rc -ne 0 ]]; then
+    printf '[redlog] transport failed (curl %s)\n' "$rc" >&2
+    return "$rc"
+  fi
+  status=${response##*$'\n'}
+  body=${response%$'\n'*}
+  case "$status" in
+    2??) printf '%s\n' "$body" ;;
+    *) printf '[redlog] HTTP %s\n%s\n' "$status" "$body" >&2; return 1 ;;
+  esac
+}
+
 _redlog_post() {
   local endpoint="$1" payload="$2"
   local port token
@@ -55,7 +72,7 @@ _redlog_post() {
   token=$(<"$_REDLOG_TOKEN_FILE")
 
   # The payload is stdin as well: it carries what the agent was told to record.
-  _redlog_curl_authed "$token" -sf -X POST "http://127.0.0.1:${port}${endpoint}" \
+  _redlog_request "$token" -X POST "http://127.0.0.1:${port}${endpoint}" \
     -H "Content-Type: application/json" \
     --data-binary @- \
     --connect-timeout 2 --max-time 5 <<<"$payload"
@@ -71,7 +88,7 @@ _redlog_get() {
   port=$(<"$_REDLOG_PORT_FILE")
   token=$(<"$_REDLOG_TOKEN_FILE")
 
-  _redlog_curl_authed "$token" -sf "http://127.0.0.1:${port}${endpoint}" \
+  _redlog_request "$token" "http://127.0.0.1:${port}${endpoint}" \
     --connect-timeout 2 --max-time 5
 }
 
@@ -159,20 +176,10 @@ redlog_screenshot() {
   _redlog_post "/api/screenshot" "{}"
 }
 
-# Check if RedLog is running
+# Get status; an HTTP refusal keeps its status/body and failure exit.
 redlog_status() {
-  if [[ -f "$_REDLOG_PORT_FILE" ]] && [[ -f "$_REDLOG_TOKEN_FILE" ]]; then
-    local port=$(<"$_REDLOG_PORT_FILE")
-    local token=$(<"$_REDLOG_TOKEN_FILE")
-    local resp
-    resp=$(_redlog_curl_authed "$token" -sf "http://127.0.0.1:${port}/api/status" \
-      --connect-timeout 1 --max-time 2 2>/dev/null)
-    if [[ $? -eq 0 ]]; then
-      echo "[redlog] running on port $port"
-      echo "$resp"
-      return 0
-    fi
-  fi
-  echo "[redlog] not running"
-  return 1
+  local response
+  response=$(_redlog_get "/api/status") || return $?
+  echo "[redlog] running on port $(<"$_REDLOG_PORT_FILE")"
+  printf '%s\n' "$response"
 }
