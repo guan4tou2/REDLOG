@@ -19,7 +19,9 @@ test('external PTY output remains searchable and exportable while paused', async
       child.once('close', resolve)
     })
     expect(code, diagnostics).toBe(0)
+    // Pausing is two steps: the item opens the state, its button pauses.
     await page.getByTestId('status-bar-recording').click()
+    await page.getByTestId('status-bar-pause').click()
     await expect(page.getByTestId('status-bar-recording')).toHaveAttribute('data-recording', 'off')
     await openView(page,'transcript')
     await expect(page.locator('#reading-panel-io')).toBeVisible()

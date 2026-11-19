@@ -154,14 +154,32 @@ describe('command palette', () => {
   })
 
   // With nothing typed the menu leads with actions, so Enter runs the first one;
-  // a page is one query away.
-  it('runs the highlighted row and closes on Enter', async () => {
+  // a page is one query away. That first one must be harmless: ⌘K then Enter
+  // once paused capture (owner, 2026-11-19).
+  it('runs the highlighted row and closes on Enter, and that row does not pause capture', async () => {
     const { onNavigate, onClose } = open({ recording: true })
     await screen.findAllByRole('option')
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Enter' })
-    await waitFor(() => expect(bridge.recording.toggle).toHaveBeenCalledOnce())
+    await waitFor(() => expect(bridge.screenshot.capture).toHaveBeenCalledOnce())
+    expect(bridge.recording.toggle).not.toHaveBeenCalled()
     expect(onNavigate).not.toHaveBeenCalled()
     expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it.each([[true, /pause recording/i], [false, /resume recording/i]])('lists the recording entry after the screenshot and artifact actions, still with its chord (recording=%s)', async (recording, name) => {
+    open({ recording })
+    const rows = await screen.findAllByRole('option')
+    const at = (re: RegExp): number => rows.findIndex((r) => re.test(r.textContent ?? ''))
+    expect(at(/capture now/i)).toBeGreaterThanOrEqual(0)
+    expect(at(/add evidence file/i)).toBeGreaterThanOrEqual(0)
+    expect(at(name)).toBeGreaterThan(at(/capture now/i))
+    expect(at(name)).toBeGreaterThan(at(/add evidence file/i))
+    expect(rows[0]?.textContent).not.toMatch(name)
+    expect(rows[at(name)]?.textContent).toMatch(/(?:⌘|Ctrl\+)\./)
+    cleanup()
+    open({ recording })
+    type('recording')
+    expect((await screen.findAllByRole('option'))[0]?.textContent).toMatch(name)
   })
 
   it('navigates to a page picked by name', async () => {
