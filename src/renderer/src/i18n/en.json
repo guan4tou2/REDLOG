@@ -2044,7 +2044,6 @@
   "workspace.reading.ai": "AI conversations",
   "workspace.openTimeline": "Open timeline",
   "workspace.reading.events": "Raw events",
-  "workspace.newActivity": "{{count}} new events",
   "content.savedContent": "Saved content",
   "workspace.noScopeMatches": "No records match both this reading mode and the source filter.",
   "workspace.session": "Source session",

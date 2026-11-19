@@ -6,7 +6,7 @@ import type { HostAggregate } from '../../../core/db/events'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { DEFAULT_ORDER, primaryLabelKey, NUMBERED_SLOTS } from '../lib/sidebarOrder'
 import { applyDensity, resolveDensity, storedDensity, DENSITY_KEY } from '../lib/density'
-import { formatTime, formatFreshness } from '../lib/time'
+import { formatWhen, formatFreshness } from '../lib/time'
 import { paletteSettingsHits } from '../lib/paletteSettings'
 import { settingsTarget } from '../lib/navigation'
 import { landOnSetting } from '../lib/settingsFind'
@@ -102,7 +102,7 @@ export interface CommandPaletteProps {
   onClose: () => void
   onNavigate: (view: string) => void
   onOpenEvent: (id: string, ts: number) => void
-  recording: boolean
+  recording: boolean | null
   onProjectClosed?: () => void
 }
 
@@ -254,7 +254,7 @@ export function CommandPalette({
     for (const view of ['transcript', 'scope', 'loot', 'bookmarks']) add({ id: `nav:${view}`, kind: 'nav', label: t(`sidebar.${view}`), run: () => onNavigate(view) })
     add({ id: 'nav:settings', kind: 'nav', label: t('sidebar.settings'), hint: `${MOD}9`, run: () => onNavigate('settings') })
 
-    add({
+    if (recording !== null) add({
       id: 'action:recording', kind: 'action',
       label: recording ? t('palette.pauseRecording') : t('palette.resumeRecording'),
       hint: `${MOD}.`,
@@ -318,7 +318,7 @@ export function CommandPalette({
       const label = String(d?.command ?? d?.title ?? d?.url ?? d?.description ?? e.agentType)
       add({
         id: `search:${e.id}`, kind: 'search', mark: false,
-        label, hint: formatTime(e.timestamp, { seconds: true }),
+        label, hint: formatWhen(e.timestamp, { seconds: true }),
         run: () => onOpenEvent(e.id, e.timestamp)
       })
     }

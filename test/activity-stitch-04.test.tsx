@@ -51,13 +51,13 @@ it('marks the kind with a glyph, names the source at the end, and says a failure
   expect(row.textContent).not.toContain('activity.kind.command')
 })
 
-it('counts the events that arrived since the page was read, and a refresh clears the count', async () => {
+it('offers a fresh read after arrivals without claiming a match count', async () => {
   mount()
   await screen.findByTestId('activity-row')
   act(() => { push([ev('x'), ev('y')]) })
   act(() => { push([ev('z')]) })
   const banner = screen.getByTestId('activity-new-events')
-  expect(banner.textContent).toContain('"count":3')
+  expect(banner.textContent).toBe('activity.refresh')
   fireEvent.click(banner)
   expect(screen.queryByTestId('activity-new-events')).toBeNull()
 })

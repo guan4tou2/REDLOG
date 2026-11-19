@@ -203,7 +203,7 @@ export function ToastContainer(): JSX.Element | null {
             </span>
             <button
               onClick={() => dismiss(x.id)}
-              className="-mr-1 opacity-50 hover:opacity-100 focus-visible:outline-none focus-visible:opacity-100 transition-opacity leading-5"
+              className="relative after:absolute after:-inset-1.5 after:min-w-[27px] after:min-h-[27px] -mr-1 opacity-50 hover:opacity-100 focus-visible:outline-none focus-visible:opacity-100 transition-opacity leading-5"
               aria-label={t('toast.dismiss')}
             >×</button>
           </div>

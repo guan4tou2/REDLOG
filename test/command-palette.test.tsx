@@ -503,3 +503,9 @@ describe('settings rows are things to set', () => {
     expect(kinds().filter((k) => k === 'setting')).toHaveLength(hits.length)
   })
 })
+
+it('5: offers neither pause nor resume while the recording state is unknown', async () => {
+  open({ recording: null })
+  await screen.findAllByRole('option')
+  expect(screen.queryByText(/pause recording|resume recording/i)).toBeNull()
+})

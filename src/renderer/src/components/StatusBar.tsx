@@ -27,13 +27,13 @@ export default function StatusBar(): JSX.Element {
   // Mounted under Settings too, so it reprints the last-event time when the
   // display zone changes there (spec 038).
   const zone = useDisplayZone()
-  const { eventCount, loggedCount, scopeObservations, scopeConfigured, scopeUnknown, loading: countsLoading } = useAppCounts()
+  const { eventCount, loggedCount, scopeObservations, scopeConfigured, scopeUnknown, countsUnknown, loading: countsLoading } = useAppCounts()
   const [ipStatus, setIpStatus] = useState<IPStatus | null>(null)
   const [uptime, setUptime] = useState(0)
   // The counter runs from the project's creation (audit P1 #33), which a bare
   // number next to REC does not say — it reads as this session's recording time.
   const [since, setSince] = useState<number | null>(null)
-  const [recording, setRecording] = useState(true)
+  const [recording, setRecording] = useState<boolean | null>(null)
   const [pausedAt, setPausedAt] = useState<number | null>(null)
   const [pauseElapsed, setPauseElapsed] = useState(0)
   const [overlayVisible, setOverlayVisible] = useState(true)
@@ -62,7 +62,7 @@ export default function StatusBar(): JSX.Element {
     window.redlog.recording.get().then((r) => {
       setRecording(r)
       if (!r) setPausedAt(Date.now())
-    })
+    }).catch(() => setRecording(null))
 
     const unsubIp = window.redlog.ip.onStatus(setIpStatus)
     const unsubRec = window.redlog.recording.onChange((r) => {
@@ -258,7 +258,7 @@ export default function StatusBar(): JSX.Element {
         // sources have not meant anything since the state model lost `idle`).
         // Recording ON + capture dark → amber non-pulsing (nothing has fed events).
         const pauseWarn = !recording && pauseElapsed >= PAUSE_WARN_SECS
-        const dotColor = !recording
+        const dotColor = recording === null ? 'bg-redlog-text-faint' : !recording
           ? pauseWarn ? 'bg-amber-500 animate-pulse-slow' : 'bg-redlog-text-dim'
           // Capture could not be read: neither the old colour nor a warning.
           : captureUnknown
@@ -268,7 +268,7 @@ export default function StatusBar(): JSX.Element {
             : captureVerdict === 'partial'
               ? 'bg-amber-500 animate-pulse-slow'
               : 'bg-red-500 animate-pulse-slow'
-        const labelColor = !recording
+        const labelColor = recording === null ? 'text-redlog-text-dim' : !recording
           ? pauseWarn ? 'text-amber-400/80' : 'text-redlog-text-dim'
           : captureUnknown
             ? 'text-redlog-text-dim'
@@ -278,7 +278,7 @@ export default function StatusBar(): JSX.Element {
         const lastEventLine = lastEventAt
           ? t('statusBar.lastEvent', { time: formatTime(lastEventAt, { seconds: true }) })
           : recording ? t('statusBar.lastEventNever') : ''
-        const tooltip = !recording
+        const tooltip = recording === null ? t('overlay.recUnknown') : !recording
           ? t('statusBar.clickToResume')
           : captureUnknown
             ? `${captureUnknownLine(t, capture.health, capture.lastOkAt)}\n${t('statusBar.clickToPause')}`
@@ -292,7 +292,8 @@ export default function StatusBar(): JSX.Element {
         return (
           <button
             data-testid="status-bar-recording"
-            data-recording={recording ? 'on' : 'off'}
+            data-recording={recording === null ? 'unknown' : recording ? 'on' : 'off'}
+            disabled={recording === null}
             data-capture={captureVerdict ?? 'unknown'}
             onClick={handleToggleRecording}
             className={`flex min-w-0 items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors ${narrow ? 'flex-1 overflow-hidden' : ''}`}
@@ -301,7 +302,7 @@ export default function StatusBar(): JSX.Element {
           >
             <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
             <span className={`${labelColor} ${narrow ? 'min-w-0 truncate' : ''}`} title={tooltip}>{
-              !recording
+              recording === null ? t('overlay.recUnknown') : !recording
                 ? pauseWarn ? `${t('statusBar.paused')} ${pauseMins}m` : t('statusBar.paused')
               : !captureUnknown && (captureVerdict === 'dark' || (recording && !lastEventAt)) ? t('statusBar.captureWaiting')
               : t('statusBar.rec')
@@ -400,7 +401,7 @@ export default function StatusBar(): JSX.Element {
             data-testid="statusbar-event-count"
             className="text-redlog-text-dim tabular-nums"
           >
-            {t('statusBar.events', { count: eventCount + loggedCount })}
+            {countsUnknown ? t('evidence.readFailed') : t('statusBar.events', { count: eventCount + loggedCount })}
           </span>
         )}
         <button

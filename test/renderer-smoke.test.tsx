@@ -558,6 +558,40 @@ describe('renderer views render without throwing', () => {
     expect(await screen.findByRole('button', { name: 'Verify' })).toBeTruthy()
   })
 
+  it('closes Timeline details after locating from the kept Activity Reader', async () => {
+    window.redlog.events.isDoNotExport = async () => false
+    const anchor = EVENTS[0] as unknown as RedLogEvent
+    const snapshot = { chainedMaxRowId: 1, loggedMaxRowId: 0, takenAt: 1 }
+    window.redlog.events.activityPage = async () => ({
+      items: [{ id: anchor.id, kind: 'command', toolAction: 'unknown', provider: null,
+        firstAt: anchor.timestamp, anchor, matchedCount: 1, sourceCount: 1, contextCount: 0 }],
+      hasMore: false, nextCursor: null, totalGroups: 1, totalMatches: 1, snapshot
+    })
+    window.redlog.events.activityMembers = async () => ({
+      items: [{ event: anchor, matched: true }], hasMore: false, nextCursor: null,
+      sourceCount: 1, matchedCount: 1, snapshot
+    })
+    window.redlog.content = { list: async () => ({ ok: true, value: [] }) } as typeof window.redlog.content
+
+    renderView(<App />)
+    await screen.findByTestId('view-root')
+    act(() => { window.dispatchEvent(new CustomEvent('redlog:navigate', { detail: 'search' })) })
+    fireEvent.click(await screen.findByTestId('activity-row'))
+    fireEvent.click(await screen.findByTestId('activity-read'))
+    const reader = await screen.findByTestId('activity-reader')
+    const locate = screen.getByTestId('reader-locate') as HTMLButtonElement
+    await waitFor(() => expect(locate.disabled).toBe(false))
+    fireEvent.click(locate)
+    expect(reader.closest('[hidden]')).toBeTruthy()
+    await screen.findByTestId('timeline-detail-body')
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+    expect(screen.queryByTestId('timeline-detail-body')).toBeNull()
+    expect(screen.getByTestId('timeline-detail-panel')).toBeTruthy()
+    fireEvent.click(within(screen.getByTestId('timeline-return')).getByRole('button'))
+    expect(screen.getByTestId('activity-reader')).toBe(reader)
+    expect(reader.closest('[hidden]')).toBeNull()
+  })
+
   // Ruling 7: screenshots are taken only when asked, so the empty state has
   // one action — take one — and no link to a timed-capture setting.
   it('the screenshots empty state offers a capture and no settings link', async () => {

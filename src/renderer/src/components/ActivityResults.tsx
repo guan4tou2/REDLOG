@@ -73,8 +73,8 @@ function ActivityList({ request, onOpen, onClearQuery, active, statsSlot, locate
   const [readerId, setReaderId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // How many events arrived since this page was read; the banner says the number.
-  const [newEvents, setNewEvents] = useState(0)
+  // Raw arrivals may not match this query; only promise a fresh read.
+  const [newEvents, setNewEvents] = useState(false)
   const alive = useRef(true)
   useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
   /** Loads the next page; answers the operations it added, for a caller that reads on into them. */
@@ -89,8 +89,8 @@ function ActivityList({ request, onOpen, onClearQuery, active, statsSlot, locate
     } catch (e) { if (alive.current) setError(String(e)); return [] }
     finally { if (alive.current) setBusy(false) }
   }
-  useEffect(() => window.redlog.events.onNewBatch((events) => setNewEvents((n) => n + (Array.isArray(events) ? events.length : 1))), [])
-  const refresh = (): void => { setNewEvents(0); setError(null); read.retry() }
+  useEffect(() => window.redlog.events.onNewBatch(() => setNewEvents(true)), [])
+  const refresh = (): void => { setNewEvents(false); setError(null); read.retry() }
   const page = read.state.value
   const readerIndex = page && readerId !== null ? page.items.findIndex(item => item.id === readerId) : -1
   // Stepping past the last loaded operation loads the next page, then reads on.
@@ -139,7 +139,7 @@ function ActivityList({ request, onOpen, onClearQuery, active, statsSlot, locate
           <span>{t('activity.count', { groups: page.totalGroups })}
             {filtering && onClearQuery && <button type="button" data-testid="activity-clear-filter" onClick={onClearQuery} className="ml-2 underline hover:text-redlog-text focus-visible:outline focus-visible:outline-red-400">{t('activity.clearFilter')}</button>}
           </span>
-          {newEvents > 0 && <button type="button" data-testid="activity-new-events" onClick={refresh} className="underline underline-offset-2 text-redlog-text-dim hover:text-redlog-text focus-visible:outline focus-visible:outline-red-400">{t('workspace.newActivity', { count: newEvents })}</button>}
+          {newEvents && <button type="button" data-testid="activity-new-events" onClick={refresh} className="underline underline-offset-2 text-redlog-text-dim hover:text-redlog-text focus-visible:outline focus-visible:outline-red-400">{t('activity.refresh')}</button>}
         </div>
         if (!statsSlot) return stats
         return active ? createPortal(stats, statsSlot) : null

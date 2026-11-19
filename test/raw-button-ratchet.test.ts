@@ -26,7 +26,8 @@ const ROOT = path.join(__dirname, '..')
 // Terminal strip lost its font/find buttons, and the Evidence change made a screenshot row one target
 // and moved verification out of Settings.
 // 2026-11-18: Timeline interval marks add a mark on a track (§4.1); both mark buttons are counted explicitly.
-const RAW_BUTTON_BASELINE = 210
+// 2026-11-19, UX defects batch 1: the marker dialog's Cancel became a Button.
+const RAW_BUTTON_BASELINE = 209
 const IMPLEMENTATIONS = new Set([
   'src/renderer/src/components/Button.tsx',
   'src/renderer/src/components/IconButton.tsx'

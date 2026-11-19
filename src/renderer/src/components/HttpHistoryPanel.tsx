@@ -8,7 +8,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { X, PanelBottom, PanelRight, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useI18n } from '../i18n'
-import { formatTime, formatSize, formatElapsedMs } from '../lib/time'
+import { formatWhen, formatSize, formatElapsedMs } from '../lib/time'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { usePanelHeight } from '../hooks/usePanelHeight'
 import { useKeepScroll } from '../lib/useKeepScroll'
@@ -561,7 +561,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
                     className="border-b border-redlog-border-subtle/30 hover:bg-redlog-elevated/30 cursor-pointer focus-visible:outline-none focus-visible:bg-redlog-elevated/50"
                     onClick={() => { rowProps.onClick(); openDetail(eventId) }}
                   >
-                    <td className="pl-pad pr-2 py-1 text-redlog-text-faint tabular-nums truncate" title={formatTime(f.timestamp, { seconds: true })}>{formatTime(f.timestamp, { seconds: true })}</td>
+                    <td className="pl-pad pr-2 py-1 text-redlog-text-faint tabular-nums truncate" title={formatWhen(f.timestamp, { seconds: true })}>{formatWhen(f.timestamp, { seconds: true })}</td>
                     <td className={`px-2 py-1 font-semibold truncate ${methodClass}`} title={f.method}>{f.method}</td>
                     <td className={`px-2 py-1 truncate ${statusClass}`} title={String(f.status ?? '—')}>{f.status ?? '—'}</td>
                     <td className={`pl-2 ${columns.hostApart || columns.detail ? 'pr-2' : 'pr-pad'} py-1 text-redlog-text-dim`}>
@@ -649,7 +649,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
                     disabled={detailIndex <= 0}
                     title={t('timeline.stepPrev')}
                     aria-label={t('timeline.stepPrev')}
-                    className="text-redlog-text-dim hover:text-redlog-text disabled:opacity-30 disabled:hover:text-redlog-text-dim p-0.5 rounded hover:bg-redlog-elevated/40"
+                    className="relative after:absolute after:-inset-1.5 after:min-w-[27px] after:min-h-[27px] text-redlog-text-dim hover:text-redlog-text disabled:opacity-30 disabled:hover:text-redlog-text-dim p-0.5 rounded hover:bg-redlog-elevated/40"
                   ><ChevronLeft size={14} aria-hidden /></button>
                   <button
                     data-testid="http-detail-step-next"
@@ -657,7 +657,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
                     disabled={detailIndex < 0 || detailIndex >= filtered.length - 1}
                     title={t('timeline.stepNext')}
                     aria-label={t('timeline.stepNext')}
-                    className="text-redlog-text-dim hover:text-redlog-text disabled:opacity-30 disabled:hover:text-redlog-text-dim p-0.5 rounded hover:bg-redlog-elevated/40"
+                    className="relative after:absolute after:-inset-1.5 after:min-w-[27px] after:min-h-[27px] text-redlog-text-dim hover:text-redlog-text disabled:opacity-30 disabled:hover:text-redlog-text-dim p-0.5 rounded hover:bg-redlog-elevated/40"
                   ><ChevronRight size={14} aria-hidden /></button>
                 </div>
 
@@ -678,7 +678,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
                   title={t(layout === 'bottom' ? 'timeline.layoutToRight' : 'timeline.layoutToBottom')}
                   aria-label={t(layout === 'bottom' ? 'timeline.layoutToRight' : 'timeline.layoutToBottom')}
                   aria-pressed={layout === 'right'}
-                  className="text-redlog-text-dim hover:text-redlog-text p-0.5 rounded hover:bg-redlog-elevated/40 disabled:opacity-40"
+                  className="relative after:absolute after:-inset-1.5 after:min-w-[27px] after:min-h-[27px] text-redlog-text-dim hover:text-redlog-text p-0.5 rounded hover:bg-redlog-elevated/40 disabled:opacity-40"
                 >
                   {layout === 'bottom'
                     ? <PanelBottom size={14} aria-hidden />
@@ -686,7 +686,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
                 </button>
                 <button
                   onClick={closeDetail}
-                  className="text-redlog-text-dim hover:text-redlog-text p-0.5 rounded hover:bg-redlog-elevated/40"
+                  className="relative after:absolute after:-inset-1.5 after:min-w-[27px] after:min-h-[27px] text-redlog-text-dim hover:text-redlog-text p-0.5 rounded hover:bg-redlog-elevated/40"
                   aria-label={t('httpHistory.closeDetail')}
                 >
                   <X size={14} />

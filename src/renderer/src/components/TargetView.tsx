@@ -2,7 +2,7 @@ import { PAGE_BODY, SCROLL_GUTTER } from '../lib/pageLayout'
 import { Button, FIELD_FOCUS_RING } from './Button'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useI18n } from '../i18n'
-import { formatDateTime, formatTime } from '../lib/time'
+import { formatDateTime, formatWhen } from '../lib/time'
 import { formatSeenRange } from '../lib/seenTime'
 import { eventTitle } from '../lib/eventTitle'
 import { agentTypeLabel } from '../lib/timelineDomain'
@@ -453,7 +453,7 @@ export function TargetView({ onOpenInTimeline }: TargetViewProps = {}): JSX.Elem
                         <div key={e.id} className="flex items-start gap-2 text-xs">
                           <span className="w-16 shrink-0 truncate text-redlog-text-faint" title={agentTypeLabel(e.agentType, t)}>{agentTypeLabel(e.agentType, t)}</span>
                           <span className="text-redlog-text-faint w-16 shrink-0">
-                            {formatTime(e.timestamp, { seconds: true })}
+                            {formatWhen(e.timestamp, { seconds: true })}
                           </span>
                           {/* The same one-line title the Timeline and the Reader give this
                               event, in the interface language: a type with no row of its

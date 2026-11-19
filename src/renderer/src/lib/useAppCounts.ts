@@ -57,6 +57,8 @@ export interface AppCounts {
   scopeConfigured: boolean
   /** The violation count or the scope configuration could not be read. */
   scopeUnknown: boolean
+  /** One of the event, chain or loot counts could not be read. */
+  countsUnknown: boolean
   loading: boolean
   retry: () => void
 }
@@ -64,11 +66,12 @@ export interface AppCounts {
 interface State {
   eventCount: number; loggedCount: number; chainLen: number; lootCount: number; lootPartial: boolean
   scopeObservations: number; scopeConfigured: boolean
+  countFailures: Record<string, boolean>
   observationsFailed: boolean; configuredFailed: boolean; loading: boolean
 }
 const INITIAL: State = {
   eventCount: 0, loggedCount: 0, chainLen: 0, lootCount: 0, lootPartial: false, scopeObservations: 0, scopeConfigured: false,
-  observationsFailed: false, configuredFailed: false, loading: true
+  countFailures: {}, observationsFailed: false, configuredFailed: false, loading: true
 }
 /** What a round reads. `live`: what a batch can change. `configured`: whether
  *  a scope is set, which only a config save or a recount can change. */
@@ -95,13 +98,16 @@ async function round(): Promise<void> {
   want = { live: false, configured: false, done: false }
   const r = window.redlog
   const apply = (patch: Partial<State>): void => { if (gen === generation) set(patch) }
+  const count = (key: 'eventCount' | 'loggedCount' | 'chainLen' | 'lootCount', read: Promise<number>): Promise<void> => read
+    .then((n) => apply({ [key]: n, countFailures: { ...state.countFailures, [key]: false } }))
+    .catch(() => apply({ countFailures: { ...state.countFailures, [key]: true } }))
   const reads: Array<Promise<unknown>> = []
   if (take.live) {
     reads.push(
-      r.events.getCount('chained').then((n) => apply({ eventCount: n })).catch(() => {}),
-      r.events.getCount('logged').then((n) => apply({ loggedCount: n })).catch(() => {}),
-      r.chain.length().then((n) => apply({ chainLen: n })).catch(() => {}),
-      r.loot.getCount().then((n) => apply({ lootCount: n })).catch(() => {}),
+      count('eventCount', r.events.getCount('chained')),
+      count('loggedCount', r.events.getCount('logged')),
+      count('chainLen', r.chain.length()),
+      count('lootCount', r.loot.getCount()),
       // Read like the count beside it: a failed read keeps the last answer.
       Promise.resolve().then(() => r.loot.countIsPartial()).then((partial) => apply({ lootPartial: partial === true })).catch(() => {}),
       r.scope.getObservationCount()
@@ -183,6 +189,7 @@ export function useAppCounts(): AppCounts {
     eventCount: s.eventCount, loggedCount: s.loggedCount, chainLen: s.chainLen, lootCount: s.lootCount, lootPartial: s.lootPartial,
     scopeObservations: s.scopeObservations, scopeConfigured: s.scopeConfigured,
     scopeUnknown: s.observationsFailed || s.configuredFailed,
+    countsUnknown: Object.values(s.countFailures).some(Boolean),
     loading: s.loading, retry: recountAll
   }
 }

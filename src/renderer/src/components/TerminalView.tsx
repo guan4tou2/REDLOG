@@ -676,7 +676,7 @@ function TerminalPane({ id, active, shellId, ended, onPid, onCastState, onExit, 
     if (picked === 'copy') {
       if (hasSelection) void writeClipboard(term.getSelection())
     } else if (picked === 'paste') {
-      void readClipboard().then((txt) => { if (txt) window.redlog.terminal.write(id, txt) })
+      void readClipboard().then((txt) => { if (txt) term.paste(txt) })
     } else if (picked === 'selectAll') {
       term.selectAll()
     } else if (picked === 'clear') {
@@ -743,7 +743,7 @@ function TerminalPane({ id, active, shellId, ended, onPid, onCastState, onExit, 
         return false
       }
       if (e.key === 'v') {
-        void readClipboard().then((txt) => { if (txt) window.redlog.terminal.write(id, txt) })
+        void readClipboard().then((txt) => { if (txt) term.paste(txt) })
         e.preventDefault()
         return false
       }
