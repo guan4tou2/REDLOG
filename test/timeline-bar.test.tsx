@@ -195,6 +195,16 @@ describe('click contract on the track', () => {
     expect(screen.getByTestId('detail-toggle-body').getAttribute('aria-expanded')).toBe('false')
   })
 
+  it('lets a saved bottom detail height shrink within the split', async () => {
+    localStorage.setItem('redlog-timeline-detail-h', '640')
+    await ready()
+    fireEvent.doubleClick(dots()[0])
+    const pane = await screen.findByTestId('timeline-detail-body')
+    expect(screen.getByTestId('timeline-split').dataset.layout).toBe('bottom')
+    expect(pane.style.height).toBe('640px')
+    expect(pane.classList.contains('shrink-0'), 'a saved height must be allowed to shrink').toBe(false)
+  })
+
   it('a double-click opens the body and keeps the selection (the second click does not toggle it off)', async () => {
     await ready()
     const dot = dots()[0]

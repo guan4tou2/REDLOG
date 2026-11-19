@@ -6,7 +6,7 @@ import { toast } from '../Toast'
 // value arrives as a prop, so — like MarkerDetail — nothing here can read a
 // Timeline value before it is declared.
 
-import { useState } from 'react'
+import { useState, type Ref } from 'react'
 import type { RedLogEvent } from '../../../../core/db/event-types'
 import { ChevronDown, ChevronRight, PanelBottom, PanelRight, X } from 'lucide-react'
 import type { DetailLayout } from '../../lib/detailLayout'
@@ -27,6 +27,7 @@ import { EventContentReader, type ReaderControl } from '../EventContentReader'
 type Translate = (key: string, vars?: Record<string, string | number>) => string
 
 export interface TimelineEventInspectorProps {
+  headerRef: Ref<HTMLDivElement>
   event: RedLogEvent
   pluginTypes: PluginEventType[]
   tierChip: boolean
@@ -69,6 +70,7 @@ export interface TimelineEventInspectorProps {
 }
 
 export function TimelineEventInspector({
+  headerRef,
   event, pluginTypes, tierChip, doNotExport: dneFlag, onToggleDoNotExport, onAround,
   operatorLabel, titleOf, badges, effects, fold, paired, unfinished = false, allLoaded, focusChainOn,
   showJson, lookup, onJump, onSelect, onResolve, scrollToTs, onAmend, t,
@@ -100,7 +102,7 @@ export function TimelineEventInspector({
           per line, 匯出時排除 one character per line, and the bar grew taller
           than the title it sits above. The identity chips keep their line and
           the two actions drop to their own when there is no room for both. */}
-      <div className="sticky top-0 z-10 -mx-4 px-4 pt-3 pb-2 mb-1 bg-redlog-surface border-b border-redlog-border/50 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+      <div ref={headerRef} data-testid="timeline-detail-header" className="sticky top-0 z-10 -mx-4 px-4 pt-3 pb-2 mb-1 bg-redlog-surface border-b border-redlog-border/50 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
         <div className="flex items-center gap-2 min-w-0">
           <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: LANE_COLORS[lane] }} />
           {/* The kind by the name the detail bar and the legend use, not the
