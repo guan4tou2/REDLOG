@@ -9,6 +9,10 @@ _REDLOG_CMD_START=""
 # empty while events are delivered or kept, `unreachable` or `no-project` once
 # one was dropped, `told` once the prompt has said so. See `_redlog_warn_unsaved`.
 _REDLOG_UNSAVED=""
+# The reason the prompt last said a command was not saved. The notice is once
+# per reason, so a changed reason is said and an unchanged one is not; a
+# delivered event clears it, so a later loss is said again.
+_REDLOG_TOLD_REASON=""
 # Set when a terminal that loaded with no project open first sees one; cleared
 # once the prompt has said so. See `_redlog_announce_adoption`.
 _REDLOG_ADOPTED=""
@@ -131,11 +135,18 @@ _redlog_terminal_allowed() {
 # hook loaded" is `redlog status`; what is said is a change the operator would
 # otherwise not see. Each adapter arranges the one prompt-time call.
 _redlog_announce_terminal_refused() {
-  local dir="${_REDLOG_DIR:-$HOME/.redlog}" wanted=""
-  { IFS= read -r -d '' wanted <"$dir/terminal-app"; } 2>/dev/null
-  wanted=${wanted#"${wanted%%[![:space:]]*}"}
-  wanted=${wanted%"${wanted##*[![:space:]]}"}
-  printf '%s\n' "[redlog] this terminal is not recorded — RedLog is set to record only in ${wanted:-another terminal app}" >&2
+  _redlog_terminal_wanted
+  printf '%s\n' "[redlog] this terminal is not recorded — RedLog is set to record only in ${_redlog_wanted:-another terminal app}" >&2
+}
+
+# The terminal app the machine records, as `terminal-app` names it, in
+# `_redlog_wanted`: what the notice above and `redlog status` both say.
+_redlog_terminal_wanted() {
+  local dir="${_REDLOG_DIR:-$HOME/.redlog}"
+  _redlog_wanted=""
+  { IFS= read -r -d '' _redlog_wanted <"$dir/terminal-app"; } 2>/dev/null
+  _redlog_wanted=${_redlog_wanted#"${_redlog_wanted%%[![:space:]]*}"}
+  _redlog_wanted=${_redlog_wanted%"${_redlog_wanted##*[![:space:]]}"}
 }
 
 # --- Resolve reachable host ---
@@ -839,7 +850,7 @@ sys.stdout.write(json.dumps(d))
       _redlog_post "$port" "$token" 1 <<<"$payload" && delivered=1 || post_rc=$?
     fi
   fi
-  [[ "$delivered" == 1 ]] && _REDLOG_UNSAVED=""
+  [[ "$delivered" == 1 ]] && { _REDLOG_UNSAVED=""; _REDLOG_TOLD_REASON=""; }
   if [[ "$delivered" != 1 ]]; then
     # Cap spool at 5000 entries — beyond that we accept loss over disk fill.
     #
@@ -861,9 +872,9 @@ sys.stdout.write(json.dumps(d))
       # (`_redlog_warn_unsaved`), from this outcome: no extra request per
       # prompt. `curl -f` exits 22 for an HTTP error, so RedLog answered; with
       # no identity that is the 503 it gives while no project is open.
-      if [[ "${_REDLOG_UNSAVED:-}" != told ]]; then
-        if [[ "$post_rc" == 22 ]]; then _REDLOG_UNSAVED=no-project; else _REDLOG_UNSAVED=unreachable; fi
-      fi
+      # The reason is recorded every time, `told` or not: the prompt compares
+      # it with the last one it said, so a changed reason is not swallowed.
+      if [[ "$post_rc" == 22 ]]; then _REDLOG_UNSAVED=no-project; else _REDLOG_UNSAVED=unreachable; fi
       [[ -z "$work" ]] || rm -rf "$work"
       return 0
     fi
@@ -874,7 +885,7 @@ sys.stdout.write(json.dumps(d))
     local spool_file
     _redlog_count_waiting "$spool_dir"
     if [[ "$_redlog_count" -lt 5000 ]]; then
-      _REDLOG_UNSAVED=""
+      _REDLOG_UNSAVED=""; _REDLOG_TOLD_REASON=""
       if [[ -n "$work" ]]; then
         # The work directory is already unique, including on BSD date where
         # %N is literal and several events share one second and shell PID.
@@ -1112,7 +1123,7 @@ _redlog_warn_dropped() {
         fi
       fi
       # Whatever was dropped meanwhile is the loss that line describes.
-      [[ -z "${_REDLOG_UNSAVED:-}" ]] || _REDLOG_UNSAVED=told
+      if [[ -n "${_REDLOG_UNSAVED:-}" ]]; then _REDLOG_UNSAVED=told; _REDLOG_TOLD_REASON=unreachable; fi
       return 0
     fi
   fi
@@ -1124,11 +1135,88 @@ _redlog_warn_dropped() {
     _REDLOG_UNSAVED=""
     return 0
   fi
+  # Once per reason: the same reason again is not said, a different one is.
+  if [[ "$_REDLOG_UNSAVED" == "${_REDLOG_TOLD_REASON:-}" ]]; then
+    _REDLOG_UNSAVED=told
+    return 0
+  fi
   if [[ "$_REDLOG_UNSAVED" == no-project ]]; then
     printf '%s\n' "[redlog] no project is open in RedLog; this terminal is not being recorded" >&2
   else
     printf '%s\n' "[redlog] RedLog is not reachable; this terminal is not being recorded" >&2
   fi
+  _REDLOG_TOLD_REASON=$_REDLOG_UNSAVED
   _REDLOG_UNSAVED=told
   return 0
+}
+
+# `redlog status`: what this terminal's relay state says, and what RedLog says
+# about taking it. The state file alone said "recording enabled" with RedLog
+# closed, paused, or open on the project list. Asked here and nowhere else —
+# no request on the per-command path. Prints the line, no newline; the status
+# is 0 only when commands in this terminal are being recorded. The mode and
+# project stay in every state, since the terminal has them in every state.
+#
+# `_redlog_read_text`'s `read` ends at EOF with status 1, which ended this under
+# the caller's errexit before anything was printed. bash: the adapter calls this
+# from an `if`, where `set -e` does not apply. zsh: `ERR_RETURN` does apply to a
+# function called from an `if`, so it is switched off here, for this call only.
+_redlog_status() {
+  [[ -n "${ZSH_VERSION:-}" ]] && setopt localoptions noerrreturn noerrexit
+  local line app=unread port="" token="" host="" body=""
+  line=$(_redlog_state --action show --format human)
+  # Only a terminal whose own switch is on has anything left to ask: the
+  # machine's terminal selection first, as `_redlog_send_event` checks it, then
+  # RedLog.
+  if [[ "$line" != "recording enabled"* ]]; then
+    printf '%s' "$line"
+    return 1
+  fi
+  if ! _redlog_terminal_allowed; then
+    _redlog_terminal_wanted
+    printf '%s' "this terminal is not recorded — RedLog is set to record only in ${_redlog_wanted:-another terminal app}${line#recording enabled}"
+    return 1
+  fi
+  if ! _redlog_is_running; then
+    app=unreachable
+  else
+    _redlog_read_text "$_REDLOG_DIR/api-port"; port=$_redlog_text
+    _redlog_read_text "$_REDLOG_DIR/api-token"; token=$_redlog_text
+    _redlog_text=""
+    host=${_REDLOG_HOST:-}
+    if [[ -z "$host" ]]; then
+      if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then host=$(_redlog_resolve_host "$port"); else host=127.0.0.1; fi
+    fi
+    if body=$(_redlog_status_get "http://${host}:${port}/api/health"); then
+      case "$body" in
+        *'"projectOpen":false'*) app=no-project ;;
+        *'"projectOpen":true'*)
+          # Only a RedLog that said "recording":true is recording; a refused
+          # token or an answer of another shape is not read as either.
+          if body=$(_redlog_curl_authed "$token" --noproxy '*' -sf --connect-timeout 1 --max-time 2 "http://${host}:${port}/api/recording" 2>/dev/null </dev/null); then
+            case "$body" in
+              *'"recording":true'*) app=recording ;;
+              *'"recording":false'*) app=paused ;;
+            esac
+          fi ;;
+      esac
+    else
+      app=unreachable
+    fi
+  fi
+  case "$app" in
+    recording) printf '%s' "$line"; return 0 ;;
+    paused) printf '%s' "recording paused${line#recording enabled}" ;;
+    no-project) printf '%s' "RedLog running, no project open${line#recording enabled}" ;;
+    unreachable) printf '%s' "RedLog not reachable${line#recording enabled}" ;;
+    *) printf '%s' "RedLog running, recording state could not be read${line#recording enabled}" ;;
+  esac
+  return 1
+}
+
+# One GET to RedLog, body on stdout. `curl` is written here, not inside the
+# `$(…)` that calls it: a shell reads a command substitution again when it runs,
+# and an alias made after the hook loaded would stand in for curl there.
+_redlog_status_get() {
+  curl --noproxy '*' -sf --connect-timeout 1 --max-time 2 "$1" 2>/dev/null </dev/null
 }

@@ -64,6 +64,11 @@ printf '%s' '{"native":["echo","printf","redlog"]}' > "$HOME/.redlog/command-cla
 printf '%s' '${s.identity ? 0 : 22}' > "$RCF"
 cat > "$work/bin/curl" <<'FAKE'
 #!/bin/sh
+# \`redlog status\` asks the app with two GETs; the app here is up, project open.
+case "\$*" in
+  *api/health*) echo '{"ok":true,"version":"t","projectOpen":true}'; exit 0 ;;
+  *api/recording*) echo '{"recording":true}'; exit 0 ;;
+esac
 { cat; echo; } >> "$RCF.posts" 2>/dev/null
 exit "$(cat "$RCF")"
 FAKE

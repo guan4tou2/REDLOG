@@ -5,7 +5,7 @@ feature is that there is nothing to type for the ordinary case.
 
 | Command | Does | Notes |
 |---|---|---|
-| `redlog status` | recording on/off, mode, bound project, last event | answers FR-023 from inside the terminal |
+| `redlog status` | whether this terminal's commands are being recorded, with mode and bound project | answers FR-023 from inside the terminal; exit 0 only while they are (see below) |
 | `redlog stop` | stops recording **in this terminal**, durably | survives the next prompt even in auto mode (FR-022) |
 | `redlog start` | starts recording in this terminal | in manual mode this is how a terminal opts in |
 | `redlog mode auto\|manual` | switches the machine's mode | no reinstall (FR-021) |
@@ -17,10 +17,25 @@ installed block in `.zshrc` therefore defines one name, which is also what
 makes uninstall verifiable (FR-016).
 
 Loading the hook announces only that it loaded, not that output was saved.
-Human status names an enabled recording switch as `recording enabled`; this is
-not a delivery acknowledgement. Missing project/operator identity is explicitly
-`not recording`, with a new-terminal recovery path because project binding is
-pinned. Start reports the resulting state, including a refusal after a project
+`redlog status` asks the running RedLog (`/api/health`, then `/api/recording`)
+and prints one line; the mode and project stay in every state this terminal has
+them. It is the only thing that asks: nothing on the per-command path does.
+
+| Line begins | State | Exit |
+|---|---|---|
+| `recording enabled` | this terminal's switch is on, RedLog has a project open and is recording | 0 |
+| `recording paused` | RedLog has a project open and is paused | non-zero |
+| `RedLog running, no project open` | RedLog answers `/api/health` with no project | non-zero |
+| `RedLog running, recording state could not be read` | RedLog answers but the token is refused, or the answer does not say `"recording":true` or `false` | non-zero |
+| `RedLog not reachable` | nothing answers on the port the files name, or there are no port/token files | non-zero |
+| `this terminal is not recorded — RedLog is set to record only in …` | the machine records one terminal app and this is not it (nothing is asked of RedLog) | non-zero |
+
+A terminal stopped with `redlog stop` keeps saying `stopped (…)`, and
+missing project/operator identity is explicitly `not recording` with a
+new-terminal recovery path because project binding is pinned; both exit
+non-zero. `recording enabled` is never printed without RedLog having said it
+is recording, and it is still not a delivery acknowledgement. The status is the
+same under the caller's `set -e` / `ERR_RETURN`. Start reports the resulting state, including a refusal after a project
 switch, and must not emit `capture_resumed` when the terminal stayed stopped.
 
 **Install / uninstall** are not shell commands. They are RedLog actions:
