@@ -439,7 +439,10 @@ export default function OverlayApp(): JSX.Element {
                   {pivotRead.status === 'error' && pivotError(t('overlay.relayReadFailedStale', { count: listedPivots.length }))}
                   <div style={pivotRead.status === 'error' ? { opacity: 0.55, marginTop: px(6) } : undefined}>
                     {listedPivots.map((p) => {
-                      const seen = t('pivot.lastSeen', { when: formatFreshness(p.ts, t) })
+                      // Read the clock once: two reads can fall either side of a second,
+                      // and the tooltip then says a different age from the one on screen.
+                      const age = formatFreshness(p.ts, t)
+                      const seen = t('pivot.lastSeen', { when: age })
                       return (
                         <div key={p.via + p.tool + p.ts} style={{ display: 'grid', gridTemplateColumns: `${px(80)}px minmax(0, 1fr) auto`, columnGap: px(10), padding: `${px(4)}px ${px(8)}px`, marginBottom: px(4), borderLeft: `2px solid ${FRAME}`, background: HUD.nodeBg }}>
                           <span style={{ color: HUD.muted, overflowWrap: 'anywhere' }}>{p.tool}</span>
@@ -449,7 +452,7 @@ export default function OverlayApp(): JSX.Element {
                               the pointer's tooltip. */}
                           <span style={{ color: HUD.muted }} title={seen}>
                             <span style={SR_ONLY}>{seen}</span>
-                            <span aria-hidden="true">{formatFreshness(p.ts, t)}</span>
+                            <span aria-hidden="true">{age}</span>
                           </span>
                           {p.route && (
                             <span style={{ gridColumn: '2 / -1', overflowWrap: 'anywhere' }}>
