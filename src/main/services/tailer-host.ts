@@ -55,7 +55,7 @@ import { noteDbError, noteCaptureError, clearCaptureError } from '../../core/cap
 import { redactSecrets, outputIfPathHiddenByCommand } from '../../core/secret-redaction'
 import { jsonStringify } from '../../core/ingest/depth'
 import { isInsideDir } from '../../core/paths'
-import { restrictToOwner } from '../../core/fs-acl'
+import { identity, restrictToOwner } from '../../core/fs-acl'
 import type { ProjectIdentity } from '../../core/project-runtime'
 import { compareCodeUnits } from '../../core/code-unit-order'
 
@@ -327,33 +327,29 @@ function sessionKey(agentKind: string, sessionId: string): string {
   return `${agentKind}:${sessionId}`
 }
 
-/** Written once the sidecar directory is owner-only on Windows. */
+/** Records the grant and the directory it was applied to on Windows. */
 const SIDECAR_ACL_MARKER = '.owner-only'
 
 /** Sidecars are raw, unredacted conversations. The 0o700/0o600 modes mean
- *  nothing on NTFS, so there the directory takes the same icacls restriction
- *  as the keys directory. Throws when it cannot be applied: the caller must
- *  not save raw content it cannot protect.
+ *  nothing on NTFS, so there the directory gets an inheritable owner grant.
+ *  Throws when restriction fails so the caller can keep raw content off disk.
  *
  *  Files already in the directory are restricted first. Restricting a
  *  directory strips the inherited entries from its children, and a file that
  *  has nothing explicit is left with an empty ACL, unreadable by its owner.
- *  Files created afterwards never get the project directory's entries. They
- *  inherit only what the directory itself holds as inheritable explicit
- *  entries: none from the user's grant, which is not inheritable; SYSTEM,
- *  Administrators and the user when an elevated process created the
- *  directory (the Windows CI log shows this); and with nothing inheritable,
- *  the creating process's default entries. The marker keeps this to one pass per directory, since each
- *  icacls call costs about 50 ms. */
+ *  New files inherit the owner grant from this directory. The marker lets
+ *  us skip the pass only for the current grant and a known directory identity. */
 function secureSidecarDir(dir: string): void {
   if (process.platform !== 'win32') return
   const marker = path.join(dir, SIDECAR_ACL_MARKER)
-  if (fs.existsSync(marker)) return
+  const id = identity(dir)
+  const stamp = id === null ? '' : `inheritable:${id}`
+  if (stamp && fs.existsSync(marker) && fs.readFileSync(marker, 'utf8') === stamp) return
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.isFile()) restrictToOwner(path.join(dir, entry.name))
   }
-  restrictToOwner(dir)
-  fs.writeFileSync(marker, '')
+  restrictToOwner(dir, 'inheritable')
+  fs.writeFileSync(marker, stamp)
 }
 
 let resumeBoundary = 0

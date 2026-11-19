@@ -39,24 +39,25 @@ export function _replaceIcaclsForTests(runner: IcaclsRunner | null): void {
  * entries the target already carried for other principals are left as they
  * are: a file an elevated process creates has explicit SYSTEM and
  * Administrators entries, and keeps them. Nothing the parent folder grants
- * (Users, Authenticated Users) survives. On a directory the user's entry is
- * not inheritable.
+ * (Users, Authenticated Users) survives. Use the inheritable grant on a
+ * directory whose children need the user's entry.
  * POSIX mode bits are silently ignored by NTFS; this fills the gap with icacls.
  *
  * No-op on non-win32 platforms (POSIX mode already handles it).
  * Failures are thrown — callers decide whether to swallow or propagate.
  */
-export function restrictToOwner(target: string): void {
+export function restrictToOwner(target: string, grant: 'target' | 'inheritable' = 'target'): void {
   if (process.platform !== 'win32') return
   const user = process.env.USERNAME
   if (!user) throw new Error('USERNAME env var is not set')
-  runIcacls([target, '/inheritance:r', '/grant:r', `${user}:(F)`])
+  const rights = grant === 'inheritable' ? '(OI)(CI)(F)' : '(F)'
+  runIcacls([target, '/inheritance:r', '/grant:r', `${user}:${rights}`])
 }
 
 /** Null when the identity cannot be told apart from another file's: a file
- *  system that reports no file index (0, or all ones) cannot be memoised
+ *  system that reports no file index (0, or all ones) cannot be identified
  *  safely. */
-function identity(target: string): string | null {
+export function identity(target: string): string | null {
   try {
     const s = fs.statSync(target, { bigint: true })
     if (s.ino === 0n || s.ino === 0xFFFFFFFFFFFFFFFFn) return null

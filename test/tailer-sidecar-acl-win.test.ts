@@ -2,12 +2,12 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
-import { execFileSync } from 'node:child_process'
 import { claudeCodeAdapter } from '../optional-plugins/claude-code/adapter'
 import { registerAdapter, configureHost, registerSession, catchUpSession, stopHost, _sessionsForTest } from '../src/main/services/tailer-host'
+import { eventBus } from '../src/core/event-bus'
 import { initDB, closeDB } from '../src/core/db/index'
 import { createOperator, generateToken } from '../src/core/db/operators'
-import { useRealIcacls } from './helpers/icacls'
+import { aclEntries, aclListing, isCurrentUser, useRealIcacls } from './helpers/icacls'
 
 // The same scenario as tailer-sidecar-acl.test.ts, against the real icacls.
 // Windows only: it is the one test that says what NTFS ends up holding, so it
@@ -20,25 +20,13 @@ const SID = 'aaaaaaaa-bbbb-cccc-dddd-0000000000w1'
 
 let scratch: string
 
-const icacls = (target: string): string => execFileSync('icacls', [target], { encoding: 'utf-8' })
 const turn = (uuid: string, text: string): string => JSON.stringify({
   type: 'user', uuid, cwd: '/tmp/acl',
   message: { role: 'user', content: [{ type: 'text', text }] }
 }) + '\n'
 
-// Under the user's profile, not os.tmpdir(): the Windows CI leg points TEMP at
-// the work volume, and what a new file's ACL holds depends on its parent. There
-// (D:\a\_temp, elevated runner) the directory and the earlier sidecar came out
-// as below, but the sidecar created afterwards carried only the creating
-// process's defaults: Administrators, SYSTEM and the logon session, with no
-// entry naming the user. No Users, Everyone or Authenticated Users either, so
-// nothing was readable by another ordinary account; but "the user is named"
-// is a statement about a profile directory, which is where a project lives.
-const profileTemp = (): string =>
-  IS_WIN && process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Temp') : os.tmpdir()
-
 beforeEach(() => {
-  scratch = fs.mkdtempSync(path.join(profileTemp(), 'tailer-acl-win-'))
+  scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'tailer-acl-win-'))
   initDB(scratch)
   createOperator({ id: OP, name: 'Operator 1', token: generateToken() })
   fs.mkdirSync(path.join(scratch, 'claude-projects', '-tmp-acl'), { recursive: true })
@@ -54,12 +42,11 @@ afterEach(() => {
 })
 
 describe.skipIf(!IS_WIN)('the AI sidecar directory under the real Windows ACL', () => {
-  it('is owner-only, keeps an earlier sidecar readable, and holds a new one the same way', () => {
+  it('keeps an earlier sidecar readable and gives new files inherited owner access', () => {
     const dir = path.join(scratch, 'agent-transcripts')
     const earlier = path.join(dir, 'claude-code-earlier.jsonl')
     fs.mkdirSync(dir, { recursive: true })
     fs.writeFileSync(earlier, 'EARLIER-CONVERSATION')
-    expect(icacls(earlier)).toContain('BUILTIN\\Administrators')
 
     const source = path.join(scratch, 'claude-projects', '-tmp-acl', `${SID}.jsonl`)
     fs.writeFileSync(source, turn('u1', 'first'))
@@ -68,25 +55,52 @@ describe.skipIf(!IS_WIN)('the AI sidecar directory under the real Windows ACL', 
     catchUpSession('claude-code', SID)
 
     const sidecar = _sessionsForTest().get(`claude-code:${SID}`)!.sidecarPath
-    const user = process.env.USERNAME!
-    const seen = { dir: icacls(dir), earlier: icacls(earlier), sidecar: icacls(sidecar) }
-    console.log(`[ACL] dir\n${seen.dir}\n[ACL] earlier\n${seen.earlier}\n[ACL] new sidecar\n${seen.sidecar}`)
+    eventBus.pause()
+    eventBus.resume()
+    const plain = path.join(dir, 'plain.txt')
+    fs.writeFileSync(plain, 'created by plain writeFileSync')
 
-    // What this protects against is another ordinary account on the machine.
-    // SYSTEM and Administrators can take any file whatever its ACL, and an
-    // elevated process (the CI runner) creates the directory with explicit
-    // entries for both, which `/inheritance:r` does not touch — so they are
-    // not asserted absent here.
-    for (const out of [seen.dir, seen.earlier, seen.sidecar]) {
-      expect(out).toContain(user)
-      expect(out).not.toContain('Everyone')
-      expect(out).not.toContain('BUILTIN\\Users')
-      expect(out).not.toContain('Authenticated Users')
+    const entries = (label: string, target: string): string[] => {
+      const out = aclListing(target)
+      console.log(`[ACL] ${label}\n${out}`)
+      return aclEntries(target, out)
     }
-    // Nothing reaches the directory, or a file already in it, from the project
-    // directory. A sidecar created afterwards may inherit — but only from this
-    // directory, which the loop above has already held to the owner.
-    for (const out of [seen.dir, seen.earlier]) expect(out).not.toContain('(I)')
+    const dirEntries = entries('directory', dir)
+    const earlierEntries = entries('earlier sidecar', earlier)
+    const newEntries = [
+      entries('new sidecar', sidecar),
+      entries('new offset cursor', sidecar + '.offset.json'),
+      entries('recording boundary', path.join(dir, '.recording-boundary.json')),
+      entries('plain writeFileSync file', plain)
+    ]
+    const principals = (acl: string[]): string[] => acl.map((entry) => entry.slice(0, entry.lastIndexOf(':(')))
+    for (const acl of newEntries) {
+      const names = principals(acl)
+      console.log('[ACL] possible token default principals', {
+        fileEntries: acl,
+        Administrators: names.includes('BUILTIN\\Administrators'),
+        SYSTEM: names.includes('NT AUTHORITY\\SYSTEM'),
+        LogonSessionId: names.some((name) => /^(?:NT AUTHORITY\\)?LogonSessionId|^S-1-5-5-/i.test(name))
+      })
+    }
+
+    for (const acl of [dirEntries, earlierEntries, ...newEntries]) {
+      const names = principals(acl)
+      for (const other of ['Everyone', 'BUILTIN\\Users', 'NT AUTHORITY\\Authenticated Users', 'Authenticated Users']) {
+        expect(names).not.toContain(other)
+      }
+    }
+    expect(dirEntries.some((entry) => entry.endsWith(':(OI)(CI)(F)') && isCurrentUser(entry)), dirEntries.join('\n')).toBe(true)
+    expect(earlierEntries.some((entry) => entry.endsWith(':(F)') && isCurrentUser(entry)), earlierEntries.join('\n')).toBe(true)
+    for (const acl of [dirEntries, earlierEntries]) expect(acl.some((entry) => entry.includes('(I)'))).toBe(false)
+
+    // Without the inheritable grant, an unrestricted new file under the
+    // elevated runner has Administrators, SYSTEM and LogonSessionId, but no
+    // current-user entry. The inherited full-control assertion is the one
+    // that can fail even when the broad principals are absent.
+    for (const acl of newEntries) {
+      expect(acl.some((entry) => entry.endsWith(':(I)(F)') && isCurrentUser(entry)), acl.join('\n')).toBe(true)
+    }
 
     expect(fs.readFileSync(earlier, 'utf-8')).toBe('EARLIER-CONVERSATION')
     expect(fs.readFileSync(sidecar, 'utf-8')).toContain('second')
