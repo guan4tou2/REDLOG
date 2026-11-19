@@ -11,7 +11,7 @@
 | Chained Event | `events` table — hash chain + signature |
 | Logged Event | `events_logged` table — high-volume, no chain |
 | Scope Target | Target within engagement authorization |
-| Personal Domain | Operator's personal traffic — always excluded from export |
+| Personal Domain | Target that matches a personal/local rule. Planned exports drop its events unless the project classifies the target as in scope. |
 | Do-Not-Export | Events explicitly excluded by policy |
 | Export Selection | The set of events included in an export operation |
 

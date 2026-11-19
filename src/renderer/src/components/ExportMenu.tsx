@@ -231,7 +231,8 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
   const [destDir, setDestDir] = useState<string | null>(null)
   const [defaultDir, setDefaultDir] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
-  const [completion, setCompletion] = useState<ExportDelivery | null>(null)
+  const [receipt, setReceipt] = useState<{ delivery: ExportDelivery; kind: 'completed' | 'recent' } | null>(null)
+  const completion = receipt?.delivery
   const [recent, setRecent] = useState<ExportDelivery | null>(null)
   const [recentError, setRecentError] = useState(false)
   const [recentLoading, setRecentLoading] = useState(false)
@@ -329,7 +330,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
     const format = viewExport?.request.format === 'har' || viewExport?.request.format === 'timeline'
       ? viewExport.request.format : draft.format === 'har' || draft.format === 'timeline' ? 'bundle' : draft.format
     setDestDir(null)
-    setCompletion(null)
+    setReceipt(null)
     setRevealError(false)
     setResultWarning(false)
     setOpen(true)
@@ -371,7 +372,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
   const closeAll = (): void => {
     attachmentFocus.current = null
     ++recentSequence.current
-    setCompletion(null)
+    setReceipt(null)
     ++previewSequence.current
     setPending(null)
     setResolvedPlan(null)
@@ -410,7 +411,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
       ++recentSequence.current
       setRecentLoading(false)
       const delivery = { ...result.delivery, counts: result.counts }
-      setCompletion(delivery)
+      setReceipt({ delivery, kind: 'completed' })
       setRecent(delivery)
       setRevealError(false)
       setResultWarning(result.warnings.includes('recent-export-not-saved'))
@@ -481,8 +482,8 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
             className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[91] w-[min(560px,92vw)] max-h-[82vh] flex flex-col overflow-hidden whitespace-normal break-words bg-redlog-surface border border-redlog-border rounded-xl shadow-2xl"
           >
             <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-redlog-border">
-              <h2 className="text-sm text-redlog-text">{t(completion?.counts ? 'export.completedTitle' : completion ? 'export.recent' : 'export.title')}</h2>
-              {!completion && recent && <Button size="compact" level="quiet" data-testid="export-recent" disabled={busy || recentLoading || recentError} onClick={() => { setCompletion(recent); setRevealError(false); setResultWarning(false) }}>{t('export.recent')}</Button>}
+              <h2 className="text-sm text-redlog-text">{t(receipt?.kind === 'completed' ? 'export.completedTitle' : receipt ? 'export.recent' : 'export.title')}</h2>
+              {!completion && recent && <Button size="compact" level="quiet" data-testid="export-recent" disabled={busy || recentLoading || recentError} onClick={() => { setReceipt({ delivery: recent, kind: 'recent' }); setRevealError(false); setResultWarning(false) }}>{t('export.recent')}</Button>}
               <button type="button" onClick={closeAll} disabled={busy} aria-label={t('common.close')} className="p-1 text-redlog-text-dim hover:text-redlog-text disabled:opacity-40"><X size={16} /></button>
             </div>
             <div className="min-h-0 overflow-y-auto">

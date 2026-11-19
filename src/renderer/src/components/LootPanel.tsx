@@ -84,7 +84,7 @@ export function LootPanel({ onOpenInTimeline, projectId, active = true }: {
   const [open, setOpen] = useState<Set<string>>(new Set())
   const toggleOpen = useCallback((id: string) => setOpen((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next }), [])
   const { t } = useI18n()
-  const { filter: sharedFilter } = useSharedFilter()
+  const { filter: sharedFilter, scopePolicyKey } = useSharedFilter()
 
   // A shared-filter change must not leave rows from the previous predicate
   // visible while its replacement query is in flight. A live refresh re-reads
@@ -92,7 +92,7 @@ export function LootPanel({ onOpenInTimeline, projectId, active = true }: {
   // the replacement succeeds; a transient read failure must not blank it.
   // Loot holds only loot rows: a Type chip for anything else asks nothing.
   const lootRead = useLivePagedQuery<LootEvent>({
-    key: JSON.stringify(sharedFilter),
+    key: JSON.stringify([sharedFilter, scopePolicyKey]),
     enabled: !sharedFilter.agentType || sharedFilter.agentType === 'loot',
     fetch: async (cursor) => {
       const page = await window.redlog.events.queryPage({

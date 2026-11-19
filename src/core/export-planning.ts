@@ -6,7 +6,7 @@ import { isOutOfScope, isUnclassifiedScope } from './scope-sanitize'
 import { redactEventForExport, scopeMaskChanges, type RedactExportOpts } from './redact-export'
 import { iterateExportSelection, iterateSnapshotEvents } from './export-selection'
 import { capabilitiesFor } from './export-capabilities'
-import { listExportAttachments, exportAttachmentDigest, withFrozenSizes } from './export-attachments'
+import { listExportAttachments, exportAttachmentDigest, personalScreenshotNames, withFrozenSizes } from './export-attachments'
 import { countExportAttachments, referencedAttachmentsFold, truncatedOutputsFold, pauseWindowsFold,
   captureGapsFold, interruptedFold, partialHttpFlowsFold, httpExchangesFold, countPartialHttpFlowsOutside, outOfScopeHttpFlowsFold, sequenceFingerprint,
   createExportPlan, fingerprintValue, fingerprintSequence, normalizeExportRequest, takeExportSnapshot, type ExportPlan, type ExportRequest } from './export-plan'
@@ -96,9 +96,14 @@ export function buildExportPlan(project: ProjectMeta, rawRequest: ExportRequest)
     }
   } }
   const context = { [Symbol.iterator]: () => iterateSnapshotEvents(snapshot) }
-  const exclude = new Set(request.excludeAttachments)
+  const attachmentOptions = {
+    scope, maskOutOfScope: request.maskOutOfScope, exclude: new Set(request.excludeAttachments),
+    personalScreenshots: request.format === 'bundle'
+      ? personalScreenshotNames(iterateSnapshotEvents(snapshot, { agentType: 'screenshot' }), scope)
+      : undefined
+  }
   const attachments = request.format === 'bundle'
-    ? listExportAttachments(project.path, selectedEvents, { scope, maskOutOfScope: request.maskOutOfScope, exclude,
+    ? listExportAttachments(project.path, selectedEvents, { ...attachmentOptions,
       bounded, include:new Set(request.includeAttachments), context: bounded ? context : undefined })
     : []
   const attachmentCounts = bounded ? {
@@ -107,7 +112,7 @@ export function buildExportPlan(project: ProjectMeta, rawRequest: ExportRequest)
     unattributed:attachments.filter(a=>a.status==='included' && a.attribution==='unattributed').length,
     excludedByOperator:attachments.filter(a=>a.status==='excluded-by-operator').length
   } : request.format === 'bundle'
-    ? countExportAttachments(project.path, selectedEvents, { scope, maskOutOfScope: request.maskOutOfScope, exclude })
+    ? countExportAttachments(project.path, selectedEvents, attachmentOptions)
     : { included:0, missing:0, unattributed:0, excludedByOperator:0 }
   const plan = createExportPlan({
     projectId: project.id,
@@ -178,9 +183,13 @@ export function validateExportSources(project: ProjectMeta, plan: ExportPlan) {
   if (fingerprintValue(loadConfig(project.path)) !== plan.policyFingerprint) return refused('policy-changed', 'config')
   if (plan.request.format === 'bundle') {
     const bounded = plan.request.subset.kind === 'activity' || plan.request.subset.kind === 'session'
-    const currentFiles = listExportAttachments(project.path, approvedNow, {
+    const attachmentOptions = {
       scope: plan.scopeSnapshot, maskOutOfScope: plan.request.maskOutOfScope,
-      exclude: new Set(plan.request.excludeAttachments), bounded, include:new Set(plan.request.includeAttachments),
+      exclude: new Set(plan.request.excludeAttachments),
+      personalScreenshots: personalScreenshotNames(iterateSnapshotEvents(plan.snapshot, { agentType: 'screenshot' }), plan.scopeSnapshot)
+    }
+    const currentFiles = listExportAttachments(project.path, approvedNow, {
+      ...attachmentOptions, bounded, include:new Set(plan.request.includeAttachments),
       context:bounded ? { [Symbol.iterator]: () => iterateSnapshotEvents(plan.snapshot) } : undefined
     }).filter(a=>!bounded || plan.attachments.some(approved=>approved.id===a.id))
     if (exportAttachmentDigest(project.path, withFrozenSizes(currentFiles, plan.attachments)) !== plan.attachmentDigest) {
@@ -191,11 +200,7 @@ export function validateExportSources(project: ProjectMeta, plan: ExportPlan) {
       missing:currentFiles.filter(a=>a.status==='missing').length,
       unattributed:currentFiles.filter(a=>a.status==='included' && a.attribution==='unattributed').length,
       excludedByOperator:currentFiles.filter(a=>a.status==='excluded-by-operator').length
-    } : countExportAttachments(project.path, approvedNow, {
-      scope: plan.scopeSnapshot,
-      maskOutOfScope: plan.request.maskOutOfScope,
-      exclude: new Set(plan.request.excludeAttachments)
-    })
+    } : countExportAttachments(project.path, approvedNow, attachmentOptions)
     if (attachments.included !== plan.counts.attachmentsIncluded || attachments.missing !== plan.counts.attachmentsMissing || attachments.unattributed !== plan.counts.attachmentsUnattributed || attachments.excludedByOperator !== plan.counts.attachmentsExcludedByOperator) {
       return refused('source-unavailable', 'attachment-count')
     }

@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, cleanup } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ExportMenu } from '../src/renderer/src/components/ExportMenu'
 import { I18nProvider } from '../src/renderer/src/i18n'
+import type { ExportDelivery } from '../src/core/export-delivery'
 
 // The preview reshaped the resolved plan into an `ExportPreview` whose
 // `hasScope` was always false, `screenshotEvents` always 0 and `snapshot` all
@@ -28,11 +29,12 @@ const plan = (over: Partial<ResolvedExportPlan> = {}): ResolvedExportPlan => ({
   ...over
 })
 
-function install(p: ResolvedExportPlan): void {
+function install(p: ResolvedExportPlan, recent: ExportDelivery | null = null): void {
+  const counts = { ...p.counts, included: 96, excludedPersonal: 11, maskedOutOfScope: 3 }
   ;(window as unknown as { redlog: unknown }).redlog = {
-    data: { recentExport: vi.fn(async () => ({ ok: true, delivery: null })),
+    data: { recentExport: vi.fn(async () => ({ ok: true, delivery: recent })),
       resolveExportPlan: vi.fn(async () => ({ ok: true as const, plan: p })),
-      executeExportPlan: vi.fn(async () => ({ ok: true as const, planId: p.id, fingerprint: 'x', artifactPath: '/tmp/x', counts: p.counts, warnings: [], delivery: { artifactPath: '/tmp/x', format: 'json', completedAt: 1700000000000, availability: 'available' } }))
+      executeExportPlan: vi.fn(async () => ({ ok: true as const, planId: p.id, fingerprint: 'x', artifactPath: '/tmp/x', counts, warnings: [], delivery: { artifactPath: '/tmp/x', format: 'json', completedAt: 1700000000000, availability: 'available' } }))
     },
     config: { get: async () => ({}) }
   }
@@ -55,11 +57,25 @@ describe('the export preview shows only what the plan measured', () => {
 
   it('shows the executed counts when export completes', async () => {
     await draw(plan())
+    expect(screen.getByRole('dialog').textContent).toMatch(/Included\s*100/)
     fireEvent.click(screen.getByTestId('export-confirm'))
     const completion = await screen.findByTestId('export-completed')
-    expect(completion.textContent).toMatch(/Included\s*100/)
-    expect(completion.textContent).toMatch(/Dropped \(personal\/local\)\s*7/)
-    expect(completion.textContent).toMatch(/Out of scope \(masked\)\s*5/)
+    expect(screen.getByRole('heading', { name: 'Export complete' })).toBeTruthy()
+    expect(completion.textContent).toMatch(/Included\s*96/)
+    expect(completion.textContent).toMatch(/Dropped \(personal\/local\)\s*11/)
+    expect(completion.textContent).toMatch(/Out of scope \(masked\)\s*3/)
+  })
+
+  it('titles a persisted receipt Last export even when it carries counts', async () => {
+    install(plan(), {
+      artifactPath: '/tmp/older-export.json', format: 'json', completedAt: 1700000000000,
+      availability: 'available', counts: plan().counts
+    })
+    render(<I18nProvider><ExportMenu totalCount={120} /></I18nProvider>)
+    openJson()
+    fireEvent.click(await screen.findByTestId('export-recent'))
+    expect(screen.getByRole('heading', { name: 'Last export' })).toBeTruthy()
+    expect(screen.getByTestId('export-completed-counts').textContent).toMatch(/Included\s*100/)
   })
 
   it('names the real scope rather than claiming there is none', async () => {

@@ -14,7 +14,8 @@ import { getSanitizedFields, countSanitizedEvents } from './sanitize'
 import { isOutOfScope, scopeMaskReplacements, type ScopeForSanitize } from './scope-sanitize'
 import { BODY_REF_FOR, scopeBodyRefsToDrop } from './redact-export'
 import { getDoNotExportIds } from './db/do-not-export'
-import { isAttachmentId, type ExportAttachment } from './export-attachments'
+import { isAttachmentId, personalScreenshotNames, type ExportAttachment } from './export-attachments'
+import { iterateSnapshotEvents } from './export-selection'
 import { BUNDLE_VERSION, SEAL_SUBTYPE, SEAL_VERSION, attachmentRefs, sealedManifestDigest, sha256Hex } from './evidence-rules'
 import { verifyBundleDir } from './bundle-verify'
 import { findBundleVerifier } from './bundle-verifier-path'
@@ -508,6 +509,9 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
   let screenshotsExcluded = 0
   let screenshotsUnattributed = 0
   if (fs.existsSync(srcShots)) {
+    const personalScreenshots = opts.attachments && opts.snapshot
+      ? personalScreenshotNames(iterateSnapshotEvents(opts.snapshot, { agentType: 'screenshot' }), opts.scope)
+      : null
     const shotFilenameToTarget = new Map<string, string | null>()
     if (scope) {
       const shotRows = db.prepare(
@@ -522,10 +526,15 @@ export function exportBundle(engagementId: string, opts: ExportBundleOpts): Evid
     for (const name of fs.readdirSync(srcShots).sort(compareCodeUnits)) {
       const s = path.join(srcShots, name)
       if (!fs.statSync(s).isFile()) continue
+      if (personalScreenshots?.has(name)) {
+        screenshotsExcluded++
+        omitReason.set(`screenshots/${name}`, 'personal-domain')
+        continue
+      }
       if (leftOutByOperatorOrPlan(`screenshots/${name}`)) continue
       {
         const target = shotFilenameToTarget.get(name)
-        if (isPersonalDomain(target ?? null, opts.scope)) {
+        if (!personalScreenshots && isPersonalDomain(target, opts.scope)) {
           screenshotsExcluded++
           omitReason.set(`screenshots/${name}`, 'personal-domain')
           continue

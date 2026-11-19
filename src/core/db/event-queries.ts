@@ -23,7 +23,7 @@ import { builtinTerminalRecordingSql } from '../ingest/builtin-terminal'
 import { httpExchangeSql } from '../activity-projection'
 
 /** Operator-selected predicates shared by investigation surfaces. Scope rules
- * are attached by trusted main-process code when `inScopeOnly` is requested. */
+ * are attached by trusted main-process code for `inScopeOnly` or `hidePersonal`. */
 export interface EventFilter {
   targetId?: string
   agentType?: string
