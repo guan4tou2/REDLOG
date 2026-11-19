@@ -190,3 +190,22 @@ describe('Dashboard capture card (Stitch 08)', () => {
     await waitFor(() => expect(health.mock.calls.length).toBeGreaterThan(calls))
   })
 })
+
+
+it('5: recording stays unknown until confirmed and a rejected read stays unknown', async () => {
+  health.mockResolvedValue(snap('healthy'))
+  let answer!: (value: boolean) => void
+  window.redlog.recording.get = () => new Promise(resolve => { answer = resolve })
+  show(<StatusBar />)
+  expect(rec().textContent).toContain('REC?')
+  expect(rec().getAttribute('data-recording')).toBe('unknown')
+  expect((rec() as HTMLButtonElement).disabled).toBe(true)
+  await act(async () => { answer(true) })
+  expect(rec().getAttribute('data-recording')).toBe('on')
+  cleanup()
+  window.redlog.recording.get = async () => { throw Error('recording read failed') }
+  show(<StatusBar />)
+  await act(async () => {})
+  expect(rec().getAttribute('data-recording')).toBe('unknown')
+  expect(rec().textContent).toContain('REC?')
+})

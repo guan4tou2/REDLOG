@@ -128,3 +128,16 @@ it('is one column at any width: search is there from the first bookmark, the lis
   fireEvent.click(screen.getByRole('button', { name: 'Back to bookmarks' }))
   expect(screen.getByRole('listbox')).toBeTruthy()
 })
+
+it('11: Escape returns from details and yields to a visible modal', async () => {
+  await openMark('Current mark')
+  const dialog = document.createElement('div')
+  dialog.setAttribute('role', 'dialog'); dialog.setAttribute('aria-modal', 'true')
+  document.body.appendChild(dialog)
+  fireEvent.keyDown(window, { key: 'Escape' })
+  expect(screen.getByRole('button', { name: 'Back to bookmarks' })).toBeTruthy()
+  dialog.remove()
+  fireEvent.keyDown(window, { key: 'Escape' })
+  expect(screen.queryByRole('button', { name: 'Back to bookmarks' })).toBeNull()
+  expect(screen.getByRole('listbox')).toBeTruthy()
+})

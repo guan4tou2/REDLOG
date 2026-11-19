@@ -434,6 +434,9 @@ test.describe('activity-return-state', () => {
     await expect(page.getByTestId('timeline-detail-panel')).toHaveCount(1)
     const selected = await page.evaluate(() => localStorage.getItem('redlog-timeline-focus-event'))
     expect(selected, 'the timeline selected a concrete event').toBeTruthy()
+    // The visited Reader stays mounted under [hidden]; it must not own Escape.
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('timeline-detail-panel')).toHaveCount(0)
 
     await page.getByRole('button', { name: /^← / }).click()
     await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'search')
@@ -623,7 +626,13 @@ test.describe('uiux-convergence (HTTP scope, violation details)', () => {
     const posted = await fetch(`${base}/api/events/seed`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ agent_type: 'shell', data: { subtype: 'command_start', detectedTarget: 'outside.test', command } }) })
     expect(posted.ok).toBe(true)
     await openView(page, 'scope')
-    await page.getByTestId('scope-judged-live').first().click()
+    const observation = page.getByTestId('scope-judged-live').first()
+    await observation.click()
+    await expect(observation).toHaveAttribute('aria-expanded', 'true')
+    await observation.press('Enter')
+    await expect(observation).toHaveAttribute('aria-expanded', 'false')
+    await observation.press('Enter')
+    await expect(observation).toHaveAttribute('aria-expanded', 'true')
     const detail = page.getByTestId('scope-observation-detail')
     await expect(detail.locator('pre')).toHaveText(command)
     // Stitch 02: reason and rule are separate cells.

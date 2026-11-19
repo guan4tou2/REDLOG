@@ -172,3 +172,19 @@ describe('Scope & Evidence page', () => {
     await vi.waitFor(() => expect(onOpenInTimeline).toHaveBeenCalledWith('cmd', 1_699_999_000_000))
   })
 })
+
+it('11: Enter expands the same observation as click; modified Enter navigates', async () => {
+  installBridge({ rows: [row('v1')], truncated: false }, 1)
+  window.redlog.events.getById = vi.fn(async () => []) as never
+  const navigate = vi.fn()
+  render(<I18nProvider><ScopeStatus onOpenInTimeline={navigate} /></I18nProvider>)
+  const item = (await screen.findByTestId('scope-judged-live')).closest('[aria-expanded]')!
+  fireEvent.keyDown(item, { key: 'Home' })
+  fireEvent.keyDown(item, { key: 'Enter' })
+  expect(item.getAttribute('aria-expanded')).toBe('true')
+  expect(navigate).not.toHaveBeenCalled()
+  fireEvent.keyDown(item, { key: 'Enter' })
+  expect(item.getAttribute('aria-expanded')).toBe('false')
+  fireEvent.keyDown(item, { key: 'Enter', ctrlKey: true })
+  await vi.waitFor(() => expect(navigate).toHaveBeenCalled())
+})

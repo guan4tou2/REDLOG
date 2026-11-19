@@ -2,7 +2,7 @@ import type { ContentAnchor } from '../../../core/content-contract'
 import { useState, useEffect, useRef } from 'react'
 import { useI18n } from '../i18n'
 import { useFocusTrap } from '../lib/useFocusTrap'
-import { formatTime } from '../lib/time'
+import { formatTime, formatWhen } from '../lib/time'
 import { Button, FIELD_FOCUS_RING } from './Button'
 import { toast } from './Toast'
 import { isComposing } from '../lib/ime'
@@ -142,7 +142,7 @@ export default function EventMarker({ onClose, atTimestamp, heldFrame, contentAn
         aria-modal="true"
         aria-label={t('marker.title')}
         tabIndex={-1}
-        className="bg-redlog-surface border border-redlog-border rounded-xl w-[420px] p-pad space-y-3 outline-none"
+        className="bg-redlog-surface border border-redlog-border rounded-xl w-[420px] max-h-[calc(100dvh_-_2rem)] flex flex-col p-pad gap-3 outline-none"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !saving) handleSave() }}
       >
@@ -150,11 +150,12 @@ export default function EventMarker({ onClose, atTimestamp, heldFrame, contentAn
           {t('marker.title')}
           {atTimestamp && (
             <span className="ml-2 text-xs text-amber-400/80 font-mono font-normal">
-              {t('marker.atTimestamp', { time: formatTime(atTimestamp, { seconds: true }) })}
+              {t('marker.atTimestamp', { time: formatWhen(atTimestamp, { seconds: true }) })}
             </span>
           )}
         </h3>
 
+        <div className="min-h-0 overflow-y-auto space-y-3">
         <input
           ref={titleRef}
           type="text"
@@ -221,10 +222,11 @@ export default function EventMarker({ onClose, atTimestamp, heldFrame, contentAn
           <span className="min-w-0 flex-1">{t('marker.withScreenshot')}</span>
         </label>
 
-        <div className="flex gap-2 justify-end">
-          <button onClick={onClose} className="px-3 py-1.5 text-xs text-redlog-text-dim hover:text-redlog-text">
+        </div>
+        <div className="flex shrink-0 gap-2 justify-end">
+          <Button onClick={onClose}>
             {t('marker.cancel')}
-          </button>
+          </Button>
           <Button level="primary" onClick={handleSave} disabled={saving}>
             {saving ? t('marker.saving') : t('marker.submit')}
           </Button>

@@ -45,3 +45,17 @@ it('shows the summary as failed with a retry, and recovers', async () => {
   expect(await screen.findByText('ENG-9')).toBeTruthy()
   expect(screen.queryByTestId('dashboard-summary-failed')).toBeNull()
 })
+
+it('6: a failed anchor read is not no anchors yet', async () => {
+  install(async () => ({ engagement: { id: 'p' } }))
+  window.redlog.chain.anchors = vi.fn().mockRejectedValue(Error('anchor locked'))
+  render(<I18nProvider><DashboardView onNavigate={noop} projectName="p" /></I18nProvider>)
+  expect((await screen.findByTestId('dashboard-anchor')).textContent).toBe('Could not be read')
+})
+
+it('6: a failed total read replaces numeric totals with unknown', async () => {
+  install(async () => ({ engagement: { id: 'p' } }))
+  window.redlog.events.getCount = vi.fn().mockRejectedValue(Error('count locked'))
+  render(<I18nProvider><DashboardView onNavigate={noop} projectName="p" /></I18nProvider>)
+  expect((await screen.findByTestId('dashboard-record-total')).textContent).toBe('Could not be read')
+})

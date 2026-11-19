@@ -168,7 +168,7 @@ export function ScopeStatus({ onOpenInTimeline, onOpenSettings }: { onOpenInTime
   const shownObservations = paged.visible
   const listNav = useListKeyboard({
     count: shownObservations.length,
-    onActivate: (i) => { const v = shownObservations[i]; if (v) void openCause(v) },
+    onActivate: (i) => { const v = shownObservations[i]; if (v) setExpandedId(previous => previous === v.id ? null : v.id) },
     onJumpToTimeline: (i) => { const v = shownObservations[i]; if (v) void openCause(v) }
   })
 

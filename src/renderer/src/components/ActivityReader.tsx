@@ -9,7 +9,7 @@ import { useFocusTrap } from '../lib/useFocusTrap'
 import { eventTitle } from '../lib/eventTitle'
 import { SCOPE_VIOLATION_SUBTYPE } from '../../../core/scope-vocabulary'
 import { agentTypeLabel } from '../lib/timelineDomain'
-import { formatDateTime, formatTime } from '../lib/time'
+import { formatDateTime, formatWhen } from '../lib/time'
 import { Button } from './Button'
 import { EventContentReader } from './EventContentReader'
 import { commandOutputOf } from '../lib/commandOutputNote'
@@ -34,7 +34,7 @@ function sourceLabel(event: RedLogEvent, t: T): string {
       : subtype === 'tool_call' ? t('content.field.tool_input')
         : subtype === 'tool_result' ? t('content.field.output')
           : subtype === SCOPE_VIOLATION_SUBTYPE ? eventTitle(event, t) : subtype
-  return `${what} · ${formatTime(event.timestamp, { seconds: true })}`
+  return `${what} · ${formatWhen(event.timestamp, { seconds: true })}`
 }
 
 function Tile({ label, value, mono = false, testid }: { label: string; value: string; mono?: boolean; testid?: string }): JSX.Element {
@@ -201,7 +201,7 @@ export function ActivityReader({ items, index, request, snapshot, active, filter
             <span data-testid="reader-badge" className="px-1.5 py-0.5 rounded bg-redlog-elevated text-redlog-text-dim shrink-0">
               {sourceName(item, t)}
             </span>
-            <time className="font-mono text-redlog-text-dim shrink-0">{formatTime(item.firstAt, { seconds: true })}</time>
+            <time className="font-mono text-redlog-text-dim shrink-0">{formatWhen(item.firstAt, { seconds: true })}</time>
             <span data-testid="reader-headline" title={eventTitle(item.anchor, t)} className="font-mono text-redlog-text truncate min-w-0">{eventTitle(item.anchor, t)}</span>
           </div>
           <div className="flex items-center gap-2 shrink-0">

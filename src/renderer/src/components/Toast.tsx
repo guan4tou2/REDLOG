@@ -177,9 +177,8 @@ export function ToastContainer(): JSX.Element | null {
 
   return (
     <div
-      // Non-modal notifications must not intercept controls inside a modal.
-      // Errors stay queued/announced and remain visible after the dialog closes.
-      className="fixed bottom-12 right-4 z-40 flex flex-col gap-2 pointer-events-none select-text max-w-[380px]"
+      // Action feedback stays visible above dialogs and the command palette.
+      className="fixed bottom-12 right-4 z-[250] flex flex-col gap-2 pointer-events-none select-text max-w-[380px]"
       aria-live="polite"
       aria-atomic="false"
     >
@@ -203,7 +202,7 @@ export function ToastContainer(): JSX.Element | null {
             </span>
             <button
               onClick={() => dismiss(x.id)}
-              className="-mr-1 opacity-50 hover:opacity-100 focus-visible:outline-none focus-visible:opacity-100 transition-opacity leading-5"
+              className="relative after:absolute after:-inset-1.5 after:min-w-[27px] after:min-h-[27px] -mr-1 opacity-50 hover:opacity-100 focus-visible:outline-none focus-visible:opacity-100 transition-opacity leading-5"
               aria-label={t('toast.dismiss')}
             >×</button>
           </div>

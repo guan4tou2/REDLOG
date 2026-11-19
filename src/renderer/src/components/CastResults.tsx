@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { SectionLabel } from './SectionLabel'
 import { Terminal, ChevronRight, ChevronDown } from 'lucide-react'
 import { useI18n } from '../i18n'
-import { formatTime } from '../lib/time'
+import { formatWhen } from '../lib/time'
 import { useInfiniteScroll } from '../lib/useInfiniteScroll'
 import { ListFooter } from './ListFooter'
 
@@ -63,7 +63,7 @@ function CastRow({ hit, onOpenAt }: { hit: CastHit; onOpenAt?: (tMs: number) => 
             {hit.snippet}
           </span>
         </button>
-        <span className="text-redlog-text-faint shrink-0 tabular-nums">{formatTime(hit.tMs, { seconds: true })}</span>
+        <span className="text-redlog-text-faint shrink-0 tabular-nums">{formatWhen(hit.tMs, { seconds: true })}</span>
         {onOpenAt && (
           <button
             onClick={() => onOpenAt(hit.tMs)}

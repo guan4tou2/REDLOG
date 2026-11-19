@@ -2042,7 +2042,6 @@
   "workspace.reading.ai": "AI 對話",
   "workspace.openTimeline": "開啟時間軸",
   "workspace.reading.events": "原始事件",
-  "workspace.newActivity": "{{count}} 筆新事件",
   "content.savedContent": "已保存內容",
   "workspace.noScopeMatches": "目前來源篩選下沒有此類紀錄。",
   "workspace.session": "來源 Session",

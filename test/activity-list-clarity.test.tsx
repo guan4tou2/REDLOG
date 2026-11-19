@@ -74,7 +74,7 @@ it('offers new events as a quiet link, not a bordered button', async () => {
   await screen.findByTestId('activity-row')
   act(() => { push([{}, {}, {}]) })
   const link = screen.getByTestId('activity-new-events')
-  expect(link.textContent).toBe('workspace.newActivity {"count":3}')
+  expect(link.textContent).toBe('activity.refresh')
   expect(link.className).not.toMatch(/\bborder\b/)
   expect(link.className).toContain('underline')
 })

@@ -25,7 +25,8 @@ const ROOT = path.join(__dirname, '..')
 // 2026-11-18: measured on the merged tree after the Timeline strip's retry links became Buttons, the
 // Terminal strip lost its font/find buttons, and the Evidence change made a screenshot row one target
 // and moved verification out of Settings.
-const RAW_BUTTON_BASELINE = 209
+// UX defects batch 1: marker Cancel now uses Button.
+const RAW_BUTTON_BASELINE = 208
 const IMPLEMENTATIONS = new Set([
   'src/renderer/src/components/Button.tsx',
   'src/renderer/src/components/IconButton.tsx'

@@ -199,7 +199,7 @@ function Chip({ label, title, onClear }: { label: string; title?: string; onClea
       <span title={title ?? label} className="truncate">{label}</span>
       <button
         onClick={onClear}
-        className="shrink-0 hover:text-red-400 transition-colors"
+        className="relative after:absolute after:-inset-1.5 after:min-w-[27px] after:min-h-[27px] shrink-0 hover:text-red-400 transition-colors"
         /* Names the condition it removes, and in the operator's language.
            Every chip used to announce the same untranslated "Clear". */
         aria-label={t('filter.clearCondition', { condition: label })}

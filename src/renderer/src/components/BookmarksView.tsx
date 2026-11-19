@@ -1,3 +1,5 @@
+import { escapeBelongsAbove } from '../lib/escapeLayer'
+import { isComposing } from '../lib/ime'
 import { SCROLL_GUTTER } from '../lib/pageLayout'
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, useId } from 'react'
 import { useI18n } from '../i18n'
@@ -44,6 +46,16 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
   // in its place, then back. The list's search, scroll and selection survive
   // the round trip (below).
   const [detailOpen, setDetailOpen] = useState(false)
+  useEffect(() => {
+    if (!detailOpen) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape' || isComposing(e) || escapeBelongsAbove(e)) return
+      e.preventDefault()
+      setDetailOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [detailOpen])
   const listRef = useRef<HTMLDivElement>(null)
   const listPosition = useRef(0)
   const selectedRow = useRef<HTMLButtonElement | null>(null)

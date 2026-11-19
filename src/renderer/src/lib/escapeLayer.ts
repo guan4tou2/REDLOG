@@ -5,6 +5,13 @@
 // has already answered, or that arrives while a modal dialog is open.
 export function escapeBelongsAbove(e: KeyboardEvent): boolean {
   if (e.defaultPrevented) return true
-  return typeof document !== 'undefined' &&
-    document.querySelector('[role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]') !== null
+  if (typeof document === 'undefined') return false
+  return Array.from(document.querySelectorAll('[role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]')).some((dialog) => {
+    for (let node: Element | null = dialog; node; node = node.parentElement) {
+      if (node.hasAttribute('hidden') || node.hasAttribute('inert')) return false
+      const style = getComputedStyle(node)
+      if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse') return false
+    }
+    return true
+  })
 }

@@ -134,3 +134,15 @@ describe('saving a new marker', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 })
+
+it('8: marker fields scroll separately from a bordered Cancel and fixed actions', () => {
+  render(<EventMarker onClose={() => {}} />)
+  const dialog = screen.getByRole('dialog')
+  const cancel = screen.getByRole('button', { name: 'marker.cancel' })
+  expect(cancel.className).toContain('border')
+  expect(dialog.className).toContain('max-h-')
+  const body = screen.getByPlaceholderText('marker.placeholder').parentElement!
+  expect(body.className).toContain('overflow-y-auto')
+  expect(body.contains(cancel)).toBe(false)
+  expect(cancel.parentElement!.className).toContain('shrink-0')
+})
