@@ -60,14 +60,17 @@ try {
       ) {
         args[0] = 'synchronous = OFF'
       }
-      const result = realPragma.apply(this, args)
-      if (
+      const toWal =
         typeof args[0] === 'string' &&
         process.env.REDLOG_TEST_REAL_SYNCHRONOUS !== '1' &&
         /^\s*journal_mode\s*=\s*WAL\s*$/i.test(args[0])
-      ) {
-        realPragma.call(this, 'synchronous = OFF')
-      }
+      // Before the switch as well as after: the switch itself commits through
+      // the rollback journal at whatever `synchronous` the connection has, and
+      // a new connection has FULL. On the Windows runner that one pragma was
+      // 30 of the 47 calls over 250 ms in a run, up to 2.5 s each.
+      if (toWal) realPragma.call(this, 'synchronous = OFF')
+      const result = realPragma.apply(this, args)
+      if (toWal) realPragma.call(this, 'synchronous = OFF')
       return result
     }
     Object.defineProperty(proto, marker, { value: true })
