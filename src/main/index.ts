@@ -21,7 +21,7 @@ import { diffSecurityConfig, describeOpsecDelta } from './config-audit'
 import { initDB, closeDB, getProjectDir, bindDBEngagement } from '../core/db/index'
 import { restrictRedlogHome } from '../core/private-fs'
 import { restrictProjectDirs } from './project-dir-modes'
-import { insertEvent, queryEvents, queryEventById, getLootCount, lootCountIsPartial, type RedLogEvent } from '../core/db/events'
+import { insertEvent, queryEvents, queryEventById, type RedLogEvent } from '../core/db/events'
 import { pivotsMayChange, type LastPivotAnswer } from './pivot-refresh'
 import { readActivePivots, type ActivePivot } from './active-pivots'
 import { inflightMarkerDirectory, reapInflightMarkers } from '../core/inflight-marker'
@@ -1702,8 +1702,6 @@ app.whenReady().then(() => {
   // --- Evidence Chain + Clock (extracted to ipc/chain.ts) ---
 
   // --- Loot ---
-  ipcMain.handle('loot:getCount', () => projectRuntime.project() ? getLootCount() : 0)
-  ipcMain.handle('loot:countIsPartial', () => projectRuntime.project() ? lootCountIsPartial() : false)
   ipcMain.handle('loot:rules', () => listLootRules())
 
   // --- Bookmarks ---

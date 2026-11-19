@@ -67,10 +67,9 @@ export interface RedLogConfig {
     warnOnViolation: boolean
     targets: string[]
     excludeTargets: string[]
-    /** Hosts/IPs that are never part of any engagement — personal traffic,
-     *  localhost, update CDNs. Same syntax as excludeTargets (IP, CIDR,
-     *  *.domain). On export these rows are DROPPED entirely (not masked):
-     *  they should not appear in any deliverable or merge pack. */
+    /** Personal/local hosts (IP, CIDR or *.domain). Matching rows outside
+     *  the effective scope are hidden by default and dropped on export.
+     *  Explicit scope exclusions take precedence over inclusion. */
     personalDomains: string[]
     scopeFile: string | null
   }

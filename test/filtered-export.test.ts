@@ -11,6 +11,7 @@ import { queryByFlowId } from '../src/core/db/events'
 import { queryActivityPage } from '../src/core/db/activity-queries'
 import { parseQuery } from '../src/core/query/contract'
 import { closeHttpBodyIndex } from '../src/core/http-body-index'
+import { registerEventsIpc } from '../src/main/ipc/events'
 import { registerDataExportIpc } from '../src/main/ipc/data-export'
 import { addExportEvent as insertFixture } from './helpers/export-fixtures'
 import { storeBody } from '../src/core/http-body-store'
@@ -34,7 +35,7 @@ beforeEach(() => {
 // closeDB() does not close the body index — it holds its own handle, and on
 // Windows that keeps http-body-index.db locked, so the rmSync below throws
 // EBUSY and fails a test whose assertions all passed.
-afterEach(() => { closeDB(); closeHttpBodyIndex(); fs.rmSync(dir, { recursive: true, force: true }) })
+afterEach(() => { closeHttpBodyIndex(); closeDB(); fs.rmSync(dir, { recursive: true, force: true }) })
 const resolve = async (request: unknown) => await handlers.get('data:resolveExportPlan')!({}, request)
 const execute = (id: string) => handlers.get('data:executeExportPlan')!({}, { planId: id })
 it('exports all matching rows beyond the screen page and freezes preview membership', async () => {
@@ -373,4 +374,37 @@ it('plans HAR for the whole project and for an event selection, counting exchang
  expect(entries[0].request.url).toBe('https://a.test/needle'); expect(entries[0].response.status).toBe(200)
  const none=await resolve({format:'har',subset:{kind:'selection',projection:'events',filter:{agentType:'shell'}}})
  expect(none.ok).toBe(true); expect(none.plan.counts).toMatchObject({exchanges:0,included:0})
+})
+
+it('keeps explicitly in-scope loopback in Activity, HTTP, Loot, counts and both export ranges', async () => {
+ const scope = { targets: ['127.0.0.0/30'], excludeTargets: ['127.0.0.2'], personalDomains: ['127.0.0.0/8'] }
+ fs.writeFileSync(path.join(dir, 'config.yaml'), JSON.stringify({ scope }))
+ for (const n of [1, 2, 4]) {
+  const targetId = `127.0.0.${n}`
+  addExportEvent('events', `cmd-${n}`, 100 + n, targetId, { subtype: 'command_end', command: 'test', command_id: `cmd-${n}` })
+  addExportEvent('events_logged', `http-${n}`, 200 + n, targetId, { subtype: 'http_request_start', flow_id: `flow-${n}`, host: targetId })
+  insertFixture('events', `loot-${n}`, 300 + n, { targetId, agentType: 'loot', subtype: 'loot_detected', data: { matches: [{}] } })
+ }
+ registerEventsIpc({ handle: (name: string, fn: (...args: any[]) => any) => handlers.set(name, fn) } as never,
+  { getActiveProject: () => ({ id: 'eng-1', path: dir }), getCurrentEngagementId: () => 'eng-1' } as never)
+ const call = (channel: string, request: unknown) => handlers.get(channel)!({}, request)
+ const filter = { hidePersonal: true }
+ const parsed = parseQuery('')
+ if (!parsed.ok) throw new Error('query')
+ const activity = call('events:activityPage', { projectId: 'eng-1', parsed: parsed.parsed, filter: { ...filter, agentType: 'shell' } })
+ expect(activity.totalGroups, 'Activity shows and counts the in-scope command').toBe(1)
+ expect(call('events:queryHttpFlowPage', filter)).toMatchObject({ flowCount: 1, items: [{ id: 'http-1' }] })
+ expect(call('events:queryPage', { ...filter, agentType: 'loot' })).toMatchObject({ items: [{ id: 'loot-1' }] })
+ expect(call('events:count', { filter })).toBe(3)
+ expect(call('loot:getCount', {})).toBe(1)
+
+ for (const subset of [{ kind: 'all' }, { kind: 'selection', projection: 'events', filter: { hidePersonal: true } }]) {
+  const result = await resolve({ format: 'json', subset })
+  expect(result.ok).toBe(true)
+  expect(result.plan.counts.included).toBe(3)
+  const written = await execute(result.plan.id)
+  expect(written.ok).toBe(true)
+  expect(JSON.parse(fs.readFileSync(written.artifactPath, 'utf8')).events.map((e: { id: string }) => e.id).sort())
+   .toEqual(['cmd-1', 'http-1', 'loot-1'])
+ }
 })

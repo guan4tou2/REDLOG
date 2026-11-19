@@ -197,8 +197,12 @@ redlog() {
   shift 2>/dev/null
   case "$sub" in
     status)
-      _redlog_state --action show --format human
+      # In an `if`: the caller's errexit must not end the line before it is
+      # printed, and the status is still the answer.
+      local status_rc
+      if _redlog_status; then status_rc=0; else status_rc=$?; fi
       print
+      return $status_rc
       ;;
     stop)
       _redlog_state --action stop --reason operator >/dev/null

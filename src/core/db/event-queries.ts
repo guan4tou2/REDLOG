@@ -14,7 +14,7 @@ import {
 import { compareEventOrder, eventOrderBy } from '../event-order'
 import type { ExportSnapshot } from '../export-plan'
 import type { StreamSegments } from '../stream-completion'
-import { evaluateScope, type ScopePolicy } from '../scope-evaluator'
+import { evaluateScope, isPersonalDomain, type ScopePolicy } from '../scope-evaluator'
 import { bodySearchCoverage, type BodySearchCoverage, searchHttpBodyTermIds, rawTranscriptFiltersUnsupported } from '../http-body-index'
 import type { ParsedQuery, QueryCondition } from '../query/contract'
 import { toFtsMatch } from '../query/fts-match'
@@ -23,7 +23,7 @@ import { builtinTerminalRecordingSql } from '../ingest/builtin-terminal'
 import { httpExchangeSql } from '../activity-projection'
 
 /** Operator-selected predicates shared by investigation surfaces. Scope rules
- * are attached by trusted main-process code when `inScopeOnly` is requested. */
+ * are attached by trusted main-process code for `inScopeOnly` or `hidePersonal`. */
 export interface EventFilter {
   targetId?: string
   agentType?: string
@@ -48,15 +48,16 @@ const personalActive = (filter: EventFilter): boolean =>
  *  rows is too. Spec 038: a check of 100 live rows scanned every target of
  *  the project, once per tier arm, which a busy second of batches could not
  *  afford (research R10). */
-function candidateTargets(ids?: string[]): string[] {
+function candidateTargets(ids?: string[], agentType?: string): string[] {
   const db = getReadonlyDB()
   const named = ids ? ' AND id IN (SELECT value FROM json_each(?))' : ''
-  const params = ids ? [JSON.stringify(ids), JSON.stringify(ids)] : []
+  const typed = agentType ? ' AND agent_type = ?' : ''
+  const arm = [...(ids ? [JSON.stringify(ids)] : []), ...(agentType ? [agentType] : [])]
   const rows = db.prepare(`
-    SELECT target_id FROM events WHERE target_id IS NOT NULL AND target_id <> ''${named}
+    SELECT target_id FROM events WHERE target_id IS NOT NULL AND target_id <> ''${named}${typed}
     UNION
-    SELECT target_id FROM events_logged WHERE target_id IS NOT NULL AND target_id <> ''${named}
-  `).all(...params) as Array<{ target_id: string }>
+    SELECT target_id FROM events_logged WHERE target_id IS NOT NULL AND target_id <> ''${named}${typed}
+  `).all(...arm, ...arm) as Array<{ target_id: string }>
   return rows.map((row) => row.target_id)
 }
 
@@ -69,8 +70,8 @@ function inScopeTargetIds(filter: EventFilter, candidates: string[]): string[] {
 }
 
 function personalTargetIds(filter: EventFilter, candidates: string[]): string[] {
-  return candidates.filter((target) =>
-    evaluateScope(target, { targets: [], excludeTargets: filter.personalDomains ?? [] }).status === 'excluded')
+  const policy = { ...filter.scope, personalDomains: filter.personalDomains }
+  return candidates.filter((target) => isPersonalDomain(target, policy))
 }
 
 /** Scope and personal traffic over a target column: untargeted rows always
@@ -81,7 +82,7 @@ function appendTargetPolicy(
   const byScope = scopeActive(filter)
   const byPersonal = personalActive(filter)
   if (!byScope && !byPersonal) return
-  const candidates = candidateTargets(ids)
+  const candidates = candidateTargets(ids, filter.agentType)
   if (byScope) {
     conditions.push(`(${column} IS NULL OR ${column} = '' OR ${column} IN (SELECT value FROM json_each(?)))`)
     params.push(JSON.stringify(inScopeTargetIds(filter, candidates)))
@@ -1174,20 +1175,25 @@ export function distinctAgentTypes(): string[] {
 
 /** Secrets found, not detection events: one detection can hold several, and
  *  the Loot page counts each one. */
-export function getLootCount(): number {
-  const db = getReadonlyDB()
-  const row = db.prepare(
-    "SELECT COALESCE(SUM(json_array_length(data, '$.matches')), 0) as count FROM events WHERE agent_type = 'loot'"
-  ).get() as { count: number }
+export function getLootCount(filter: EventFilter = {}): number {
+  const conditions = ["agent_type = 'loot'"]
+  const params: unknown[] = []
+  appendTargetPolicy({ ...filter, agentType: 'loot' }, 'target_id', conditions, params)
+  const row = getReadonlyDB().prepare(
+    `SELECT COALESCE(SUM(json_array_length(data, '$.matches')), 0) AS count FROM events WHERE ${conditions.join(' AND ')}`
+  ).get(...params) as { count: number }
   return row.count
 }
 
 /** Whether `getLootCount` is a lower bound: some detection found more secrets
  *  than one loot event stores (#695), and counts only the ones it kept. */
-export function lootCountIsPartial(): boolean {
+export function lootCountIsPartial(filter: EventFilter = {}): boolean {
+  const conditions = ["agent_type = 'loot'", "json_extract(data, '$.matches_truncated') = 1"]
+  const params: unknown[] = []
+  appendTargetPolicy({ ...filter, agentType: 'loot' }, 'target_id', conditions, params)
   return (getReadonlyDB().prepare(
-    "SELECT EXISTS(SELECT 1 FROM events WHERE agent_type = 'loot' AND json_extract(data, '$.matches_truncated') = 1) AS partial"
-  ).get() as { partial: number }).partial === 1
+    `SELECT EXISTS(SELECT 1 FROM events WHERE ${conditions.join(' AND ')}) AS partial`
+  ).get(...params) as { partial: number }).partial === 1
 }
 
 export interface EventQueryRequest {

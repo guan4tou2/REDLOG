@@ -9,8 +9,8 @@
 
 ### User Story 1 - Hand over the investigation selection (Priority: P1)
 
-The operator chooses between the entire project and the current investigation
-selection before preview. The preview names the applied conditions and counts
+Every dialog opening previews the entire project by default. The operator can
+explicitly select current investigation results. The preview names the applied conditions and counts
 all matching recorded events, including those not loaded on screen.
 
 **Why this priority**: A handoff that silently widens or truncates the reviewed

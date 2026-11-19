@@ -276,6 +276,33 @@ describe('export plan IPC contract', () => {
     expect(manifest.exportPlan).toMatchObject({ id: resolved.plan.id, fingerprint: resolved.plan.fingerprint })
   })
 
+  it.each([true, false])('drops a non-work screenshot from the bundle with scope masking %s', async maskOutOfScope => {
+    addExportAttachment(dir, 'screenshots/local.jpg')
+    addEvent('events', 'local-screenshot', 1000, {
+      agentType: 'screenshot', targetId: '127.0.0.1', data: { filename: 'local.jpg' }
+    })
+    const resolved = await handlers.get('data:resolveExportPlan')?.({}, { format: 'bundle', maskOutOfScope } as never) as {
+      ok: true; plan: { id: string; counts: unknown; attachments: unknown[] }
+    }
+    expect(resolved.ok).toBe(true)
+    const executed = await handlers.get('data:executeExportPlan')?.({}, { planId: resolved.plan.id } as never) as {
+      ok: true; artifactPath: string; counts: unknown
+    }
+    expect(executed).toMatchObject({
+      ok: true,
+      counts: { included: 0, excludedPersonal: 1, attachmentsIncluded: 0, attachmentsMissing: 0, attachmentsUnattributed: 0 }
+    })
+    expect(resolved.plan.counts).toEqual(executed.counts)
+    expect(resolved.plan.attachments).toEqual([])
+    expect(fs.readFileSync(path.join(executed.artifactPath, 'events.jsonl'), 'utf8')).not.toContain('local-screenshot')
+    expect(fs.existsSync(path.join(executed.artifactPath, 'screenshots', 'local.jpg'))).toBe(false)
+    const manifest = JSON.parse(fs.readFileSync(path.join(executed.artifactPath, 'manifest.json'), 'utf8'))
+    expect(manifest.files).not.toContainEqual(expect.objectContaining({ path: 'screenshots/local.jpg' }))
+    if (maskOutOfScope) {
+      expect(manifest.attachmentScopePolicy.screenshots).toEqual({ included: 0, excludedOutOfScope: 1, unattributed: 0 })
+    }
+  })
+
   // #222: a session that moved between two targets. Exporting only target A
   // does not make its recording A-only, so the preview says the cast spans
   // both, and the operator can leave it out of this delivery.

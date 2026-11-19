@@ -136,21 +136,21 @@ interface TimelinePanelProps {
   tierChip?: boolean
 }
 
-type SharedFilterSlice = Pick<ReturnType<typeof useSharedFilter>, 'filter' | 'personalDomains' | 'setTimeRange' | 'clearAll'>
+type SharedFilterSlice = Pick<ReturnType<typeof useSharedFilter>, 'filter' | 'personalDomains' | 'scopePolicyKey' | 'setTimeRange' | 'clearAll'>
 
 /** The shared filter's provider changes its value on every live batch (it
  *  counts targets as they arrive), and the App re-creates its callbacks on
  *  every render of its own. Neither is a reason to re-render this panel: it
- *  takes the three filter values it reads, and the callbacks through a ref,
+ *  takes the filter values it reads, and the callbacks through a ref,
  *  and renders when one of those, or a prop, actually changes. */
 export default function TimelinePanel(props: TimelinePanelProps = {}): JSX.Element {
-  const { filter, personalDomains, setTimeRange, clearAll } = useSharedFilter()
+  const { filter, personalDomains, scopePolicyKey, setTimeRange, clearAll } = useSharedFilter()
   const latest = useRef(props)
   latest.current = props
   const has = { drop: !!props.onDropMarker, inActivity: !!props.onOpenInActivity }
   const onDropMarker = useMemo(() => (has.drop ? (ts: number) => latest.current.onDropMarker?.(ts) : undefined), [has.drop])
   const onOpenInActivity = useMemo(() => (has.inActivity ? (id: string, ts: number) => latest.current.onOpenInActivity?.(id, ts) : undefined), [has.inActivity])
-  const shared = useMemo<SharedFilterSlice>(() => ({ filter, personalDomains, setTimeRange, clearAll }), [filter, personalDomains, setTimeRange, clearAll])
+  const shared = useMemo<SharedFilterSlice>(() => ({ filter, personalDomains, scopePolicyKey, setTimeRange, clearAll }), [filter, personalDomains, scopePolicyKey, setTimeRange, clearAll])
   return (
     <TimelinePanelView
       focusEventId={props.focusEventId} focusTs={props.focusTs} tierChip={props.tierChip}
@@ -163,8 +163,9 @@ export default function TimelinePanel(props: TimelinePanelProps = {}): JSX.Eleme
 const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusTs, onDropMarker, onOpenInActivity, tierChip = true, shared }: TimelinePanelProps & { shared: SharedFilterSlice }): JSX.Element {
   // Spec 038: the shared filter is applied where the events are stored, for
   // every page, count and live row. Nothing below filters on it again.
-  const { filter: sharedFilter, personalDomains, setTimeRange: setSharedTimeRange, clearAll: clearSharedFilter } = shared
+  const { filter: sharedFilter, personalDomains, scopePolicyKey, setTimeRange: setSharedTimeRange, clearAll: clearSharedFilter } = shared
   const eventFilter = useMemo(() => toEventFilter(sharedFilter), [sharedFilter])
+  const filterKey = JSON.stringify([eventFilter, scopePolicyKey])
   const eventFilterRef = useRef(eventFilter)
   eventFilterRef.current = eventFilter
   const [rawEvents, setEvents] = useState<RedLogEvent[]>([])
@@ -780,7 +781,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
       .catch(() => { if (gen === generationRef.current) setLiveError({ ids: [] }) })
   }
 
-  const { pageCursorRef, pageCursor, hasMore, loading, loadError, loadFirstPage, loadMore, acceptPage } = useTimelinePages(eventFilterRef, generationRef, {
+  const { pageCursorRef, pageCursor, hasMore, loading, loadError, loadFirstPage, loadMore, acceptPage } = useTimelinePages(eventFilterRef, filterKey, generationRef, {
     reset: gen => {
       eventsMapRef.current = new Map()
       sortedRef.current = []
@@ -877,7 +878,6 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
     [filterQueryDebounced]
   )
   const parsedQuery = parseOutcome?.ok ? parseOutcome.parsed : null
-  const filterKey = JSON.stringify(eventFilter)
   const queryKey = parsedQuery ? `${JSON.stringify(parsedQuery)}|${filterKey}` : null
 
   // Which loaded rows the query matches, checked by id and cached per query
