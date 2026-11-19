@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { requires } from './helpers/requires'
 import { createServer, type Server } from 'http'
 import { findShellTarget, runZsh, hookPath, type ShellTarget, type ZshReport } from './helpers/zsh-pty'
 
@@ -17,7 +18,8 @@ import { findShellTarget, runZsh, hookPath, type ShellTarget, type ZshReport } f
 //   - the next prompt came back, and the next command works.
 
 const target: ShellTarget | null = findShellTarget()
-const describeShell = target ? describe : describe.skip
+const listen = requires('listen')
+const describeShell = target ? listen.describe : describe.skip
 
 const COMMANDS = [
   'echo ran >> $HOME/runs; echo first-ok',

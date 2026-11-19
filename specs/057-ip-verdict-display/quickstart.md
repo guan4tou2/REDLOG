@@ -7,10 +7,7 @@ This guide proves the feature end to end. The expected states and copy are in
 ## Prerequisites
 
 - Run `npm install`.
-- On Windows, the e2e needs the Electron ABI build of better-sqlite3. `pree2e`
-  runs `electron-rebuild` for it, and `pretest` rebuilds it for Node before
-  `npm test`.
-- Run `npm run build` before the e2e, which runs against the built app.
+- Run `npm run build` before the targeted tests and e2e.
 
 ## 1. Targeted tests
 

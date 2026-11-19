@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { requires } from './helpers/requires'
 import { findShellTarget, runZsh, startCollector, hookPath, type ShellTarget, type CapturedEvent } from './helpers/zsh-pty'
 
 // A command that prints a lot still has a record.
@@ -15,7 +16,8 @@ import { findShellTarget, runZsh, startCollector, hookPath, type ShellTarget, ty
 // Nothing caught it because every test printed a line or two.
 
 const target: ShellTarget | null = findShellTarget()
-const describeShell = target ? describe : describe.skip
+const listen = requires('listen')
+const describeShell = target ? listen.describe : describe.skip
 
 // Probes live in files the rc writes, so no test command is long.
 const RC = [

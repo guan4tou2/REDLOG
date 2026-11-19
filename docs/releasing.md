@@ -19,9 +19,9 @@ Before either phase, a `gate` job refuses the tag unless its commit is reachable
 The workflow has two phases:
 
 **build** (matrix macOS + Windows + Linux, in parallel):
-1. Run tests on each runner (against Node ABI — the default `npm ci` install)
+1. Run unit tests on each runner
 2. Build renderer + main via `electron-vite build`
-3. Package with `electron-builder --publish never` — it rebuilds native modules (better-sqlite3, node-pty) against the target Electron ABI automatically during packaging, using prebuilt binaries where available:
+3. Package with `electron-builder --publish never` — it prepares native dependencies for the target during packaging, using prebuilt binaries where available:
    - **macOS**: `dmg` and `zip` for arm64 only — `electron-builder.yml` has said Apple Silicon only since v0.9.4, and says why in its own comment
    - **Windows**: `nsis` installer for x64 (no portable build)
    - **Linux**: `deb` for x64
@@ -82,15 +82,9 @@ npm run build && npx electron-builder --win nsis --x64 --publish never
 npm run build && npx electron-builder --linux deb --x64 --publish never
 ```
 
-Output ends up in `dist/`. electron-builder rebuilds native modules for the target Electron ABI internally — you do NOT need to run `npm run rebuild` first (that script is only useful when running `electron-vite dev` locally so better-sqlite3 loads inside the dev-mode Electron process).
-
-**Gotcha:** because electron-builder recompiles `better-sqlite3` in `node_modules/` for Electron's ABI, `npm test` fails with `NODE_MODULE_VERSION` mismatch after any local packaging run. Restore the Node build before testing again:
-
-```bash
-npm rebuild better-sqlite3
-```
-
-CI is unaffected — the workflow runs tests before packaging.
+Output ends up in `dist/`. electron-builder handles native dependency
+preparation for the target. `better-sqlite3` uses the same Node-API prebuild
+for Node and Electron on a given platform and architecture.
 
 ## Version bump checklist
 

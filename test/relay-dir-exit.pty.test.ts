@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { requires } from './helpers/requires'
 import { findShellTarget, runInShell, runZsh, startCollector, hookPath, type ShellTarget } from './helpers/zsh-pty'
 
 // #296 (round 2, problem 5). `exit` in a hooked shell left one
@@ -23,8 +24,9 @@ const kinds = [
   { name: 'bash', target: bashTarget, hook: 'shell-bash-hook.sh', skip: process.platform === 'win32', own: true }
 ] as const
 
+const listen = requires('listen')
 for (const kind of kinds) {
-  const describeShell = kind.skip ? describe.skip : describe
+  const describeShell = kind.skip ? describe.skip : listen.describe
 
   const title = `relay directory left by exit in ${kind.name}${kind.own ? ' with its own EXIT trap' : ''}`
   describeShell(`${title} (${kind.target?.label ?? 'no shell reachable'})`, () => {

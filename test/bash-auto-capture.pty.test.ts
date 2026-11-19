@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { requires } from './helpers/requires'
 import { runZsh, startCollector, hookPath, type ShellTarget, type CapturedEvent } from './helpers/zsh-pty'
 import { bashCanChainDebugTrap } from './helpers/bash-trap-chain'
 
@@ -15,7 +16,8 @@ import { bashCanChainDebugTrap } from './helpers/bash-trap-chain'
 // on whenever it is what the machine has.
 
 const target: ShellTarget = { prefix: [], toShellPath: (p) => p, label: 'local bash' }
-const describeShell = process.platform === 'win32' ? describe.skip : describe
+const listen = requires('listen')
+const describeShell = process.platform === 'win32' ? describe.skip : listen.describe
 
 const events = (all: CapturedEvent[], subtype: string, match: string): CapturedEvent[] =>
   all.filter((e) => e.agentType === 'shell'
@@ -113,7 +115,7 @@ describeShell(`auto capture in an enrolled bash (${target.label})`, () => {
 // output would show up as a stdout that is not the command's.
 // Skipped where this bash cannot chain (test/helpers/bash-trap-chain.ts): there
 // the hook installs its own trap once and leaves the other tool's alone.
-const describeChain = process.platform === 'win32' || !bashCanChainDebugTrap ? describe.skip : describe
+const describeChain = process.platform === 'win32' || !bashCanChainDebugTrap ? describe.skip : listen.describe
 describeChain(`bash auto capture beside another tool's DEBUG trap (${target.label})`, () => {
   let collector: Awaited<ReturnType<typeof startCollector>>
   const token = 'bash-chain-token'

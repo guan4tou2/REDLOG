@@ -4,12 +4,11 @@
 // Seventy-eight files used to guard their imports like this:
 //
 //   try { db = await import('../src/core/db/index'); … ; available = true }
-//   catch { /* better-sqlite3 not built for this Node ABI */ }
+//   catch { /* assume the native binding could not load */ }
 //   describe.skipIf(!available)(…)
 //
-// The catch cannot tell "the native module was built for Electron" (fine on a
-// laptop after electron-rebuild) from "a src module threw while loading" (the
-// missing-import ReferenceError CLAUDE.md describes). Both turned the whole
+// A broken native install and an exception while loading a src module
+// (the missing-import ReferenceError CLAUDE.md describes) both turned the whole
 // file grey, and the run stayed green. Now the file asks for the capability,
 // the probe tests that capability and nothing else, and the import of the code
 // under test sits outside any try:
@@ -92,6 +91,20 @@ function nodeChild(script: string): { ok: boolean; out: string } {
 
 const NATIVE_ABSENT = /NODE_MODULE_VERSION|Could not locate the bindings file|Module did not self-register|was compiled against a different Node\.js version|not a valid Win32 application|invalid ELF header|mach-o|wrong architecture/i
 
+function probeBuildArtifacts(artifacts: string[]): Probe {
+  const missing = artifacts.filter((file) => !fs.existsSync(path.join(ROOT, file)))
+  return missing.length
+    ? { ok: false, detail: `${missing.join(', ')} missing; run \`npm run build\`` }
+    : { ok: true, detail: artifacts.join(', ') }
+}
+
+// The artifacts pretest prepares. Bundle integrity additionally needs the app entry.
+const UNIT_BUILD_ARTIFACTS = ['out/optional-ai', 'out/main/export-worker.js']
+
+export function probeUnitBuild(): Probe {
+  return probeBuildArtifacts(UNIT_BUILD_ARTIFACTS)
+}
+
 const PROBES: Record<Capability, () => Probe> = {
   'better-sqlite3': () => {
     try {
@@ -101,7 +114,7 @@ const PROBES: Record<Capability, () => Probe> = {
     } catch (e) {
       const err = e as NodeJS.ErrnoException
       if (err.code === 'ERR_DLOPEN_FAILED' || NATIVE_ABSENT.test(err.message)) {
-        return { ok: false, detail: `native binding not built for this Node (${err.message.split('\n')[0]}); \`npm test\` rebuilds it` }
+        return { ok: false, detail: `could not load the native binding (${err.message.split('\n')[0]}); check the runtime Node-API version, then run \`npm install\`` }
       }
       throw e
     }
@@ -111,9 +124,7 @@ const PROBES: Record<Capability, () => Probe> = {
       .filter((p) => !fs.existsSync(path.join(ROOT, p)))
     return missing.length ? { ok: false, detail: `${missing.join(', ')} missing; run \`npm run build\`` } : { ok: true, detail: 'out/renderer' }
   },
-  'built-main': () => fs.existsSync(path.join(ROOT, 'out/main/index.js'))
-    ? { ok: true, detail: 'out/main/index.js' }
-    : { ok: false, detail: 'out/main/index.js missing; run `npm run build`' },
+  'built-main': () => probeBuildArtifacts(['out/main/index.js', ...UNIT_BUILD_ARTIFACTS]),
   'posix-shell': () => {
     if (process.platform === 'win32') return { ok: false, detail: 'win32' }
     const r = run('/bin/sh', ['-c', 'exit 0'])

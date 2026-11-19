@@ -1,10 +1,11 @@
-import { describe, it, expect } from 'vitest'
+import { it, expect } from 'vitest'
+import { requires } from './helpers/requires'
 import http from 'node:http'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { probeManagedProxy } from '../src/main/services/managed-http-proxy'
 
-describe('owned proxy readiness', () => {
+requires('listen').describe('owned proxy readiness', () => {
   for (const [body, expected] of [['owned-token', true], ['foreign-token', false], ['owned-token-extra', false]] as const) {
     it(`accepts only the owned response: ${body}`, async () => {
       const server = http.createServer((req, res) => {

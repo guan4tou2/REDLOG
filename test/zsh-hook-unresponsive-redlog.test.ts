@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { requires } from './helpers/requires'
 import { findShellTarget, runZsh, startBlackHole, hookPath, type ShellTarget } from './helpers/zsh-pty'
 
 // Spec 052 T002a. FR-009: when RedLog cannot be reached, the command runs
@@ -15,7 +16,8 @@ import { findShellTarget, runZsh, startBlackHole, hookPath, type ShellTarget } f
 // that accident, on purpose.
 
 const target: ShellTarget | null = findShellTarget()
-const describeShell = target ? describe : describe.skip
+const listen = requires('listen')
+const describeShell = target ? listen.describe : describe.skip
 
 describeShell(`shell hook against an unresponsive RedLog (${target?.label ?? 'no zsh reachable'})`, () => {
   it('does not hang the prompt when RedLog accepts and never answers', async () => {

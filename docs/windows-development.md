@@ -14,11 +14,10 @@
 
 ```powershell
 npm install
-npm run rebuild
 npm run dev
 ```
 
-`better-sqlite3` 必須符合目前執行環境的 ABI。單元測試會透過 pretest 還原 Node binding；啟動 Electron 前使用專案 rebuild 流程，不把 ABI 錯誤當作產品缺陷。
+Windows 的 Node 與 Electron 共用對應架構的 `better-sqlite3` Node-API 10 預編譯檔。
 
 ## 本機安裝包
 

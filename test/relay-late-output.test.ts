@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
+import { requires } from './helpers/requires'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import http from 'node:http'
@@ -74,8 +75,10 @@ late.finish()
 const finalOf = (bodies: Array<Record<string, any>>): Record<string, any> =>
   bodies.map((b) => b.data).find((d) => d.final === true)!
 
+const listen = requires('listen')
+
 describe('LateOutput', () => {
-  it('sends whole lines as chunks of one command, then one final row', async () => {
+  listen.it('sends whole lines as chunks of one command, then one final row', async () => {
     const rx = await receiver(() => ({ status: 200, body: { ok: true } }))
     await drive(home(rx.port), 1_000_000, [['stdout', 'one\ntwo\n'], ['stderr', 'warn\n']])
     const rows = rx.bodies.map((b) => b.data)
@@ -88,7 +91,7 @@ describe('LateOutput', () => {
     expect(rx.headers[0].authorization).toBe('Bearer tok')
   })
 
-  it('segments beyond the old lifetime cap and preserves all output', async () => {
+  listen.it('segments beyond the old lifetime cap and preserves all output', async () => {
     const rx = await receiver(() => ({ status: 200, body: {} }))
     await drive(home(rx.port), 10, [['stdout', 'abcdefghij\nklmnopqrst\n']])
     const rows = rx.bodies.map(b => b.data).filter(d => !d.final)
@@ -97,7 +100,7 @@ describe('LateOutput', () => {
     expect(finalOf(rx.bodies)).toMatchObject({ truncated: false, late_bytes: 22, over_cap_bytes: 0, dropped_bytes: 0 })
   })
 
-  it.skipIf(process.platform === 'win32')('persists foreground output before exit, beyond its inline preview budget', async () => {
+  it.skipIf(process.platform === 'win32' || !listen.ok)('persists foreground output before exit, beyond its inline preview budget', async () => {
     const rx = await receiver(() => ({ status: 200, body: { ok: true } }))
     const h = home(rx.port), event = path.join(h, 'end.json')
     const text = 'long-output-'.repeat(10000)
@@ -125,7 +128,7 @@ describe('LateOutput', () => {
     expect(JSON.parse(fs.readFileSync(event, 'utf8'))).toMatchObject({ output_streamed: true, stdout_bytes: Buffer.byteLength(text), stdout_truncated: false })
   })
 
-  it('counts bytes the server would not take while recording is paused', async () => {
+  listen.it('counts bytes the server would not take while recording is paused', async () => {
     const rx = await receiver(() => ({ status: 200, body: { recording: false } }))
     await drive(home(rx.port), 1_000_000, [['stdout', 'secret-interval\n']])
     // The data rows were refused as paused; the final row carries the shortfall
@@ -134,7 +137,7 @@ describe('LateOutput', () => {
     expect(rx.bodies.length).toBe(2)
   })
 
-  it('drops, and does not replay, rows the server refuses (another project is open)', async () => {
+  listen.it('drops, and does not replay, rows the server refuses (another project is open)', async () => {
     const rx = await receiver(() => ({ status: 409, body: { error: 'project changed' } }))
     await drive(home(rx.port), 1_000_000, [['stdout', 'x\n']])
     expect(rx.bodies.length).toBe(2)
