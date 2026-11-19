@@ -2,6 +2,8 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { createRequire } from 'module'
+import { afterAll, expect } from 'vitest'
+import { installStallTiming } from './helpers/stall-timing'
 import { installIcaclsRecorder } from './helpers/icacls'
 
 // restrictToOwner records its icacls arguments instead of spawning icacls; why,
@@ -58,18 +60,41 @@ try {
       ) {
         args[0] = 'synchronous = OFF'
       }
-      const result = realPragma.apply(this, args)
-      if (
+      const toWal =
         typeof args[0] === 'string' &&
         process.env.REDLOG_TEST_REAL_SYNCHRONOUS !== '1' &&
         /^\s*journal_mode\s*=\s*WAL\s*$/i.test(args[0])
-      ) {
-        realPragma.call(this, 'synchronous = OFF')
-      }
+      // Before the switch as well as after: the switch itself commits through
+      // the rollback journal at whatever `synchronous` the connection has, and
+      // a new connection has FULL. On the Windows runner that one pragma was
+      // 30 of the 47 calls over 250 ms in a run, up to 2.5 s each.
+      if (toWal) realPragma.call(this, 'synchronous = OFF')
+      const result = realPragma.apply(this, args)
+      if (toWal) realPragma.call(this, 'synchronous = OFF')
       return result
     }
     Object.defineProperty(proto, marker, { value: true })
   }
+  // The helper's injected flag lets tests exercise this gate on other OSes.
+  const enabled = process.platform === 'win32' && !!process.env.CI
+  const timing = installStallTiming({
+    enabled,
+    fs,
+    Database,
+    get statementPrototype() {
+      const probe = new Database(':memory:')
+      try { return Object.getPrototypeOf(probe.prepare('SELECT 1')) } finally { probe.close() }
+    },
+    replaceDatabase: replacement => {
+      const require = createRequire(import.meta.url)
+      require.cache[require.resolve('better-sqlite3')]!.exports = replacement
+    },
+    syncBuiltinESMExports: createRequire(import.meta.url)('module').syncBuiltinESMExports,
+  })
+  afterAll(() => {
+    timing.summary(expect.getState().testPath ?? '<unknown test file>')
+    timing.restore()
+  })
 } catch {
   // better-sqlite3 is not built for this Node ABI; nothing to relax.
 }
