@@ -172,8 +172,10 @@ export async function startCollector(token: string): Promise<{
     // the hook then tried the default gateway and waited out its one-second
     // connect timeout — inside the first command, which pushed its output past
     // the relay's streaming threshold and out of `command_end`.
-    if (req.url?.startsWith('/api/health')) { res.writeHead(200).end('{"ok":true}'); return }
+    if (req.url?.startsWith('/api/health')) { res.writeHead(200).end('{"ok":true,"projectOpen":true}'); return }
     if (req.headers.authorization !== `Bearer ${token}`) { res.writeHead(401).end('{}'); return }
+    // What `redlog status` asks after health, as the app answers it.
+    if (req.url?.startsWith('/api/recording') && req.method === 'GET') { res.writeHead(200).end('{"recording":true}'); return }
     if (req.url?.startsWith('/api/whoami')) { res.writeHead(200).end('{"operator":null,"engagementId":null}'); return }
     if (req.url?.startsWith('/api/events') && req.method === 'POST') {
       let body = ''
