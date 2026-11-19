@@ -5,6 +5,7 @@ import { useI18n } from '../../i18n'
 import { IconButton } from '../IconButton'
 import { FieldGroup, NumberField, ListField, isMacOS, type ConfigState } from './SettingsShared'
 import { CheckRow } from './CheckRow'
+import { PROSE_WIDTH } from '../../lib/pageLayout'
 import { isComposing } from '../../lib/ime'
 
 const DEFAULT_VPN_ADAPTERS = [
@@ -147,6 +148,14 @@ export default function NetworkPage({
             ))}
           </div>
           <p className="text-xs text-redlog-text-faint mt-1">{t('settings.ipModeHint')}</p>
+        </div>
+        <div>
+          <CheckRow
+            checked={config.network.offline === true}
+            onChange={(offline) => setConfig({ ...config, network: { ...config.network, offline } })}
+            label={t('settings.offline')}
+          />
+          <p className={`text-xs text-redlog-text-faint ${PROSE_WIDTH}`}>{t('settings.offlineHint')}</p>
         </div>
         {/* Every platform: off keeps the SSID off every surface (main drops it
             before the HUD sees it). Only macOS also needs Location Services. */}

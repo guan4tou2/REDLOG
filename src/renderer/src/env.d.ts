@@ -85,6 +85,7 @@ type ExportPlanResult = { ok: true; planId: string; fingerprint: string; artifac
 
 
 interface IPStatus {
+  offline?: boolean
   externalIP: string | null
   internalIP: string | null
   ipSafety: 'safe' | 'exposed' | 'unknown'

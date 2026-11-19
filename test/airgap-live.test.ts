@@ -112,6 +112,7 @@ function deps(): import('../src/main/config-apply').ConfigApplyDeps {
     screenshotConfigure: nop, alertResetOnProjectSwitch: () => alertRuntime.resetOnProjectSwitch(),
     // As src/main/index.ts wires it.
     alertConfigure: (cfg, id, targets) => alertRuntime.configure(cfg, id, targets),
+    recordAirgap: (data, id) => { evMod.insertEvent('system', data, id) },
     setUpdaterAirgap: (on) => updater.setUpdaterAirgap(on),
     startOutboundLoops: () => { anchor.startAnchorLoop(); clock.startNtpLoop() },
     stopOutboundLoops: () => { anchor.stopAnchorLoop(); clock.stopNtpLoop() },
@@ -205,6 +206,7 @@ sqlite.describe('network.offline switched on while a project is open (Spec 073 T
 
   it('the update check makes no request after the patch, and says air-gap is why', async () => {
     patchOffline(); zero()
+    expect(updater.getUpdateStatus()).toMatchObject({ offline: true })
     await checkUpdate()
     expect(net.update).toBe(0)
     // What About draws from (test/about-update-status.test.tsx draws this status).
@@ -223,6 +225,7 @@ sqlite.describe('network.offline switched on while a project is open (Spec 073 T
     patchOffline(); zero()
     await vi.advanceTimersByTimeAsync(LONG)
     expect(net.dns + net.ipHttp).toBe(0)
+    expect(alertRuntime.ipStatus()).toMatchObject({ offline: true, ipSafety: 'unknown' })
   })
 
   // As a fresh open with air-gap off: NTP and anchoring run again, the IP
@@ -235,6 +238,7 @@ sqlite.describe('network.offline switched on while a project is open (Spec 073 T
     // A seed row after the last anchor attempt, so the anchor loop has a new head.
     evMod.insertEvent('system', { subtype: 'seed_after' }, { operatorId: 'op' })
     patchOffline(false)
+    expect(updater.getUpdateStatus()).toMatchObject({ offline: false })
     await vi.advanceTimersByTimeAsync(LONG)
     expect(net.ntp, 'NTP').toBeGreaterThan(0)
     expect(net.calendars, 'anchor calendars').toBeGreaterThan(0)

@@ -13,10 +13,11 @@ import StatusBar from '../src/renderer/src/components/StatusBar'
 import IPStatusCard from '../src/renderer/src/components/IPStatusCard'
 import OverlayApp from '../src/renderer/src/OverlayApp'
 import { _resetCaptureHealth } from '../src/renderer/src/lib/captureHealthStore'
-import { _resetIssues } from '../src/renderer/src/lib/issues'
+import { _resetIssues, raiseIssue, snapshotIssues } from '../src/renderer/src/lib/issues'
 
 const noop = (): void => {}
 let current: unknown = null
+let anchorStatus: { status: 'failed'; createdAt: number } | null = null
 
 function installBridge(): void {
   const named: Record<string, Record<string, unknown>> = {
@@ -24,7 +25,9 @@ function installBridge(): void {
     recording: { get: async () => true, onChange: () => noop },
     config: { getPrefs: async () => ({ showMarkButton: true }) },
     pivots: { getActive: async () => [], onChange: () => noop },
-    events: { getCount: async () => 0, onNewBatch: () => noop },
+    events: { getCount: async () => (anchorStatus ? 1 : 0), onNewBatch: () => noop },
+    chain: { length: async () => 1, anchors: async () => anchorStatus ? [anchorStatus] : [] },
+    capture: { health: async () => anchorStatus ? { verdict: 'healthy' } : null },
     overlay: { isVisible: async () => false, onVisibilityChanged: () => noop, onInteractive: () => noop },
     scope: { getObservationCount: async () => 0, isConfigured: async () => false, getLastRecompute: async () => null },
     project: { active: async () => ({ createdAt: Date.now() - 60_000 }) }
@@ -39,7 +42,7 @@ beforeEach(() => {
   window.localStorage.clear(); window.localStorage.setItem('redlog-locale', 'en')
   _resetCaptureHealth(); _resetIssues(); installBridge()
 })
-afterEach(() => { cleanup(); current = null })
+afterEach(() => { cleanup(); current = null; anchorStatus = null })
 
 const statusBarWord = async (): Promise<string> => {
   render(<I18nProvider><StatusBar /></I18nProvider>)
@@ -100,4 +103,31 @@ describe('safe with a read address stays safe', () => {
   it('in the status bar', async () => { expect(await statusBarWord()).toBe('SAFE') })
   it('on the dashboard card', async () => { expect(await cardTag()).toBe('On the safe IP list') })
   it('on the HUD', async () => { expect(await hudText()).toContain('SAFE') })
+})
+
+describe('external IP lookups disabled by Settings', () => {
+  beforeEach(() => {
+    current = { offline: true, ipSafety: 'unknown', externalIP: '198.51.100.7', internalIP: '10.0.0.2', error: 'offline (air-gap)' }
+  })
+  it('shows the setting on the dashboard card without a retry or stale address', async () => {
+    expect(await cardTag()).toBe('External IP lookup off in Settings')
+    expect(screen.queryByText('offline (air-gap)')).toBeNull()
+    expect(screen.queryByText('198.51.100.7')).toBeNull()
+  })
+  it('shows the setting on the status bar without raising a lookup issue', async () => {
+    expect(await statusBarWord()).toBe('IP lookup off')
+    expect(screen.getByTestId('status-bar-ip-state').classList).toContain('text-redlog-text-dim')
+    expect(snapshotIssues().some(({ id }) => id === 'ip')).toBe(false)
+  })
+  it('clears active anchor warnings from the status bar and dashboard issue store', async () => {
+    raiseIssue({ id: 'integrity', tier: 'attention', title: 'The last anchor failed', fix: 'anchor-now' })
+    raiseIssue({ id: 'anchor', tier: 'attention', title: 'Manual anchor failed' })
+    await statusBarWord()
+    expect(snapshotIssues().filter(({ id }) => id === 'anchor' || id === 'integrity')).toEqual([])
+  })
+  it('does not raise an anchor failure when the capture probe returns an old failure', async () => {
+    anchorStatus = { status: 'failed', createdAt: Date.now() }
+    await statusBarWord()
+    expect(snapshotIssues().find(({ id }) => id === 'integrity')).toBeUndefined()
+  })
 })
