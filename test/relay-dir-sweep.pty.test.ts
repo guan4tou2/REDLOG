@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { requires } from './helpers/requires'
 import { findShellTarget, runZsh, startCollector, hookPath, type ShellTarget } from './helpers/zsh-pty'
 
 // #296. A relayed command gets a `redlog-relay.*` directory in $TMPDIR, and the
@@ -18,8 +19,9 @@ const kinds = [
   { name: 'bash', target: bashTarget, hook: 'shell-bash-hook.sh', skip: process.platform === 'win32' }
 ] as const
 
+const listen = requires('listen')
 for (const kind of kinds) {
-  const describeShell = kind.skip ? describe.skip : describe
+  const describeShell = kind.skip ? describe.skip : listen.describe
 
   describeShell(`relay directories left by a killed ${kind.name} (${kind.target?.label ?? 'no shell reachable'})`, () => {
     let listing = ''

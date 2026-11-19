@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { requires } from './helpers/requires'
 import { findShellTarget, runZsh, startCollector, hookPath, type ShellTarget, type CapturedEvent } from './helpers/zsh-pty'
 
 // Spec 052 US2, T029/T030. The feature's first half removes the prefix; this
@@ -14,7 +15,8 @@ import { findShellTarget, runZsh, startCollector, hookPath, type ShellTarget, ty
 // (FR-023, contracts/shell-commands.md rule 2).
 
 const target: ShellTarget | null = findShellTarget()
-const describeShell = target ? describe : describe.skip
+const listen = requires('listen')
+const describeShell = target ? listen.describe : describe.skip
 
 const commandsNamed = (events: CapturedEvent[], match: string): CapturedEvent[] =>
   events.filter((e) => e.agentType === 'shell'

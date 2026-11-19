@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { requires } from './helpers/requires'
 import path from 'path'
 import { findShellTarget, runInShell, runZsh, startCollector, type ShellTarget, type ZshReport } from './helpers/zsh-pty'
 
@@ -21,7 +22,8 @@ import { findShellTarget, runInShell, runZsh, startCollector, type ShellTarget, 
 
 const target: ShellTarget | null = findShellTarget()
 const enabled = !!target && process.env.REDLOG_PERF === '1'
-const describeShell = enabled ? describe : describe.skip
+const listen = requires('listen')
+const describeShell = enabled ? listen.describe : describe.skip
 
 const ROUNDS = 2
 

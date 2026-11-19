@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { requires } from './helpers/requires'
 import { findShellTarget, runZsh, startCollector, hookPath, type ShellTarget, type ZshReport } from './helpers/zsh-pty'
 
 // Spec 052 / issue #288: is the shell the same shell with the adapter loaded?
@@ -24,7 +25,8 @@ import { findShellTarget, runZsh, startCollector, hookPath, type ShellTarget, ty
 // (hooks/redlog-relay.py `pty`), and what is stored is the cleaned text.
 
 const target: ShellTarget | null = findShellTarget()
-const describeShell = target ? describe : describe.skip
+const listen = requires('listen')
+const describeShell = target ? listen.describe : describe.skip
 
 const ROWS = 30
 const COLS = 100

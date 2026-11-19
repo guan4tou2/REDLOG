@@ -155,20 +155,10 @@ Bundle／HAR 是主要交付入口；既有 JSON／NDJSON／Timeline 保留。op
 
 接手前讀完這一節，可以省下我這輪踩過的每一個坑。
 
-### native module 的 ABI 陷阱
+### SQLite 原生模組的載入
 
-`better-sqlite3` 是原生模組，**vitest 需要 Node ABI，e2e 需要 Electron ABI**。切換：
-
-```bash
-npx electron-rebuild -f -w better-sqlite3   # 換成 Electron ABI（跑 e2e 前）
-npm rebuild better-sqlite3                  # 換回 Node ABI（跑 unit 前）
-```
-
-忘了換回來的症狀是 **unit 測試整批 skip 而不是失敗**——DB 相關的 suite 用
-`describe.skipIf(!available)` 保護。看到 `Tests 8 skipped (8)` 就是這件事。
-
-那個保護的正確寫法在 `test/cast-index.test.ts:11-21`：**必須 `new Database(':memory:')` 探測**，
-只 import 是不夠的（binding 是延遲載入的，import-only 的守衛會回報「可用」然後在被測模組內部炸掉）。
+`better-sqlite3` 依平台與架構載入 Node-API 10 預編譯檔，Vitest 與 Electron 共用同一個檔案。
+`requires('better-sqlite3')` 會用 `new Database(':memory:')` 實際載入 binding，因為套件會延遲到開啟資料庫時才載入。
 
 ### TDZ：只在打包後才出現的崩潰
 

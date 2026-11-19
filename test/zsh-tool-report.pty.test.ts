@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { requires } from './helpers/requires'
 import { findShellTarget, runZsh, startCollector, hookPath, type ShellTarget } from './helpers/zsh-pty'
 
 // #499 PR B. A shell reports which tools its PATH reaches, once, at its first
@@ -9,7 +10,8 @@ import { findShellTarget, runZsh, startCollector, hookPath, type ShellTarget } f
 // a cost on every command for something that does not change between them.
 
 const target: ShellTarget | null = findShellTarget()
-const describeShell = target ? describe : describe.skip
+const listen = requires('listen')
+const describeShell = target ? listen.describe : describe.skip
 
 // `ls` of the directory itself: a glob that matches nothing is an error in zsh.
 const LISTED = 'test -n "$(ls $HOME/.redlog/tool-detection 2>/dev/null)"'

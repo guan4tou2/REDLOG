@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { requires } from './helpers/requires'
 import { findShellTarget, runZsh, startCollector, hookPath, type ShellTarget } from './helpers/zsh-pty'
 
 // Spec 052 T002. Before any of the adapter exists, the harness itself has to
@@ -14,7 +15,8 @@ import { findShellTarget, runZsh, startCollector, hookPath, type ShellTarget } f
 // that cannot fail cannot witness anything.
 
 const target: ShellTarget | null = findShellTarget()
-const describeShell = target ? describe : describe.skip
+const listen = requires('listen')
+const describeShell = target ? listen.describe : describe.skip
 
 describeShell(`zsh pty harness (${target?.label ?? 'no zsh reachable'})`, () => {
   let collector: Awaited<ReturnType<typeof startCollector>>

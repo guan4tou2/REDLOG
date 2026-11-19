@@ -20,7 +20,8 @@ if (requires('better-sqlite3').ok) {
   cdp = await import('../src/main/services/cdp-connector')
 }
 
-describe.skipIf(cdp === null)('stopping the browser monitor mid-poll', () => {
+const listen = requires('listen')
+describe.skipIf(cdp === null || !listen.ok)('stopping the browser monitor mid-poll', () => {
   let dir: string
   let server: http.Server
   let socketAttempts = 0

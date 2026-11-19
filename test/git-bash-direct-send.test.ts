@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
+import { requires } from './helpers/requires'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -13,13 +14,12 @@ import { startCollector } from './helpers/zsh-pty'
 // is the one that runs the real Git Bash and asks how the event arrived.
 
 const GIT_BASH = ['C:\\Program Files\\Git\\bin\\bash.exe', 'C:\\Program Files (x86)\\Git\\bin\\bash.exe'].find(p => fs.existsSync(p))
-const describeGitBash = process.platform === 'win32' && GIT_BASH ? describe : describe.skip
+const listen = requires('listen')
+const describeGitBash = process.platform === 'win32' && GIT_BASH ? listen.describe : describe.skip
 const TOKEN = 'git-bash-token'
 
 let collector: Awaited<ReturnType<typeof startCollector>>
 const homes: string[] = []
-beforeAll(async () => { if (GIT_BASH) collector = await startCollector(TOKEN) })
-afterAll(async () => { await collector?.close() })
 afterEach(() => { for (const home of homes.splice(0)) fs.rmSync(home, { recursive: true, force: true }) })
 
 // Async, never spawnSync: the collector lives in this process, and a blocked
@@ -50,6 +50,9 @@ async function send(env: Record<string, string>, command: string, sender: 'shell
 }
 
 describeGitBash('Git Bash on Windows delivers hook events directly (#345)', () => {
+  beforeAll(async () => { collector = await startCollector(TOKEN) })
+  afterAll(async () => { await collector?.close() })
+
   for (const [label, env] of [
     ['with path conversion on', {}],
     ['with MSYS_NO_PATHCONV=1', { MSYS_NO_PATHCONV: '1' }],
