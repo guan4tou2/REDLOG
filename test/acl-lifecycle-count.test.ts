@@ -3,7 +3,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { requires } from './helpers/requires'
-import { clearIcacls, icaclsTargets, installIcaclsRecorder } from './helpers/icacls'
+import { clearIcacls, icaclsCalls, installIcaclsRecorder } from './helpers/icacls'
 
 // How many icacls processes each lifecycle step starts on Windows, and for
 // which paths. Each one blocks the main process (the one that ingests) for as
@@ -44,11 +44,13 @@ const project = (name: string): string => {
 }
 
 /** What `step` restricted, in order. */
-function spawned(step: () => unknown): string[] {
+function spawned(step: () => unknown): string[][] {
   clearIcacls()
   step()
-  return icaclsTargets()
+  return icaclsCalls()
 }
+
+const ownerGrant = (target: string): string[] => [target, '/inheritance:r', '/grant:r', 'tester:(F)']
 
 function open(dir: string): void {
   api.onApiProjectClose()
@@ -82,9 +84,9 @@ sqlite.describe('icacls calls per lifecycle step on Windows', () => {
   it('create, then switch: the mirrored token once, then nothing on an open', () => {
     const a = project('a'), b = project('b')
     // First project: its token, the mirror, the keys directory, the operator's key.
-    expect(spawned(() => open(a))).toEqual([path.join(a, 'api-token'), TOKEN, KEYS, path.join(KEYS, 'op.key')])
+    expect(spawned(() => open(a))).toEqual([path.join(a, 'api-token'), TOKEN, KEYS, path.join(KEYS, 'op.key')].map(ownerGrant))
     // A second project: only its own new token.
-    expect(spawned(() => open(b))).toEqual([path.join(b, 'api-token')])
+    expect(spawned(() => open(b))).toEqual([path.join(b, 'api-token')].map(ownerGrant))
     // Switching between projects that exist starts no process at all.
     expect(spawned(() => open(a))).toEqual([])
     expect(spawned(() => open(b))).toEqual([])
@@ -94,7 +96,7 @@ sqlite.describe('icacls calls per lifecycle step on Windows', () => {
   it('a new operator on an open project: only its key', () => {
     const a = project('op')
     open(a)
-    expect(spawned(() => api.setPrimaryOperator('op-2', 'Op Two'))).toEqual([path.join(KEYS, 'op-2.key')])
+    expect(spawned(() => api.setPrimaryOperator('op-2', 'Op Two'))).toEqual([path.join(KEYS, 'op-2.key')].map(ownerGrant))
   })
 
   it('a mirrored token file replaced since is restricted again on the next open', () => {
@@ -102,7 +104,7 @@ sqlite.describe('icacls calls per lifecycle step on Windows', () => {
     open(a)
     fs.rmSync(TOKEN)
     fs.writeFileSync(TOKEN, 'someone else wrote this')
-    expect(spawned(() => open(a))).toEqual([TOKEN])
+    expect(spawned(() => open(a))).toEqual([TOKEN].map(ownerGrant))
   })
 
   listen.it('app start restricts the token and the port; the first open of an existing project then starts none', async () => {
@@ -112,7 +114,7 @@ sqlite.describe('icacls calls per lifecycle step on Windows', () => {
     clearIcacls()
     await api.startApiServer(0)
     try {
-      expect(icaclsTargets()).toEqual([TOKEN, PORT])
+      expect(icaclsCalls()).toEqual([TOKEN, PORT].map(ownerGrant))
       expect(spawned(() => open(a))).toEqual([])
     } finally {
       api.stopApiServer()
