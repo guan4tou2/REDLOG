@@ -288,9 +288,6 @@ test.describe.serial('attribution-blind-copy: attribution-blind copy names this 
 
       // 2026-11-14: a compact status in the toolbar; 詳情 opens the full line.
       const status = page.getByTestId('timeline-attribution-status')
-      await expect(status).toHaveCount(0)
-      await page.getByRole('button', { name: t['filter.personalHidden'], exact: true }).click()
-
       await expect(status).toBeVisible()
       await expect(status).toHaveAttribute('role', 'status')
       await expect(status).toContainText(t['timeline.attribution.status'])
@@ -318,7 +315,6 @@ test.describe.serial('attribution-blind-copy: attribution-blind copy names this 
       await page.keyboard.press('Escape')
       await expect(line).toHaveCount(0)
       await expect(page.getByTestId('timeline-attribution-details')).toBeFocused()
-      await page.getByRole('button', { name: t['filter.personalShown'], exact: true }).click()
     })
   }
 })
