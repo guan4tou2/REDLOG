@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { requires } from './helpers/requires'
 import { findShellTarget, runZsh, startCollector, hookPath, type ShellTarget, type CapturedEvent } from './helpers/zsh-pty'
 
 // Spec 052 T018, FR-001. The whole feature in one assertion: an operator opens
@@ -17,7 +18,8 @@ import { findShellTarget, runZsh, startCollector, hookPath, type ShellTarget, ty
 // relay has to leave intact. See test/helpers/zsh-pty.py.
 
 const target: ShellTarget | null = findShellTarget()
-const describeShell = target ? describe : describe.skip
+const listen = requires('listen')
+const describeShell = target ? listen.describe : describe.skip
 
 const shellEvents = (events: CapturedEvent[], subtype: string, match: string): CapturedEvent[] =>
   events.filter((e) => e.agentType === 'shell'

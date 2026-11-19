@@ -35,7 +35,8 @@ if (requires('better-sqlite3').ok) {
   dbAvailable = true
 }
 
-const describeDB = dbAvailable ? describe : describe.skip
+const listen = requires('listen')
+const describeDB = dbAvailable ? listen.describe : describe.skip
 
 describeDB('POST /api/events ingest contract', () => {
   let tmpDir: string

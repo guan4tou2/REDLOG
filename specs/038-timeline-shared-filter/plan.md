@@ -36,8 +36,8 @@ only if R13's measurement needs them.
 tests use jsdom and @testing-library/react 16. The desktop journeys are
 Playwright 1.63 e2e against the built app.
 
-**Target Platform**: desktop, on macOS and Windows. Windows e2e needs the
-Electron ABI build of better-sqlite3.
+**Target Platform**: desktop, on macOS and Windows. Node and Electron
+use the same platform-specific Node-API prebuild for better-sqlite3.
 
 **Project Type**: desktop app (Electron main, preload, React renderer, core
 library)

@@ -39,6 +39,7 @@ afterEach(() => {
 
 let dbAvailable = false
 dbAvailable = requires('better-sqlite3').ok
+const listen = requires('listen')
 const dbIt = it.skipIf(process.platform === 'win32' || !dbAvailable)
 
 describe('~/.redlog and the projects directory', () => {
@@ -61,7 +62,7 @@ describe('~/.redlog and the projects directory', () => {
     expect(bits(path.join(home, '.redlog', 'projects.json'))).toBe('600')
   })
 
-  dbIt('starting the API server creates ~/.redlog 0700 beside a 0600 token and port file', async () => {
+  it.skipIf(process.platform === 'win32' || !dbAvailable || !listen.ok)('starting the API server creates ~/.redlog 0700 beside a 0600 token and port file', async () => {
     const api = await import('../src/core/api-server')
     const { LootDetector } = await import('../src/core/loot-detector')
     const db = await import('../src/core/db/index')

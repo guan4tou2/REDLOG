@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -24,6 +25,7 @@ async function startCollector(token: string) {
 const temporary: string[] = []
 afterEach(() => { for (const p of temporary.splice(0)) fs.rmSync(p, { recursive: true, force: true }) })
 const quote = (v: string) => `'${v.replace(/'/g, `'\\''`)}'`
+const listen = requires('listen')
 const suite = process.platform === 'win32' ? describe.skip : describe
 
 suite('WSL shell directory selection', () => {
@@ -39,7 +41,7 @@ suite('WSL shell directory selection', () => {
         'stale-token': 'does not adopt a live port that refuses the native token',
         'no-windows-path': 'finds cmd.exe when the Windows PATH is not appended'
       }[variant]
-      it(`${entry}: ${title}`, async () => {
+      listen.it(`${entry}: ${title}`, async () => {
         const native = await startCollector(variant === 'stale-token' ? 'rotated-token' : 'native-token')
         const windows = await startCollector('windows-token')
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-wsl-directory-'))

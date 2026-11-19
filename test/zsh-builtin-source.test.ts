@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { requires } from './helpers/requires'
 import { findShellTarget, hookPath, runZsh, startCollector } from './helpers/zsh-pty'
 
 const target = findShellTarget()
-const suite = target ? describe : describe.skip
+const listen = requires('listen')
+const suite = target ? listen.describe : describe.skip
 
 suite('an embedded Zsh keeps its terminal provenance', () => {
   let collector: Awaited<ReturnType<typeof startCollector>>

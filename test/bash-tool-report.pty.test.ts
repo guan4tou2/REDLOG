@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { requires } from './helpers/requires'
 import { findShellTarget, runZsh, startCollector, hookPath, type ShellTarget } from './helpers/zsh-pty'
 
 // The bash twin of zsh-tool-report.pty.test.ts: a shell reports which tools its
@@ -10,7 +11,8 @@ import { findShellTarget, runZsh, startCollector, hookPath, type ShellTarget } f
 const target: ShellTarget | null = process.platform === 'win32'
   ? findShellTarget()
   : { prefix: [], toShellPath: (p) => p, label: 'local bash' }
-const describeShell = target ? describe : describe.skip
+const listen = requires('listen')
+const describeShell = target ? listen.describe : describe.skip
 
 // Polling `ls` of the directory itself: no glob to match nothing.
 const LISTED = 'test -n "$(ls $HOME/.redlog/tool-detection 2>/dev/null)"'

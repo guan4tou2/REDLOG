@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { requires } from './helpers/requires'
 import { runZsh, startCollector, hookPath, type ShellTarget, type CapturedEvent } from './helpers/zsh-pty'
 
 // The bash twin of zsh-redlog-command.pty.test.ts: `redlog stop` has to mean
@@ -17,7 +18,8 @@ import { runZsh, startCollector, hookPath, type ShellTarget, type CapturedEvent 
 // (FR-023, contracts/shell-commands.md rule 2).
 
 const target: ShellTarget = { prefix: [], toShellPath: (p) => p, label: 'local bash' }
-const describeShell = process.platform === 'win32' ? describe.skip : describe
+const listen = requires('listen')
+const describeShell = process.platform === 'win32' ? describe.skip : listen.describe
 
 const commandsNamed = (events: CapturedEvent[], match: string): CapturedEvent[] =>
   events.filter((e) => e.agentType === 'shell'

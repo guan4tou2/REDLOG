@@ -7,7 +7,7 @@ import os from 'os'
 
 // Integration test for the app-hosted REST server: real HTTP requests against
 // a live server backed by a temp SQLite project. Guarded so it skips cleanly when
-// better-sqlite3 isn't compiled for the running Node ABI (same pattern as the
+// the better-sqlite3 binding cannot load (same pattern as the
 // other DB-backed suites).
 let initDB: typeof import('../src/core/db/index').initDB
 let closeDB: typeof import('../src/core/db/index').closeDB
@@ -44,7 +44,8 @@ if (requires('better-sqlite3').ok) {
   dbAvailable = true
 }
 
-const describeDB = dbAvailable ? describe : describe.skip
+const listen = requires('listen')
+const describeDB = dbAvailable ? listen.describe : describe.skip
 
 // The sidecar, inside this file's own home — never the operator's, so there is
 // nothing to back up and nothing another worker can race us for.

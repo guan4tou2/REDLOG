@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { requires } from './helpers/requires'
 import { findShellTarget, runZsh, startCollector, hookPath, type ShellTarget, type CapturedEvent } from './helpers/zsh-pty'
 
 // A background job outlives the prompt. `nmap -p- host &` returns at once and
@@ -18,8 +19,9 @@ const zshTarget: ShellTarget | null = findShellTarget()
 // subshell compound, so that line is not seen by the bash adapter at all.
 const JOB = `sh -c 'echo job-early; sleep 3; echo job-late; echo job-err >&2' &`
 
+const listen = requires('listen')
 const forShell = (kind: 'bash' | 'zsh', target: ShellTarget | null): void => {
-  const describeShell = process.platform === 'win32' || !target ? describe.skip : describe
+  const describeShell = process.platform === 'win32' || !target ? describe.skip : listen.describe
   describeShell(`output from a background job after the prompt (${kind})`, () => {
     let collector: Awaited<ReturnType<typeof startCollector>>
     let report: Awaited<ReturnType<typeof runZsh>>
