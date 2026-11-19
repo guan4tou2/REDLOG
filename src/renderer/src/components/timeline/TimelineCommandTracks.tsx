@@ -109,15 +109,24 @@ export const TimelineCommandTracks = memo(function TimelineCommandTracks({
                 const end = member.endId ? eventsById?.get(member.endId) : undefined
                 return end ? [end] : []
               })
-              const badges = endRows.flatMap(end => badgesById?.get(end.id) ?? [])
+              const badges: EventBadge[] = []
+              const badgeKeys = new Set<string>()
+              const badgeReasons = new Set<string>()
+              for (const member of mark.intervals) for (const id of member.memberIds) {
+                for (const b of badgesById?.get(id) ?? []) {
+                  badgeReasons.add(`${b.icon} ${b.reasonKey ? t(b.reasonKey) : b.reason ?? ''}`)
+                  if (!badgeKeys.has(b.key)) { badgeKeys.add(b.key); badges.push(b) }
+                }
+              }
+              const badgeTitle = [...badgeReasons].join('\n')
               // Full-chain failure must remain visible even when another member
               // was recovered. Preserve original order within each severity.
-              const badge = cluster ? badges.find(b => b.key === 'verify-broken') ?? badges.find(b => b.key === 'clock') ?? badges[0] : badges[0]
+              const badge = badges.find(b => b.key === 'verify-broken') ?? badges.find(b => b.key === 'clock') ?? badges[0]
               const io = !cluster && endRows[0] ? ioMark(endRows[0]) : null
               const lines = mark.intervals.slice(0, 10).map(member => intervalTitle(member, label, t))
               if (mark.intervals.length > 10) lines.push(t('timeline.clusterMoreItems', { count: mark.intervals.length - 10 }))
               const title = lines.join('\n')
-                + (badges.length ? '\n' + [...new Set(badges.map(b => `${b.icon} ${b.reasonKey ? t(b.reasonKey) : b.reason ?? ''}`))].join('\n') : '')
+                + (badgeTitle ? '\n' + badgeTitle : '')
                 + (io ? ioTitle(io, t) : '')
               const name = safeDisplay(iv.command.replace(/\s+/g, ' ').trim())
               const ringLeft = mark.x0 - (cluster ? 8 : 4)
@@ -133,10 +142,10 @@ export const TimelineCommandTracks = memo(function TimelineCommandTracks({
                   tabIndex={tabStopKey === mark.key ? 0 : -1}
                   className="absolute pointer-events-auto cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-redlog-accent"
                   style={{ left: mark.hitLeft, top: TRACK_LINE_Y - 13.5, width: mark.hitWidth, height: 27, opacity: dimmed ? 0.15 : 1, pointerEvents: dimmed ? 'none' : undefined }}
-                  onClick={(e) => { if (!dimmed && !didPan?.current) onPick?.(mark, e.detail) }}
-                  onDoubleClick={() => { if (!dimmed && !didPan?.current) onOpen?.(mark, 'dblclick') }}
+                  onClick={(e) => { if (!didPan?.current) onPick?.(mark, e.detail) }}
+                  onDoubleClick={() => { if (!didPan?.current) onOpen?.(mark, 'dblclick') }}
                   onKeyDown={(e) => {
-                    if (dimmed || e.key !== 'Enter' || e.metaKey || e.ctrlKey || e.altKey) return
+                    if (e.key !== 'Enter' || e.metaKey || e.ctrlKey || e.altKey) return
                     e.preventDefault(); e.stopPropagation()
                     if (cluster) onPick?.(mark, 0); else onOpen?.(mark, 'key')
                   }}>
@@ -170,13 +179,13 @@ export const TimelineCommandTracks = memo(function TimelineCommandTracks({
                     {io.fail && <span className="absolute rounded-full border border-redlog-danger" style={{ left: -2.5, top: -2.5, width: 13, height: 13, borderWidth: 1.5 }} />}
                     {io.io && <span className="absolute rounded-full" style={{ right: -1, bottom: -1, width: 3, height: 3, background: IO_MARK_COLOR[io.io] }} />}
                   </span>}
-                  {badge && <span data-interval-badge title={badges.map(b => `${b.icon} ${b.reasonKey ? t(b.reasonKey) : b.reason ?? ''}`).join('\n')}
+                  {badge && <span data-interval-badge title={badgeTitle}
                     className="absolute rounded-full bg-redlog-bg/95 border border-redlog-warn/60 text-xs leading-none flex items-center justify-center pointer-events-none"
-                    style={{ left: (cluster ? mark.x0 : endX) + 4, top: TRACK_LINE_Y - 12, width: 12, height: 12 }}>{badge.icon}</span>}
+                    style={{ left: (cluster || !iv.endId ? mark.x0 : endX) + 4, top: TRACK_LINE_Y - 12, width: 12, height: 12 }}>{badge.icon}</span>}
                   {mark.label && (
                     <span data-testid="timeline-interval-name" title={title} className="absolute block truncate whitespace-nowrap font-mono text-xs leading-none text-redlog-text"
                       style={{ left: mark.label.side === 'right' ? mark.x0 + 6 : mark.x0 - 6 - mark.label.maxW,
-                        width: mark.label.maxW, maxWidth: mark.label.maxW, textAlign: mark.label.side === 'left' ? 'right' : 'left', top: TRACK_LINE_Y - 16 }}>
+                        width: mark.label.maxW, maxWidth: mark.label.maxW, textAlign: mark.label.side === 'left' ? 'right' : 'left', top: point && badge ? TRACK_LINE_Y + 4 : TRACK_LINE_Y - 16 }}>
                       {name}
                     </span>
                   )}

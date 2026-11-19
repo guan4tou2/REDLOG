@@ -38,10 +38,17 @@ it('F3: search matching only a raw start lights that interval and disables the o
   expect(mark('a').getAttribute('aria-disabled')).toBeNull()
   expect(mark('b').style.opacity).toBe('0.15')
   expect(mark('b').style.pointerEvents).toBe('none')
-  fireEvent.click(mark('b'))
-  fireEvent.doubleClick(mark('b'))
+  // Pointer input is blocked by CSS, as on the event row. Keyboard walking
+  // still reaches dimmed marks and Enter must use the same detail contract.
+  mark('a').focus()
+  fireEvent.keyDown(mark('a'), { key: 'Home' })
+  fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' })
+  expect(document.activeElement).toBe(mark('b'))
+  expect(mark('b').tabIndex).toBe(0)
   fireEvent.keyDown(mark('b'), { key: 'Enter' })
-  expect(screen.queryByTestId('timeline-detail-panel'), 'F3: dimmed interval cannot select or open').toBeNull()
+  expect(screen.queryByTestId('timeline-detail-body'), 'N2: Enter opens the walked-to dimmed interval').not.toBeNull()
+  fireEvent.keyDown(mark('b'), { key: 'Enter' })
+  expect(screen.queryByTestId('timeline-detail-body')).toBeNull()
 })
 it('F3: focus chain dims nonmembers and counts light when any member matches', async () => {
   const rows = [...pair('a', 0), ...pair('b', 1), ...pair('c', 200_000)]
@@ -71,4 +78,80 @@ it('F3: counts show the most severe member badge even after the first member', a
   await mount([...pair('a', 0, { recovered: true }), ...pair('b', 1)])
   expect(marks()).toHaveLength(1)
   expect(marks()[0].querySelector('[data-interval-badge]')?.textContent, 'F3: count promotes verify failure above recovery').toBe('⛓️‍💥')
+})
+
+it('N1: verify break on an open start stays on the start mark', async () => {
+  noteOpenProject('p1')
+  setLastVerifyResult({ ok: false, brokenAtEventId: 'as' }, { projectId: 'p1' })
+  await mount([pair('a', 0)[0]])
+  const badge = mark('a').querySelector<HTMLElement>('[data-interval-badge]')
+  expect(badge?.textContent, 'N1: open start retains verify-broken badge').toBe('⛓️‍💥')
+  const start = mark('a').querySelector<HTMLElement>('[data-testid="timeline-start-mark"]')!
+  expect(parseFloat(badge!.style.left)).toBe(parseFloat(start.style.left) + 8)
+  expect(mark('a').title).toContain('full-chain verify broke here')
+})
+it('N1: finished commands collect start badges and deduplicate by key in row order', async () => {
+  const rows = pair('a', 0, { _clock_anomaly: { reason: 'same clock reason' }, recovered: true })
+  rows[0].data = { ...rows[0].data as object, _clock_anomaly: { reason: 'same clock reason' } }
+  await mount(rows)
+  expect(mark('a').querySelector('[data-interval-badge]')?.textContent, 'N1: start clock is promoted above end recovery').toBe('⚠')
+  expect(mark('a').title.match(/same clock reason/g), 'N1: duplicate clock badge reason appears once').toHaveLength(1)
+  expect(mark('a').title).toContain('recovered from orphaned session')
+  expect(mark('a').querySelector('[data-interval-badge]')?.getAttribute('title')?.match(/same clock reason/g)).toHaveLength(1)
+})
+it('N1: a finished command carries a clock badge found only on its start', async () => {
+  const rows = pair('a', 0)
+  rows[0].data = { ...rows[0].data as object, _clock_anomaly: { reason: 'start clock skew' } }
+  await mount(rows)
+  expect(mark('a').title, 'N1: start-only clock reason survives pairing').toContain('start clock skew')
+  expect(mark('a').querySelector('[data-interval-badge]')?.textContent).toBe('⚠')
+  const badge = mark('a').querySelector<HTMLElement>('[data-interval-badge]')!
+  const end = mark('a').querySelector<HTMLElement>('[data-end-shape]')!
+  expect(parseFloat(badge.style.left), 'N1: a finished start badge is drawn at the end').toBe(parseFloat(end.style.left) + 6)
+})
+it('N3: counts promote clock above an earlier recovery badge', async () => {
+  await mount([...pair('a', 0, { recovered: true }), ...pair('b', 1, { _clock_anomaly: { reason: 'count clock skew' } })])
+  expect(marks()).toHaveLength(1)
+  expect(marks()[0].querySelector('[data-interval-badge]')?.textContent, 'N3: count promotes clock above recovery').toBe('⚠')
+})
+
+it('N2: dimmed dots and intervals share pointer handlers and Enter while CSS excludes pointer input', async () => {
+  const b = await mount([...pair('a', 0), makeEvent('m', T + 50_000, 'marker', { data: { title: 'note' } }), ...pair('b', 100_000)])
+  b.matchIds.mockImplementation(async req => req.parsed ? ['as'] : req.ids)
+  fireEvent.change(screen.getByTestId('timeline-search-input'), { target: { value: 'command a' } })
+  await waitFor(() => expect(mark('b').getAttribute('aria-disabled')).toBe('true'))
+  const dot = document.querySelector<HTMLButtonElement>('[data-timeline-event]:not([data-timeline-interval])')!
+  for (const target of [dot, mark('b')]) {
+    expect(target.style.pointerEvents).toBe('none')
+    expect(target.getAttribute('aria-disabled')).toBe('true')
+    // fireEvent deliberately dispatches through pointer-events:none; compare
+    // the handlers too, not jsdom's nonexistent pointer hit testing.
+    fireEvent.click(target, { detail: 1 })
+    expect(screen.queryByTestId('timeline-detail-panel')).not.toBeNull()
+    expect(screen.queryByTestId('timeline-detail-body')).toBeNull()
+    fireEvent.doubleClick(target)
+    expect(screen.queryByTestId('timeline-detail-body')).not.toBeNull()
+    fireEvent.keyDown(target, { key: 'Enter' })
+    expect(screen.queryByTestId('timeline-detail-body')).toBeNull()
+    fireEvent.click(target, { detail: 1 })
+    expect(screen.queryByTestId('timeline-detail-panel')).toBeNull()
+  }
+})
+it('N1: a superseded command keeps the clock badge at its start', async () => {
+  const rows = [pair('a', 0)[0], ...pair('b', 100_000)]
+  rows[0].data = { ...rows[0].data as object, _clock_anomaly: { reason: 'superseded start clock' } }
+  await mount(rows)
+  const start = mark('a').querySelector<HTMLElement>('[data-testid="timeline-start-mark"]')!
+  const badge = mark('a').querySelector<HTMLElement>('[data-interval-badge]')!
+  expect(badge.textContent).toBe('⚠')
+  expect(parseFloat(badge.style.left)).toBe(parseFloat(start.style.left) + 8)
+})
+
+it('N1: one badge key can explain distinct start and end reasons without drawing twice', async () => {
+  const rows = pair('a', 0, { _clock_anomaly: { reason: 'end clock reason' } })
+  rows[0].data = { ...rows[0].data as object, _clock_anomaly: { reason: 'start clock reason' } }
+  await mount(rows)
+  expect(mark('a').querySelectorAll('[data-interval-badge]')).toHaveLength(1)
+  expect(mark('a').title, 'N1: every distinct member badge reason survives').toContain('end clock reason')
+  expect(mark('a').title.indexOf('start clock reason')).toBeLessThan(mark('a').title.indexOf('end clock reason'))
 })

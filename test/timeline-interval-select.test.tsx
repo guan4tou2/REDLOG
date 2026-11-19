@@ -267,3 +267,24 @@ it('F1 property: all visible terminal rows stay mounted through scroll and keybo
     fireEvent.keyDown(window, { key: i % 2 ? 'Home' : 'End' }); check()
   }
 })
+
+it('N3: external raw start is centred horizontally, rather than falling back to now', async () => {
+  localStorage.setItem('redlog-timeline-zoom', '6')
+  await mount([...pair('a', 100_000, 140_000), ...pair('b', 900_000, 940_000), makeEvent('left', T, 'marker')], 'as')
+  const scroller = screen.getByTestId('timeline-lane-scroll').firstElementChild as HTMLElement
+  const start = mark('a').querySelector<HTMLElement>('[data-testid="timeline-start-mark"]')!
+  const x = parseFloat(start.style.left) + 4
+  await waitFor(() => expect(scroller.scrollLeft, 'N3: external start centres its own time').toBeCloseTo(Math.max(0, x - scroller.clientWidth / 2), 1))
+})
+it('N3: focus restoration never visits an unrelated fallback dot while the target row mounts', async () => {
+  await mount([event(), ...Array.from({ length: 9 }, (_, i) => pair(String(i), i * 100_000, i * 100_000 + 40_000, String(i))).flat()])
+  marks()[0].focus()
+  fireEvent.keyDown(document.activeElement!, { key: 'End' })
+  const focus = vi.spyOn(HTMLElement.prototype, 'focus')
+  fireEvent.keyDown(document.activeElement!, { key: 'Home' })
+  await waitFor(() => expect(document.activeElement).toBe(mark('0')))
+  expect(focus.mock.instances.every(el => (el as HTMLElement).hasAttribute('data-timeline-interval')), 'N3: focus waits for the selected interval to mount').toBe(true)
+  fireEvent.keyDown(document.activeElement!, { key: 'Enter' })
+  expect(localStorage.getItem(KEY)).toBe('0e')
+  expect(screen.queryByTestId('timeline-detail-body')).not.toBeNull()
+})

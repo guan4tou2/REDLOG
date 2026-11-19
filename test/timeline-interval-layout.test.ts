@@ -3,7 +3,7 @@ import { buildCommandIntervals } from '../src/renderer/src/lib/timelineIntervals
 import { makeEvent } from './helpers/timeline-bridge'
 import { expect, it } from 'vitest'
 import type { TimelineInterval, TimelineIntervalSet } from '../src/renderer/src/lib/timelineIntervals'
-import { layoutIntervalMarks, filterVisibleMarks } from '../src/renderer/src/lib/timelineIntervalLayout'
+import { layoutIntervalMarks, filterVisibleMarks, visibleTrackRows } from '../src/renderer/src/lib/timelineIntervalLayout'
 
 function interval(id: string, start: number, end: number | null, extra: Partial<TimelineInterval> = {}): TimelineInterval {
   return { id, kind: 'command', trackKey: 't', startId: `${id}s`, startTs: start,
@@ -228,4 +228,12 @@ it('F4: a short open point owns its drawn 16px stub and clips it at the track ed
   const [m] = layout([interval('a', 13, null), interval('b', 14, 15)])
   expect(m.kind).toBe('point')
   expect(m.hitLeft + m.hitWidth, 'F4: open point hit includes its drawn stub and end pad').toBeGreaterThanOrEqual(42.5)
+  const [edge] = layout([interval('edge', 995, null)])
+  expect(edge.kind).toBe('point')
+  expect(edge.hitLeft + edge.hitWidth, 'F4: open point hit clips at the right edge').toBe(1000)
+})
+
+it('N3: stale scroll after row shrink clamps the first row to the remaining content', () => {
+  expect(visibleTrackRows(900, 224, 48, 44, 2)).toEqual({ first: 1, last: 1 })
+  expect(visibleTrackRows(900, 224, 48, 44, 0)).toEqual({ first: 0, last: 0 })
 })

@@ -1048,7 +1048,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
   // memos above: nothing higher may name these.
   const observationStanding = useTimelineDerived(observationStandingOf, events)
 
-  const badgesById = useTimelineDerived(badgeIndex, events, brokenAtId, observationStanding.cleared, observationStanding.superseded)
+  const badgesById = useTimelineDerived(badgeIndex, timelineMode === 'standard' ? rawEvents : events, brokenAtId, observationStanding.cleared, observationStanding.superseded)
 
   // Project-wide causal focus. The old implementation walked only the 200 rows
   // currently loaded in Timeline, so an ordinary unpaged cause looked like a
@@ -1685,7 +1685,6 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
               if (outer && (top < outer.scrollTop || top + laneH > outer.scrollTop + outer.clientHeight)) {
                 outer.scrollTop = Math.max(0, top + laneH - outer.clientHeight)
                 if (top < outer.scrollTop) outer.scrollTop = top
-                readRowView(outer)
               }
             }
             updateView()
@@ -1726,7 +1725,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectedEvent, detailOpen, showHelp, focusAnchorId, events, listHiddenLanes, pluginTypes, toX, TRACK_W, visibleRows, rowKeyOf, onOpenInActivity, timelineMode, standardTrack, intervalSet, rowOf, axisH, laneH, updateView, readRowView])
+  }, [selectedEvent, detailOpen, showHelp, focusAnchorId, events, listHiddenLanes, pluginTypes, toX, TRACK_W, visibleRows, rowKeyOf, onOpenInActivity, timelineMode, standardTrack, intervalSet, rowOf, axisH, laneH, updateView])
 
   // Helper: scroll the track so the given event is centred in the viewport.
   // Used by the cause/effect chips (feature 1) and any other jump-to-event

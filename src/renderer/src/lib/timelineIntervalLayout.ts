@@ -169,23 +169,13 @@ export function layoutIntervalMarks(input: IntervalLayoutInput): IntervalMark[] 
       }
     }
     placed = settled
-    for (let i = 0; i < placed.length; i++) {
-      const m = placed[i].mark, prev = placed[i - 1]?.mark, next = placed[i + 1]?.mark
+    for (const { mark: m } of placed) {
       // A span always owns its whole line and both pads. Later-started marks
       // paint above it and own their local boxes, never the gap between starts.
       const half = MARK_HIT_PX / 2
-      let left = Math.max(0, Math.min(trackW - MARK_HIT_PX, m.x0 - half))
+      const left = Math.max(0, Math.min(trackW - MARK_HIT_PX, m.x0 - half))
       const drawnEnd = m.kind === 'point' && m.open > 0 ? Math.min(trackW, m.x0 + OPEN_STUB_PX) : m.x1
-      let right = Math.min(trackW, Math.max(left + MARK_HIT_PX, drawnEnd + half))
-      // Midpoints only trim overlapping minimum boxes, never a span's line.
-      if (m.kind !== 'span') {
-        if (prev && prev.x0 + half > m.x0 - half && (prev.kind === 'cluster' || m.kind === 'cluster')) {
-          left = Math.min(right - MARK_HIT_PX, Math.max(left, (prev.x0 + m.x0) / 2))
-        }
-        if (next && m.x0 + half > next.x0 - half && (next.kind === 'cluster' || m.kind === 'cluster')) {
-          right = Math.max(left + MARK_HIT_PX, Math.min(trackW, drawnEnd + half), Math.min(right, (m.x0 + next.x0) / 2))
-        }
-      }
+      const right = Math.min(trackW, Math.max(left + MARK_HIT_PX, drawnEnd + half))
       m.hitLeft = left
       m.hitWidth = right - left
     }

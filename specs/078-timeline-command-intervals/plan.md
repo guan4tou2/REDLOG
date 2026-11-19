@@ -278,3 +278,12 @@ export function filterVisibleMarks(
 - 單段保留事件列原本的第一個徽章；計數優先顯示 verify-broken，其次 clock，其餘依原順序。已讀 `buildClusters`：它只選第一個事件的 lane，沒有徽章 severity reducer；不更動事件列語意。
 - title 最多列十個指令，再用既有 `timeline.clusterMoreItems`；callbacks 穩定，選取以 `byMemberId` 和 interval→mark 索引定位。原生按鈕直接出現在兩個繪製位置，ratchet 實測為 210（§4.1 軌道記號）。
 - 回歸測試涵蓋真實 224 CSS px 高度的重掛與第五列鍵盤走訪、30,000 組幾何、1,000 組命令完整性、捲動與鍵盤可見列性質；每項 finding 均有 red 與實際 mutation 記錄於工作區外的 round 2 報告。
+
+### S3 round 3：起點徽章與鍵盤一致性
+
+- 區間徽章從所有 `memberIds` 收集，依事件列原順序、按 key 去重；所有記號都優先 verify-broken、其次 clock。standard 模式的徽章索引讀 rawEvents，避免摺疊遺失 start 的徽章。已結束指令在終點、open／superseded 在起點畫徽章；title 依原順序保留每個不同原因，同 key 但不同原因仍完整列出。
+- 變暗沿用事件點：CSS `pointer-events:none` 排除滑鼠命中，click／double-click handlers 與未變暗時一致；方向鍵仍能走到並選取，Enter 開關詳情。更正 round 2「擋住 Enter」的舊契約。
+- settle pass 已保證涉及計數的起點相距至少 27px，因此刪除不可達的 midpoint 裁切。垂直鍵盤捲動由每次 layout 的共用讀取更新 rowView，只保留選取記號掛載後才還原焦點的 guard，移除鍵盤內重複的 readRowView。
+- 帶徽章的 point 名稱移到 y=32..44，徽章仍在 y=16..28，避免同側名稱重疊。失敗結束碼保留與徽章至少 12px 的 left 差距，放不下則省略碼。
+- **N4 已知保留**：聯集線很長的計數記號，其點擊區可能攔截較早 span 的終點 ✕。同一終端重疊命令少見；本輪依 brief 不改，後續需另決定命中優先序。
+- harness 新增 `s3r3-open-verify` 與 `s3r3-badged-point`；真實視窗驗證仍交由檢視者與 CI，本機不啟動 Electron／Playwright／server。
