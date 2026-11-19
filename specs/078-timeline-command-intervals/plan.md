@@ -269,3 +269,12 @@ export function filterVisibleMarks(
 - 收尾幾何回歸：open span 畫到右緣時，點擊框右側不再多加 13.5px；否則 100% 檢視也會產生不必要的水平 overflow。先補 layout RED（1013.5 > 1000），再限制尾端 padding，保持至少 27px 與鄰近計數的中點分界。
 
 - 外部選取 start 後的真實雙擊序列（click detail=1、click detail=2、dblclick）另補 RED：舊 firstClick 會把 raw start 帶入詳情。pickEvent 增加可選的「相同區間選取」判斷，點擊仍可取消任何成員的選取，但 firstClick 一律記錄 anchor，雙擊確實開啟 selection row。
+
+### S3 round 2：提前 S4 的必要資訊與審查修正
+
+- T040/T041 的搜尋／焦點鏈變暗、終點 `ioMark` 和徽章提前到 S3：S3 移除指令事件點後，若獨立上 main，這些原有資訊會消失。`endsMayBeMissing`、精確可及名稱、計數可及名稱仍留 S4。
+- `visibleTrackRows(scrollTop, clientHeight, axisH, laneH, rowCount)` 是捲動、鍵盤走訪和掛載後 layout effect 的唯一列範圍計算。layout effect 讀取實際掛載的 scroller，避免載入 spinner 重掛後沿用舊範圍。焦點還原只在選取的記號已掛載時完成。
+- 取代前述 S3「所有相鄰計數都在起點中點分界」：span 的點擊區始終包含整條線與端點 padding；後開始的記號按 DOM 順序疊在上層，只攔截自己的區域。只有最小 27px 盒互相覆蓋時才考慮中點，不擴大遠處點或計數的盒；邊界保持最小寬且不超出 track。
+- 單段保留事件列原本的第一個徽章；計數優先顯示 verify-broken，其次 clock，其餘依原順序。已讀 `buildClusters`：它只選第一個事件的 lane，沒有徽章 severity reducer；不更動事件列語意。
+- title 最多列十個指令，再用既有 `timeline.clusterMoreItems`；callbacks 穩定，選取以 `byMemberId` 和 interval→mark 索引定位。原生按鈕直接出現在兩個繪製位置，ratchet 實測為 210（§4.1 軌道記號）。
+- 回歸測試涵蓋真實 224 CSS px 高度的重掛與第五列鍵盤走訪、30,000 組幾何、1,000 組命令完整性、捲動與鍵盤可見列性質；每項 finding 均有 red 與實際 mutation 記錄於工作區外的 round 2 報告。

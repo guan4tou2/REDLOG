@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import * as time from '../src/renderer/src/lib/time'
 import TimelinePanel from '../src/renderer/src/components/Timeline'
 import { FilterProvider } from '../src/renderer/src/lib/FilterContext'
 import { I18nProvider } from '../src/renderer/src/i18n'
@@ -17,12 +18,15 @@ const marks = () => [...document.querySelectorAll<HTMLButtonElement>('[data-time
 const mark = (id: string) => marks().find((m) => m.title.includes(`command ${id}`))!
 const stops = () => document.querySelectorAll('[data-timeline-event][tabindex="0"]')
 const savedWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')
+const savedHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')
 beforeEach(() => {
   localStorage.clear()
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get() { return this.getAttribute('data-testid') === 'timeline-lane-scroll' ? 224 : 0 } })
   Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get() { return this.classList.contains('cursor-grab') ? 2000 : 0 } })
 })
 afterEach(() => {
   cleanup(); vi.restoreAllMocks()
+  if (savedHeight) Object.defineProperty(HTMLElement.prototype, 'clientHeight', savedHeight)
   if (savedWidth) Object.defineProperty(HTMLElement.prototype, 'clientWidth', savedWidth)
   else delete (HTMLElement.prototype as unknown as Record<string, unknown>).clientWidth
 })
@@ -118,7 +122,7 @@ it('walking to a hidden row scrolls both axes without changing zoom (FR-054)', a
   await mount(Array.from({ length: 6 }, (_, i) => pair(String(i), i * 100_000, i * 100_000 + 40_000, String(i))).flat())
   const outer = screen.getByTestId('timeline-lane-scroll')
   const scroller = outer.firstElementChild as HTMLElement
-  Object.defineProperty(outer, 'clientHeight', { configurable: true, value: 200 })
+  Object.defineProperty(outer, 'clientHeight', { configurable: true, value: 224 })
   Object.defineProperty(scroller, 'clientWidth', { configurable: true, value: 300 })
   const zoom = screen.getByTestId('timeline-zoom-level').textContent
   fireEvent.keyDown(window, { key: 'Home' })
@@ -183,4 +187,83 @@ it('a real double click from an externally selected start opens the selection ro
   fireEvent.doubleClick(mark('a'))
   expect(localStorage.getItem(KEY)).toBe('ae')
   expect(screen.queryByTestId('timeline-detail-body')).not.toBeNull()
+})
+
+// The reload and 224px viewport follow the independent review's rows reproduction.
+it('F1: remount derives visible tracks from the new scroller', async () => {
+  const b = installTimelineBridge({ timelineMode: 'standard' })
+  const rows = [event(), ...Array.from({ length: 9 }, (_, i) => pair(String(i), i * 100_000, i * 100_000 + 40_000, String(i))).flat()]
+  b.queryPage.mockResolvedValue(page(rows))
+  render(<I18nProvider><FilterProvider><TimelinePanel /></FilterProvider></I18nProvider>)
+  await waitFor(() => expect(mark('8')).toBeDefined())
+  const outer = screen.getByTestId('timeline-lane-scroll')
+  Object.defineProperty(outer, 'clientHeight', { configurable: true, value: 224 })
+  outer.scrollTop = 264
+  fireEvent.scroll(outer)
+  expect(mark('8')).toBeUndefined()
+  fireEvent.click(screen.getByTestId('timeline-range-custom'))
+  await act(async () => fireEvent.change(screen.getByTestId('timeline-time-since'), { target: { value: '2023-11-14T00:00' } }))
+  await waitFor(() => expect(screen.getByTestId('timeline-lane-scroll')).not.toBe(outer))
+  expect(screen.getByTestId('timeline-lane-scroll').scrollTop).toBe(0)
+  await waitFor(() => expect(mark('8'), 'F1: top terminal command must reappear after scroller remount').toBeDefined())
+})
+it('F2: walking to the fifth row retains target focus and Enter opens that command', async () => {
+  await mount([event(), ...Array.from({ length: 9 }, (_, i) => pair(String(i), i * 100_000, i * 100_000 + 40_000, String(i))).flat()])
+  const outer = screen.getByTestId('timeline-lane-scroll')
+  Object.defineProperty(outer, 'clientHeight', { configurable: true, value: 224 })
+  marks()[0].focus()
+  fireEvent.keyDown(document.activeElement!, { key: 'End' })
+  fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' })
+  fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' })
+  fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' })
+  fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' })
+  await waitFor(() => expect(document.activeElement, 'F2: fifth terminal must own focus, never the unrelated event dot').toBe(mark('4')))
+  fireEvent.keyDown(document.activeElement!, { key: 'Enter' })
+  expect(localStorage.getItem(KEY)).toBe('4e')
+  expect(screen.queryByTestId('timeline-detail-body')).not.toBeNull()
+})
+it('F7: Enter on a selected raw start toggles details without changing identity', async () => {
+  await mount(undefined, 'as')
+  await waitFor(() => expect(localStorage.getItem(KEY)).toBe('as'))
+  expect(screen.queryByTestId('timeline-detail-body')).not.toBeNull()
+  fireEvent.keyDown(mark('a'), { key: 'Enter' })
+  expect(screen.queryByTestId('timeline-detail-body'), 'F7: Enter closes details for any selected interval member').toBeNull()
+  expect(localStorage.getItem(KEY)).toBe('as')
+})
+it('F7: focused folded non-member does not become an invisible selection', async () => {
+  const rows = pair('hidden', 0, 40_000).map(e => ({ ...e, data: { ...(e.data as object), _ingest: { door: 'api' } } }))
+  await mount([...rows, ...pair('a', 100_000, 140_000), event()], 'hiddens')
+  expect(localStorage.getItem(KEY), 'F7: a folded non-member cannot take selection').not.toBe('hiddens')
+})
+
+it('F6: count title is capped at ten members and uses the existing remainder copy', async () => {
+  await mount(Array.from({ length: 55 }, (_, i) => pair(String(i), i, 1000 + i)).flat())
+  expect(marks()[0].title.split('\n'), 'F6: a count title has ten commands and one remainder line').toHaveLength(11)
+  expect(marks()[0].title).toContain('45 more')
+})
+it('F6: unrelated help state does not rebuild interval titles', async () => {
+  await mount()
+  const spy = vi.spyOn(time, 'formatDateTime')
+  fireEvent.keyDown(window, { key: '?' })
+  expect(spy, 'F6: memoized tracks do not rebuild titles for help state').not.toHaveBeenCalled()
+})
+it('F1 property: all visible terminal rows stay mounted through scroll and keyboard handlers', async () => {
+  await mount(Array.from({ length: 13 }, (_, i) => pair(String(i), i * 100_000, i * 100_000 + 40_000, String(i))).flat())
+  const outer = screen.getByTestId('timeline-lane-scroll')
+  Object.defineProperty(outer, 'clientHeight', { configurable: true, value: 224 })
+  const check = () => {
+    const keys = [...document.querySelectorAll<HTMLElement>('[data-track-key]')].map(e => e.dataset.trackKey)
+    for (let row = 1; row <= 13; row++) {
+      const top = 48 + row * 44
+      if (top < outer.scrollTop + 224 && top + 44 > outer.scrollTop)
+        expect(keys, `F1: visible terminal row ${row} at scroll ${outer.scrollTop} has a track`).toContain(`terminal:${13 - row}`)
+    }
+  }
+  let seed = 781
+  for (let i = 0; i < 30; i++) {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
+    outer.scrollTop = seed / 2 ** 32 * (48 + 14 * 44 - 224)
+    fireEvent.scroll(outer); check()
+    fireEvent.keyDown(window, { key: i % 2 ? 'Home' : 'End' }); check()
+  }
 })

@@ -536,6 +536,8 @@ test.describe.serial('timeline-standard-mode: timeline standard / swim-lane mode
     const interval = page.locator('[data-timeline-interval][aria-label*="whoami"]')
     await expect(interval).toHaveCount(1)
     await expect(interval.locator('[data-timeline-mark]')).toHaveCount(1)
+    // Output texture moved with the paired command from its event dot to its end mark.
+    await expect(interval.locator('[data-interval-io]')).toHaveCount(1)
     await expect(page.locator('[data-timeline-event]:not([data-timeline-interval])[aria-label*="whoami"]')).toHaveCount(0)
     await expect(page.locator('[data-track-key="terminal:mode-terminal"]')).toBeVisible()
     const named = (await page.locator('[data-timeline-event]').evaluateAll(

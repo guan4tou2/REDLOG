@@ -36,8 +36,12 @@
 
 ## S4 疊層與誠實規則
 
-- [ ] T040 RED：`test/timeline-interval-honesty.test.tsx`（設了結束時間時只有 start 的指令不延伸、`/` 命中 start 時區間點亮、焦點鏈、`hasMore` 的計數寫法、讀取失敗時的狀態）。
-- [ ] T041 變暗搬到區間；終點記號上的 `ioMark` 與徽章；`endsMayBeMissing`（FR-025）；可及名稱、`title` 與終端列群組名稱的 i18n 鍵。
+- [ ] T040 RED：`test/timeline-interval-honesty.test.tsx`：
+  - [x] S3 round 2 提前：`/` 命中 start 時區間點亮、焦點鏈與計數變暗、終點徽章與 `ioMark`。
+  - [ ] S4：設了結束時間時只有 start 的指令不延伸、`hasMore` 的計數寫法、讀取失敗時的狀態。
+- [ ] T041 疊層與誠實規則：
+  - [x] S3 round 2 提前：變暗搬到區間；終點記號上的 `ioMark` 與徽章；計數依所有成員變暗並提升最嚴重徽章。
+  - [ ] S4：`endsMayBeMissing`（FR-025）；精確可及名稱、計數可及名稱、`title` 與終端列群組名稱的 i18n 鍵。
 
 ## S5 e2e、文件、效能
 

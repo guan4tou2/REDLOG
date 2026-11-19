@@ -14,7 +14,7 @@ export interface IntervalMark {
   x1: number
   /** 線的中心：row * laneH + TRACK_LINE_Y。 */
   y: number
-  /** 點擊區域，寬不小於 MARK_HIT_PX，與鄰居相接於中點。 */
+  /** 點擊區域，寬不小於 MARK_HIT_PX；span 包含整段線，後開始的記號疊於其上。 */
   hitLeft: number
   hitWidth: number
   /** span／point 為 1 段；cluster 為 n 段，依起點排序。 */
@@ -102,7 +102,7 @@ export function layoutIntervalMarks(input: IntervalLayoutInput): IntervalMark[] 
       const unloaded = iv.startTs === null
       const anchor = toX(iv.startTs ?? iv.endTs!)
       const endCap = capOf(iv, endsMayBeMissing)
-      const x0 = unloaded ? anchor - OPEN_STUB_PX : anchor
+      const x0 = Math.max(0, Math.min(trackW, unloaded ? anchor - OPEN_STUB_PX : anchor))
       const end = unloaded ? anchor : iv.reversed ? anchor : iv.endBasis === 'open'
         ? endsMayBeMissing ? anchor + OPEN_STUB_PX : nextStarts[i] === null ? trackW : toX(nextStarts[i]!)
         : toX(iv.endTs!)
@@ -171,10 +171,21 @@ export function layoutIntervalMarks(input: IntervalLayoutInput): IntervalMark[] 
     placed = settled
     for (let i = 0; i < placed.length; i++) {
       const m = placed[i].mark, prev = placed[i - 1]?.mark, next = placed[i + 1]?.mark
-      const left = prev && (prev.kind === 'cluster' || m.kind === 'cluster')
-        ? (prev.x0 + m.x0) / 2 : m.x0 - MARK_HIT_PX / 2
-      const right = next && (next.kind === 'cluster' || m.kind === 'cluster')
-        ? (m.x0 + next.x0) / 2 : Math.max(m.x0 + MARK_HIT_PX / 2, Math.min(trackW, m.x1 + MARK_HIT_PX / 2))
+      // A span always owns its whole line and both pads. Later-started marks
+      // paint above it and own their local boxes, never the gap between starts.
+      const half = MARK_HIT_PX / 2
+      let left = Math.max(0, Math.min(trackW - MARK_HIT_PX, m.x0 - half))
+      const drawnEnd = m.kind === 'point' && m.open > 0 ? Math.min(trackW, m.x0 + OPEN_STUB_PX) : m.x1
+      let right = Math.min(trackW, Math.max(left + MARK_HIT_PX, drawnEnd + half))
+      // Midpoints only trim overlapping minimum boxes, never a span's line.
+      if (m.kind !== 'span') {
+        if (prev && prev.x0 + half > m.x0 - half && (prev.kind === 'cluster' || m.kind === 'cluster')) {
+          left = Math.min(right - MARK_HIT_PX, Math.max(left, (prev.x0 + m.x0) / 2))
+        }
+        if (next && m.x0 + half > next.x0 - half && (next.kind === 'cluster' || m.kind === 'cluster')) {
+          right = Math.max(left + MARK_HIT_PX, Math.min(trackW, drawnEnd + half), Math.min(right, (m.x0 + next.x0) / 2))
+        }
+      }
       m.hitLeft = left
       m.hitWidth = right - left
     }
@@ -219,4 +230,10 @@ export function filterVisibleMarks(
   const left = Math.max(0, viewLeft), right = Math.min(trackW, viewLeft + viewWidth)
   return marks.filter((m) => m.row >= rows.first - 1 && m.row <= rows.last + 1
     && m.x0 <= right && m.x1 >= left)
+}
+
+/** CSS-pixel viewport rows, shared by scrolling, keyboard walking and remounts. */
+export function visibleTrackRows(scrollTop: number, clientHeight: number, axisH: number, laneH: number, rowCount: number): { first: number; last: number } {
+  const first = Math.min(Math.max(0, rowCount - 1), Math.max(0, Math.floor((scrollTop - axisH) / laneH)))
+  return { first, last: Math.min(Math.max(0, rowCount - 1), Math.max(first, Math.ceil((scrollTop + clientHeight - axisH) / laneH) - 1)) }
 }

@@ -1,20 +1,22 @@
-import { memo, type ButtonHTMLAttributes, type RefObject } from 'react'
+import { memo, type RefObject } from 'react'
 import type { TimelineInterval, TimelineIntervalSet, TimelineTrack } from '../../lib/timelineIntervals'
 import { TRACK_LINE_Y, OPEN_STUB_PX, type IntervalMark } from '../../lib/timelineIntervalLayout'
+import type { RedLogEvent } from '../../../../core/db/event-types'
+import { ioMark, ioTitle, IO_MARK_COLOR, type EventBadge } from '../../lib/timelineDomain'
 import { safeDisplay } from '../../lib/evidenceText'
 import { formatDateTime, formatElapsedMs, useDisplayZone } from '../../lib/time'
 import { useI18n } from '../../i18n'
 
-// Both kinds of track mark share one native button implementation.
-export function TimelineMarkButton(props: ButtonHTMLAttributes<HTMLButtonElement>): JSX.Element {
-  return <button type="button" {...props} />
-}
 function trackLabel(track: TimelineTrack, builtinLabel: (idPrefix: string) => string): string {
   if (track.builtin) return builtinLabel(track.terminalId.slice(0, 4))
   return safeDisplay(`${track.shell ?? ''} ${track.pid ?? track.terminalId.slice(-6)}`.trim())
 }
 
 export interface TimelineCommandTracksProps {
+  activeIds?: ReadonlySet<string> | null
+  filtering?: boolean
+  badgesById?: ReadonlyMap<string, readonly EventBadge[]>
+  eventsById?: ReadonlyMap<string, RedLogEvent>
   selectedId?: string | null
   tabStopKey?: string
   didPan?: RefObject<boolean>
@@ -71,7 +73,7 @@ function freeAfter(positions: readonly number[], x: number, trackW: number): num
 }
 
 export const TimelineCommandTracks = memo(function TimelineCommandTracks({
-  set, marks, order, laneH, trackW, scrollLeft, rows, builtinLabel, selectedId, tabStopKey, didPan, onPick, onOpen
+  set, marks, order, laneH, trackW, scrollLeft, rows, builtinLabel, selectedId, tabStopKey, didPan, onPick, onOpen, activeIds, filtering, badgesById, eventsById
 }: TimelineCommandTracksProps): JSX.Element | null {
   const { t } = useI18n()
   useDisplayZone()
@@ -101,8 +103,22 @@ export const TimelineCommandTracks = memo(function TimelineCommandTracks({
               const cluster = mark.kind === 'cluster'
               const endX = point ? mark.x0 + 10 : mark.x1
               const dashed = mark.open > 0 || mark.startCap === 'unloaded'
-              const lineEnd = point && mark.open > 0 ? mark.x0 + OPEN_STUB_PX : mark.x1
-              const title = mark.intervals.map((member) => intervalTitle(member, label, t)).join('\n')
+              const lineEnd = point && mark.open > 0 ? Math.min(trackW, mark.x0 + OPEN_STUB_PX) : mark.x1
+              const dimmed = !!activeIds && !mark.intervals.some(member => member.memberIds.some(id => activeIds.has(id)))
+              const endRows = mark.intervals.flatMap(member => {
+                const end = member.endId ? eventsById?.get(member.endId) : undefined
+                return end ? [end] : []
+              })
+              const badges = endRows.flatMap(end => badgesById?.get(end.id) ?? [])
+              // Full-chain failure must remain visible even when another member
+              // was recovered. Preserve original order within each severity.
+              const badge = cluster ? badges.find(b => b.key === 'verify-broken') ?? badges.find(b => b.key === 'clock') ?? badges[0] : badges[0]
+              const io = !cluster && endRows[0] ? ioMark(endRows[0]) : null
+              const lines = mark.intervals.slice(0, 10).map(member => intervalTitle(member, label, t))
+              if (mark.intervals.length > 10) lines.push(t('timeline.clusterMoreItems', { count: mark.intervals.length - 10 }))
+              const title = lines.join('\n')
+                + (badges.length ? '\n' + [...new Set(badges.map(b => `${b.icon} ${b.reasonKey ? t(b.reasonKey) : b.reason ?? ''}`))].join('\n') : '')
+                + (io ? ioTitle(io, t) : '')
               const name = safeDisplay(iv.command.replace(/\s+/g, ' ').trim())
               const ringLeft = mark.x0 - (cluster ? 8 : 4)
               const ringRight = Math.max(lineEnd, cluster ? mark.x0 + (mark.failed ? 17 : 8) : mark.endCap === 'open' || mark.endCap === 'open-stub' ? mark.x0 + 4 : endX + 4)
@@ -110,16 +126,17 @@ export const TimelineCommandTracks = memo(function TimelineCommandTracks({
               // Drawing remains in track coordinates inside a zero-sized origin.
               // Only the button is hit-tested; labels and overflow ink are not.
               return (
-                <TimelineMarkButton key={mark.key} data-testid="timeline-interval-mark" data-mark-kind={mark.kind}
+                <button type="button" key={mark.key} data-testid="timeline-interval-mark" data-mark-kind={mark.kind}
                   data-timeline-event data-timeline-interval
-                  title={title} aria-label={title} aria-pressed={selected || undefined}
+                  title={title} aria-label={`${title}${dimmed && filtering ? ` · ${t('timeline.notMatching')}` : ''}`} aria-pressed={selected || undefined}
+                  aria-disabled={dimmed || undefined}
                   tabIndex={tabStopKey === mark.key ? 0 : -1}
                   className="absolute pointer-events-auto cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-redlog-accent"
-                  style={{ left: mark.hitLeft, top: TRACK_LINE_Y - 13.5, width: mark.hitWidth, height: 27 }}
-                  onClick={(e) => { if (!didPan?.current) onPick?.(mark, e.detail) }}
-                  onDoubleClick={() => { if (!didPan?.current) onOpen?.(mark, 'dblclick') }}
+                  style={{ left: mark.hitLeft, top: TRACK_LINE_Y - 13.5, width: mark.hitWidth, height: 27, opacity: dimmed ? 0.15 : 1, pointerEvents: dimmed ? 'none' : undefined }}
+                  onClick={(e) => { if (!dimmed && !didPan?.current) onPick?.(mark, e.detail) }}
+                  onDoubleClick={() => { if (!dimmed && !didPan?.current) onOpen?.(mark, 'dblclick') }}
                   onKeyDown={(e) => {
-                    if (e.key !== 'Enter' || e.metaKey || e.ctrlKey || e.altKey) return
+                    if (dimmed || e.key !== 'Enter' || e.metaKey || e.ctrlKey || e.altKey) return
                     e.preventDefault(); e.stopPropagation()
                     if (cluster) onPick?.(mark, 0); else onOpen?.(mark, 'key')
                   }}>
@@ -146,6 +163,14 @@ export const TimelineCommandTracks = memo(function TimelineCommandTracks({
                     <span data-testid="timeline-exit-code" className="absolute font-mono text-xs leading-none text-redlog-text"
                       style={{ left: endX + 8, top: TRACK_LINE_Y - 5 }}>{iv.exitCode}</span>
                   )}
+                  {io && (io.io || io.fail) && <span data-interval-io title={ioTitle(io, t).replace(/^ · /, '')}
+                    className="absolute pointer-events-none" style={{ left: endX - 4, top: TRACK_LINE_Y - 4, width: 8, height: 8 }}>
+                    {io.fail && <span className="absolute rounded-full border border-redlog-danger" style={{ left: -2.5, top: -2.5, width: 13, height: 13, borderWidth: 1.5 }} />}
+                    {io.io && <span className="absolute rounded-full" style={{ right: -1, bottom: -1, width: 3, height: 3, background: IO_MARK_COLOR[io.io] }} />}
+                  </span>}
+                  {badge && <span data-interval-badge title={badges.map(b => `${b.icon} ${b.reasonKey ? t(b.reasonKey) : b.reason ?? ''}`).join('\n')}
+                    className="absolute rounded-full bg-redlog-bg/95 border border-redlog-warn/60 text-xs leading-none flex items-center justify-center pointer-events-none"
+                    style={{ left: (cluster ? mark.x0 : endX) + 4, top: TRACK_LINE_Y - 12, width: 12, height: 12 }}>{badge.icon}</span>}
                   {mark.label && (
                     <span data-testid="timeline-interval-name" title={title} className="absolute block truncate whitespace-nowrap font-mono text-xs leading-none text-redlog-text"
                       style={{ left: mark.label.side === 'right' ? mark.x0 + 6 : mark.x0 - 6 - mark.label.maxW,
@@ -154,7 +179,7 @@ export const TimelineCommandTracks = memo(function TimelineCommandTracks({
                     </span>
                   )}
                   </span>
-                </TimelineMarkButton>
+                </button>
               )
             })}
             <span data-testid="timeline-track-label" className="absolute pointer-events-none whitespace-nowrap font-mono text-xs leading-none text-redlog-text-faint"
