@@ -81,7 +81,7 @@ export const TimelineEventLog = memo(function TimelineEventLog({
   }
   const minHeight = heightPx != null ? `${heightPx}px` : (selectedId ? '18vh' : '22vh')
   return (
-    <div ref={rootRef} className="flex-1 min-h-0 flex flex-col border-t border-redlog-border/60 bg-redlog-bg/50" style={{ minHeight }}>
+    <div ref={rootRef} data-testid="timeline-event-list" className="flex-1 min-h-0 flex flex-col border-t border-redlog-border/60 bg-redlog-bg/50" style={{ minHeight }}>
       {/* The count is never not shown. A filter that hides without saying
           how much is a filter that loses evidence quietly — and the thing that
           mattered is sometimes a stack trace inside a 404 body that no query
@@ -93,7 +93,9 @@ export const TimelineEventLog = memo(function TimelineEventLog({
           {hiddenToggle}
         </div>
       )}
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      {/* In the bottom split the rail contributes its floor to the upper
+          column's preferred height. The scrolling cards don't add to it. */}
+      <div className={`flex-1 min-h-0 overflow-y-auto ${detailOpen ? 'contain-size' : ''}`}>
         {/* The rail draws the newest of the window's events; when the
             window holds more, say so where the missing (older) ones would be,
             so a capped rail never reads as the whole window. */}
