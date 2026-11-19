@@ -108,7 +108,11 @@ const EXEMPT = new Set(['src/renderer/src/lib/sourceStatusView.ts'])
 /** Counted 2026-11-13 on origin/main 984a73a2: 49 lines in 13 files. */
 const READ_BASELINE: Record<string, number> = {
   'src/renderer/src/env.d.ts': 3,
-  'src/renderer/src/components/CaptureHealth.tsx': 23,
+  // 2026-11-19: 23 -> 24. A source row says "paused" while recording is paused
+  // only where it would otherwise say ready (it said "running / available"
+  // over a recorder that was writing nothing). That is one more judgement
+  // outside the status function, to be folded with the rest of this file's.
+  'src/renderer/src/components/CaptureHealth.tsx': 24,
   'src/renderer/src/components/ProjectPicker.tsx': 2,
   'src/renderer/src/components/RecordingWorkspace.tsx': 1,
   'src/renderer/src/components/StatusBar.tsx': 2,
