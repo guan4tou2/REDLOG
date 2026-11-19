@@ -159,9 +159,11 @@ export const TimelineCommandTracks = memo(function TimelineCommandTracks({
                       style={{ left: mark.x0 - 4, top: TRACK_LINE_Y - 4, width: 8, height: 8, transform: selected ? 'scale(1.3)' : undefined }} />
                   ) : null}
                   {(!cluster || mark.failed > 0) && <EndShape mark={mark} x={cluster ? mark.x0 + 13 : endX} y={TRACK_LINE_Y} />}
-                  {!cluster && mark.endCap === 'failed' && freeAfter(positions, endX, trackW) >= 20 && (
+                  {/* A badge sits at the end's upper right (endX+4..+16); the
+                      exit code moves clear of it rather than under it. */}
+                  {!cluster && mark.endCap === 'failed' && freeAfter(positions, endX, trackW) >= (badge ? 32 : 20) && (
                     <span data-testid="timeline-exit-code" className="absolute font-mono text-xs leading-none text-redlog-text"
-                      style={{ left: endX + 8, top: TRACK_LINE_Y - 5 }}>{iv.exitCode}</span>
+                      style={{ left: endX + (badge ? 20 : 8), top: TRACK_LINE_Y - 5 }}>{iv.exitCode}</span>
                   )}
                   {io && (io.io || io.fail) && <span data-interval-io title={ioTitle(io, t).replace(/^ · /, '')}
                     className="absolute pointer-events-none" style={{ left: endX - 4, top: TRACK_LINE_Y - 4, width: 8, height: 8 }}>
