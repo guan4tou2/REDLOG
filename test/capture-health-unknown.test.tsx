@@ -209,3 +209,12 @@ it('5: recording stays unknown until confirmed and a rejected read stays unknown
   expect(rec().getAttribute('data-recording')).toBe('unknown')
   expect(rec().textContent).toContain('REC?')
 })
+
+it('shows the dashboard command capture as paused without implying a hook failure', async () => {
+  health.mockResolvedValue({ ...snap('healthy'), sources: [{ id: 'terminal', installed: true, state: 'ready' }] })
+  window.redlog.recording.get = async () => false
+  show(<DashboardView onNavigate={noop} projectName="p" />)
+  const row = await screen.findByTestId('capture-core-commands')
+  await waitFor(() => expect(row.textContent).toContain('PAUSED'))
+  expect(row.textContent).not.toContain('Running')
+})

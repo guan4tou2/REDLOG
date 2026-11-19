@@ -183,6 +183,10 @@ export function ScreenshotsView(): JSX.Element {
         ...(cursor ? { cursor } : {}),
         trigger: triggerFilter
       })
+      const deleted = page.deletedIds
+      if (!signal.cancelled && deleted?.length) {
+        setDeletedIds(prev => new Set([...prev, ...deleted]))
+      }
       if (!cursor && triggerFilter === null && !signal.cancelled) {
         setTriggerTotals(countTriggers(page.items))
         setTriggerTotalsPartial(page.hasMore)

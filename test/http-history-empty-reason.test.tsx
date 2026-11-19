@@ -7,10 +7,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
+let personalDomains: string[] = []
 const sharedFilter: Record<string, unknown> = { targetId: null, agentType: null, timeRange: null, inScopeOnly: false }
 
 vi.mock('../src/renderer/src/lib/FilterContext', () => ({
-  useSharedFilter: () => ({ filter: sharedFilter, scopeTargets: [], scopeExcludeTargets: [] }),
+  useSharedFilter: () => ({ filter: sharedFilter, scopeTargets: [], scopeExcludeTargets: [], personalDomains }),
   toEventFilter: () => ({})
 }))
 const t = (key: string, vars?: Record<string, unknown>): string => vars ? `${key}:${JSON.stringify(vars)}` : key
@@ -39,7 +40,7 @@ function mountEmpty(): void {
 }
 
 afterEach(() => {
-  cleanup(); vi.clearAllMocks()
+  cleanup(); vi.clearAllMocks(); personalDomains = []; delete sharedFilter.hidePersonal
   Object.assign(sharedFilter, { targetId: null, agentType: null, timeRange: null, inScopeOnly: false })
 })
 
@@ -72,4 +73,14 @@ describe('HTTP History empty line', () => {
     await waitFor(() => expect(screen.getByText('httpHistory.noMatch')).toBeTruthy())
     expect(screen.queryByText('httpHistory.empty')).toBeNull()
   })
+})
+
+it('says no flows match when configured personal domains are hidden', async () => {
+  mountEmpty()
+  sharedFilter.hidePersonal = true
+  personalDomains = ['example.test']
+  const { HttpHistoryPanel } = await import('../src/renderer/src/components/HttpHistoryPanel')
+  render(<HttpHistoryPanel />)
+  expect(await screen.findByText('httpHistory.noMatch')).toBeTruthy()
+  expect(screen.queryByText('httpHistory.empty')).toBeNull()
 })

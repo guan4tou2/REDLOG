@@ -80,10 +80,10 @@ describe('the collapsed line', () => {
     expect(details()).toBeNull()
   })
 
-  it('puts a failed anchor on the line while collapsed, in words and with a shape', async () => {
+  it('puts the missing external timestamp on the line while collapsed', async () => {
     install({ anchors: async () => [anchorAt({ status: 'failed' })] })
     mount()
-    await waitFor(() => expect(line().textContent).toContain('✗ The last anchor failed'))
+    await waitFor(() => expect(line().textContent).toContain('Latest anchor provided no external timestamp'))
     expect(details()).toBeNull()
   })
 

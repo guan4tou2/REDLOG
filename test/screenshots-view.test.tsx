@@ -313,3 +313,12 @@ describe('keyboard and focus on a row', () => {
     await waitFor(() => expect(document.activeElement).toBe(row))
   })
 })
+
+it('shows a recorded deletion on a fresh mount, before trying to load the image', async () => {
+  const query = install()
+  query.mockImplementation(async () => ({ items: all, deletedIds: ['s1'], hasMore: false, nextCursor: null }))
+  mount()
+  await screen.findByText('s1.png')
+  expect(within(rowOf(/s1\.png/)).getByText('File deleted · event record kept')).toBeTruthy()
+  expect(rowOf(/s1\.png/).querySelector('img')).toBeNull()
+})

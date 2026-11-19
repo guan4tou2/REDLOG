@@ -135,7 +135,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
   active?: boolean
 }): JSX.Element {
   const { t } = useI18n()
-  const { filter: sharedFilter, scopePolicyKey } = useSharedFilter()
+  const { filter: sharedFilter, scopePolicyKey, personalDomains } = useSharedFilter()
   const scopeRead = useReadState(() => window.redlog.scope.policy())
   useRevalidateOnFocus(scopeRead.retry)
   useEffect(() => window.redlog.events.onNewBatch(events => {
@@ -358,7 +358,8 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
   // nothing returns zero flows too. Which line is true depends on whether
   // anything is narrowing the list, not on how many flows came back.
   const narrowed = !!(filterText || methodFilter || statusFilter || hostFilter
-    || sharedFilter.targetId || sharedFilter.timeRange || sharedFilter.inScopeOnly)
+    || sharedFilter.targetId || sharedFilter.timeRange || sharedFilter.inScopeOnly
+    || (sharedFilter.hidePersonal && personalDomains?.length))
   const emptyText = emptyExplained || loadError ? null : narrowed ? t('httpHistory.noMatch') : t('httpHistory.empty')
 
   const toggleSort = (col: typeof sortCol) => {

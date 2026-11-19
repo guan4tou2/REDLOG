@@ -15,9 +15,11 @@ export const OUTPUT_NOTE_KEY: Partial<Record<CommandOutputState, string>> = {
   unknown: 'content.output.unknown'
 }
 
-/** The output state of a finished shell command, or undefined for any other row. */
-export function commandOutputOf(event: { agentType: string; data?: Record<string, unknown> }): CommandOutputState | undefined {
-  return event.agentType === 'shell' && event.data?.subtype === 'command_end'
-    ? commandOutputState(event.data as Record<string, unknown>)
-    : undefined
+/** Reader inputs supplied by a finished shell command. */
+export function commandReaderProps(event: { agentType: string; data?: Record<string, unknown> }): {
+  outputState?: CommandOutputState
+  commandData?: Record<string, unknown>
+} {
+  if (event.agentType !== 'shell' || event.data?.subtype !== 'command_end') return {}
+  return { outputState: commandOutputState(event.data), commandData: event.data }
 }

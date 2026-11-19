@@ -216,6 +216,7 @@ describe('scope and project identity entry', () => {
     const alert = screen.getByTestId('list-field-rejected')
     expect(alert.textContent).toContain('10.0.0.0/33')
     expect(alert.textContent).toContain('host:8080')
+    expect(alert.textContent).toContain('IP address, CIDR, hostname or *.domain')
     expect((field as HTMLInputElement).value).toBe('10.0.0.0/33 host:8080')
   })
 })

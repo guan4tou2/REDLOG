@@ -505,6 +505,8 @@ function buildTierWhere(tier: 'chained' | 'logged', input: TierWhereInput): { wh
       sql: `(${a}.rowid IN (SELECT rowid FROM ${ftsTable} WHERE ${ftsTable} MATCH ?) OR ${a}.id IN (SELECT value FROM json_each(?)))`,
       params: [term.match, term.bodyIdsJson]
     })
+    const textParts: string[] = []
+    const textParams: unknown[] = []
     if (tier === 'logged' && q.terms.length > 1) {
       // Decision 2026-11-15 §1 item 5: a row of an HTTP exchange (the rows
       // the Activity page shows as one, httpExchangeSql) matches when every
@@ -516,14 +518,14 @@ function buildTierWhere(tier: 'chained' | 'logged', input: TierWhereInput): { wh
       // One term is the same either way, so it keeps the plain form below.
       const http = httpExchangeSql('e'), other = httpExchangeSql('x')
       const any = q.terms.map(term => holds('e', term))
-      parts.push(`(${any.map(h => h.sql).join(' OR ')})`)
-      params.push(...any.flatMap(h => h.params))
+      textParts.push(`(${any.map(h => h.sql).join(' OR ')})`)
+      textParams.push(...any.flatMap(h => h.params))
       const bound = input.snapshot ? ' AND x.rowid <= CAST(? AS INTEGER)' : ''
       for (const term of q.terms) {
         const own = holds('e', term), inExchange = holds('x', term)
-        parts.push(`(${own.sql} OR (${http.eligible} AND ${http.key} IN (
+        textParts.push(`(${own.sql} OR (${http.eligible} AND ${http.key} IN (
           SELECT ${other.key} FROM events_logged x WHERE ${inExchange.sql} AND ${other.eligible}${bound})))`)
-        params.push(...own.params, ...http.params, ...inExchange.params, ...other.params,
+        textParams.push(...own.params, ...http.params, ...inExchange.params, ...other.params,
           ...(input.snapshot ? [input.snapshot.loggedMaxRowId] : []))
       }
     } else {
@@ -531,9 +533,33 @@ function buildTierWhere(tier: 'chained' | 'logged', input: TierWhereInput): { wh
       // in any of its bodies counts, so "a body word and a URL word" matches.
       for (const term of q.terms) {
         const own = holds('e', term)
-        parts.push(own.sql)
-        params.push(...own.params)
+        textParts.push(own.sql)
+        textParams.push(...own.params)
       }
+    }
+    // Pages that hide output rows can still find the owning command. A chunk
+    // is matched by the existing per-tier FTS, then its stored id joins it to
+    // the command. Conditions and pagination continue to select visible rows.
+    if (textParts.length && input.excludeHousekeeping && (!input.filter?.agentType || input.filter.agentType === 'shell')) {
+      const chunkMatches = (table: 'events' | 'events_logged', maxRowId?: number): string => `
+        SELECT json_extract(x.data, '$.command_id') FROM ${table} x
+        WHERE x.rowid IN (SELECT rowid FROM ${table}_fts WHERE ${table}_fts MATCH ?)
+          AND x.agent_type = 'shell' AND x.subtype = 'command_output'
+          AND (json_extract(x.data, '$.late') = 1 OR json_extract(x.data, '$.streamed') = 1)
+          ${maxRowId === undefined ? '' : 'AND x.rowid <= ?'}`
+      const cuts = [input.snapshot?.chainedMaxRowId, input.snapshot?.loggedMaxRowId]
+      const table = tier === 'chained' ? 'events' : 'events_logged'
+      parts.push(`((${textParts.join(' AND ')}) OR e.rowid IN (
+        SELECT cmd.rowid FROM ${table} cmd
+        WHERE cmd.agent_type = 'shell' AND cmd.subtype = 'command_end'
+          AND (json_extract(cmd.data, '$.late_output') = 1 OR json_extract(cmd.data, '$.output_streamed') = 1)
+          AND json_extract(cmd.data, '$.command_id') IN (
+            ${chunkMatches('events', cuts[0])} UNION ALL ${chunkMatches('events_logged', cuts[1])}
+          )))`)
+      params.push(...textParams, ...cuts.flatMap(cut => cut === undefined ? [q.match] : [q.match, cut]))
+    } else {
+      parts.push(...textParts)
+      params.push(...textParams)
     }
   }
   if (q) appendConditions(q.conditions, parts, params, tier)
@@ -752,7 +778,7 @@ export function queryScreenshotPage(opts: {
   limit?: number
   cursor?: string | null
   trigger?: string | null
-}): QueryPage<RedLogEvent> {
+}): QueryPage<RedLogEvent> & { deletedIds: string[] } {
   const db = getReadonlyDB()
   const limit = opts.limit ?? 100
   const cursor: CursorKey | null = opts.cursor ? decodeCursor(opts.cursor) : null
@@ -782,8 +808,13 @@ export function queryScreenshotPage(opts: {
 
   const perArmLimit = limit + 1
 
+  const deletionIds = (table: 'events' | 'events_logged'): string => `
+    SELECT COALESCE(json_extract(data, '$._causes[0]'), json_extract(data, '$.source_event'))
+    FROM ${table}
+    WHERE agent_type = 'system' AND subtype = 'screenshot_deleted'`
+
   const sql = `
-    SELECT * FROM (
+    WITH page AS (SELECT * FROM (
       SELECT * FROM (
         SELECT rowid AS _row,
                id, timestamp, engagement_id, session_id, operator_id, agent_type,
@@ -809,7 +840,11 @@ export function queryScreenshotPage(opts: {
         LIMIT ?
       )
     ) ${CANONICAL_ORDER}
-    LIMIT ?`
+    LIMIT ?)
+    SELECT page.*, page.id IN (
+      ${deletionIds('events')} UNION ALL ${deletionIds('events_logged')}
+    ) AS _file_deleted
+    FROM page ${CANONICAL_ORDER}`
 
   const bind = [...chainedParams, perArmLimit, ...loggedParams, perArmLimit, limit + 1]
   const rows = db.prepare(sql).all(...bind) as Array<Record<string, unknown>>
@@ -820,7 +855,11 @@ export function queryScreenshotPage(opts: {
     tier: row.tier as 'chained' | 'logged'
   }))
 
-  return { ...page, items: page.items.map(rowToEvent) }
+  return {
+    ...page,
+    items: page.items.map(rowToEvent),
+    deletedIds: page.items.filter(row => row._file_deleted === 1).map(row => row.id as string)
+  }
 }
 
 // v0.6.96 Bug-2: O(1)-ish lookup by event id. Prior code did

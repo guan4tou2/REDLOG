@@ -27,9 +27,9 @@ const commandEnd = {
     stdout: 'early\n', late_output: true }
 }
 
-function install(rows: unknown[]): ReturnType<typeof vi.fn> {
+function install(rows: unknown[], event: typeof commandEnd | Record<string, unknown> = commandEnd): ReturnType<typeof vi.fn> {
   const queryPage = vi.fn().mockImplementation((opts: { agentType: string }) =>
-    Promise.resolve(opts.agentType === 'shell' ? { items: [commandEnd], hasMore: false, nextCursor: null } : emptyPage))
+    Promise.resolve(opts.agentType === 'shell' ? { items: [event], hasMore: false, nextCursor: null } : emptyPage))
   ;(window as unknown as { redlog: unknown }).redlog = {
     events: { queryPage, commandOutput: vi.fn().mockResolvedValue({ items: rows, hasMore: false }), onNewBatch: () => () => {} },
     operators: { list: vi.fn().mockResolvedValue([{ id: 'op', name: 'Operator' }]) },
@@ -38,9 +38,10 @@ function install(rows: unknown[]): ReturnType<typeof vi.fn> {
   return queryPage
 }
 
+beforeEach(() => vi.clearAllMocks())
+afterEach(cleanup)
+
 describe('Transcript background output', () => {
-  beforeEach(() => vi.clearAllMocks())
-  afterEach(cleanup)
 
   it('says nothing extra once the background output finished whole', async () => {
     install([
@@ -76,4 +77,24 @@ describe('Transcript background output', () => {
     await screen.findByText('$ nmap -p- 10.0.0.7 &')
     expect(queryPage).toHaveBeenCalledWith(expect.objectContaining({ agentType: 'shell', excludeHousekeeping: true }))
   })
+})
+
+it('marks a missing sequence between saved chunks in Input / Output', async () => {
+  install([
+    { data: { seq: 1, stdout: 'first saved chunk\n' } },
+    { data: { seq: 3, stdout: 'next saved chunk\n' } },
+    { data: { seq: 4, final: true, dropped_bytes: 50 } }
+  ])
+  render(<TranscriptView reading="io" />)
+  const output = await screen.findByText(/first saved chunk.*next saved chunk/s, { selector: 'pre' })
+  expect(output.textContent).toMatch(/first saved chunk.*content.outputGap.*next saved chunk/s)
+  expect(screen.getByText('timeline.detail.lateLost')).toBeTruthy()
+})
+
+it('names pass-through without offering the already visible command as saved content', async () => {
+  install([], { ...commandEnd, engagementId: 'p', data: { subtype: 'command_end', command: 'pager', output_disposition: 'interactive', exit_code: 0 } })
+  render(<TranscriptView reading="io" />)
+  expect(await screen.findByText('content.output.interactive')).toBeTruthy()
+  expect(screen.queryByText('content.savedContent')).toBeNull()
+  expect(screen.queryByTestId('transcript-toggle')).toBeNull()
 })

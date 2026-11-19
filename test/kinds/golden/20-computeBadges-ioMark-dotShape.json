@@ -1370,14 +1370,14 @@
   },
   "shell:command_end#relay-partial-streamed": {
    "badges": [],
-   "commandOutputState": "incomplete",
+   "commandOutputState": "saved",
    "dotShape": {
     "scale": 1,
     "shape": "circle"
    },
    "ioMark": {
     "fail": false,
-    "io": "uncaptured"
+    "io": "recorded"
    }
   },
   "shell:command_end#relay-redirected": {

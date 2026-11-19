@@ -122,7 +122,7 @@ export default function StatusBar(): JSX.Element {
           id: 'integrity',
           tier: 'attention',
           title: t(`issues.integrity.${fault.kind}`, fault.vars),
-          detail: t('issues.integrityDetail'),
+          detail: t(fault.kind === 'anchor-failed' ? 'evidence.anchorNeverAccepted' : 'issues.integrityDetail'),
           view: 'screenshots', // the Evidence page, where verification lives
           // A dead or failed anchor loop is answered by submitting again, and
           // that is one call. A drifted chain or a broken row is not answered

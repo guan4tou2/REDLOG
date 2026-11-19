@@ -71,6 +71,11 @@ describe('system event titles', () => {
     expect(titles[4]).not.toBe(titles[5])
   })
 
+  it('titles a byte-only pause gap in bytes', () => {
+    expect(eventTitle(sys({ subtype: 'capture_gap', agent: 'codex', skipped_units: 0, skipped_bytes: 42 })))
+      .toBe('[gap] codex recording paused, 42 transcript bytes omitted')
+  })
+
   it('titles a stored presumed_safe verdict as unknown, the same as the IP card', () => {
     expect(eventTitle(sys({ subtype: 'ip_verdict', ip_verdict_kind: 'presumed_safe' })))
       .toBe(eventTitle(sys({ subtype: 'ip_verdict', ip_verdict_kind: 'unknown' })))

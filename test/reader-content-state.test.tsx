@@ -68,3 +68,21 @@ it('hides empty or uncaptured stderr but preserves a saved stderr failure', asyn
     cleanup()
   }
 })
+
+it('shows the saved chunks in a streamed command reader', async () => {
+  const { EventContentReader } = await import('../src/renderer/src/components/EventContentReader')
+  const { commandOutputState } = await import('../src/core/content-contract')
+  const commandData = { subtype: 'command_end', command_id: 'c', output_streamed: true, completeness: 'partial' }
+  ;(window as any).redlog = {
+    content: { list: vi.fn().mockResolvedValue({ ok: true, value: [{ field: 'stdout', status: 'not-captured', ref: null }] }) },
+    events: { onNewBatch: () => () => {}, commandOutput: vi.fn().mockResolvedValue({ items: [
+      { data: { stdout: 'first saved chunk', seq: 1 } },
+      { data: { stdout: 'next saved chunk', seq: 3 } },
+      { data: { seq: 4, final: true, dropped_bytes: 20 } }
+    ], hasMore: false }) }
+  }
+  render(<EventContentReader projectId="p" eventId="e" {...{ commandData }} />)
+  expect(await screen.findByText(/first saved chunk.*next saved chunk/s)).toBeTruthy()
+  expect(commandOutputState(commandData)).toBe('saved')
+  expect(screen.queryByText('content.status.not-captured')).toBeNull()
+})

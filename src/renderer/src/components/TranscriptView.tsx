@@ -1,6 +1,6 @@
-import { capturedContentIsPartial, commandOutputState, responseBodyState, type CommandOutputState } from '../../../core/content-contract'
+import { streamedCommandId, capturedContentIsPartial, commandOutputState, responseBodyState, type CommandOutputState } from '../../../core/content-contract'
 import { SCROLL_GUTTER } from '../lib/pageLayout'
-import { commandOutputOf, OUTPUT_NOTE_KEY } from '../lib/commandOutputNote'
+import { commandReaderProps, OUTPUT_NOTE_KEY } from '../lib/commandOutputNote'
 
 /** Output notes whose wording is shared with the Timeline, not transcript-only. */
 const SHARED_OUTPUT_NOTES: ReadonlySet<string | undefined> = new Set(['empty', 'redirected', 'interactive', 'incomplete', 'unknown'])
@@ -22,7 +22,7 @@ import { AlignLeft } from 'lucide-react'
 import { useContributeExport } from '../lib/exportScope'
 import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
 import { blockToMarkdown, blocksToMarkdown } from '../lib/transcriptSnippet'
-import { summarizeLateOutput, type LateOutputSummary } from '../lib/lateOutput'
+import { commandStreamText, readCommandStream, type LateOutputSummary } from '../lib/lateOutput'
 import { pickedSteps, PICK_CATEGORIES, type PickCategory } from '../lib/transcriptPicks'
 import { EventContentReader } from './EventContentReader'
 
@@ -104,6 +104,8 @@ interface Block {
   /** what came back, when we have it */
   output?: string
   outputBytes?: number
+  stream?: LateOutputSummary
+  inlinePrefix?: string
   /** why there is no output, when there isn't one */
   outputNote?: string
   meta?: string
@@ -204,8 +206,10 @@ function buildBlocks(events: Ev[], names: Record<string, string>, t: (k: string,
       const io = d.io as { len?: number; unbracketed?: boolean } | undefined
       // A background job's later output is part of this command. Nothing is
       // said about it while it is whole; only a still-open or lossy one is.
-      const lateSum = (d.late_output === true || d.output_streamed === true) && typeof d.command_id === 'string' ? late[d.command_id] : undefined
-      const inlineOut = [d.stdout, d.stderr, d.output_preview, lateSum?.stdout, lateSum?.stderr].filter((x) => typeof x === 'string').join('')
+      const streamId = streamedCommandId(d)
+      const lateSum = streamId ? late[streamId] : undefined
+      const inlinePrefix = [d.stdout, d.stderr, d.output_preview].filter(x => typeof x === 'string').join('')
+      const inlineOut = lateSum ? inlinePrefix + lateSum.stdout + lateSum.stderr : inlinePrefix
       const lateNote = lateSum?.state === 'preview' ? ` · ${t('timeline.detail.outputPreview')}`
         : lateSum?.state === 'running' ? ` · ${t('transcript.metaLateRunning')}`
         : lateSum?.state === 'incomplete' ? ` · ${t('transcript.metaLateIncomplete')}` : ''
@@ -238,7 +242,8 @@ function buildBlocks(events: Ev[], names: Record<string, string>, t: (k: string,
       out.push({
         id: e.id, ts: e.timestamp, kind: 'shell', actor: actorOf(e),
         input: `$ ${String(d.command ?? '')}`,
-        output, outputBytes, outputNote,
+        output, outputBytes, outputNote, stream: lateSum,
+        inlinePrefix,
         meta: `${exitKnown ? t('transcript.metaExit', { code: String(exit) }) : t('transcript.metaExitUnknown')}${d.duration_sec != null ? ` · ${d.duration_sec}s` : ''}${lateNote}`,
         exitCode: exit,
         events: [e]
@@ -618,12 +623,14 @@ export default function TranscriptView({ onOpenInTimeline, active = true, readin
   const [lateOutput, setLateOutput] = useState<Record<string, LateOutputSummary>>({})
   useEffect(() => {
     const ids = events
-      .filter((e) => e.agentType === 'shell' && e.data?.subtype === 'command_end' && (e.data?.late_output === true || e.data?.output_streamed === true) && typeof e.data?.command_id === 'string')
-      .map((e) => e.data?.command_id as string)
+      .flatMap(e => {
+        const id = e.agentType === 'shell' && e.data?.subtype === 'command_end' && streamedCommandId(e.data)
+        return id ? [id] : []
+      })
     if (ids.length === 0) { setLateOutput((cur) => (Object.keys(cur).length === 0 ? cur : {})); return }
     let live = true
-    void Promise.all(ids.map((id) => window.redlog.events.commandOutput(id)
-      .then((rows) => [id, summarizeLateOutput(rows.items, rows.hasMore)] as const)
+    void Promise.all([...new Set(ids)].map((id) => readCommandStream(id)
+      .then(output => [id, output] as const)
       .catch(() => null)))
       .then((pairs) => {
         if (live) setLateOutput(Object.fromEntries(pairs.filter((p): p is readonly [string, LateOutputSummary] => p !== null)))
@@ -907,11 +914,12 @@ export default function TranscriptView({ onOpenInTimeline, active = true, readin
         {newestFirst && unseenButton}
         {displayed.map((b) => {
           const revealed = expanded.has(b.id)
-          const hasOutput = !!b.output || !!b.outputNote
+          const outputUnavailable = b.kind === 'shell' && !b.output && (b.outputNote === 'interactive' || b.outputNote === 'uncaptured')
+          const hasOutput = !outputUnavailable && (!!b.output || !!b.outputNote)
           const big = (b.output?.length ?? 0) > MAX_INLINE
-          const body = revealed ? (big ? b.output?.slice(0, MAX_INLINE) : b.output) : undefined
           const fullyExpanded = expanded.has(`${b.id}:full`)
-          const displayBody = fullyExpanded && b.output ? b.output : body
+          const markedOutput = revealed && b.stream ? commandStreamText(b.stream, t('content.outputGap'), b.inlinePrefix) : b.output
+          const displayBody = revealed ? (big && !fullyExpanded ? markedOutput?.slice(0, MAX_INLINE) : markedOutput) : undefined
           const savedSource = [...b.events].reverse().find(event => typeof event.engagementId === 'string' && event.engagementId)
           const readerOpen = expanded.has(`${b.id}:reader`)
           const literal = backendQuery?.text ?? ''
@@ -1061,6 +1069,9 @@ export default function TranscriptView({ onOpenInTimeline, active = true, readin
               {!revealed && !b.output && b.outputNote === 'recorded' && (
                 <p className="mx-2.5 mb-2 text-xs text-redlog-text-dim">{t('transcript.note.recorded', { size: fmtBytes(b.outputBytes ?? 0) })}</p>
               )}
+              {revealed && !readerOpen && !!b.stream?.lostBytes && (
+                <p className="mx-2.5 mb-2 text-xs text-redlog-warn">{t('timeline.detail.lateLost', { bytes: `${b.stream.lostBytes.toLocaleString()} B` })}</p>
+              )}
               {revealed && !readerOpen && displayBody && (
                 <pre className="mx-2.5 mb-2 px-2 py-1.5 bg-redlog-surface/60 rounded border border-redlog-border/60 text-xs text-redlog-text-dim font-mono whitespace-pre-wrap break-all max-h-96 overflow-y-auto">
                   {displayBody}
@@ -1074,7 +1085,7 @@ export default function TranscriptView({ onOpenInTimeline, active = true, readin
                   )}
                 </pre>
               )}
-              {revealed && !b.output && b.outputNote && (
+              {(revealed || outputUnavailable) && !b.output && b.outputNote && (
                 <p className={`mx-2.5 mb-2 px-2 py-1 text-xs font-mono rounded border ${
                   b.outputNote === 'recorded'
                     ? 'text-emerald-400/80 border-emerald-600/30 bg-emerald-900/10'
@@ -1087,7 +1098,7 @@ export default function TranscriptView({ onOpenInTimeline, active = true, readin
                   {b.outputNote === 'pending' ? '⏳ ' : ''}{t(SHARED_OUTPUT_NOTES.has(b.outputNote) ? OUTPUT_NOTE_KEY[b.outputNote as CommandOutputState]! : `transcript.note.${b.outputNote}`, { size: fmtBytes(b.outputBytes ?? 0) })}
                 </p>
               )}
-              {savedSource && (big || b.outputNote === 'recorded' || reading) && <div className="px-2.5 pb-2 min-w-0">
+              {savedSource && !outputUnavailable && (big || b.outputNote === 'recorded' || reading) && <div className="px-2.5 pb-2 min-w-0">
                 <Button size="compact" level="quiet" aria-expanded={readerOpen}
                   onClick={() => setExpanded(prev => {
                     const next = new Set(prev)
@@ -1095,7 +1106,7 @@ export default function TranscriptView({ onOpenInTimeline, active = true, readin
                     return next
                   })}>{t('content.savedContent')}</Button>
                 <div hidden={!readerOpen}>
-                  {readerOpen && <EventContentReader active={active} projectId={savedSource.engagementId!} eventId={savedSource.id} outputState={commandOutputOf(savedSource)} />}
+                  {readerOpen && <EventContentReader active={active} projectId={savedSource.engagementId!} eventId={savedSource.id} {...commandReaderProps(savedSource)} />}
                 </div>
               </div>}
             </div>

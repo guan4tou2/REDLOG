@@ -60,6 +60,17 @@ describeDB('queryScreenshotPage', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
 
+  it('projects only deletion records belonging to the returned screenshot page', () => {
+    const deleted = rawInsert('events_logged', 3, 'manual')
+    const another = rawInsert('events', 2, 'periodic')
+    getDB().prepare(`INSERT INTO events (id, timestamp, engagement_id, session_id, operator_id,
+      agent_type, subtype, hostname, data, created_at, hash, prev_hash, signature)
+      VALUES ('delete-a', 5, 'test-eng', 'test-sess', 'test-op', 'system', 'screenshot_deleted', '', ?, 5, 'h', 'p', 's')`)
+      .run(JSON.stringify({ subtype: 'screenshot_deleted', source_event: deleted }))
+    expect(queryScreenshotPage({ trigger: 'manual' }).deletedIds).toEqual([deleted])
+    expect(queryScreenshotPage({ trigger: 'periodic' })).toMatchObject({ items: [{ id: another }], deletedIds: [] })
+  })
+
   describe('acceptance: 537 screenshots, pageSize=100', () => {
     const PAGE_SIZE = 100
 

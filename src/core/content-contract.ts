@@ -158,6 +158,14 @@ export const BODY_SOURCE_PREDICATE = `CASE WHEN json_valid(data) THEN (${[
 export type CommandOutputState = 'inline' | 'saved' | 'recorded' | 'empty' | 'unbracketed' | 'not-captured'
   | 'redirected' | 'interactive' | 'incomplete' | 'unknown'
 
+/** Identifies output stored on follow-up rows. Inline output can coexist with it. */
+export function streamedCommandId(data: Record<string, unknown>): string | undefined {
+  if ((data.output_streamed === true || data.late_output === true) && typeof data.command_id === 'string' && data.command_id) {
+    return data.command_id
+  }
+  return undefined
+}
+
 export function commandOutputState(data: Record<string, unknown>, hasInlineText = false): CommandOutputState {
   const inline = (text: unknown, bytes: unknown, truncated: unknown): boolean =>
     typeof text === 'string' && (text.length > 0 || Number(bytes) > 0 || truncated === true)
@@ -165,7 +173,7 @@ export function commandOutputState(data: Record<string, unknown>, hasInlineText 
     || inline(data.stderr, data.stderr_bytes, data.stderr_truncated)
     // PowerShell transcript rows carry their output here (powershell-transcript.ts).
     || (typeof data.output_preview === 'string' && data.output_preview.length > 0)) return 'inline'
-  if (data.stdout_ref || data.stderr_ref) return 'saved'
+  if (data.stdout_ref || data.stderr_ref || streamedCommandId(data)) return 'saved'
   const io = data.io as { len?: unknown; unbracketed?: unknown } | undefined
   if (typeof io?.len === 'number' && !io.unbracketed) return io.len > 0 ? 'recorded' : 'empty'
   if (data.source === 'builtin-terminal') return 'unbracketed'

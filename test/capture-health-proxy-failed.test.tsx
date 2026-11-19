@@ -27,7 +27,12 @@ const show = (c: CaptureHealthInfo): void => {
 }
 beforeEach(() => {
   window.localStorage.clear()
-  ;(window as unknown as { redlog: unknown }).redlog = new Proxy({}, { get: () => new Proxy({}, { get: () => async () => undefined }) })
+  // Every bridge method answers `undefined`, except the recording switch the
+  // card subscribes to: a subscription returns its unsubscribe, not a promise.
+  const recording = { get: async () => true, onChange: () => () => {} }
+  ;(window as unknown as { redlog: unknown }).redlog = new Proxy({}, {
+    get: (_, name) => name === 'recording' ? recording : new Proxy({}, { get: () => async () => undefined })
+  })
 })
 afterEach(cleanup)
 

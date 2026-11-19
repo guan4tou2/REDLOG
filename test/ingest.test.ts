@@ -4,6 +4,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import crypto from 'crypto'
+import { closeHttpBodyIndex } from '../src/core/http-body-index'
 
 // ingest() is the single path every event takes into the record (docs/
 // DESIGN-plugin-kernel.md §3). These tests prove the two properties that make
@@ -40,6 +41,7 @@ describeDB('ingest', () => {
     opId = ops.ensurePrimaryOperator('op-primary', 'Primary', ops.generateToken()).id
   })
   afterAll(() => {
+    closeHttpBodyIndex()
     try { closeDB() } catch { /* */ }
     try { fs.rmSync(tmpDir, { recursive: true, force: true }) } catch { /* */ }
   })
@@ -360,6 +362,19 @@ describeDB('ingest', () => {
       expect(orphan).toBeTruthy()
       expect(orphan.data.unattributed).toBe(true)
       expect(orphan.data._causes ?? []).toHaveLength(0)
+    })
+
+    it('finds the command when a text query matches its hidden streamed output', () => {
+      start('cmd-stream-search', 'printf test')
+      const end = shell({ subtype: 'command_end', command: 'printf test', command_id: 'cmd-stream-search',
+        exit_code: 0, output_streamed: true, output_disposition: 'captured', completeness: 'partial' }).event!
+      const body = chunk({ command_id: 'cmd-stream-search', seq: 1, streamed: true, stdout: 'zebraplum' })
+      const parsed = { text: 'zebraplum', conditions: [] }
+      const filter = { agentType: 'shell' }
+      expect(events.executeEventQuery({ parsed, filter }).items.map(row => row.id)).toContain(body.id)
+      const request = { parsed, filter, excludeHousekeeping: true }
+      expect(events.executeEventQuery(request).items.map(row => row.id)).toEqual([end.id])
+      expect(events.countEvents(request)).toBe(1)
     })
 
     // A background job outlives the prompt. The relay writes `command_end` with

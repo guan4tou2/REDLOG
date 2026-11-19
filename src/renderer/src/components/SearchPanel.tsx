@@ -10,6 +10,7 @@ import { formatWhen } from '../lib/time'
 import { SCROLL_GUTTER } from '../lib/pageLayout'
 import { CastResults, type CastHit } from './CastResults'
 import { isMarkerAmendment, foldAllMarkers, amendedFields, type MarkerFold } from '../lib/markerFold'
+import { isCommandStreamChunk } from '../lib/lateOutput'
 import { useContributeExport } from '../lib/exportScope'
 import { toEventFilter, useSharedFilter } from '../lib/FilterContext'
 import { parseQuery, type ParseOutcome } from '../../../core/query/contract'
@@ -61,21 +62,18 @@ function hoverTitle(
 /** Resolve orphaned amendments back to their original markers, then build
  *  folds for all markers in the result set. Returns the (possibly adjusted)
  *  rows and the fold map. */
-const isLateChunk = (e: RedLogEvent): boolean =>
-  e.agentType === 'shell' && e.data.subtype === 'command_output' && (e.data.late === true || e.data.streamed === true) && typeof e.data.command_id === 'string'
-
 /** A hit inside what a background command printed after its prompt came back is
  *  a hit on that command. The follow-up rows are hidden from the Timeline, so
  *  opening one would land nowhere; the command is the row that opens. A chunk
  *  whose command cannot be found stays as it is. */
 async function foldLateOutputHits(rows: RedLogEvent[]): Promise<RedLogEvent[]> {
-  const commandIds = [...new Set(rows.filter(isLateChunk).map((e) => e.data.command_id as string))]
+  const commandIds = [...new Set(rows.filter(isCommandStreamChunk).map((e) => e.data.command_id as string))]
   if (commandIds.length === 0) return rows
   const ends = (await window.redlog.events.commandEnds(commandIds).catch(() => [])) ?? []
   const endByCommand = new Map(ends.map((e) => [String(e.data.command_id), e]))
-  const shown = new Set(rows.filter((e) => !isLateChunk(e)).map((e) => e.id))
+  const shown = new Set(rows.filter((e) => !isCommandStreamChunk(e)).map((e) => e.id))
   return rows.flatMap((e) => {
-    if (!isLateChunk(e)) return [e]
+    if (!isCommandStreamChunk(e)) return [e]
     const end = endByCommand.get(e.data.command_id as string)
     if (!end) return [e]
     if (shown.has(end.id)) return []

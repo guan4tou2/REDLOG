@@ -1,7 +1,6 @@
-import { commandOutputState } from '../../../core/content-contract'
+import { commandOutputState, streamedCommandId } from '../../../core/content-contract'
 import { OUTPUT_NOTE_KEY } from '../lib/commandOutputNote'
 import { screenshotSrc } from '../lib/screenshotSrc'
-import { useReadState } from '../lib/readState'
 import { EventContentReader, type ReaderControl } from './EventContentReader'
 import { Button } from './Button'
 // Structured detail-panel bodies for specific event types, pulled out of
@@ -9,11 +8,11 @@ import { Button } from './Button'
 // Reuses CollapsibleStream + MetadataGrid from HttpDetail for consistent
 // expand/copy affordances.
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useI18n } from '../i18n'
 import { CollapsibleStream, MetadataGrid, HttpDetail, formatBytes, safePretty } from './HttpDetail'
 import { toast } from './Toast'
-import { summarizeLateOutput } from '../lib/lateOutput'
+import { useCommandStream } from '../lib/lateOutput'
 import { sourceContent } from '../lib/eventContent'
 
 // ── Shell command_end ────────────────────────────────────────────────
@@ -34,11 +33,10 @@ const asRef = (value: unknown): BodyRef | undefined => {
  */
 function LateOutput({ commandId }: { commandId: string }): JSX.Element {
   const { t } = useI18n()
-  const read = useReadState(() => window.redlog.events.commandOutput(commandId), true, [commandId])
-  const rows = read.state.value
-  useEffect(() => window.redlog.events.onNewBatch(read.retry), [commandId, read.retry])
-
-  const { stdout, stderr, state, lateBytes, lostBytes: lost } = summarizeLateOutput(rows?.items ?? [], rows?.hasMore)
+  const read = useCommandStream(commandId)
+  const { stdout, stderr, state, lateBytes, lostBytes: lost } = read.state.value ?? {
+    stdout: '', stderr: '', state: 'running', lateBytes: 0, lostBytes: 0
+  }
   const last = state !== 'running'
   const status = state === 'preview' ? t('timeline.detail.outputPreview')
     : state === 'incomplete' ? t('timeline.detail.lateTruncated')
@@ -89,7 +87,7 @@ export function CommandEndDetail({ data, projectId, eventId, reader }: {
   const hasStderr = typeof data.stderr === 'string'
   const stdoutRef = asRef(data.stdout_ref)
   const stderrRef = asRef(data.stderr_ref)
-  const hasStreamedOutput = (data.late_output === true || data.output_streamed === true) && typeof data.command_id === 'string'
+  const streamedId = streamedCommandId(data)
   // A PowerShell transcript row carries its output as one preview field.
   const preview = typeof data.output_preview === 'string' ? data.output_preview : ''
   // Text is shown, but the producer says some of it never arrived and no
@@ -126,13 +124,13 @@ export function CommandEndDetail({ data, projectId, eventId, reader }: {
 
       {(stdoutRef || stderrRef || readerOpen) && <>
         <Button size="compact" level="quiet" aria-expanded={readerOpen} onClick={() => setReaderOpen(!readerOpen)}>{t('content.savedContent')}</Button>
-        {readerOpen && <EventContentReader projectId={projectId} eventId={eventId} outputState={outputState} {...(reader ? { expanded: reader.mode === 'expanded', onExpandedChange: (x: boolean) => reader.setMode(x ? 'expanded' : 'inline') } : {})} />}
+        {readerOpen && <EventContentReader projectId={projectId} eventId={eventId} outputState={outputState} commandData={data} {...(reader ? { expanded: reader.mode === 'expanded', onExpandedChange: (x: boolean) => reader.setMode(x ? 'expanded' : 'inline') } : {})} />}
       </>}
-      {hasStreamedOutput && (
-        <LateOutput commandId={data.command_id as string} />
+      {streamedId && !readerOpen && (
+        <LateOutput commandId={streamedId} />
       )}
       {/* v0.9.6 (T2/T3): say what happened to this command's output. */}
-      {!readerOpen && !hasStreamedOutput && outputState !== 'inline' && outputState !== 'saved' && (
+      {!readerOpen && !streamedId && outputState !== 'inline' && outputState !== 'saved' && (
         <IoAbsenceNote
           data={data}
           builtin={data.source === 'builtin-terminal'}
