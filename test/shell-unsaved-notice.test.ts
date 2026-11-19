@@ -120,6 +120,32 @@ describeShell('a terminal says when its commands are being dropped', () => {
         expect(o.spooled).toBe(0)
       }, 90_000)
 
+      // The notice is once per reason, not once per terminal: a terminal told
+      // "not reachable" stayed silent when the app came up on the project list.
+      const NOT_REACHABLE = '[redlog] RedLog is not reachable; this terminal is not being recorded'
+      const NO_PROJECT = '[redlog] no project is open in RedLog; this terminal is not being recorded'
+
+      it('not reachable, then the app is up with no project open: the new reason is said once', async () => {
+        const o = await run({
+          shell, curl: 7, identity: false,
+          commands: ['echo down-1', 'echo down-2', 'printf 22 > "$RCF"; echo up-1', 'echo up-2', 'echo up-3']
+        })
+        expect(count(o.transcript, NOT_REACHABLE), o.raw).toBe(1)
+        expect(count(o.transcript, NO_PROJECT), o.raw).toBe(1)
+        expect(o.transcript.indexOf(NO_PROJECT)).toBeGreaterThan(o.transcript.indexOf(NOT_REACHABLE))
+        expect(o.spooled).toBe(0)
+      }, 90_000)
+
+      it('no project open, then the app goes away: the new reason is said once', async () => {
+        const o = await run({
+          shell, curl: 22, identity: false,
+          commands: ['echo up-1', 'echo up-2', 'printf 7 > "$RCF"; echo down-1', 'echo down-2', 'echo down-3']
+        })
+        expect(count(o.transcript, NO_PROJECT), o.raw).toBe(1)
+        expect(count(o.transcript, NOT_REACHABLE), o.raw).toBe(1)
+        expect(o.transcript.indexOf(NOT_REACHABLE)).toBeGreaterThan(o.transcript.indexOf(NO_PROJECT))
+      }, 90_000)
+
       it('identity present and the send fails: spooled, and no notice', async () => {
         const o = await run({ shell, curl: 7, identity: true, commands: ['echo first-cmd', 'echo second-cmd'] })
         expect(o.spooled, o.raw).toBeGreaterThan(0)

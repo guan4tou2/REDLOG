@@ -191,8 +191,10 @@ redlog() {
   [[ -n "${_REDLOG_DIR:-}" ]] && home=${_REDLOG_DIR%/*}
   case "$sub" in
     status)
-      _redlog_state --action show --format human
+      _redlog_status
+      local status_rc=$?
       echo
+      return $status_rc
       ;;
     stop)
       _redlog_state --action stop --reason operator >/dev/null

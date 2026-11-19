@@ -197,8 +197,10 @@ redlog() {
   shift 2>/dev/null
   case "$sub" in
     status)
-      _redlog_state --action show --format human
+      _redlog_status
+      local status_rc=$?
       print
+      return $status_rc
       ;;
     stop)
       _redlog_state --action stop --reason operator >/dev/null

@@ -16,11 +16,14 @@ for (const shell of ['bash', 'zsh'] as const) {
     if (identity) fs.writeFileSync(path.join(dir, 'active-identity.json'), JSON.stringify(identity))
     try {
       const args = shell === 'zsh' ? ['-dfc'] : ['--noprofile', '--norc', '-c']
+      // `redlog status` exits non-zero unless this terminal is being recorded
+      // (shell-status-live.test.ts); what these read is its text, so the
+      // script ends in `true`.
       // The hook finds the home above `_REDLOG_DIR` by its last `/`. In use that
       // directory comes from `$HOME`, which Git Bash spells with forward
       // slashes; a native Windows path here has none and points one level off.
       const posix = (p: string): string => p.split(path.sep).join('/')
-      const result = spawnSync(shell, [...args, `source "$1"; ${body}`, 'redlog-status', hook], {
+      const result = spawnSync(shell, [...args, `source "$1"; ${body}; true`, 'redlog-status', hook], {
         encoding: 'utf8', timeout: 15_000,
         env: { PATH: process.env.PATH ?? '', HOME: posix(home), _REDLOG_DIR: posix(dir) }
       })
@@ -40,8 +43,12 @@ for (const shell of ['bash', 'zsh'] as const) {
 
     it('reports the configured switch without claiming delivery was verified', () => {
       const output = run('redlog status', { engagementId: 'status-project', operatorId: 'status-operator' })
-      expect(output).toContain('recording enabled')
+      // No app runs here, so the terminal's switch is on and nothing is
+      // listening: the line says so instead of "recording enabled".
+      expect(output).toContain('app not reachable')
+      expect(output).toContain('mode auto')
       expect(output).toContain('project status-project')
+      expect(output).not.toContain('recording enabled')
     })
 
     it('does not report enabled recording with an incomplete operator identity', () => {

@@ -9,6 +9,10 @@ _REDLOG_CMD_START=""
 # empty while events are delivered or kept, `unreachable` or `no-project` once
 # one was dropped, `told` once the prompt has said so. See `_redlog_warn_unsaved`.
 _REDLOG_UNSAVED=""
+# The reason the prompt last said a command was not saved. The notice is once
+# per reason, so a changed reason is said and an unchanged one is not; a
+# delivered event clears it, so a later loss is said again.
+_REDLOG_TOLD_REASON=""
 # Set when a terminal that loaded with no project open first sees one; cleared
 # once the prompt has said so. See `_redlog_announce_adoption`.
 _REDLOG_ADOPTED=""
@@ -839,7 +843,7 @@ sys.stdout.write(json.dumps(d))
       _redlog_post "$port" "$token" 1 <<<"$payload" && delivered=1 || post_rc=$?
     fi
   fi
-  [[ "$delivered" == 1 ]] && _REDLOG_UNSAVED=""
+  [[ "$delivered" == 1 ]] && { _REDLOG_UNSAVED=""; _REDLOG_TOLD_REASON=""; }
   if [[ "$delivered" != 1 ]]; then
     # Cap spool at 5000 entries — beyond that we accept loss over disk fill.
     #
@@ -861,9 +865,9 @@ sys.stdout.write(json.dumps(d))
       # (`_redlog_warn_unsaved`), from this outcome: no extra request per
       # prompt. `curl -f` exits 22 for an HTTP error, so RedLog answered; with
       # no identity that is the 503 it gives while no project is open.
-      if [[ "${_REDLOG_UNSAVED:-}" != told ]]; then
-        if [[ "$post_rc" == 22 ]]; then _REDLOG_UNSAVED=no-project; else _REDLOG_UNSAVED=unreachable; fi
-      fi
+      # The reason is recorded every time, `told` or not: the prompt compares
+      # it with the last one it said, so a changed reason is not swallowed.
+      if [[ "$post_rc" == 22 ]]; then _REDLOG_UNSAVED=no-project; else _REDLOG_UNSAVED=unreachable; fi
       [[ -z "$work" ]] || rm -rf "$work"
       return 0
     fi
@@ -1112,7 +1116,7 @@ _redlog_warn_dropped() {
         fi
       fi
       # Whatever was dropped meanwhile is the loss that line describes.
-      [[ -z "${_REDLOG_UNSAVED:-}" ]] || _REDLOG_UNSAVED=told
+      if [[ -n "${_REDLOG_UNSAVED:-}" ]]; then _REDLOG_UNSAVED=told; _REDLOG_TOLD_REASON=unreachable; fi
       return 0
     fi
   fi
@@ -1124,11 +1128,54 @@ _redlog_warn_dropped() {
     _REDLOG_UNSAVED=""
     return 0
   fi
+  # Once per reason: the same reason again is not said, a different one is.
+  if [[ "$_REDLOG_UNSAVED" == "${_REDLOG_TOLD_REASON:-}" ]]; then
+    _REDLOG_UNSAVED=told
+    return 0
+  fi
   if [[ "$_REDLOG_UNSAVED" == no-project ]]; then
     printf '%s\n' "[redlog] no project is open in RedLog; this terminal is not being recorded" >&2
   else
     printf '%s\n' "[redlog] RedLog is not reachable; this terminal is not being recorded" >&2
   fi
+  _REDLOG_TOLD_REASON=$_REDLOG_UNSAVED
   _REDLOG_UNSAVED=told
   return 0
+}
+
+# `redlog status`: what this terminal's relay state says, and what the app says
+# about taking it. The state file alone said "recording enabled" with RedLog
+# closed, paused, or open on the project list. Asked here and nowhere else —
+# no request on the per-command path. Prints the line, no newline; the status
+# is 0 only when commands in this terminal are being recorded. The mode and
+# project stay in every state, since the terminal has them in every state.
+_redlog_status() {
+  local line app=unreachable port="" token="" host="" body=""
+  line=$(_redlog_state --action show --format human)
+  if _redlog_is_running; then
+    _redlog_read_text "$_REDLOG_DIR/api-port"; port=$_redlog_text
+    _redlog_read_text "$_REDLOG_DIR/api-token"; token=$_redlog_text
+    _redlog_text=""
+    host=${_REDLOG_HOST:-}
+    if [[ -z "$host" ]]; then
+      if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then host=$(_redlog_resolve_host "$port"); else host=127.0.0.1; fi
+    fi
+    if body=$(curl --noproxy '*' -sf --connect-timeout 1 --max-time 2 "http://${host}:${port}/api/health" 2>/dev/null </dev/null); then
+      if [[ "$body" != *'"projectOpen":true'* ]]; then
+        app=no-project
+      elif body=$(_redlog_curl_authed "$token" --noproxy '*' -sf --connect-timeout 1 --max-time 2 "http://${host}:${port}/api/recording" 2>/dev/null </dev/null); then
+        if [[ "$body" == *'"recording":false'* ]]; then app=paused; else app=recording; fi
+      fi
+    fi
+  fi
+  if [[ "$line" == "recording enabled"* ]]; then
+    case "$app" in
+      recording) printf '%s' "$line"; return 0 ;;
+      paused) line="recording paused${line#recording enabled}" ;;
+      no-project) line="app running, no project open${line#recording enabled}" ;;
+      *) line="app not reachable${line#recording enabled}" ;;
+    esac
+  fi
+  printf '%s' "$line"
+  return 1
 }
