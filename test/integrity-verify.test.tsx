@@ -112,7 +112,8 @@ describe('the verification block', () => {
     const details = openDetails()
     expect(details.textContent).not.toContain('✓ Anchor matches the events it covers')
     expect(within(details).getByText(/The latest anchor was never accepted/).className).toContain('amber')
-    expect(screen.getByTestId('evidence-verify-line').textContent).toContain('✗ The last anchor failed')
+    expect(screen.getByTestId('evidence-verify-line').textContent).toContain('Latest anchor provided no external timestamp')
+    expect(screen.getByTestId('evidence-verify-line').textContent).not.toContain('✗')
   })
 
   it('says the anchor matches when the anchor it was compared with was accepted', async () => {

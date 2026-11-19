@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { RedLogEvent } from '../src/core/db/events'
 import { I18nProvider } from '../src/renderer/src/i18n'
 import { CommandEndDetail } from '../src/renderer/src/components/TimelineEventDetails'
 
@@ -74,7 +75,7 @@ describe('CommandEndDetail background output', () => {
     await screen.findByText('saved output')
     const refresh = vi.mocked(window.redlog.events.onNewBatch).mock.calls[0][0]
     vi.mocked(window.redlog.events.commandOutput).mockRejectedValueOnce(new Error('read failed'))
-    await act(async () => { refresh([]) })
+    await act(async () => { refresh([{ agentType: 'shell', data: { subtype: 'command_output', command_id: 'c1', late: true } } as RedLogEvent]) })
     await screen.findByRole('alert')
     expect(screen.getByTestId('late-output').textContent).toContain('saved output')
     expect(screen.getByRole('button', { name: 'Retry' })).toBeDefined()

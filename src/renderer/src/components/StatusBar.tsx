@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
-import { toggleRecordingWithFeedback } from '../lib/recordingToggle'
+import { Button } from './Button'
+import { toggleRecordingWithFeedback, recordingChord } from '../lib/recordingToggle'
 import { useIssues, raiseIssue, clearIssue, snapshotIssues } from '../lib/issues'
 import { formatTime, formatDateTime, useDisplayZone, zoneLabel, zoneOffset } from '../lib/time'
 import { useAppCounts } from '../lib/useAppCounts'
@@ -13,6 +14,49 @@ import { useNarrowViewport } from '../hooks/useNarrowViewport'
 import { useCaptureHealthState } from '../lib/useCaptureHealth'
 import { captureUnknownLine } from '../lib/captureUnknown'
 import { shownIpSafety } from '../../../core/alert/ip-safety'
+
+// What the first click on a recording item shows. It states what is true and
+// holds the one action that changes it: the click that used to pause stopped
+// capture for a first-time operator who only meant to read the item. Rendered
+// fixed so the bar's overflow-hidden cannot clip it; with no left/top set it
+// stays where the item is. Module scope: a component declared inside
+// StatusBar would remount on every tick of the uptime counter and drop focus.
+function RecordingPopover({ project, uptime, onPause, t }: {
+  project: string | null
+  uptime: string
+  onPause: () => void
+  t: (key: string, vars?: Record<string, string | number>) => string
+}): JSX.Element {
+  const action = useRef<HTMLButtonElement>(null)
+  useEffect(() => { action.current?.focus() }, [])
+  return (
+    <div
+      role="dialog"
+      aria-label={t('statusBar.recordingNow')}
+      data-testid="status-bar-recording-popover"
+      className="fixed bottom-8 z-40 min-w-56 rounded border border-redlog-border bg-redlog-surface/95 shadow-xl pt-1 text-xs font-mono"
+    >
+      <div className="px-3 py-1.5 text-redlog-text">
+        <div>{project ? t('statusBar.recordingInto', { project }) : t('statusBar.recordingNow')}</div>
+        <div className="text-redlog-text-dim tabular-nums">{t('statusBar.recordingFor', { time: uptime })}</div>
+      </div>
+      <div className="border-t border-redlog-border/50 my-0.5" />
+      <div className="px-2 py-1">
+        <Button
+          ref={action}
+          level="quiet"
+          size="compact"
+          data-testid="status-bar-pause"
+          onClick={onPause}
+          className="w-full justify-between gap-3"
+        >
+          <span>{t('statusBar.pauseRecording')}</span>
+          <kbd aria-hidden="true" className="font-mono text-redlog-text-faint">{recordingChord}</kbd>
+        </Button>
+      </div>
+    </div>
+  )
+}
 
 function Sep({ narrow }: { narrow: boolean }): JSX.Element | null {
   return narrow ? null : <span className="text-redlog-text-faint select-none">|</span>
@@ -34,6 +78,9 @@ export default function StatusBar(): JSX.Element {
   // number next to REC does not say — it reads as this session's recording time.
   const [since, setSince] = useState<number | null>(null)
   const [recording, setRecording] = useState<boolean | null>(null)
+  const [projectName, setProjectName] = useState<string | null>(null)
+  const [popoverOpen, setPopoverOpen] = useState(false)
+  const recordingItem = useRef<HTMLButtonElement>(null)
   const [pausedAt, setPausedAt] = useState<number | null>(null)
   const [pauseElapsed, setPauseElapsed] = useState(0)
   const [overlayVisible, setOverlayVisible] = useState(true)
@@ -58,6 +105,7 @@ export default function StatusBar(): JSX.Element {
     let start = Date.now()
     window.redlog.project.active().then((p) => {
       if (p?.createdAt) { start = p.createdAt; setSince(p.createdAt) }
+      if (p?.name) setProjectName(p.name)
     })
     window.redlog.ip.getStatus().then(setIpStatus)
     window.redlog.recording.get().then((r) => {
@@ -125,7 +173,7 @@ export default function StatusBar(): JSX.Element {
           id: 'integrity',
           tier: 'attention',
           title: t(`issues.integrity.${fault.kind}`, fault.vars),
-          detail: t('issues.integrityDetail'),
+          detail: t(fault.kind === 'anchor-failed' ? 'evidence.anchorNeverAccepted' : 'issues.integrityDetail'),
           view: 'screenshots', // the Evidence page, where verification lives
           // A dead or failed anchor loop is answered by submitting again, and
           // that is one call. A drifted chain or a broken row is not answered
@@ -212,7 +260,15 @@ export default function StatusBar(): JSX.Element {
   const PAUSE_WARN_SECS = 300
   const pauseMins = Math.floor(pauseElapsed / 60)
 
-  const handleToggleRecording = (): void => { void toggleRecordingWithFeedback(t) }
+  // Resuming loses nothing, so one click does it. Pausing stops capture, so
+  // the first click only opens the popover that states what is recording; the
+  // second step is its button. Anything but "recording" has no popover.
+  useEffect(() => { if (recording !== true) setPopoverOpen(false) }, [recording])
+  const closePopover = (): void => { setPopoverOpen(false); recordingItem.current?.focus() }
+  const handleRecordingClick = (): void => {
+    if (recording === true) setPopoverOpen((v) => !v)
+    else if (recording === false) void toggleRecordingWithFeedback(t)
+  }
 
   const safety = shownIpSafety(ipStatus)
   const safetyDot = offline ? 'bg-redlog-text-faint' : safety === 'safe' ? 'bg-emerald-500' : safety === 'exposed' ? 'bg-redlog-danger' : 'bg-amber-500'
@@ -300,12 +356,24 @@ export default function StatusBar(): JSX.Element {
                 ? `${t('statusBar.clickToPause')}\n${lastEventLine}`
                 : `${t('statusBar.captureWaiting')}\n${t('statusBar.lastEventNever')}`
         return (
+          <div
+            className={`relative flex min-w-0 ${narrow ? 'flex-1' : ''}`}
+            onKeyDown={(e) => {
+              if (e.key !== 'Escape' || !popoverOpen) return
+              e.preventDefault()
+              e.stopPropagation()
+              closePopover()
+            }}
+          >
           <button
+            ref={recordingItem}
             data-testid="status-bar-recording"
             data-recording={recording === null ? 'unknown' : recording ? 'on' : 'off'}
             disabled={recording === null}
             data-capture={captureVerdict ?? 'unknown'}
-            onClick={handleToggleRecording}
+            onClick={handleRecordingClick}
+            aria-haspopup={recording === true ? 'dialog' : undefined}
+            aria-expanded={recording === true ? popoverOpen : undefined}
             className={`flex min-w-0 items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-500/40 transition-colors ${narrow ? 'flex-1 overflow-hidden' : ''}`}
             title={tooltip}
             aria-label={tooltip}
@@ -324,6 +392,18 @@ export default function StatusBar(): JSX.Element {
               data-testid="statusbar-uptime"
             >{uptimeStr}</span>}
           </button>
+          {popoverOpen && recording === true && (
+            <>
+              <div className="fixed inset-0 z-30" onClick={() => setPopoverOpen(false)} />
+              <RecordingPopover
+                project={projectName}
+                uptime={uptimeStr}
+                t={t}
+                onPause={() => { closePopover(); void toggleRecordingWithFeedback(t) }}
+              />
+            </>
+          )}
+          </div>
         )
       })()}
 

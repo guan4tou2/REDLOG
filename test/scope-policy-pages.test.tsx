@@ -29,7 +29,10 @@ it('refreshes the mounted Activity, HTTP and Loot queries only when scope policy
   )
   const activity = () => queryPage.mock.calls.filter(([request]: unknown[]) => (request as { excludeHousekeeping?: boolean }).excludeHousekeeping)
   const loot = () => queryPage.mock.calls.filter(([request]: unknown[]) => (request as { agentType?: string }).agentType === 'loot')
-  const counts = () => ({ activity: activity().length, http: queryHttpFlowPage.mock.calls.length, loot: loot().length })
+  // The HTTP page's list query. Its one-row question about what the non-work
+  // filter hides (asked when the list is empty) is not the list being re-asked.
+  const http = () => queryHttpFlowPage.mock.calls.filter(([request]: unknown[]) => (request as { limit?: number }).limit !== 1)
+  const counts = () => ({ activity: activity().length, http: http().length, loot: loot().length })
   const saveScope = async (next: typeof scope) => {
     scope = next
     await act(async () => { window.dispatchEvent(new Event('redlog:config-saved')) })
@@ -45,7 +48,7 @@ it('refreshes the mounted Activity, HTTP and Loot queries only when scope policy
     expect(counts()).toEqual({ activity: before.activity + 1, http: before.http + 1, loot: before.loot + 1 })
   }
   expect(activity().at(-1)).toEqual(activity()[0])
-  expect(queryHttpFlowPage.mock.calls.at(-1)).toEqual(queryHttpFlowPage.mock.calls[0])
+  expect(http().at(-1)).toEqual(http()[0])
   expect(loot().at(-1)).toEqual(loot()[0])
   const before = counts()
   await saveScope({ targets: [...scope.targets], excludeTargets: [...scope.excludeTargets], personalDomains: [...scope.personalDomains] })

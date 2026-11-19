@@ -125,10 +125,11 @@ function coreCommandState(readiness: ReturnType<typeof computeCaptureReadiness>,
  *  complete when a command source is active; HTTP(S) speaks the single HTTP
  *  vocabulary from httpCaptureState, and carries what the mitmproxy row used
  *  to say beneath it — that row is not repeated while this line is shown. */
-function CoreCaptureLine({ readiness, readUnknown, http, listenAddress, source, sources, proxyError, unsavedGapEvents, verification, onNavigate, age, t }: {
+function CoreCaptureLine({ readiness, readUnknown, paused, http, listenAddress, source, sources, proxyError, unsavedGapEvents, verification, onNavigate, age, t }: {
   readiness: ReturnType<typeof computeCaptureReadiness>
   http: HttpCaptureState
   readUnknown: boolean
+  paused: boolean
   /** host:port the managed proxy is listening on, or null when it is not up (#254). */
   listenAddress: string | null
   source: CaptureSourceInfo | undefined
@@ -144,19 +145,21 @@ function CoreCaptureLine({ readiness, readUnknown, http, listenAddress, source, 
   t: (key: string, vars?: Record<string, string | number>) => string
 }): JSX.Element {
   const { cmd, cmdLast, ownShell } = coreCommandState(readiness, sources)
+  const cmdPaused = paused && cmd === 'ready'
+  const httpPaused = paused && http === 'ready'
   const verified = http === 'ready' && !!verification
   const httpWord = http === 'ready' ? t(verified ? 'capture.httpVerified' : 'capture.httpAwaitingTraffic') : t(`capture.http.${http}`)
-  const cmdTone: Tone = readUnknown ? 'warn' : cmd === 'ready' ? 'ok' : cmd === 'error' ? 'err' : 'off'
+  const cmdTone: Tone = cmdPaused ? 'off' : readUnknown ? 'warn' : cmd === 'ready' ? 'ok' : cmd === 'error' ? 'err' : 'off'
   const httpTone: Tone = verified ? 'ok' : http === 'ready' || http === 'starting' || http === 'recorded' || http === 'unknown' ? 'warn' : http === 'failed' ? 'err' : 'off'
   return (
     <ul data-testid="capture-core" className="text-xs">
-      <li data-testid="capture-core-commands" data-state={readUnknown ? 'unknown' : cmd} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-redlog-border-subtle px-pad py-2 min-h-11">
+      <li data-testid="capture-core-commands" data-state={cmdPaused ? 'paused' : readUnknown ? 'unknown' : cmd} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-redlog-border-subtle px-pad py-2 min-h-11">
         <button onClick={() => onNavigate(settingsTarget('hooks'))} className="w-28 shrink-0 min-h-8 text-left text-sm font-medium text-redlog-text hover:underline">{t('capture.group.commands')}</button>
         <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
           {ownShell && <Tag tone="neutral">{ownShell.installed === true
             ? t('capture.tag.hookInstalled', { shell: ownShellVars(ownShell).shell || t('capture.tag.shell') })
             : t('capture.tag.hookMissing')}</Tag>}
-          {!readUnknown && cmd === 'ready' && <Tag tone="ok">{t('capture.tag.running')}</Tag>}
+          {!cmdPaused && !readUnknown && cmd === 'ready' && <Tag tone="ok">{t('capture.tag.running')}</Tag>}
           {/* Installed is not recording (FR-015): what the operator's own shell
               has actually sent, beside the tags that say what is set up. */}
           {ownShell && (
@@ -165,10 +168,10 @@ function CoreCaptureLine({ readiness, readUnknown, http, listenAddress, source, 
             </span>
           )}
         </span>
-        <StatusLight tone={cmdTone}>{t(readUnknown ? 'capture.http.unknown' : `capture.state.${cmd}`)}</StatusLight>
+        <StatusLight tone={cmdTone}>{t(cmdPaused ? 'statusBar.paused' : readUnknown ? 'capture.http.unknown' : `capture.state.${cmd}`)}</StatusLight>
         <span data-testid="capture-core-commands-age" className="w-16 text-right font-mono tabular-nums text-redlog-text-faint">{age(cmdLast)}</span>
       </li>
-      <li data-testid="capture-core-http" data-state={http} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-pad py-2 min-h-11">
+      <li data-testid="capture-core-http" data-state={httpPaused ? 'paused' : http} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-pad py-2 min-h-11">
         <button onClick={() => onNavigate(settingsTarget('browser'))} className="w-28 shrink-0 min-h-8 text-left text-sm font-medium text-redlog-text hover:underline">{t('capture.group.http')}</button>
         <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
           {/* Where to point a tool (#254). */}
@@ -184,7 +187,7 @@ function CoreCaptureLine({ readiness, readUnknown, http, listenAddress, source, 
           )}
           {source?.lastError && <span className="basis-full text-red-400" title={source.lastError.message}>{source.lastError.message}</span>}
         </span>
-        <StatusLight tone={httpTone}>{httpWord}</StatusLight>
+        <StatusLight tone={httpPaused ? 'off' : httpTone}>{httpPaused ? t('statusBar.paused') : httpWord}</StatusLight>
         <span data-testid="capture-core-http-age" className="w-16 text-right font-mono tabular-nums text-redlog-text-faint">{age(source?.lastEventAt ?? null)}</span>
       </li>
     </ul>
@@ -205,6 +208,21 @@ export function CaptureHealthCard({ capture, unknown, projectId, onNavigate, onR
   onSetup?: () => void
 }): JSX.Element {
   const { t } = useI18n()
+
+  const [paused, setPaused] = useState(false)
+  useEffect(() => {
+    const recording = window.redlog?.recording
+    if (!recording) return
+    let initialReadCurrent = true
+    void recording.get().then(on => {
+      if (initialReadCurrent) setPaused(!on)
+    }).catch(() => {})
+    const unsubscribe = recording.onChange(on => {
+      initialReadCurrent = false
+      setPaused(!on)
+    })
+    return () => { initialReadCurrent = false; unsubscribe() }
+  }, [])
 
   const SOURCE_LABEL: Record<string, string> = {
     'terminal': t('capture.terminal'),     // RedLog's panes + the operator's own shell
@@ -495,9 +513,10 @@ export function CaptureHealthCard({ capture, unknown, projectId, onNavigate, onR
         const detail = s.id !== 'mitmproxy'
         const missing = missingPrerequisite(s)
         const note = !manage && isUnrecordedNote(s)
+        const sourcePaused = paused && (s.id === 'mitmproxy' ? http === 'ready' : s.state === 'ready')
         return (
         <div key={s.id} data-testid={`capture-row-${s.id}`} className={`flex items-center gap-2 text-xs ${note ? 'flex-wrap' : ''}`}>
-          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.id === 'mitmproxy' ? httpDot(http) : dot(s.state)}`} />
+          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${sourcePaused ? dot('off') : s.id === 'mitmproxy' ? httpDot(http) : dot(s.state)}`} />
           <span title={s.label ?? SOURCE_LABEL[s.id] ?? s.id} className={`flex-1 min-w-0 ${s.state === 'off' ? 'text-redlog-text-dim' : 'text-redlog-text'}`}>
             <span className="block truncate" title={s.label ?? SOURCE_LABEL[s.id] ?? s.id}>
               {s.label ?? SOURCE_LABEL[s.id] ?? s.id}
@@ -540,7 +559,7 @@ export function CaptureHealthCard({ capture, unknown, projectId, onNavigate, onR
             )}
           </span>
           <span data-testid={`capture-state-${s.id}`} className="text-redlog-text-faint text-xs">
-            {s.id === 'mitmproxy' ? t(`capture.http.${http}`) : stateLabel(s.state)}
+            {sourcePaused ? t('statusBar.paused') : s.id === 'mitmproxy' ? t(`capture.http.${http}`) : stateLabel(s.state)}
           </span>
           {/* No colour on the age. It is a fact about the operator's last
               command, not a grade on the capture: a green "4s ago" that
@@ -646,6 +665,7 @@ export function CaptureHealthCard({ capture, unknown, projectId, onNavigate, onR
         {/* #217: both core captures, always named. */}
         <CoreCaptureLine
           readUnknown={unknown !== undefined}
+          paused={paused}
           readiness={readiness}
           http={http}
           verification={capture.managedHttpProxy?.httpsVerification}

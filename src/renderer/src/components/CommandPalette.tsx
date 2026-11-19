@@ -66,6 +66,8 @@ const KIND_KEY: Record<Kind, string> = {
 // A kind is listed once, in this order; the score only orders rows inside it.
 // With nothing typed the menu leads with what the operator does, not with the
 // pages the sidebar already lists. Hosts, settings and events wait for a query.
+// Inside the actions the recording toggle is not first: Enter on an empty
+// query must not pause capture (owner, 2026-11-19).
 const ORDER_TYPED: Kind[] = ['nav', 'action', 'project', 'operator', 'host', 'setting', 'search']
 const ORDER_EMPTY: Kind[] = ['action', 'project', 'nav', 'operator']
 
@@ -254,14 +256,14 @@ export function CommandPalette({
     for (const view of ['transcript', 'scope', 'loot', 'bookmarks']) add({ id: `nav:${view}`, kind: 'nav', label: t(`sidebar.${view}`), run: () => onNavigate(view) })
     add({ id: 'nav:settings', kind: 'nav', label: t('sidebar.settings'), hint: `${MOD}9`, run: () => onNavigate('settings') })
 
+    add({ id: 'action:screenshot', kind: 'action', label: t('screenshots.captureNow'), run: () => { void captureScreenshotWithFeedback(t) } })
+    add({ id: 'action:addArtifact', kind: 'action', label: t('artifacts.add'), run: () => { void addArtifactsWithFeedback(t, onOpenEvent) } })
     if (recording !== null) add({
       id: 'action:recording', kind: 'action',
       label: recording ? t('palette.pauseRecording') : t('palette.resumeRecording'),
       hint: `${MOD}.`,
       run: () => { void toggleRecordingWithFeedback(t) }
     })
-    add({ id: 'action:screenshot', kind: 'action', label: t('screenshots.captureNow'), run: () => { void captureScreenshotWithFeedback(t) } })
-    add({ id: 'action:addArtifact', kind: 'action', label: t('artifacts.add'), run: () => { void addArtifactsWithFeedback(t, onOpenEvent) } })
 
     const density = resolveDensity(1, storedDensity())
     add({

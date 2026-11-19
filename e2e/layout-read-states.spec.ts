@@ -39,6 +39,12 @@ test('empty, pending and failed reads remain distinguishable and recoverable at 
         await openView(page, source.view)
         await expect(page.getByRole('status').filter({ hasText: strings['common.loading'] })).toBeVisible()
         await expect(page.getByText(strings[source.key], { exact: false })).toHaveCount(0)
+        // Later reads on the channel answer at once; the pending one is still
+        // held by `layoutRead`. HTTP history asks a second question before it
+        // words an empty list (is the non-work filter hiding anything?), and a
+        // handler that left that one pending too would leave the page saying
+        // nothing — correctly.
+        await answer(source.channel, source.empty)
         await app.evaluate(() => (globalThis as unknown as { layoutRead: () => void }).layoutRead())
         await expect(page.getByText(strings[source.key], { exact: false })).toBeVisible()
         for (const [width, height, zoom] of [[1280, 800, 1], [800, 600, 2]]) {

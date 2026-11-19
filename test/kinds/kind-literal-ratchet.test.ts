@@ -71,8 +71,10 @@ const ROOT = path.join(__dirname, '..', '..')
 // 2026-11-18, ruling 7: main no longer screenshots when a command ends, which
 //   was `event.agentType === 'shell' && d.subtype === 'command_end'` in
 //   main/index.ts: agent -1, subtype -1.
-const AGENT_BASELINE = 280
-const SUBTYPE_BASELINE = 308
+// 2026-11-19: stream search and screenshot deletion add indexed SQL kind
+// predicates. The stream search branch runs only for queries that can return shell rows.
+const AGENT_BASELINE = 284
+const SUBTYPE_BASELINE = 311
 const TABLE_BASELINE = 31
 
 type Counter = 'agent' | 'subtype'

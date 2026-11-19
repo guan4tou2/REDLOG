@@ -76,7 +76,7 @@ describe('one command_end, one answer in every reader', () => {
     installTranscript(data)
     render(<TranscriptView />)
     await screen.findByText('$ ls')
-    fireEvent.click(await screen.findByTestId('transcript-toggle'))
+    if (state !== 'not-captured') fireEvent.click(await screen.findByTestId('transcript-toggle'))
     expect(await screen.findByText(new RegExp(TRANSCRIPT_KEY[state]!.replace('.', '\\.')))).toBeTruthy()
   })
 

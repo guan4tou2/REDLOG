@@ -273,6 +273,7 @@ interface RedLogAPI {
     queryScreenshotPage: (opts: { limit?: number; cursor?: string | null; trigger?: string | null }) => Promise<{
       items: RedLogEvent[]
       hasMore: boolean
+      deletedIds?: string[]
       nextCursor: string | null
     }>
     /** §10: distinct hosts across the timeline for ⌘K host search. */

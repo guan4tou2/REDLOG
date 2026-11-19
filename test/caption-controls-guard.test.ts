@@ -14,6 +14,7 @@ const ROOT = path.join(__dirname, '..', 'src', 'renderer', 'src')
 /** Full-window surfaces that do not use `pt-caption`, and why that is safe. */
 const EXEMPT: Array<{ file: string; line: string; reason: string }> = [
   { file: 'components/TerminalView.tsx', line: 'fixed inset-0 z-40', reason: 'an invisible click-catcher behind a menu; it holds nothing' },
+  { file: 'components/StatusBar.tsx', line: 'fixed inset-0 z-30', reason: 'an invisible click-catcher behind the recording popover; it holds nothing' },
   { file: 'components/timeline/TimelineToolbar.tsx', line: 'fixed inset-0 z-30', reason: 'an invisible click-catcher behind a menu; it holds nothing' },
   { file: 'components/ExportMenu.tsx', line: 'fixed inset-0 z-[90]', reason: 'only the dimmed backdrop; the dialog is centred and at most 82vh tall, so it stays below the strip' },
   { file: 'components/ConfirmDialog.tsx', line: 'fixed inset-0 z-[200]', reason: 'a short dialog centred in the window' },

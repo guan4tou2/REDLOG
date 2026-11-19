@@ -82,7 +82,7 @@ function unanchoredCount(anchors: ChainAnchorInfo[] | null, len: number | null):
 function findings(r: Reading, t: Translate): Finding[] {
   const out: Finding[] = []
   const latest = r.anchors?.[0]
-  if (!r.offline && latest?.status === 'failed') out.push({ id: 'anchor-failed', tone: 'danger', text: `✗ ${t('issues.integrity.anchor-failed')}` })
+  if (!r.offline && latest?.status === 'failed') out.push({ id: 'anchor-failed', tone: 'danger', text: t('evidence.externalTimestampAbsent'), detail: t('issues.integrity.anchor-failed') })
   if (r.record) {
     const verdict = verifyVerdict(r.record.result as FullVerifyResult)
     const walked = r.record.result.walked ?? 0

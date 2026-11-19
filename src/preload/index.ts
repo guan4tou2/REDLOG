@@ -149,6 +149,7 @@ const api: RedLogAPI = {
       ipcRenderer.invoke('events:queryScreenshotPage', opts) as Promise<{
         items: import('../core/db/events').RedLogEvent[]
         hasMore: boolean
+        deletedIds?: string[]
         nextCursor: string | null
       }>,
     distinctHosts: () => ipcRenderer.invoke('events:distinctHosts') as Promise<import('../core/db/events').HostAggregate[]>,

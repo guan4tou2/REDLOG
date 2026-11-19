@@ -1,4 +1,4 @@
-import { contentState } from '../../../core/content-contract'
+import { contentState, streamedCommandId } from '../../../core/content-contract'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { useEffect, useRef, useState } from 'react'
 import type { CommandOutputState, ContentAnchor, ContentDescriptor, ContentFindCursor, ContentWindow, ContentUnavailable } from '../../../core/content-contract'
@@ -10,6 +10,14 @@ import { Button } from './Button'
 import { CopyButton } from './CopyButton'
 import { toast } from './Toast'
 import { isComposing } from '../lib/ime'
+import { commandStreamText, useCommandStream } from '../lib/lateOutput'
+
+const STREAM_STATUS_KEY = {
+  running: 'timeline.detail.lateRunning',
+  done: 'timeline.detail.lateDone',
+  incomplete: 'timeline.detail.lateTruncated',
+  preview: 'content.streamPreview'
+} as const
 
 /** The field owns its byte position; switching sources cannot reuse a cursor. */
 function ContentFieldReader({ descriptor, onReload, initialOffset = 0, initialFind, expanded = false, onMark, fragment, emptyKey = 'content.empty' }: { descriptor: ContentDescriptor; onReload: () => void; initialOffset?: number; initialFind?: string; expanded?: boolean; onMark: () => void; fragment?: ContentAnchor
@@ -138,7 +146,7 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, initialFi
   const highlightAt=span?span[0]:literalAt
   const highlightLength=span?span[1]:literalAt>=0?needle.length:0
   const state = contentState(unavailable ? { ...descriptor, status: unavailable } : descriptor)
-  if (!descriptor.ref) return <p role="status" data-content-state={state} className="text-xs text-amber-300">{t(`content.status.${descriptor.status}`)}</p>
+  if (!descriptor.ref) return <p role="status" data-content-state={state} className="text-xs text-amber-300">{t(descriptor.status === 'not-captured' && emptyKey !== 'content.empty' ? emptyKey : `content.status.${descriptor.status}`)}</p>
   return <div data-content-state={state} className="min-w-0 space-y-2">
     <div className="flex flex-wrap items-center gap-2">
       <input type="search" aria-label={t('content.find')} value={needle} disabled={descriptor.format === 'binary'}
@@ -174,15 +182,18 @@ function ContentFieldReader({ descriptor, onReload, initialOffset = 0, initialFi
 export type ReaderMode = 'closed' | 'inline' | 'expanded'
 export interface ReaderControl { mode: ReaderMode; setMode: (mode: ReaderMode) => void }
 
-export function EventContentReader({ projectId, eventId, active = true, anchor, find, expanded: expandedProp, onExpandedChange, outputState }: { projectId: string; eventId: string; active?: boolean; anchor?: ContentAnchor
+export function EventContentReader({ projectId, eventId, active = true, anchor, find, expanded: expandedProp, onExpandedChange, outputState, commandData }: { projectId: string; eventId: string; active?: boolean; anchor?: ContentAnchor
   /** Text to open each field at, through the reader's own Find. */
   find?: string
   expanded?: boolean; onExpandedChange?: (expanded: boolean) => void
   /** A shell command's output state: an empty stdout/stderr is only "no
    *  content" when the producer said so (report 10, A.4 #1). */
-  outputState?: CommandOutputState }): JSX.Element {
+  outputState?: CommandOutputState; commandData?: Record<string, unknown> }): JSX.Element {
   const { t } = useI18n()
   const outputEmptyKey = outputState && !['inline', 'saved', 'recorded'].includes(outputState) ? OUTPUT_NOTE_KEY[outputState] : undefined
+  const streamId = commandData && streamedCommandId(commandData)
+  const stream = useCommandStream(streamId)
+  const streamOutput = stream.state.value
   const fields = useReadState(async () => {
     const reply = await window.redlog.content.list({ projectId, eventId })
     if (!reply.ok) throw new Error(t(`content.status.${reply.status}`))
@@ -196,8 +207,11 @@ export function EventContentReader({ projectId, eventId, active = true, anchor, 
   useFocusTrap(root,expanded&&active)
   useEffect(()=>{if(!active)setExpanded(false)},[active])
   const [visited, setVisited] = useState<Set<string>>(new Set())
-  const visibleFields = fields.state.value?.filter(field => field.field !== 'stderr'
-    || (contentState(field) !== 'empty' && field.status !== 'not-captured'))
+  const visibleFields = fields.state.value?.filter(field => {
+    const output = field.field === 'stdout' || field.field === 'stderr'
+    if (output && streamId && (contentState(field) === 'empty' || field.status === 'not-captured')) return false
+    return field.field !== 'stderr' || (contentState(field) !== 'empty' && field.status !== 'not-captured')
+  })
   const current = visibleFields?.find(f => f.field === selected)
     ?? visibleFields?.find(f => f.status === 'available' && ['stdout', 'output', 'full', 'response_body', 'output_body'].includes(f.field))
     ?? visibleFields?.[0]
@@ -218,17 +232,30 @@ export function EventContentReader({ projectId, eventId, active = true, anchor, 
     className={expanded?'fixed inset-3 z-[60] rounded-xl border border-redlog-border bg-redlog-bg p-pad overflow-auto space-y-2 shadow-xl':'min-w-0 space-y-2'} aria-busy={fields.state.phase === 'loading'}>
     {fields.state.phase === 'loading' && <span role="status">{t('search.loading')}</span>}
     {fields.state.phase === 'failed' && <div role="alert" className="text-amber-300 text-xs">{fields.state.error} <Button onClick={fields.retry}>{t('common.retry')}</Button></div>}
-    {fields.state.phase === 'loaded' && !current && <p className="text-xs text-redlog-text-dim">{t('content.noText')}</p>}
-    {current && <>
-      <div className="flex flex-wrap gap-2 items-center"><Button size="compact" level="quiet" onClick={()=>setExpanded(!expanded)}>{t(expanded?'content.collapseReader':'content.expandReader')}</Button>
-      <select aria-label={t('content.field')} value={current.field} onChange={e => setSelected(e.target.value)} className="max-w-full bg-redlog-elevated border border-redlog-border rounded px-2 py-1 text-sm">
+    {(current || streamId) && <div className="flex flex-wrap gap-2 items-center">
+      <Button size="compact" level="quiet" onClick={()=>setExpanded(!expanded)}>{t(expanded?'content.collapseReader':'content.expandReader')}</Button>
+      {current && <select aria-label={t('content.field')} value={current.field} onChange={e => setSelected(e.target.value)} className="max-w-full bg-redlog-elevated border border-redlog-border rounded px-2 py-1 text-sm">
         {visibleFields?.map(f => <option key={f.field} value={f.field}>{f.storage === 'terminal-cast' ? t('content.terminalOutput') : t(`content.field.${f.field}`)}</option>)}
-      </select></div>
-      {visibleFields?.filter(field => visited.has(field.field) || field.field === current.field).map(field =>
+      </select>}
+    </div>}
+    {streamId && <div className="min-w-0 space-y-2" aria-busy={stream.state.phase === 'loading'}>
+      {stream.state.phase === 'loading' && <span role="status">{t('search.loading')}</span>}
+      {stream.state.phase === 'failed' && <div role="alert" className="text-xs text-amber-300">
+        {t('content.status.failed')} <Button onClick={stream.retry}>{t('common.retry')}</Button>
+      </div>}
+      {streamOutput && <>
+        <p className="text-xs text-redlog-text-dim">
+          {t(STREAM_STATUS_KEY[streamOutput.state])}
+          {streamOutput.lostBytes > 0 && <> · {t('timeline.detail.lateLost', { bytes: `${streamOutput.lostBytes.toLocaleString()} B` })}</>}
+        </p>
+        <pre tabIndex={0} className={`${expanded ? 'max-h-[70vh]' : 'max-h-80'} overflow-auto whitespace-pre-wrap break-words bg-redlog-elevated p-3 text-xs font-mono`}>{safeDisplay(commandStreamText(streamOutput, t('content.outputGap')))}</pre>
+      </>}
+    </div>}
+    {fields.state.phase === 'loaded' && !current && !streamId && <p className="text-xs text-redlog-text-dim">{t('content.noText')}</p>}
+    {current && visibleFields?.filter(field => visited.has(field.field) || field.field === current.field).map(field =>
         <div key={`${projectId}:${eventId}:${field.field}:${field.ref?.version}`} hidden={field.field !== current.field}>
           <ContentFieldReader descriptor={field} onReload={fields.retry} expanded={expanded} fragment={anchor?.ref.field===field.field?anchor:undefined} initialOffset={anchor?.ref.field===field.field?anchor.start:0} initialFind={anchor?undefined:find} onMark={()=>setExpanded(false)}
             emptyKey={outputEmptyKey && (field.field === 'stdout' || field.field === 'stderr') ? outputEmptyKey : undefined} />
         </div>)}
-    </>}
   </div>
 }

@@ -6,7 +6,7 @@ type Translate = (key: string, vars?: Record<string, string | number>) => string
 
 // The ⌘. chord, drawn the way this platform writes it. Read from the one
 // shortcut table so the toast cannot drift from the binding (§11).
-const recordingChord =
+export const recordingChord =
   appShortcuts([], isMac).find((r) => r.id === 'app:toggleRecording')?.keys ?? ''
 
 // Toggle recording and, on failure, say so. A swallowed rejection here is the
