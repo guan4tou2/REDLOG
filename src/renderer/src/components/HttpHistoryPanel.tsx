@@ -357,10 +357,32 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
   // Every filter here is applied in the query, so a filter that matches
   // nothing returns zero flows too. Which line is true depends on whether
   // anything is narrowing the list, not on how many flows came back.
-  const narrowed = !!(filterText || methodFilter || statusFilter || hostFilter
-    || sharedFilter.targetId || sharedFilter.timeRange || sharedFilter.inScopeOnly
-    || (sharedFilter.hidePersonal && personalDomains?.length))
-  const emptyText = emptyExplained || loadError ? null : narrowed ? t('httpHistory.noMatch') : t('httpHistory.empty')
+  const narrowedByChoice = !!(filterText || methodFilter || statusFilter || hostFilter
+    || sharedFilter.targetId || sharedFilter.timeRange || sharedFilter.inScopeOnly)
+  // The non-work filter is on in every project until someone turns it off, so
+  // "it is on" does not say it is hiding anything: a new project's empty list
+  // is empty because nothing was captured. Asked only when the list came back
+  // empty and nothing else narrows it — is there a flow with that filter off?
+  // Until that answers, neither line is shown: each would be a claim.
+  const askHidden = !!(sharedFilter.hidePersonal && personalDomains?.length)
+    && !narrowedByChoice && !emptyExplained && loadedOnce && !loadError && flows.length === 0
+  const hiddenRead = useReadState(async () => {
+    const page = await window.redlog.events.queryHttpFlowPage({
+      ...toEventFilter({ ...sharedFilter, hidePersonal: false }),
+      agentType: HTTP_FLOW_AGENT_TYPE,
+      http: httpQuery,
+      limit: 1
+    })
+    return page.items.length > 0
+  }, askHidden, [scopePolicyKey])
+  const retryHidden = hiddenRead.retry
+  useEffect(() => {
+    if (!askHidden) return
+    return window.redlog.events.onNewBatch((events) => { if (isHttpFlowBatch(events)) retryHidden() })
+  }, [askHidden, retryHidden])
+  const hiddenUnknown = askHidden && hiddenRead.state.value === null
+  const narrowed = narrowedByChoice || (askHidden && hiddenRead.state.value === true)
+  const emptyText = emptyExplained || loadError || hiddenUnknown ? null : narrowed ? t('httpHistory.noMatch') : t('httpHistory.empty')
 
   const toggleSort = (col: typeof sortCol) => {
     if (sortCol === col) setSortAsc(!sortAsc)
