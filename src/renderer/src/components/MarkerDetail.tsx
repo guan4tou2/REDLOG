@@ -14,7 +14,7 @@ import type { ContentAnchor } from '../../../core/content-contract'
 import { useState, useRef, useEffect, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { SectionLabel } from './SectionLabel'
 import { useI18n } from '../i18n'
-import { formatTime, formatDateTime } from '../lib/time'
+import { formatWhen, formatDateTime } from '../lib/time'
 import { Button, FIELD_FOCUS_RING } from './Button'
 import {
   MARKER_SEVERITIES, AMENDABLE_FIELDS, amendedFields, isMarkerAmendment,
@@ -176,7 +176,7 @@ export function MarkerDetail(props: MarkerDetailProps): JSX.Element {
             {fold.history.map((h) => (
               <li key={h.event.id} data-testid="marker-history-row" className="flex items-baseline gap-2 text-xs">
                 <span className="text-redlog-text-faint font-mono tabular-nums shrink-0">
-                  {formatTime(h.event.timestamp, { seconds: true })}
+                  {formatWhen(h.event.timestamp, { seconds: true })}
                 </span>
                 <span className="text-redlog-text-dim shrink-0 max-w-[100px] truncate" title={h.event.operatorId}>
                   {props.operatorLabel(h.event.operatorId)}

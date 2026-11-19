@@ -119,7 +119,7 @@ export default function App(): JSX.Element {
   // slice, not all 28,000", and that answer does not move by one.
   const [exportableCount, setExportableCount] = useState(0)
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [recordingOn, setRecordingOn] = useState(true)
+  const [recordingOn, setRecordingOn] = useState<boolean | null>(null)
   const [markerAtTs, setMarkerAtTs] = useState<number | undefined>(undefined)
   const [markerHeldFrame, setMarkerHeldFrame] = useState<string | undefined>(undefined)
   const [dropping, setDropping] = useState(false)
@@ -284,7 +284,7 @@ export default function App(): JSX.Element {
   useEffect(() => {
     return window.redlog.screenshot.onShortcutResult?.((r) => r.ok
       ? toast(t('palette.screenshotTaken'), 'success')
-      : toast(t('palette.screenshotNotSaved'), { type: 'warning', why: t('palette.screenshotNotSavedWhy') }))
+      : toast(t('palette.screenshotNotSaved'), { type: 'error', why: t('palette.screenshotNotSavedWhy') }))
   },[t])
 
   // The palette shows "pause" or "resume" depending on the current state, so

@@ -13,7 +13,7 @@ vi.mock('../src/renderer/src/i18n', () => ({ useI18n: () => ({ t: (k: string, v?
 
 afterEach(() => cleanup())
 
-it('counts batches toward the refresh button and reads the page only when pressed', async () => {
+it('coalesces batches behind the refresh button and reads the page only when pressed', async () => {
   const batches = new Set<(events: unknown[]) => void>()
   const page = { items: [], hasMore: false, nextCursor: null, totalGroups: 0, totalMatches: 0, snapshot: {} }
   const activityPage = vi.fn().mockResolvedValue(page)
@@ -31,7 +31,7 @@ it('counts batches toward the refresh button and reads the page only when presse
     rerender(<ActivityResults request={{ ...request, filter: {} } as never} />)
   }
   expect(activityPage).toHaveBeenCalledTimes(1)
-  expect((await screen.findByTestId('activity-new-events')).textContent).toContain('"count":80')
+  expect((await screen.findByTestId('activity-new-events')).textContent).toBe('activity.refresh')
   fireEvent.click(screen.getByTestId('activity-new-events'))
   await vi.waitFor(() => expect(activityPage).toHaveBeenCalledTimes(2))
 })

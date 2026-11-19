@@ -6,7 +6,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useListKeyboard } from '../lib/useListKeyboard'
 import { useKeepScroll } from '../lib/useKeepScroll'
 import { useI18n } from '../i18n'
-import { formatTime } from '../lib/time'
+import { formatWhen } from '../lib/time'
 import { SCROLL_GUTTER } from '../lib/pageLayout'
 import { CastResults, type CastHit } from './CastResults'
 import { isMarkerAmendment, foldAllMarkers, amendedFields, type MarkerFold } from '../lib/markerFold'
@@ -525,7 +525,7 @@ export function SearchPanel({ onOpenInTimeline, active = true, browse = false, c
                     </span>
                   )}
                   <span className="text-redlog-text-faint shrink-0 ml-2">
-                    {formatTime(e.timestamp, { seconds: true })}
+                    {formatWhen(e.timestamp, { seconds: true })}
                   </span>
                   {e.targetId && (
                     <span className="text-redlog-text-dim shrink-0 ml-1">→ {e.targetId}</span>

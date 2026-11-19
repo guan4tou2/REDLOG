@@ -2025,6 +2025,7 @@ app.whenReady().then(() => {
       targetId: operatorSelectedTarget(selectedTarget()).targetId
     })
       .then((file) => send(mainWindow, 'screenshot:shortcutResult', { ok: !!file }))
+      .catch(() => send(mainWindow, 'screenshot:shortcutResult', { ok: false }))
   })) console.warn(`[shortcuts] ${QUICK_SHOT_ACCELERATOR} is taken by another application`)
 
   // --- Updates ---

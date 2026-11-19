@@ -34,12 +34,13 @@ const ANCHOR_KEY: Record<string, string> = {
  *  hash chain, how many are kept locally outside it, and the anchor's own
  *  state. A pending anchor is "submitted", never "anchored". Anything wrong
  *  (drift, a stale or failed anchor, a broken sample) rides underneath. */
-function RecordSummary({ chained, localOnly, lastAnchor, sub, tone, onOpenActivity }: {
+function RecordSummary({ chained, localOnly, lastAnchor, countsUnknown, anchorUnknown, sub, tone, onOpenActivity }: {
+  countsUnknown: boolean; anchorUnknown: boolean
   chained: number; localOnly: number; lastAnchor: { createdAt: number; status: string } | null
   sub: string | undefined; tone: HudTone; onOpenActivity: () => void
 }): JSX.Element {
   const { t } = useI18n()
-  const anchor = lastAnchor
+  const anchor = anchorUnknown ? t('evidence.readFailed') : lastAnchor
     ? t(ANCHOR_KEY[lastAnchor.status] ?? 'dashboard.anchor.unknown', { when: formatFreshness(lastAnchor.createdAt, t) })
     : t('dashboard.anchor.none')
   const note = tone === 'red' ? 'text-red-400' : 'text-amber-400'
@@ -48,12 +49,12 @@ function RecordSummary({ chained, localOnly, lastAnchor, sub, tone, onOpenActivi
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-baseline gap-x-3">
-            <span data-testid="dashboard-record-total" className="text-xl font-mono font-semibold tabular-nums text-redlog-text">{(chained + localOnly).toLocaleString()}</span>
+            <span data-testid="dashboard-record-total" className="text-xl font-mono font-semibold tabular-nums text-redlog-text">{countsUnknown ? t('evidence.readFailed') : (chained + localOnly).toLocaleString()}</span>
             <span className="text-sm text-redlog-text-dim">{t('dashboard.recordedEvents')}</span>
           </div>
           <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-redlog-text-dim">
-            <div><dt className="inline">{t('dashboard.chained')} </dt><dd className="inline font-mono text-redlog-text">{chained.toLocaleString()}</dd></div>
-            <div><dt className="inline">{t('dashboard.localOnly')} </dt><dd className="inline font-mono text-redlog-text">{localOnly.toLocaleString()}</dd></div>
+            <div><dt className="inline">{t('dashboard.chained')} </dt><dd className="inline font-mono text-redlog-text">{countsUnknown ? '—' : chained.toLocaleString()}</dd></div>
+            <div><dt className="inline">{t('dashboard.localOnly')} </dt><dd className="inline font-mono text-redlog-text">{countsUnknown ? '—' : localOnly.toLocaleString()}</dd></div>
             <div><dt className="inline">{t('dashboard.anchorLabel')} </dt><dd data-testid="dashboard-anchor" className="inline font-mono text-redlog-text">{anchor}</dd></div>
           </dl>
         </div>
@@ -99,25 +100,35 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
 
   const handleClick = async (): Promise<void> => {
     setBusy(true)
-    if (running) {
-      await window.redlog.browser.stop()
-      setRunning(false)
-      toast(t('browser.stopped'), 'info')
-    } else {
-      const r = await window.redlog.browser.launch()
-      if (r.ok) {
-        setRunning(true)
-        toast(t('browser.launched'), 'success')
+    try {
+      if (running) {
+        await window.redlog.browser.stop()
+        setRunning(false)
+        toast(t('browser.stopped'), 'info')
       } else {
-        toast(t('browser.failed'), {
-          type: 'error',
-          why: t('browser.failedWhy', { page: t('settings.pageBrowser') }),
-          detail: r.error,
-          action: { label: t('browser.openSettings'), onClick: () => onNavigate(settingsTarget('browser')) }
-        })
+        const r = await window.redlog.browser.launch()
+        if (r.ok) {
+          setRunning(true)
+          toast(t('browser.launched'), 'success')
+        } else {
+          toast(t('browser.failed'), {
+            type: 'error',
+            why: t('browser.failedWhy', { page: t('settings.pageBrowser') }),
+            detail: r.error,
+            action: { label: t('browser.openSettings'), onClick: () => onNavigate(settingsTarget('browser')) }
+          })
+        }
       }
+    } catch (err) {
+      toast(t(running ? 'capture.actionFailed' : 'browser.failed'), {
+        type: 'error',
+        why: running ? undefined : t('browser.failedWhy', { page: t('settings.pageBrowser') }),
+        detail: err instanceof Error ? err.message : String(err),
+        action: { label: t('browser.openSettings'), onClick: () => onNavigate(settingsTarget('browser')) }
+      })
+    } finally {
+      setBusy(false)
     }
-    setBusy(false)
   }
 
   // The proxy toggle used to sit here too, in the most expensive strip in the
@@ -149,7 +160,7 @@ export function LaunchBrowserButton({ onNavigate }: { onNavigate: (v: string) =>
 }
 
 export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v: string) => void; firstRun?: boolean; projectName: string }): JSX.Element {
-  const { eventCount, loggedCount, chainLen, loading: countsLoading } = useAppCounts()
+  const { eventCount, loggedCount, chainLen, countsUnknown, loading: countsLoading } = useAppCounts()
   const [config, setConfig] = useState<Record<string, Record<string, unknown>> | null>(null)
   const [configFailed, setConfigFailed] = useState(false)
   // The store's snapshot, shared with the status bar. After a failed read
@@ -157,6 +168,7 @@ export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v
   const { health: capture, status: captureStatus, lastOkAt, refresh: refreshCapture } = useCaptureHealthState()
   // v0.6.88 P2-B: dashboard shows most-recent anchor age so operators can spot
   // a stalled OTS submission at a glance (e.g. "last anchor: 3h ago" vs "26h ago").
+  const [anchorUnknown, setAnchorUnknown] = useState(true)
   const [lastAnchor, setLastAnchor] = useState<{ createdAt: number; status: string } | null>(null)
   const [localLoading, setLocalLoading] = useState(true)
   // Fixed since §5.3 — no state, no subscription. It was both when the
@@ -188,8 +200,9 @@ export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v
     // Anchor age poll — same non-blocking pattern as capture health.
     const loadAnchor = (): Promise<void> => window.redlog.chain.anchors().then((list) => {
       const first = list[0]
-      if (first) setLastAnchor({ createdAt: first.createdAt, status: first.status })
-    }).catch(() => {})
+      setLastAnchor(first ? { createdAt: first.createdAt, status: first.status } : null)
+      setAnchorUnknown(false)
+    }).catch(() => setAnchorUnknown(true))
     void loadAnchor()
     // The shared counts (eventCount, chainLen, scopeObservations) are refreshed
     // by useAppCounts's own onNew subscription. Capture health and the anchor
@@ -299,12 +312,14 @@ export function DashboardView({ onNavigate, firstRun = false }: { onNavigate: (v
           chained={eventCount}
           localOnly={loggedCount}
           lastAnchor={lastAnchor}
+          countsUnknown={countsUnknown}
+          anchorUnknown={anchorUnknown}
           onOpenActivity={() => onNavigate('search')}
-          {...eventTileStatus({
+          {...(countsUnknown ? { tone: 'amber' as const, sub: undefined } : eventTileStatus({
             // The drift check compares the chain length with the *chained* count; the
             // total shown above it is every recorded row (see RecordSummary).
             eventCount, chainLen, lastAnchor, sampleBroken: captureStatus === 'ok' ? capture?.lastSampleBroken : undefined, now: Date.now()
-          }, t)}
+          }, t))}
         />
       </section>
 

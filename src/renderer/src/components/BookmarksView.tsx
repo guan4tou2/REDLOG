@@ -1,3 +1,5 @@
+import { escapeBelongsAbove } from '../lib/escapeLayer'
+import { isComposing } from '../lib/ime'
 import { SCROLL_GUTTER } from '../lib/pageLayout'
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, useId } from 'react'
 import { useI18n } from '../i18n'
@@ -44,7 +46,18 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
   // in its place, then back. The list's search, scroll and selection survive
   // the round trip (below).
   const [detailOpen, setDetailOpen] = useState(false)
+  useEffect(() => {
+    if (!detailOpen) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape' || isComposing(e) || escapeBelongsAbove(e)) return
+      e.preventDefault()
+      setDetailOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [detailOpen])
   const listRef = useRef<HTMLDivElement>(null)
+  const backButton = useRef<HTMLButtonElement>(null)
   const listPosition = useRef(0)
   const selectedRow = useRef<HTMLButtonElement | null>(null)
   useLayoutEffect(() => {
@@ -105,10 +118,15 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
   // an operator asks of a finding more often than any other.
   const listNav = useListKeyboard({
     count: visibleMarks.length,
+    enabled: !detailOpen,
     onActivate: (i) => { const m = visibleMarks[i]; if (m) { setSelected(m); setCreating(false); setDetailOpen(true) } },
     onJumpToTimeline: (i) => { const m = visibleMarks[i]; if (m) onOpenInTimeline?.(m.createdAt) },
     onEscape: () => setSelected(null)
   })
+  useEffect(() => {
+    // Run after the list's roving-focus effect when a row opens the detail.
+    if (detailOpen) backButton.current?.focus({ preventScroll: true })
+  }, [detailOpen])
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -151,7 +169,7 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
 
   return (
     <div data-testid="bookmarks-workspace" className="flex h-full min-w-0">
-      {(marks.length > 0 || !creating || !detailOpen) && <div hidden={detailOpen} className="flex-1 min-w-0 flex flex-col">
+      {(marks.length > 0 || !creating || !detailOpen) && <div hidden={detailOpen} inert={detailOpen} className="flex-1 min-w-0 flex flex-col">
         <div className="px-pad py-2 border-b border-redlog-border">
           <div className="flex items-center justify-between mb-2 gap-1">
             <span className="text-xs font-semibold text-redlog-text-dim uppercase tracking-wider flex-1 truncate">
@@ -254,7 +272,7 @@ export function BookmarksView({ onOpenInTimeline }: { onOpenInTimeline?: (ts: nu
 
       {(marks.length > 0 || creating) && <div hidden={!detailOpen} data-testid="bookmark-detail-pane" className={`min-w-0 flex-1 overflow-auto p-pad ${SCROLL_GUTTER}`}>
         {detailOpen && (
-          <Button data-testid="bookmarks-back" size="compact" level="quiet" onClick={() => setDetailOpen(false)}>
+          <Button ref={backButton} data-testid="bookmarks-back" size="compact" level="quiet" onClick={() => setDetailOpen(false)}>
             <ChevronLeft size={14} aria-hidden />{t('bookmarks.backToList')}
           </Button>
         )}

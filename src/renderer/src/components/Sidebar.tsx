@@ -17,7 +17,7 @@ interface NavItem {
   id: string
   label: string
   icon: LucideIcon
-  badge?: number
+  badge?: number | null
   badgeColor?: string
   badgeLabel?: string
   /** The badge count is a lower bound. */
@@ -39,7 +39,7 @@ import { isMac } from '../lib/platform'
 import { useAppCounts } from '../lib/useAppCounts'
 
 export default function Sidebar({ active, onNavigate, projectId }: SidebarProps): JSX.Element {
-  const { lootCount, lootPartial, scopeObservations } = useAppCounts()
+  const { lootCount, lootPartial, countsUnknown, scopeObservations } = useAppCounts()
   const { t } = useI18n()
 
   // §4: 12% tint + same-colour text, the same vocabulary the badges elsewhere
@@ -49,21 +49,21 @@ export default function Sidebar({ active, onNavigate, projectId }: SidebarProps)
   // `label` names what the count counts, so a screen reader (and the tooltip)
   // says "1 violation" rather than a bare digit that could be a shortcut.
   // `atLeast`: the count is a lower bound, shown as "N+".
-  const badge = (count: number, tone: string, label: string, atLeast = false): JSX.Element | null =>
-    count > 0 ? (
+  const badge = (count: number | null, tone: string, label: string, atLeast = false): JSX.Element | null =>
+    count === null || count > 0 ? (
       <span
         className={`min-w-[18px] h-[18px] rounded-full ${tone} text-xs font-semibold tabular-nums flex items-center justify-center px-1`}
         title={label}
         aria-label={label}
       >
-        {count > 99 ? '99+' : atLeast ? `${count}+` : count}
+        {count === null ? '—' : count > 99 ? '99+' : atLeast ? `${count}+` : count}
       </span>
     ) : null
 
   const itemMap: Record<string, NavItem> = {
     dashboard: { id: 'dashboard', label: t('sidebar.dashboard'), icon: Gauge },
     terminal: { id: 'terminal', label: t('sidebar.terminal'), icon: ChevronRight },
-    screenshots: { id: 'screenshots', label: t(primaryLabelKey('screenshots')), icon: Files, badge: lootCount, badgeColor: 'bg-amber-500/12 text-amber-400', badgeAtLeast: lootPartial, badgeLabel: t(lootPartial ? 'sidebar.lootBadgeAtLeast' : 'sidebar.lootBadge', {count:lootCount}) },
+    screenshots: { id: 'screenshots', label: t(primaryLabelKey('screenshots')), icon: Files, badge: countsUnknown ? null : lootCount, badgeColor: 'bg-amber-500/12 text-amber-400', badgeAtLeast: lootPartial, badgeLabel: countsUnknown ? t('evidence.readFailed') : t(lootPartial ? 'sidebar.lootBadgeAtLeast' : 'sidebar.lootBadge', {count:lootCount}) },
     targets: { id: 'targets', label: t(primaryLabelKey('targets')), icon: Crosshair, badge: scopeObservations, badgeColor: 'bg-redlog-danger/12 text-redlog-danger', badgeLabel:t('sidebar.observationsBadge',{count:scopeObservations}) },
     search: { id: 'search', label: t('sidebar.search'), icon: Search },
     timeline: { id: 'timeline', label: t('sidebar.timeline'), icon: Rows3 },
