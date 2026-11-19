@@ -47,7 +47,7 @@ import {
   observationStanding as observationStandingOf, badgeIndex, sessionBoundaries, drawnMatchIndex, rowsById, commandIntervals
 } from '../lib/timelineIncremental'
 import { nextTrackOrder } from '../lib/timelineIntervals'
-import { layoutIntervalMarks, filterVisibleMarks, INTERVAL_MIN_LINE_PX } from '../lib/timelineIntervalLayout'
+import { layoutIntervalMarks, filterVisibleMarks, visibleTrackRows, INTERVAL_MIN_LINE_PX, type IntervalMark } from '../lib/timelineIntervalLayout'
 import { TimelineCommandTracks } from './timeline/TimelineCommandTracks'
 import { mergeSortedRows } from '../lib/timelineMerge'
 import { TimelineHelpModal } from './TimelineHelpModal'
@@ -810,7 +810,13 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
   })
   const admitLiveRef = publishLive.admit
 
-  const { timeStart, timeEnd, ticks } = useMemo(() => computeDomainBounds(events), [events])
+  const { timeStart, timeEnd, ticks } = useMemo(() => {
+    const tracks = timelineMode === 'standard' ? intervalSet.tracks : []
+    const extend = tracks.length ? tracks.reduce((bounds, track) => ({
+      lo: Math.min(bounds.lo, track.firstTs), hi: Math.max(bounds.hi, track.lastTs)
+    }), { lo: Infinity, hi: -Infinity }) : undefined
+    return computeDomainBounds(events, extend)
+  }, [events, intervalSet.tracks, timelineMode])
 
 
   // The standard ruler runs the full width: it has no label column to leave
@@ -852,8 +858,8 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
 
   const swimLaneRows = useTimelineDerived(swimRows, events, visibleRows, collapsedBands, pluginTypes, hiddenLanes)
   const rowEvents = useMemo(
-    () => timelineMode === 'standard' ? { [STANDARD_ROW]: standardTrack } : swimLaneRows,
-    [timelineMode, standardTrack, swimLaneRows]
+    () => timelineMode === 'standard' ? { [STANDARD_ROW]: standardTrack.filter((e) => !intervalSet.claimed.has(e.id)) } : swimLaneRows,
+    [timelineMode, standardTrack, swimLaneRows, intervalSet.claimed]
   )
 
   // Spec 038 US3: the box is read by the query contract — the same parse,
@@ -1042,7 +1048,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
   // memos above: nothing higher may name these.
   const observationStanding = useTimelineDerived(observationStandingOf, events)
 
-  const badgesById = useTimelineDerived(badgeIndex, events, brokenAtId, observationStanding.cleared, observationStanding.superseded)
+  const badgesById = useTimelineDerived(badgeIndex, timelineMode === 'standard' ? rawEvents : events, brokenAtId, observationStanding.cleared, observationStanding.superseded)
 
   // Project-wide causal focus. The old implementation walked only the 200 rows
   // currently loaded in Timeline, so an ordinary unpaged cause looked like a
@@ -1198,6 +1204,14 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
     clusterPx: INTERVAL_MIN_LINE_PX, endsMayBeMissing
   }), [intervalSet, rowOf, toX, TRACK_W, laneH, endsMayBeMissing])
   const [rowView, setRowView] = useState({ first: 0, last: MAX_VISIBLE_TERMINAL_ROWS })
+  const readRowView = useCallback((el: HTMLDivElement) => {
+    const height = el.clientHeight || Math.min(visibleRows.length, 1 + MAX_VISIBLE_TERMINAL_ROWS) * laneH + axisH
+    const next = visibleTrackRows(el.scrollTop, height, axisH, laneH, visibleRows.length)
+    setRowView(prev => prev.first === next.first && prev.last === next.last ? prev : next)
+  }, [axisH, laneH, visibleRows.length])
+  // Invariant: rowView describes the actually mounted scroller, never its
+  // predecessor. Read after every layout, including spinner remounts and row changes.
+  useLayoutEffect(() => { if (laneScrollRef.current) readRowView(laneScrollRef.current) })
 
   // Only terminal ends and recording pauses make a band; the domain moves on
   // every flush, so the bands are re-placed from those few rows.
@@ -1257,6 +1271,23 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
   const visibleIntervalMarks = useMemo(() => filterVisibleMarks(
     intervalMarks, TRACK_W, view.left / 100 * TRACK_W, view.width / 100 * TRACK_W, rowView
   ), [intervalMarks, TRACK_W, view.left, view.width, rowView])
+
+  const markByIntervalId = useMemo(() => {
+    const byId = new Map<string, IntervalMark>()
+    for (const mark of intervalMarks) for (const iv of mark.intervals) byId.set(iv.id, mark)
+    return byId
+  }, [intervalMarks])
+  const selectedInterval = selectedEvent ? intervalSet.byMemberId.get(selectedEvent.id) : undefined
+  const selectedMark = selectedInterval ? markByIntervalId.get(selectedInterval.id) : undefined
+  const selectedIntervalMark = selectedMark && visibleIntervalMarks.includes(selectedMark) ? selectedMark : undefined
+  const selectedCluster = selectedEvent ? visibleClusters.find((c) => c.events.some((e) => e.id === selectedEvent.id)) : undefined
+  const tabStopKey = selectedCluster?.key ?? selectedIntervalMark?.key ?? visibleClusters[0]?.key ?? visibleIntervalMarks[0]?.key
+  const restoreTrackFocus = useRef(false)
+  useLayoutEffect(() => {
+    if (!restoreTrackFocus.current || (!selectedCluster && !selectedIntervalMark)) return
+    const stop = scrollRef.current?.querySelector<HTMLElement>('[data-timeline-event][tabindex="0"]')
+    if (stop) { stop.focus({ preventScroll: true }); restoreTrackFocus.current = false }
+  }, [selectedEvent, tabStopKey, visibleIntervalMarks, selectedCluster, selectedIntervalMark])
 
   // Drag across the minimap to zoom the main view to that window; click to jump.
   const onMinimapDown = useCallback((e: React.MouseEvent) => {
@@ -1476,19 +1507,19 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
   const focusSelectedRef = useRef<string | null>(null)
   useEffect(() => {
     if (loading || !wantedFocusId || focusSelectedRef.current === wantedFocusId) return
-    const focused = events.find((e) => e.id === wantedFocusId)
+    const focused = (timelineMode === 'standard' && intervalSet.byMemberId.has(wantedFocusId) ? rawEvents : events).find((e) => e.id === wantedFocusId)
     if (!focused) return
     focusSelectedRef.current = wantedFocusId
     setSelectedEvent(focused)
     setDetailOpen(true)
-  }, [loading, wantedFocusId, events])
+  }, [loading, wantedFocusId, rawEvents, events, timelineMode, intervalSet])
 
   useEffect(() => {
     if (loading || didScrollToNow.current) return
     const el = scrollRef.current
     if (!el || el.clientWidth === 0) return
     // Centre a focused event; otherwise land on the present, latest activity in view.
-    const focused = focusEventId ? events.find((e) => e.id === focusEventId) : null
+    const focused = focusEventId ? (timelineMode === 'standard' && intervalSet.byMemberId.has(focusEventId) ? rawEvents : events).find((e) => e.id === focusEventId) : null
     if (focused) {
       el.scrollLeft = Math.max(0, Math.min(toX(focused.timestamp) - el.clientWidth / 2, TRACK_W - el.clientWidth))
     } else if (focusTs) {
@@ -1498,7 +1529,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
       el.scrollLeft = Math.max(0, Math.min(toX(Date.now()) - el.clientWidth + 80, TRACK_W - el.clientWidth))
     }
     didScrollToNow.current = true
-  }, [loading, toX, TRACK_W, focusEventId, focusTs, events, timelineMode])
+  }, [loading, toX, TRACK_W, focusEventId, focusTs, rawEvents, events, timelineMode, intervalSet])
 
   // After a cursor-anchored zoom re-renders with the new TRACK_W, restore the
   // scroll so the timestamp that was under the pointer stays under the pointer.
@@ -1622,15 +1653,21 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
         case 'nav-first':
         case 'nav-last': {
           e.preventDefault()
-          const next = nextSelection<string>(action, selectedEvent, {
-            events,
+          const anchorId = timelineMode === 'standard' && selectedEvent ? intervalSet.byMemberId.get(selectedEvent.id)?.anchorId : undefined
+          const current = anchorId ? eventsMapRef.current.get(anchorId) ?? selectedEvent : selectedEvent
+          const next = nextSelection<string>(action, current, {
+            events: timelineMode === 'standard'
+              ? standardTrack.filter((ev) => { const iv = intervalSet.byMemberId.get(ev.id); return !iv || iv.anchorId === ev.id }) : events,
             hiddenLanes: listHiddenLanes,
             pluginTypes,
             laneOrder: visibleRows,
-            laneOf: (ev) => rowKeyOf(toLane(ev.agentType, ev.data?.subtype as string | undefined, pluginTypes)),
+            laneOf: (ev) => timelineMode === 'standard'
+              ? intervalSet.byMemberId.get(ev.id)?.trackKey ?? STANDARD_ROW
+              : rowKeyOf(toLane(ev.agentType, ev.data?.subtype as string | undefined, pluginTypes)),
             tsOf: displayTs
           })
           if (next) {
+            restoreTrackFocus.current = timelineMode === 'standard' && !!scrollRef.current?.contains(document.activeElement)
             setSelectedEvent(next)
             // Walking off the visible window follows the selection.
             const scroller = scrollRef.current
@@ -1640,6 +1677,17 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
                 scroller.scrollLeft = Math.max(0, Math.min(x - scroller.clientWidth / 2, TRACK_W - scroller.clientWidth))
               }
             }
+            if (timelineMode === 'standard') {
+              const outer = laneScrollRef.current
+              const key = intervalSet.byMemberId.get(next.id)?.trackKey ?? STANDARD_ROW
+              const row = rowOf.get(key) ?? 0
+              const top = axisH + row * laneH
+              if (outer && (top < outer.scrollTop || top + laneH > outer.scrollTop + outer.clientHeight)) {
+                outer.scrollTop = Math.max(0, top + laneH - outer.clientHeight)
+                if (top < outer.scrollTop) outer.scrollTop = top
+              }
+            }
+            updateView()
           }
           break
         }
@@ -1677,7 +1725,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectedEvent, detailOpen, showHelp, focusAnchorId, events, listHiddenLanes, pluginTypes, toX, TRACK_W, visibleRows, rowKeyOf, onOpenInActivity])
+  }, [selectedEvent, detailOpen, showHelp, focusAnchorId, events, listHiddenLanes, pluginTypes, toX, TRACK_W, visibleRows, rowKeyOf, onOpenInActivity, timelineMode, standardTrack, intervalSet, rowOf, axisH, laneH, updateView])
 
   // Helper: scroll the track so the given event is centred in the viewport.
   // Used by the cause/effect chips (feature 1) and any other jump-to-event
@@ -1707,19 +1755,31 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
     const first = firstClick.current
     return first && Date.now() - first.at < 700 ? first.evt : evt
   }
-  const pickEvent = useCallback((evt: RedLogEvent, detail: number) => {
+  const pickEvent = useCallback((evt: RedLogEvent, detail: number, sameSelection = selectedRef.current?.id === evt.id) => {
     if (detail > 1) { setSelectedEvent(firstClickTarget(evt)); return }
     if (detail === 1) firstClick.current = { evt, at: Date.now() }
-    if (selectedRef.current?.id !== evt.id) { setSelectedEvent(evt); return }
+    if (!sameSelection) { setSelectedEvent(evt); return }
     if (detail === 1) { setSelectedEvent(null); setDetailOpen(false) }
   }, [])
   // Double-click opens; Enter toggles the body on the event it is pressed on.
-  const openEventBody = useCallback((evt: RedLogEvent, how: 'dblclick' | 'key') => {
+  const openEventBody = useCallback((evt: RedLogEvent, how: 'dblclick' | 'key', sameSelection = selectedRef.current?.id === evt.id) => {
     const target = how === 'dblclick' ? firstClickTarget(evt) : evt
-    if (how === 'key' && detailOpen && selectedRef.current?.id === target.id) { setDetailOpen(false); return }
+    if (how === 'key' && detailOpen && sameSelection) { setDetailOpen(false); return }
     setSelectedEvent(target)
     setDetailOpen(true)
   }, [detailOpen])
+
+  const pickInterval = useCallback((mark: IntervalMark, detail: number) => {
+    const rows = mark.intervals.map(iv => eventsMapRef.current.get(iv.anchorId)).filter((e): e is RedLogEvent => !!e)
+    if (mark.kind === 'cluster') { setCluster({ x: mark.x0, y: mark.y, events: rows }); return }
+    const evt = rows[0]
+    if (evt) pickEvent(evt, detail, mark.intervals[0].memberIds.includes(selectedRef.current?.id ?? ''))
+  }, [pickEvent])
+  const openInterval = useCallback((mark: IntervalMark, how: 'dblclick' | 'key') => {
+    if (mark.kind === 'cluster') return
+    const evt = eventsMapRef.current.get(mark.intervals[0].anchorId)
+    if (evt) openEventBody(evt, how, mark.intervals[0].memberIds.includes(selectedRef.current?.id ?? ''))
+  }, [openEventBody])
 
   const copyEventJson = useCallback(() => {
     if (!selectedEvent) return
@@ -2273,9 +2333,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
           onScroll={(e) => {
             setCluster(null)
             const el = e.currentTarget
-            const first = Math.max(0, Math.floor((el.scrollTop - axisH) / laneH))
-            const last = Math.max(first, Math.ceil((el.scrollTop + el.clientHeight - axisH) / laneH) - 1)
-            setRowView((prev) => prev.first === first && prev.last === last ? prev : { first, last })
+            readRowView(el)
           }}
         >
           {/* Lane labels. The standard ruler has none; the swim lanes keep
@@ -2630,7 +2688,8 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
                   // the track in one press rather than through every visible
                   // node, and ↑/↓ walks from there — the same model the
                   // existing keyboard handler already implements.
-                  const isTabStop = single && (sel || (!selectedEvent && c === visibleClusters[0]))
+                  const isTabStop = timelineMode === 'standard' ? c.key === tabStopKey
+                    : single && (sel || (!selectedEvent && c === visibleClusters[0]))
                   // Every dot is the same grey and its shape is severity, so
                   // its type is said in words: on hover (title) and to the
                   // keyboard (accessible name). A cluster names each type it
@@ -2762,11 +2821,19 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
                     </button>
                   )
                 })}
-                {/* Spec 078 S1: the terminal rows' labels and command lines,
-                    after the dots and under nothing that takes the pointer. */}
+                {/* Spec 078: interactive command intervals on terminal rows. */}
                 {timelineMode === 'standard' && (
                   <TimelineCommandTracks
                     set={intervalSet}
+                    selectedId={selectedEvent?.id}
+                    tabStopKey={tabStopKey}
+                    didPan={didPan}
+                    onPick={pickInterval}
+                    onOpen={openInterval}
+                    activeIds={focusChain ?? (filterMatches ? matchedIds : null)}
+                    filtering={!!filterMatches && !focusChain}
+                    badgesById={badgesById}
+                    eventsById={eventsMapRef.current}
                     order={trackOrder}
                     marks={visibleIntervalMarks}
                     rows={rowView}

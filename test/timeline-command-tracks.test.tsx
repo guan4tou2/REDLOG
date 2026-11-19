@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import * as intervalLayout from '../src/renderer/src/lib/timelineIntervalLayout'
-import { TimelineCommandTracks } from '../src/renderer/src/components/timeline/TimelineCommandTracks'
+import { TimelineCommandTracks, type TimelineCommandTracksProps } from '../src/renderer/src/components/timeline/TimelineCommandTracks'
 import { buildCommandIntervals } from '../src/renderer/src/lib/timelineIntervals'
 import { layoutIntervalMarks } from '../src/renderer/src/lib/timelineIntervalLayout'
 import { formatDateTime } from '../src/renderer/src/lib/time'
@@ -94,16 +94,15 @@ describe('standard mode: one row per terminal (Spec 078 S1)', () => {
     expect(screen.getByTestId('timeline-lane-scroll').style.maxHeight).toBe(`${3 * LANE_H + AXIS_H}px`)
   })
 
-  it('is drawn but not interactive, and every drawn row is still a dot (the S1 transitional state)', async () => {
+  it('commands move from the event row to interactive terminal marks (S3)', async () => {
     b.queryPage.mockResolvedValue(page(twoTerminals()))
     mount()
     await waitFor(() => expect(tracks()).toHaveLength(2))
     const layer = screen.getByTestId('timeline-command-tracks')
-    expect(layer.getAttribute('aria-hidden')).toBe('true')
-    expect(layer.className).toContain('pointer-events-none')
-    expect(layer.querySelector('button, [tabindex], [data-timeline-event]')).toBeNull()
-    // The 6 rows the fold draws (4 starts fold into their ends) are 6 dots.
-    expect(document.querySelectorAll('[data-timeline-event]').length).toBe(6)
+    expect(layer.getAttribute('aria-hidden')).toBeNull()
+    expect(layer.className).not.toContain('pointer-events-none')
+    expect(layer.querySelectorAll('button[data-timeline-event]')).toHaveLength(6)
+    expect(document.querySelectorAll('[data-timeline-event]')).toHaveLength(6)
   })
 
   it('draws a line per command: solid when it ended, dashed to the next start when not, to the right edge when last (Q4)', async () => {
@@ -149,11 +148,7 @@ describe('standard mode: one row per terminal (Spec 078 S1)', () => {
     expect(lineOf('c1')).toBeNull()
   })
 
-  // TRANSITIONAL (S1/S2): the time range is still computed from the drawn
-  // rows, which no longer include a folded start, so a long command's start
-  // can fall left of the track. S2 retains that coordinate; S3 widens the range to
-  // include interval starts (FR-065) and this case changes.
-  it('S2 transitional: an off-track start retains its true geometry until S3 extends the domain', async () => {
+  it('includes an interval start older than the drawn rows in the domain (FR-065)', async () => {
     b.queryPage.mockResolvedValue(page([
       cmd('s', T0 - 600 * S, 'command_start', 'ta', 'c1', 'nmap -p- 10.0.0.5'),
       cmd('e', T0 + 42 * S, 'command_end', 'ta', 'c1', 'nmap -p- 10.0.0.5'),
@@ -161,7 +156,7 @@ describe('standard mode: one row per terminal (Spec 078 S1)', () => {
     ]))
     mount()
     await waitFor(() => expect(tracks()).toHaveLength(1))
-    expect(px(lineOf('c1')!.style.left)).toBeLessThan(0)
+    expect(px(lineOf('c1')!.style.left)).toBeGreaterThan(0)
   })
 
   it('the built-in terminal keeps its session-band label', async () => {
@@ -303,9 +298,9 @@ describe('S2 mark rendering', () => {
     cmd('s', T0, 'command_start', 'ta', 'c1', 'cat\n  config.php\u202e'),
     ...open ? [] : [cmd('e', T0 + 42 * S, 'command_end', 'ta', 'c1', 'cat\n  config.php\u202e', { exit_code: exitCode, ...extra })]
   ])
-  function draw(set: ReturnType<typeof setFor>, trackW = 1000, scale = 1) {
+  function draw(set: ReturnType<typeof setFor>, trackW = 1000, scale = 1, overlays: Pick<TimelineCommandTracksProps, 'badgesById'> = {}) {
     const marks = layoutIntervalMarks({ set, rowOf: new Map([['terminal:ta', 1]]), toX: (ts) => 100 + (ts - T0) / 1000 * scale, trackW, laneH: 44, clusterPx: 14, endsMayBeMissing: false })
-    return render(<I18nProvider><TimelineCommandTracks set={set} marks={marks} order={['terminal:ta']} rows={{ first: 0, last: 3 }} laneH={44} trackW={trackW} scrollLeft={0} builtinLabel={(id) => id} /></I18nProvider>)
+    return render(<I18nProvider><TimelineCommandTracks set={set} marks={marks} order={['terminal:ta']} rows={{ first: 0, last: 3 }} laneH={44} trackW={trackW} scrollLeft={0} builtinLabel={(id) => id} {...overlays} /></I18nProvider>)
   }
   it('success uses a filled bar, failure a cross with exit code, no result a hollow bar, open no end', () => {
     for (const [code, open, shape] of [[0, false, 'filled-bar'], [2, false, 'cross'], [null, false, 'hollow-bar'], [null, true, null]] as const) {
@@ -321,6 +316,32 @@ describe('S2 mark rendering', () => {
     expect(r.container.querySelector('[data-testid="timeline-exit-code"]')).toBeNull()
     expect(r.container.querySelector('[data-testid="timeline-interval-mark"]')?.getAttribute('title')).toContain('exit 2')
   })
+  it('N3: a badged failure places its exit code clear of the badge or omits it when crowded', () => {
+    const overlays = { badgesById: new Map([['e', [{ key: 'clock', icon: '⚠', reason: 'clock skew' }]]]) }
+    for (const [trackW, hasCode] of [[1000, true], [180, false]] as const) {
+      const r = draw(setFor(2), trackW, 1, overlays)
+      const badge = r.container.querySelector<HTMLElement>('[data-interval-badge]')!
+      expect(badge).not.toBeNull()
+      const code = r.container.querySelector<HTMLElement>('[data-testid="timeline-exit-code"]')
+      if (hasCode) expect(parseFloat(code!.style.left) - parseFloat(badge.style.left), 'N3: exit code clears the 12px badge').toBeGreaterThanOrEqual(12)
+      else expect(code, 'N3: no code when badge and code cannot both fit').toBeNull()
+      r.unmount()
+    }
+  })
+  it('N3: the rendered short open stub clips at the right edge', () => {
+    const set = setFor(null, true)
+    const marks = layoutIntervalMarks({ set, rowOf: new Map([['terminal:ta', 1]]), toX: () => 995, trackW: 1000, laneH: 44, clusterPx: 14, endsMayBeMissing: false })
+    expect(marks[0].kind).toBe('point')
+    render(<I18nProvider><TimelineCommandTracks set={set} marks={marks} order={['terminal:ta']} rows={{ first: 0, last: 3 }} laneH={44} trackW={1000} scrollLeft={0} builtinLabel={id => id} /></I18nProvider>)
+    const line = screen.getByTestId('timeline-interval-line')
+    expect(parseFloat(line.style.left) + parseFloat(line.style.width), 'N3: rendered stub ends at track edge').toBe(1000)
+  })
+  it('N3: a point name and badge occupy separate vertical bands', () => {
+    draw(setFor(0), 1000, 0.1, { badgesById: new Map([['e', [{ key: 'clock', icon: '⚠', reason: 'clock skew' }]]]) })
+    const badge = document.querySelector<HTMLElement>('[data-interval-badge]')!
+    const name = screen.getByTestId('timeline-interval-name')
+    expect(parseFloat(name.style.top), 'N3: point name clears badge bottom').toBeGreaterThanOrEqual(parseFloat(badge.style.top) + parseFloat(badge.style.height))
+  })
   it('prints a safe collapsed command with inline ellipsis width and a richer title', () => {
     const r = draw(setFor(2))
     const name = r.container.querySelector<HTMLElement>('[data-testid="timeline-interval-name"]')!
@@ -333,8 +354,8 @@ describe('S2 mark rendering', () => {
     expect(title).toContain('exit 2')
     expect(title).not.toBe(name.textContent)
     expect(title).toContain(formatDateTime(T0, { seconds: true }))
-    expect(r.container.querySelector('button, [tabindex]')).toBeNull()
-    expect(screen.getByTestId('timeline-command-tracks').getAttribute('aria-hidden')).toBe('true')
+    expect(r.container.querySelector('button[data-timeline-interval]')).not.toBeNull()
+    expect(screen.getByTestId('timeline-command-tracks').getAttribute('aria-hidden')).toBeNull()
   })
   it('short commands keep an 8px start and the state shape, with no line', () => {
     const r = draw(setFor(null), 1000, 0.1)

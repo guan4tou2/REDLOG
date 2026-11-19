@@ -29,15 +29,19 @@
 
 ## S3 互動與切換
 
-- [ ] T030 RED：`test/timeline-interval-select.test.tsx`（點一段區間選到它的 `command_end`、事件列上不再有同一個指令的點；雙擊、Enter、↑/↓、←/→、單一 Tab 停留點、FR-007 的 DOM 版）。
-- [ ] T031 區間記號成為按鈕；事件列扣掉 `claimed`；`nextSelection` 的列依事件；計數記號開叢集清單；走到捲出的列時垂直捲入。
-- [ ] T032 `computeDomainBounds` 納入區間起點（FR-065），移除 S1 的左緣裁切。
-- [ ] T033 `test/timeline-hit-targets.test.tsx`、`test/timeline-time-map.test.ts` 加區間的案例；合併前 CI 跑完整 e2e。
+- [x] T030 RED：`test/timeline-interval-select.test.tsx`（點一段區間選到它的 `command_end`、事件列上不再有同一個指令的點；雙擊、Enter、↑/↓、←/→、單一 Tab 停留點、FR-007 的 DOM 版）。
+- [x] T031 區間記號成為按鈕；事件列扣掉 `claimed`；`nextSelection` 的列依事件；計數記號開叢集清單；走到捲出的列時垂直捲入。
+- [x] T032 `computeDomainBounds` 納入區間起點（FR-065），移除 S1 的左緣裁切。
+- [x] T033 `test/timeline-hit-targets.test.tsx`、`test/timeline-time-map.test.ts` 加區間的案例；已更新受影響的 e2e specs，本機依 brief 不執行。合併前仍須 CI 跑完整 e2e。
 
 ## S4 疊層與誠實規則
 
-- [ ] T040 RED：`test/timeline-interval-honesty.test.tsx`（設了結束時間時只有 start 的指令不延伸、`/` 命中 start 時區間點亮、焦點鏈、`hasMore` 的計數寫法、讀取失敗時的狀態）。
-- [ ] T041 變暗搬到區間；終點記號上的 `ioMark` 與徽章；`endsMayBeMissing`（FR-025）；可及名稱、`title` 與終端列群組名稱的 i18n 鍵。
+- [ ] T040 RED：`test/timeline-interval-honesty.test.tsx`：
+  - [x] S3 round 2 提前：`/` 命中 start 時區間點亮、焦點鏈與計數變暗、終點徽章與 `ioMark`。
+  - [ ] S4：設了結束時間時只有 start 的指令不延伸、`hasMore` 的計數寫法、讀取失敗時的狀態。
+- [ ] T041 疊層與誠實規則：
+  - [x] S3 round 2 提前：變暗搬到區間；終點記號上的 `ioMark` 與徽章；計數依所有成員變暗並提升最嚴重徽章。
+  - [ ] S4：`endsMayBeMissing`（FR-025）；精確可及名稱、計數可及名稱、`title` 與終端列群組名稱的 i18n 鍵。
 
 ## S5 e2e、文件、效能
 

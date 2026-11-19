@@ -120,14 +120,16 @@ export interface DomainBounds {
 }
 
 export function computeDomainBounds(
-  events: readonly { timestamp: number; agentType: string; data?: Record<string, unknown> }[]
+  events: readonly { timestamp: number; agentType: string; data?: Record<string, unknown> }[],
+  extend?: { lo: number; hi: number }
 ): DomainBounds {
-  if (events.length === 0) {
+  if (events.length === 0 && !extend) {
     const now = Date.now()
     return { timeStart: now - 3600000, timeEnd: now, ticks: [] }
   }
-  let first = events[0].timestamp
-  let last = events[events.length - 1].timestamp
+  let first = events[0]?.timestamp ?? extend!.lo
+  let last = events[events.length - 1]?.timestamp ?? extend!.hi
+  if (extend) { first = Math.min(first, extend.lo); last = Math.max(last, extend.hi) }
   for (const e of events) {
     if (e.agentType !== 'marker') continue
     const at = e.data?.atTimestamp

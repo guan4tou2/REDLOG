@@ -515,22 +515,31 @@ test.describe.serial('timeline-standard-mode: timeline standard / swim-lane mode
       fetch(`${base}/api/events/seed`, { method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({ agent_type, data }) })
-    await post('shell', { subtype: 'command_end', command: 'whoami', exit_code: 0 })
+    // S3: exercise a real paired command in standard mode. It moves onto
+    // its terminal row; the same unkeyed seed previously stayed an event dot.
+    const command = { command: 'whoami', command_id: 'mode-whoami', terminalId: 'mode-terminal', shell: 'zsh' }
+    await post('shell', { ...command, subtype: 'command_start', source_timestamp: Date.now() - 180_000 })
+    await post('shell', { ...command, subtype: 'command_end', exit_code: 0, source_timestamp: Date.now() - 120_000 })
     await post('marker', { title: 'mode-note', severity: 'info' })
     await page.waitForTimeout(600)
     await openView(page, 'timeline')
     await page.getByTestId('timeline-more-menu').waitFor({ state: 'visible', timeout: 10_000 })
   })
 
-  test('opens in standard mode: one track of every event, no swim-lane rows', async () => {
+  test('opens in standard mode: paired command on its terminal row, other events on the event row', async () => {
     expect(await timelineMode(page)).toBe('standard')
     await expect(page.getByTestId('timeline-standard-track')).toBeVisible()
     await expect(page.locator('[data-testid^="timeline-band-"]')).toHaveCount(0)
-    // The shell command AND the Evidence marker share the one track. Not a
-    // count of marks: the project-open rows, the command and the marker land
-    // within a second or two, and how many marks that makes depends on whether
-    // two count badges clear each other (they merge when they would overlap).
-    // What must hold is that the track's marks name both lanes.
+    // Command and marker each remain reachable. The paired command is one
+    // terminal mark, with no duplicate event-row dot; project-open rows and
+    // the marker can still share a counted event-row mark.
+    const interval = page.locator('[data-timeline-interval][aria-label*="whoami"]')
+    await expect(interval).toHaveCount(1)
+    await expect(interval.locator('[data-timeline-mark]')).toHaveCount(1)
+    // Output texture moved with the paired command from its event dot to its end mark.
+    await expect(interval.locator('[data-interval-io]')).toHaveCount(1)
+    await expect(page.locator('[data-timeline-event]:not([data-timeline-interval])[aria-label*="whoami"]')).toHaveCount(0)
+    await expect(page.locator('[data-track-key="terminal:mode-terminal"]')).toBeVisible()
     const named = (await page.locator('[data-timeline-event]').evaluateAll(
       (els) => els.map((el) => el.getAttribute('aria-label') ?? ''))).join(' | ')
     expect(named, named).toMatch(/Shell|whoami/)
@@ -830,21 +839,28 @@ const markBoxes = (p: Page): Promise<MarkBox[]> => p.evaluate(() =>
     const mark = btn.querySelector('[data-timeline-mark]') as HTMLElement
     const text = mark.textContent ?? ''
     const span = mark.firstElementChild as HTMLElement | null
-    const n = /(\d+)/.exec(btn.getAttribute('aria-label') ?? '')
+    const n = /(\d+)/.exec(btn.hasAttribute('data-timeline-interval') ? text : btn.getAttribute('aria-label') ?? '')
     // The number's own box, in the same offset family: its offsetParent is
     // the button (positioned) unless the browser makes the mark one.
-    const markLeft = btn.offsetLeft + mark.offsetLeft
-    const textLeft = span
-      ? (span.offsetParent === mark ? markLeft : btn.offsetLeft) + span.offsetLeft
-      : 0
+    const track = document.querySelector('[data-testid="timeline-standard-track"]')
+      ?? document.querySelector('div.cursor-grab')?.firstElementChild
+    const position = (node: HTMLElement): { left: number; top: number } => {
+      let left = 0, top = 0
+      for (let own: HTMLElement | null = node; own && own !== track; own = own.offsetParent as HTMLElement | null) {
+        left += own.offsetLeft; top += own.offsetTop
+      }
+      return { left, top }
+    }
+    const markLeft = position(mark).left
+    const textLeft = span ? position(span).left : 0
     return {
-      top: btn.offsetTop + mark.offsetTop,
-      left: btn.offsetLeft + mark.offsetLeft,
-      right: btn.offsetLeft + mark.offsetLeft + mark.offsetWidth,
+      top: position(mark).top,
+      left: markLeft,
+      right: markLeft + mark.offsetWidth,
       textLeft,
       textRight: textLeft + (span?.offsetWidth ?? 0),
-      hitLeft: btn.offsetLeft,
-      hitRight: btn.offsetLeft + btn.offsetWidth,
+      hitLeft: position(btn).left,
+      hitRight: position(btn).left + btn.offsetWidth,
       // A lone dot has no number; its accessible name starts with a time.
       count: text ? Number(n?.[1] ?? NaN) : 1,
       text,
