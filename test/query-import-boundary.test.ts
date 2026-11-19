@@ -56,11 +56,11 @@ const DYNAMIC_READ_MODULE = /\b(?:await\s+|=\s*|\.then\(\s*\(\)\s*=>\s*)import\(
 const BASELINE: Record<string, readonly string[]> = {
   'src/core/api-server.ts': ['executeEventQuery', 'queryEvents'],
   'src/main/active-pivots.ts': ['queryEvents'],
-  'src/main/index.ts': ['backfillCastIndex', 'getLootCount', 'queryEvents'],
+  'src/main/index.ts': ['backfillCastIndex', 'queryEvents'],
   'src/main/ipc/artifacts.ts': ['queryEvents'],
   'src/main/ipc/data-export.ts': ['getReadonlyDB'],
   'src/main/ipc/events.ts': [
-    'aggregateTargets', 'countEvents', 'distinctAgentTypes', 'distinctHosts', 'executeEventQuery', 'module activity-queries',
+    'aggregateTargets', 'countEvents', 'distinctAgentTypes', 'distinctHosts', 'executeEventQuery', 'getLootCount', 'module activity-queries',
     'queryEventCausalChain', 'queryEvents', 'queryEventsPage', 'queryHttpFlowPage', 'queryScreenshotPage', 'querySourceSessions', 'spanEvents'
   ],
   'src/main/ipc/terminal.ts': ['backfillCastIndex'],

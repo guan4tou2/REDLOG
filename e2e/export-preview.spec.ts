@@ -31,7 +31,7 @@ test.describe.serial('approved export plan', () => {
 
   test('previews and executes the same approved JSON plan', async () => {
     await page.getByRole('button', { name: 'Export', exact: true }).click()
-    await page.getByLabel('Export range', { exact: true }).selectOption('all')
+    await expect(page.getByLabel('Export range', { exact: true })).toHaveValue('all')
     await expect(page.getByText('Plan fingerprint')).toBeVisible()
     await expect(page.getByTestId('export-preview-subset')).toHaveText('Entire approved snapshot')
     await expect(page.getByLabel('Export format')).toHaveValue('bundle')
@@ -40,7 +40,7 @@ test.describe.serial('approved export plan', () => {
     const fingerprint = await page.getByText(/^[a-f0-9]{12}$/).textContent()
     expect(fingerprint).toMatch(/^[a-f0-9]{12}$/)
     await page.getByTestId('export-confirm').click()
-    await expect(page.getByTestId('export-completed')).toBeVisible()
+    await expect(page.getByTestId('export-completed-counts')).toContainText(/Included\s*[1-9]\d*/)
     await page.getByRole('button', { name: 'Close', exact: true }).last().click()
   })
 
@@ -54,6 +54,7 @@ test.describe.serial('approved export plan', () => {
     await page.getByLabel('Export', { exact: true }).click()
     await page.getByTestId('export-recent').click()
     await expect(page.getByTestId('export-completed')).toContainText(delivery.artifactPath)
+    await expect(page.getByTestId('export-completed-counts')).toContainText(/Included\s*[1-9]\d*/)
     await page.keyboard.press('Escape')
     const held = delivery.artifactPath + '.held'
     renameSync(delivery.artifactPath, held)
@@ -138,7 +139,7 @@ test.describe.serial('approved export plan', () => {
     await page.getByLabel('Export', { exact: true }).click()
     await page.getByLabel('Export format', { exact: true }).selectOption('other')
     await page.getByLabel('Other formats', { exact: true }).selectOption('json')
-    await page.getByLabel('Export range', { exact: true }).selectOption('all')
+    await expect(page.getByLabel('Export range', { exact: true })).toHaveValue('all')
     await expect(page.getByTestId('export-confirm')).toBeEnabled()
     try {
       chmodSync(exports, 0o555)
@@ -177,7 +178,7 @@ test.describe.serial('approved export plan', () => {
     const original = readFileSync(artifact)
     await page.getByLabel('Export', { exact: true }).click()
     await page.getByLabel('Export format', { exact: true }).selectOption('bundle')
-    await page.getByLabel('Export range', { exact: true }).selectOption('all')
+    await expect(page.getByLabel('Export range', { exact: true })).toHaveValue('all')
     const checkbox = page.getByLabel('artifacts/focus.txt', { exact: true })
     await checkbox.check()
     await expect(page.getByTestId('export-confirm')).toBeEnabled()

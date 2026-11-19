@@ -19,6 +19,7 @@ import type { RedLogEvent } from './db/event-types'
 import { isOutOfScope, type ScopeForSanitize } from './scope-sanitize'
 import { BODY_REF_FIELDS } from './http-body-store'
 import { compareCodeUnits } from './code-unit-order'
+import { isPersonalDomain } from './scope-evaluator'
 
 export type ExportAttachmentKind = 'screenshot' | 'cast' | 'httpBody' | 'artifact'
 
@@ -137,11 +138,22 @@ function sizeOf(p: string): number | null {
   try { const s = fs.statSync(p); return s.isFile() ? s.size : null } catch { return null }
 }
 
+/** Classify screenshot owners before export selection drops their rows. */
+export function personalScreenshotNames(events: Iterable<RedLogEvent>, scope?: ScopeForSanitize): Set<string> {
+  const names = new Set<string>()
+  for (const event of events) {
+    if (typeof event.data.filename === 'string' && isPersonalDomain(event.targetId, scope)) {
+      names.add(event.data.filename)
+    }
+  }
+  return names
+}
+
 /** Every file the bundle would carry for these (already approved) events. */
 export function listExportAttachments(
   projectDir: string,
   events: Iterable<RedLogEvent>,
-  options: { scope?: ScopeForSanitize; maskOutOfScope?: boolean; exclude?: ReadonlySet<string>; bounded?: boolean; include?: ReadonlySet<string>; context?: Iterable<RedLogEvent> } = {}
+  options: { scope?: ScopeForSanitize; maskOutOfScope?: boolean; exclude?: ReadonlySet<string>; bounded?: boolean; include?: ReadonlySet<string>; context?: Iterable<RedLogEvent>; personalScreenshots?: ReadonlySet<string> } = {}
 ): ExportAttachment[] {
   const exclude = options.exclude ?? new Set<string>()
   const out: ExportAttachment[] = []
@@ -159,6 +171,7 @@ export function listExportAttachments(
   const shotsDir = path.join(projectDir, 'screenshots')
   const shotFiles = new Set(fs.existsSync(shotsDir) ? fs.readdirSync(shotsDir) : [])
   for (const name of new Set([...(options.bounded ? [] : shotFiles), ...shotTargets.keys()])) {
+    if (options.personalScreenshots?.has(name)) continue
     const id = `screenshots/${name}`
     const targets = shotTargets.get(name) ?? new Set<string>()
     const bytes = sizeOf(path.join(shotsDir, name))

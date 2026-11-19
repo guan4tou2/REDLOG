@@ -1,5 +1,6 @@
+import { isPersonalDomain } from './scope-evaluator'
 import { getSanitizedFields } from './sanitize'
-import { scopeMaskReplacements, isOutOfScope, isUnclassifiedScope, isPersonalDomain, type ScopeForSanitize } from './scope-sanitize'
+import { scopeMaskReplacements, isOutOfScope, isUnclassifiedScope, type ScopeForSanitize } from './scope-sanitize'
 import type { RedLogEvent } from './db/events'
 import { withoutRowId } from './db/event-types'
 
@@ -80,8 +81,8 @@ export function redactEventForExport(e: RedLogEvent, scopeOrOpts?: ScopeForSanit
 
   if (doNotExportIds?.has(e.id)) return null
 
-  // Personal/local traffic: always dropped — these rows should never leave
-  // the local machine regardless of export mode (merge or delivery).
+  // Drop targets classified as personal/local by the supplied policy.
+  // Project scope inclusion takes precedence over personal/local rules.
   if (isPersonalDomain(e.targetId, scope)) return null
 
   const maskedFields: string[] = []

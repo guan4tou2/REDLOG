@@ -13,7 +13,7 @@ function mount(queryPage: ReturnType<typeof vi.fn>) {
   const hook = renderHook(({ targetId }) => {
     const filter = useRef({ targetId }); filter.current = { targetId }
     const generation = useRef(0)
-    return { ...useTimelinePages(filter, generation, callbacks), generation }
+    return { ...useTimelinePages(filter, JSON.stringify(filter.current), generation, callbacks), generation }
   }, { initialProps: { targetId: 'first' } })
   return { ...hook, callbacks }
 }

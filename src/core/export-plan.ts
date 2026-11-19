@@ -303,7 +303,7 @@ export function referencedArtifacts(
 export function countExportAttachments(
   projectDir: string,
   events: Iterable<RedLogEvent>,
-  options: { scope?: ScopeForSanitize; maskOutOfScope?: boolean; exclude?: ReadonlySet<string> } = {}
+  options: { scope?: ScopeForSanitize; maskOutOfScope?: boolean; exclude?: ReadonlySet<string>; personalScreenshots?: ReadonlySet<string> } = {}
 ): ExportAttachmentCounts {
   const referencedScreenshots = new Set<string>()
   const bodyHashes = new Set<string>()
@@ -320,7 +320,8 @@ export function countExportAttachments(
   for (const event of events) {
     if (event.agentType === 'screenshot') {
       const filename = typeof event.data.filename === 'string' ? event.data.filename : null
-      if (filename && !(options.maskOutOfScope !== false && options.scope && isOutOfScope(event.targetId, options.scope))) {
+      if (filename && !options.personalScreenshots?.has(filename)
+        && !(options.maskOutOfScope !== false && options.scope && isOutOfScope(event.targetId, options.scope))) {
         referencedScreenshots.add(filename)
       }
     }
@@ -341,6 +342,7 @@ export function countExportAttachments(
   }
   if (fs.existsSync(screenshotsDir)) {
     for (const filename of fs.readdirSync(screenshotsDir)) {
+      if (options.personalScreenshots?.has(filename)) continue
       if (!referencedScreenshots.has(filename) && fs.statSync(path.join(screenshotsDir, filename)).isFile()) {
         if (dropped(`screenshots/${filename}`)) continue
         included++

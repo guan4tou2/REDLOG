@@ -135,7 +135,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
   active?: boolean
 }): JSX.Element {
   const { t } = useI18n()
-  const { filter: sharedFilter } = useSharedFilter()
+  const { filter: sharedFilter, scopePolicyKey } = useSharedFilter()
   const scopeRead = useReadState(() => window.redlog.scope.policy())
   useRevalidateOnFocus(scopeRead.retry)
   useEffect(() => window.redlog.events.onNewBatch(events => {
@@ -221,7 +221,7 @@ export function HttpHistoryPanel({ onOpenInTimeline, onOpenSettings, active = tr
   // the empty list read as "no HTTP traffic was recorded".
   const httpQuery = { ...(methodFilter ? { method: methodFilter } : {}), ...(statusFilter ? { statusPrefix: statusFilter } : {}), ...(hostFilter ? { host: hostFilter } : {}), text: filterTextDebounced }
   const flowRead = useLivePagedQuery<HttpFlow>({
-    key: JSON.stringify([sharedFilter.agentType, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier, httpQuery]),
+    key: JSON.stringify([sharedFilter.agentType, sharedFilter.targetId, sharedFilter.timeRange, sharedFilter.inScopeOnly, sharedFilter.hidePersonal, sharedFilter.tier, httpQuery, scopePolicyKey]),
     enabled: !sharedFilter.agentType || sharedFilter.agentType === HTTP_FLOW_AGENT_TYPE,
     fetch: async (cursor) => {
       const page = await window.redlog.events.queryHttpFlowPage({

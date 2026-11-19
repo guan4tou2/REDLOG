@@ -15,7 +15,8 @@ import fs from 'fs'
 import path from 'path'
 import { evaluateScope } from '../src/core/scope-evaluator'
 import { classifyScopeTarget } from '../src/core/alert/policies'
-import { isOutOfScope, isPersonalDomain } from '../src/core/scope-sanitize'
+import { isOutOfScope } from '../src/core/scope-sanitize'
+import { isPersonalDomain } from '../src/core/scope-evaluator'
 
 const ROOT = path.join(__dirname, '..')
 const read = (file: string): string => fs.readFileSync(path.join(ROOT, file), 'utf8')

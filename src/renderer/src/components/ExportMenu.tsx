@@ -223,7 +223,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
       const saved = localStorage.getItem(FORMAT_KEY)
       if (saved === 'json' || saved === 'ndjson' || saved === 'bundle') format = saved
     } catch { /* remembering a format is optional */ }
-    return { format, range: 'current' as 'current' | 'all', scrubPii: false, maskScope: true, excludeAttachments: [] as string[], includeAttachments: [] as string[] }
+    return { format, range: 'all', scrubPii: false, maskScope: true, excludeAttachments: [] as string[], includeAttachments: [] as string[] }
   })
   // Freeze the declarative selection, never the currently loaded row ids.
   // Live view changes behind the dialog must not change what is reviewed.
@@ -231,7 +231,8 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
   const [destDir, setDestDir] = useState<string | null>(null)
   const [defaultDir, setDefaultDir] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
-  const [completion, setCompletion] = useState<ExportDelivery | null>(null)
+  const [receipt, setReceipt] = useState<{ delivery: ExportDelivery; kind: 'completed' | 'recent' } | null>(null)
+  const completion = receipt?.delivery
   const [recent, setRecent] = useState<ExportDelivery | null>(null)
   const [recentError, setRecentError] = useState(false)
   const [recentLoading, setRecentLoading] = useState(false)
@@ -329,16 +330,12 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
     const format = viewExport?.request.format === 'har' || viewExport?.request.format === 'timeline'
       ? viewExport.request.format : draft.format === 'har' || draft.format === 'timeline' ? 'bundle' : draft.format
     setDestDir(null)
-    setCompletion(null)
+    setReceipt(null)
     setRevealError(false)
     setResultWarning(false)
     setOpen(true)
     void loadRecent()
-    // Decided here, before the one resolution: a view the operator has not
-    // narrowed opens on the whole project, not on "current results" that
-    // happen to be everything and get labelled partial evidence.
-    const range = subsetNarrows(selection.current!.subset) ? 'current' : 'all'
-    updateDraft({ ...draft, format, range, excludeAttachments: [], includeAttachments: [], scrubPii: false })
+    updateDraft({ ...draft, format, range: 'all', excludeAttachments: [], includeAttachments: [], scrubPii: false })
   }
 
   const changeFormat = (format: ExportFormat): void => {
@@ -375,7 +372,7 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
   const closeAll = (): void => {
     attachmentFocus.current = null
     ++recentSequence.current
-    setCompletion(null)
+    setReceipt(null)
     ++previewSequence.current
     setPending(null)
     setResolvedPlan(null)
@@ -413,8 +410,9 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
       setResolvedPlan(null)
       ++recentSequence.current
       setRecentLoading(false)
-      setCompletion(result.delivery)
-      setRecent(result.delivery)
+      const delivery = { ...result.delivery, counts: result.counts }
+      setReceipt({ delivery, kind: 'completed' })
+      setRecent(delivery)
       setRevealError(false)
       setResultWarning(result.warnings.includes('recent-export-not-saved'))
     } catch (e) {
@@ -484,8 +482,8 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
             className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[91] w-[min(560px,92vw)] max-h-[82vh] flex flex-col overflow-hidden whitespace-normal break-words bg-redlog-surface border border-redlog-border rounded-xl shadow-2xl"
           >
             <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-redlog-border">
-              <h2 className="text-sm text-redlog-text">{t(completion ? 'export.completedTitle' : 'export.title')}</h2>
-              {!completion && recent && <Button size="compact" level="quiet" data-testid="export-recent" disabled={busy || recentLoading || recentError} onClick={() => { setCompletion(recent); setRevealError(false); setResultWarning(false) }}>{t('export.recent')}</Button>}
+              <h2 className="text-sm text-redlog-text">{t(receipt?.kind === 'completed' ? 'export.completedTitle' : receipt ? 'export.recent' : 'export.title')}</h2>
+              {!completion && recent && <Button size="compact" level="quiet" data-testid="export-recent" disabled={busy || recentLoading || recentError} onClick={() => { setReceipt({ delivery: recent, kind: 'recent' }); setRevealError(false); setResultWarning(false) }}>{t('export.recent')}</Button>}
               <button type="button" onClick={closeAll} disabled={busy} aria-label={t('common.close')} className="p-1 text-redlog-text-dim hover:text-redlog-text disabled:opacity-40"><X size={16} /></button>
             </div>
             <div className="min-h-0 overflow-y-auto">
@@ -493,6 +491,15 @@ export function ExportMenu({ totalCount, onOpenScopeSettings }: ExportMenuProps)
               <div data-testid="export-completed" className="p-3 space-y-3 text-xs">
                 <div className="flex items-center justify-between gap-3 text-redlog-text-dim"><span>{completion.format.toUpperCase()}</span><time>{formatDateTime(completion.completedAt, { seconds: true })}</time></div>
                 <code className="block break-all text-redlog-text">{completion.artifactPath}</code>
+                {completion.counts && <div data-testid="export-completed-counts">
+                  <PreviewRow label={t('export.preview.included')} value={completion.counts.included} />
+                  <PreviewRow label={t('export.preview.dropped')} value={completion.counts.excludedDoNotExport} warn />
+                  <PreviewRow label={t('export.preview.personalDropped')} value={completion.counts.excludedPersonal} warn />
+                  <PreviewRow label={t('export.preview.outOfScope')} value={completion.counts.maskedOutOfScope} warn />
+                  <PreviewRow label={t('export.preview.unclassified')} value={completion.counts.maskedUnclassified ?? 0} warn />
+                  {completion.counts.exchanges !== undefined && <div className="px-3">{t('export.exchanges', { count: completion.counts.exchanges })}</div>}
+                  {(completion.counts.attachmentsIncluded ?? 0) > 0 && <PreviewRow label={t('export.preview.attachments')} value={completion.counts.attachmentsIncluded} />}
+                </div>}
                 {completion.availability !== 'available' && <p role="alert" className="text-amber-400">{t(completion.availability === 'missing' ? 'export.artifactMissing' : 'export.artifactUnavailable')}</p>}
                 {resultWarning && <p role="alert" className="text-amber-400">{t('export.recentNotSaved')}</p>}
                 {revealError && <p role="alert" data-testid="export-reveal-error" className="text-red-400">{t('artifacts.revealFailed')}</p>}

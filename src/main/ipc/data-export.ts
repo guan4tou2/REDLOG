@@ -208,7 +208,7 @@ export function registerDataExportIpc(
         }, null, 2), { flag: 'wx', mode: 0o600 })
       }
       if (!artifactPath) return { ok: false as const, error: 'export-artifact-missing' }
-      const delivery: ExportDelivery = { artifactPath, format: plan.request.format, completedAt: Date.now(), availability: 'available' }
+      const delivery: ExportDelivery = { artifactPath, format: plan.request.format, completedAt: Date.now(), counts: plan.counts, availability: 'available' }
       const warnings: string[] = []
       try { recentExports.remember(project.id, getProjectPath(project), delivery) }
       catch { warnings.push('recent-export-not-saved') }

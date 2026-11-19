@@ -132,10 +132,10 @@ typed text
    the event data there.
 8. **Time range** is inclusive on `timestamp`: `since ≤ timestamp ≤ before`.
 9. **Scope and personal traffic.** `inScopeOnly` keeps events whose target is in
-   scope, plus untargeted events. `hidePersonal` drops events whose target is a
-   personal domain, keeping untargeted events. The main process attaches the
-   active project's scope policy: a filter sent by the renderer can narrow the
-   result, never widen it. `tier: 'chained'` ("Chained only") excludes the
+   scope, plus untargeted events. `hidePersonal` drops events whose target matches
+   a personal/local rule unless the project classifies it as in scope.
+   Untargeted events are kept. The main process attaches the active project's
+   scope policy when either predicate is requested. `tier: 'chained'` ("Chained only") excludes the
    logged tier: its arm still runs, under a predicate that admits nothing, so
    a count over it is an honest 0. Every event view applies it, as it applies
    the other shared-filter conditions.

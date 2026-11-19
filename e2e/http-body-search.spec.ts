@@ -142,11 +142,12 @@ test('Search opens indexed Activity output and returns from original evidence wi
     await expect(page.locator('[data-testid="reader-source-tab"][aria-selected="true"]')).toContainText('Command result')
     await expect(page.locator('pre:visible')).toHaveText(shellMarker)
     await page.keyboard.press('Escape')
-    // Export is the current view (2026-11-18: the expanded row no longer
+    // Choose the current view (the expanded row no longer
     // offers an activity or session scope). The query matches both the
     // command's start and its end, so both are what the view exports.
     {
       await page.getByRole('button',{name:'Export',exact:true}).click()
+      await page.getByLabel('Export range', { exact: true }).selectOption('current')
       await expect(page.getByTestId('export-preview-subset')).toContainText('shell-e2e-input')
       await page.getByLabel('Export format',{exact:true}).selectOption('other')
       await page.getByLabel('Other formats',{exact:true}).selectOption('json')
@@ -226,6 +227,7 @@ test('Search opens indexed Activity output and returns from original evidence wi
     await page.getByRole('button',{name:'Refresh sessions',exact:true}).click()
     await expect(page.locator('[role="tabpanel"]:visible')).toContainText(late)
     await page.getByRole('button',{name:'Export',exact:true}).click()
+    await page.getByLabel('Export range', { exact: true }).selectOption('current')
     await expect(page.getByTestId('export-preview-subset')).toContainText('Entire source session')
     await page.getByLabel('Export format',{exact:true}).selectOption('other')
     await page.getByLabel('Other formats',{exact:true}).selectOption('json')
