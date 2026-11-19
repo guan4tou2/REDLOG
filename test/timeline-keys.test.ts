@@ -123,9 +123,10 @@ describe('resolveTimelineKey', () => {
       for (const id of ['b', 'inner']) expect(document.getElementById(id)!.matches(KEY_OWNING_CONTROLS), id).toBe(false)
       document.body.innerHTML = ''
     })
-    it('yields to ⌘/Ctrl/Alt so it cannot shadow a system or app chord', () => {
+    it('yields to system chords except option arrows for in-row navigation', () => {
       for (const mod of ['metaKey', 'ctrlKey', 'altKey'] as const) {
-        expect(resolveTimelineKey(key('ArrowLeft', { [mod]: true }), CTX())).toBe('none')
+        expect(resolveTimelineKey(key('ArrowLeft', { [mod]: true }), CTX())).toBe(mod === 'altKey' ? 'nav-lane-prev' : 'none')
+        expect(resolveTimelineKey(key('ArrowRight', { [mod]: true }), CTX())).toBe(mod === 'altKey' ? 'nav-lane-next' : 'none')
         expect(resolveTimelineKey(key('0', { [mod]: true }), CTX())).toBe('none')
       }
     })

@@ -1,8 +1,9 @@
+import { drawnEvents } from '../src/renderer/src/lib/timelineIncremental'
 import { buildCommandIntervals } from '../src/renderer/src/lib/timelineIntervals'
 import { makeEvent } from './helpers/timeline-bridge'
 import { expect, it } from 'vitest'
 import type { TimelineInterval, TimelineIntervalSet } from '../src/renderer/src/lib/timelineIntervals'
-import { layoutIntervalMarks, filterVisibleMarks } from '../src/renderer/src/lib/timelineIntervalLayout'
+import { layoutIntervalMarks, filterVisibleMarks, visibleTrackRows } from '../src/renderer/src/lib/timelineIntervalLayout'
 
 function interval(id: string, start: number, end: number | null, extra: Partial<TimelineInterval> = {}): TimelineInterval {
   return { id, kind: 'command', trackKey: 't', startId: `${id}s`, startTs: start,
@@ -83,7 +84,8 @@ it('filters horizontal geometry and visible rows plus one either side', () => {
 })
 it('SC-004: a thousand mutually overlapping commands obey depth and visible mark bounds', () => {
   const m = layout(Array.from({ length: 1000 }, (_, i) => interval(String(i), i * 15, 20000)), { trackW: 20000 })
-  expect(m).toHaveLength(2)
+  // The count also absorbs the first span when their starts are only 15px apart.
+  expect(m).toHaveLength(1)
   expect(m.flatMap((m) => m.intervals)).toHaveLength(1000)
   for (const w of [1, 14, 48, 320, 1000]) {
     for (let left = 0; left < 20000; left += 137) {
@@ -137,4 +139,101 @@ it('SC-004 also bounds short bursts and partially overlapping spans at arbitrary
     expect(marks.filter((m) => m.x0 <= x && m.x1 > x).length).toBeLessThanOrEqual(2)
     expect(filterVisibleMarks(marks, 4000, x, w, { first: 1, last: 1 }).length).toBeLessThanOrEqual(Math.ceil(3 * w / 14) + 2)
   }
+})
+
+it('depth-cap counts absorb neighbouring starts and distant minimum boxes stay local', () => {
+  // The first two starts occupy neighbouring cells. Only the depth cap turns
+  // the second span into a count, which would cover the first start at 13px.
+  const depth = layout([interval('a', 13, 300), interval('b', 15, 200), interval('c', 56, 400)])
+  expect(depth, 'depth-created count cannot cover a neighbouring dot').toHaveLength(1)
+  expect(depth[0].intervals.map(iv => iv.id)).toEqual(['a', 'b', 'c'])
+  const marks = layout([interval('a', 100, 101), interval('b', 103, 104), interval('c', 160, 161)])
+  for (const m of marks) expect(m.hitWidth).toBeGreaterThanOrEqual(27)
+  const [count, next] = marks
+  expect(count.hitLeft + count.hitWidth, 'distant count keeps its own minimum box').toBe(count.x0 + 13.5)
+  expect(next.hitLeft).toBe(next.x0 - 13.5)
+})
+it('an open span reaches the right edge without adding horizontal overflow through its hit box', () => {
+  const [m] = layout([interval('a', 100, null)])
+  expect(m.x1).toBe(1000)
+  expect(m.hitLeft + m.hitWidth, 'right-edge hit area stays within the track').toBeLessThanOrEqual(1000)
+  expect(m.hitWidth).toBeGreaterThanOrEqual(27)
+})
+
+it('F4: a span keeps its failed end clickable before a later count', () => {
+  const [span, count] = layout([interval('a', 100, 290, { exitCode: 1 }), interval('b', 300, 301), interval('c', 301, 302)])
+  expect(count.kind).toBe('cluster')
+  expect(span.hitLeft + span.hitWidth, 'F4: span hit covers its whole line and end pad').toBeGreaterThanOrEqual(303.5)
+  expect(count.hitLeft, 'F4: count owns only its local box').toBe(286.5)
+})
+it('F4: seeded reviewer fuzz preserves line coverage, partition and track bounds', () => {
+  let seed = 987
+  const rnd = () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 2 ** 32
+  for (let trial = 0; trial < 30000; trial++) {
+    const n = 1 + Math.floor(rnd() * 40), trackW = [300, 1000, 4000][trial % 3]
+    const ivs = Array.from({ length: n }, (_, i) => {
+      const kind = rnd(), start = rnd() * trackW * .95
+      const len = rnd() < .6 ? rnd() * 30 : rnd() * trackW * .5
+      const unloaded = kind < .08, open = kind >= .08 && kind < .2
+      return interval(String(i), start, open ? null : Math.min(trackW * .95, start + len), {
+        ...(unloaded ? { startTs: null, startId: null } : {}), exitCode: open ? null : rnd() < .2 ? 1 : 0
+      })
+    }).sort((a, b) => (a.startTs ?? a.endTs!) - (b.startTs ?? b.endTs!))
+    const marks = layout(ivs, { trackW })
+    expect(marks.flatMap(m => m.intervals).length, `F4 partition seed ${seed}`).toBe(n)
+    expect(new Set(marks.flatMap(mark => mark.intervals.map(iv => iv.id))).size, `F4 unique owners seed ${seed}`).toBe(n)
+    for (const [i, m] of marks.entries()) {
+      expect(m.hitLeft + m.hitWidth, `F4 track bound seed ${seed}`).toBeLessThanOrEqual(trackW + 1e-9)
+      expect(m.hitWidth, `F4 minimum box seed ${seed}`).toBeGreaterThanOrEqual(27 - 1e-9)
+      const drawnEnd = m.kind === 'point' && m.open > 0 ? Math.min(trackW, m.x0 + 16) : m.x1
+      // Check the entire continuous line, not samples that could miss a gap.
+      const boxes = [m, ...marks.slice(i + 1).filter(later => later.x0 >= m.x0)]
+        .map(mark => [mark.hitLeft, mark.hitLeft + mark.hitWidth])
+        .sort((a, b) => a[0] - b[0])
+      let coveredUntil = m.x0
+      for (const [left, right] of boxes) {
+        if (left > coveredUntil + 1e-9) break
+        coveredUntil = Math.max(coveredUntil, right)
+      }
+      expect(coveredUntil, `F4 entire drawn line must be hit-testable seed ${seed}`).toBeGreaterThanOrEqual(drawnEnd - 1e-9)
+    }
+  }
+})
+
+it('F1 property: every loaded command is exactly one event dot or one rendered-or-scrollable mark', () => {
+  let seed = 78007
+  const rnd = () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 2 ** 32
+  for (let trial = 0; trial < 1000; trial++) {
+    const rows = []
+    for (let i = 0; i < 20; i++) {
+      const data = { shell: 'zsh', terminalId: `t${i % 9}`, command_id: rnd() < .1 ? undefined : `c${i}`, command: `command ${i}` }
+      if (rnd() > .2) rows.push(makeEvent(`s${i}`, i * 100, 'shell', { data: { ...data, subtype: 'command_start' } }))
+      if (rnd() > .2) rows.push(makeEvent(`e${i}`, i * 100 + 50, 'shell', { data: { ...data, subtype: 'command_end', exit_code: i % 3 } }))
+    }
+    const set = buildCommandIntervals(rows)
+    const rowOf = new Map(set.tracks.map((track, i) => [track.key, i + 1]))
+    const marks = layoutIntervalMarks({ set, rowOf, toX: t => t, trackW: 2200, laneH: 44, clusterPx: 14, endsMayBeMissing: false })
+    const dots = new Set(drawnEvents.build(rows, true).out.filter(e => !set.claimed.has(e.id)).map(e => e.id))
+    const owners = new Map<string, number>()
+    for (const mark of marks) for (const iv of mark.intervals) for (const id of iv.memberIds) owners.set(id, (owners.get(id) ?? 0) + 1)
+    for (const row of rows) expect(Number(dots.has(row.id)) + (owners.get(row.id) ?? 0), `F1 command partition seed ${seed} ${row.id}`).toBe(1)
+    for (const mark of marks) {
+      expect(rowOf.has(mark.intervals[0].trackKey), 'F1 mark has a scrollable row').toBe(true)
+      expect(filterVisibleMarks(marks, 2200, 0, 2200, { first: mark.row, last: mark.row }), 'F1 mark mounts when its row scrolls into view').toContain(mark)
+    }
+  }
+})
+
+it('F4: a short open point owns its drawn 16px stub and clips it at the track edge', () => {
+  const [m] = layout([interval('a', 13, null), interval('b', 14, 15)])
+  expect(m.kind).toBe('point')
+  expect(m.hitLeft + m.hitWidth, 'F4: open point hit includes its drawn stub and end pad').toBeGreaterThanOrEqual(42.5)
+  const [edge] = layout([interval('edge', 995, null)])
+  expect(edge.kind).toBe('point')
+  expect(edge.hitLeft + edge.hitWidth, 'F4: open point hit clips at the right edge').toBe(1000)
+})
+
+it('N3: stale scroll after row shrink clamps the first row to the remaining content', () => {
+  expect(visibleTrackRows(900, 224, 48, 44, 2)).toEqual({ first: 1, last: 1 })
+  expect(visibleTrackRows(900, 224, 48, 44, 0)).toEqual({ first: 0, last: 0 })
 })
