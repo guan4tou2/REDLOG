@@ -100,7 +100,6 @@ const HEX64 = 'a'.repeat(64)
 const ROUTES: RouteRow[] = [
   { method: 'GET', source: '/api/health', probe: '/api/health', authed: 200, open: true },
   { method: 'GET', source: '/api/whoami', probe: '/api/whoami', authed: 200 },
-  { method: 'POST', source: '/api/shell/capture-gap', probe: '/api/shell/capture-gap', body: '{}', authed: 400 },
   { method: 'POST', source: '/api/events/seed', probe: '/api/events/seed', body: NOT_JSON, authed: 404, e2eOnly: true },
   { method: 'POST', source: '/api/events', probe: '/api/events', body: NOT_JSON, authed: 400 },
   { method: 'GET', source: '/api/events', probe: '/api/events?limit=1', authed: 200 },

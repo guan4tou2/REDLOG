@@ -197,7 +197,8 @@ redlog() {
   shift 2>/dev/null
   case "$sub" in
     status)
-      _redlog_status
+      _redlog_state --action show --format human
+      print
       ;;
     stop)
       _redlog_state --action stop --reason operator >/dev/null
@@ -556,7 +557,7 @@ _redlog_precmd() {
   _REDLOG_CMD_CAPTURE=""
   # After the descriptors are back, so the line reaches the terminal rather
   # than the relay, and after command_end, whose outcome it includes.
-  _redlog_warn_unsaved
+  _redlog_warn_unsaved 1
   return $exit_code
 }
 

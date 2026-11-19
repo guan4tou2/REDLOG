@@ -162,7 +162,7 @@ export interface CapturedEvent { agentType: string; data: Record<string, unknown
  *  harness HOME for the Windows profile. Without it every WSL run — through
  *  `wsl.exe` or inside kali — recorded nothing and never defined `redlog`,
  *  while CI, which has no `WSL_DISTRO_NAME`, never asks. */
-export async function startCollector(token: string, projectId?: string): Promise<{
+export async function startCollector(token: string): Promise<{
   port: number; events: CapturedEvent[]; close: () => Promise<void>
 }> {
   const events: CapturedEvent[] = []
@@ -172,7 +172,7 @@ export async function startCollector(token: string, projectId?: string): Promise
     // the hook then tried the default gateway and waited out its one-second
     // connect timeout — inside the first command, which pushed its output past
     // the relay's streaming threshold and out of `command_end`.
-    if (req.url?.startsWith('/api/health')) { res.writeHead(200).end(JSON.stringify({ ok: true, projectOpen: true, recording: true, projectId })); return }
+    if (req.url?.startsWith('/api/health')) { res.writeHead(200).end('{"ok":true}'); return }
     if (req.headers.authorization !== `Bearer ${token}`) { res.writeHead(401).end('{}'); return }
     if (req.url?.startsWith('/api/whoami')) { res.writeHead(200).end('{"operator":null,"engagementId":null}'); return }
     if (req.url?.startsWith('/api/events') && req.method === 'POST') {

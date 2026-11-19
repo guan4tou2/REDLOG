@@ -191,7 +191,8 @@ redlog() {
   [[ -n "${_REDLOG_DIR:-}" ]] && home=${_REDLOG_DIR%/*}
   case "$sub" in
     status)
-      _redlog_status
+      _redlog_state --action show --format human
+      echo
       ;;
     stop)
       _redlog_state --action stop --reason operator >/dev/null
@@ -672,7 +673,7 @@ _redlog_prompt_command() {
     _REDLOG_CMD_CAPTURE=""
     # After the descriptors are back and after command_end: the same notice,
     # at the same point, as the zsh adapter's.
-    _redlog_warn_unsaved
+    _redlog_warn_unsaved 1
   else
     # An untraced line or `redlog stop` may still have dropped an event.
     _redlog_warn_unsaved

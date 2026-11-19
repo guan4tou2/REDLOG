@@ -162,7 +162,6 @@ function PreviewRow({ label, value, warn }: {
  *  A reason this does not know is shown as recorded rather than hidden. */
 function captureGapReason(t: (key: string, params?: Record<string, string>) => string, reason: string): string {
   switch (reason) {
-    case 'shell-commands-dropped': return t('export.preview.captureGapShellCommands')
     case 'queue-full': return t('export.preview.captureGapQueueFull')
     case 'project-switched': return t('export.preview.captureGapProjectSwitched')
     case 'delivery-unconfirmed': return t('export.preview.captureGapDeliveryUnconfirmed')

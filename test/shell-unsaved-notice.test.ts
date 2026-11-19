@@ -38,7 +38,7 @@ interface Scenario {
   commands: string[]
 }
 
-interface Outcome { transcript: string; spooled: number; calls: number; raw: string; gaps: unknown[] }
+interface Outcome { transcript: string; spooled: number; calls: number; raw: string }
 
 const NOT_RECORDED = 'this terminal is not being recorded'
 
@@ -65,20 +65,9 @@ printf '%s' '{"native":["echo","printf","redlog"]}' > "$HOME/.redlog/command-cla
 printf '%s' '${s.curl}' > "$RCF"
 cat > "$work/bin/curl" <<'FAKE'
 #!/bin/sh
-case "$*" in
-  */api/health*)
-    case "$(cat "$RCF")" in
-      22) printf '%s' '{"ok":true,"projectOpen":false,"recording":false}'; exit 0 ;;
-      23) printf '%s' '{"ok":true,"projectOpen":true,"recording":false,"projectId":"eng-1"}'; exit 0 ;;
-      0) printf '%s' '{"ok":true,"projectOpen":true,"recording":true,"projectId":"eng-1"}'; exit 0 ;;
-      *) exit 7 ;;
-    esac ;;
-  */api/shell/capture-gap*) cat >> "$RCF.gaps"; printf '\\n' >> "$RCF.gaps"; exit 0 ;;
-esac
 cat > /dev/null 2>&1
 echo call >> "$RCF.calls"
-rc="$(cat "$RCF")"; [ "$rc" = 23 ] && rc=22
-exit "$rc"
+exit "$(cat "$RCF")"
 FAKE
 chmod +x "$work/bin/curl"
 export PATH="$work/bin:$PATH"
@@ -92,7 +81,6 @@ ${shellRun}
 echo '@@OUT'; cat "$work/out"
 echo "@@SPOOLED $(find "$HOME/.redlog/pending" -name '*.json' 2>/dev/null | wc -l | tr -d ' ')"
 echo "@@CALLS $(cat "$RCF.calls" 2>/dev/null | wc -l | tr -d ' ')"
-sed 's/^/@@GAP /' "$RCF.gaps" 2>/dev/null || :
 `
 }
 
@@ -106,7 +94,6 @@ async function run(s: Scenario): Promise<Outcome> {
     transcript: out.slice(at + 6, end),
     spooled: Number(/@@SPOOLED (\d+)/.exec(out)?.[1] ?? NaN),
     calls: Number(/@@CALLS (\d+)/.exec(out)?.[1] ?? NaN),
-    gaps: [...out.matchAll(/^@@GAP (.+)$/gm)].map(m => JSON.parse(m[1])),
     raw: out + r.stderr
   }
 }
@@ -166,33 +153,18 @@ describeShell('a terminal says when its commands are being dropped', () => {
         expect(count(o.transcript, NOT_RECORDED), o.raw).toBe(0)
       }, 90_000)
 
-      it('warns once per changed reason and reports the dropped command stretch on recovery', async () => {
-        const o = await run({
-          shell, curl: 7, identity: false,
-          commands: [
-            'echo lost-unreachable',
-            'printf 22 > "$RCF"; echo lost-no-project',
-            'echo also-no-project',
-            'printf 23 > "$RCF"; echo lost-paused',
-            'echo also-paused',
-            'printf 0 > "$RCF"; echo recovered',
-            'echo stays-recording'
-          ]
-        })
-        const warnings = o.transcript.split('\n').filter(line => line.includes(NOT_RECORDED))
-        expect(warnings, o.raw).toEqual([
-          expect.stringContaining('RedLog is not reachable'),
-          expect.stringContaining('no project is open'),
-          expect.stringContaining('recording is paused')
-        ])
-        expect(o.gaps).toEqual([expect.objectContaining({ count: 5, startedAt: expect.any(Number), endedAt: expect.any(Number) })])
-        expect(o.spooled).toBe(0)
+      it('a paused RedLog answers 200, so nothing is said', async () => {
+        const o = await run({ shell, curl: 0, identity: true, commands: ['echo paused-cmd', 'echo paused-again'] })
+        expect(o.calls).toBeGreaterThan(0)
+        expect(count(o.transcript, NOT_RECORDED), o.raw).toBe(0)
+        expect(o.transcript).not.toContain('not reachable')
       }, 90_000)
 
       it('without the port and token files: the existing notice, once, and not a second line', async () => {
         const o = await run({ shell, curl: 7, identity: false, files: false, commands: ['echo first-cmd', 'echo second-cmd'] })
         expect(count(o.transcript, 'not reachable'), o.raw).toBe(1)
-        expect(count(o.transcript, NOT_RECORDED)).toBe(1)
+        expect(o.transcript).toContain('no project is open; commands and output are not being saved')
+        expect(count(o.transcript, NOT_RECORDED)).toBe(0)
       }, 90_000)
     })
   }

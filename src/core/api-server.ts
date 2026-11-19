@@ -43,7 +43,7 @@ import { CEILING_TEXT, flushNestingRefusals, noteNestingRefusal } from './ingest
 import { LEGACY_API, withEntrance } from './ingest/stamp'
 import { bodyTargetId } from './ingest/body-target'
 import { isInsideDir } from './paths'
-import { getDB, getProjectDir } from './db/index'
+import { getProjectDir } from './db/index'
 import { extractBodyToSidecar, readBody as readHttpBody, type BodyRef } from './http-body-store'
 import { parseJsonObjectBody, parseRecordingAction, parseLimitParam, parseTimeParam, API_LIMITS, LOOT_SCAN_MAX_CHARS } from './api-request'
 import { resolveContainedFile } from './contained-file'
@@ -289,10 +289,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   }
 
   if (route === '/api/health' && req.method === 'GET') {
-    json(res, 200, { ok: true, version: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev', projectOpen,
-      recording: projectOpen && !eventBus.paused,
-      ...(projectOpen && authenticate(req) ? { projectId: engagementId } : {})
-    })
+    json(res, 200, { ok: true, version: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev', projectOpen })
     return
   }
 
@@ -311,50 +308,6 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
 
     if (route === '/api/whoami' && req.method === 'GET') {
       json(res, 200, { operator: publicOperator(operator), engagementId })
-      return
-    }
-
-    if (route === '/api/shell/capture-gap' && req.method === 'POST') {
-      const requestEngagement = engagementId
-      const parsed = parseJsonObjectBody(await readBody(req), { maxDepth: 2 })
-      if (!projectOpen || requestEngagement !== engagementId) {
-        json(res, 409, { error: 'engagement changed; capture gap refused' })
-        return
-      }
-      if (eventBus.paused) {
-        json(res, 423, { error: 'recording paused' })
-        return
-      }
-      const { id, count, startedAt, endedAt } = parsed.ok ? parsed.body : {}
-      const validNumber = (value: unknown): value is number =>
-        typeof value === 'number' && Number.isSafeInteger(value) && value > 0
-      if (typeof id !== 'string' || !/^[a-zA-Z0-9_-]{1,96}$/.test(id)
-          || !validNumber(count) || !validNumber(startedAt) || !validNumber(endedAt)
-          || endedAt < startedAt) {
-        json(res, 400, { error: 'invalid shell capture gap' })
-        return
-      }
-      // A lost response can be retried after the ingest dedup window. This
-      // route constructs the gap itself and accepts only the four scalars.
-      const recorded = getDB().prepare(`
-        SELECT 1 FROM events WHERE agent_type = ? AND subtype = ?
-        AND engagement_id = ? AND operator_id = ? AND json_extract(data, '$.hook_gap_id') = ? LIMIT 1
-      `).get('system', 'capture_gap', engagementId, operator.id, id)
-      if (!recorded) {
-        const result = ingest({
-          agentType: 'system', engagementId, operatorId: operator.id, entrance: LEGACY_API,
-          occurredAt: startedAt,
-          data: {
-            subtype: 'capture_gap', source: 'shell-hook', reason: 'shell-commands-dropped',
-            hook_gap_id: id, skipped_units: count, gap_started_at: startedAt, gap_ended_at: endedAt
-          }
-        })
-        if (!result.event) {
-          json(res, 500, { error: 'shell capture gap was not recorded' })
-          return
-        }
-      }
-      json(res, 200, { ok: true })
       return
     }
 
@@ -478,22 +431,20 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
         agentType, data, operatorId: operator.id, engagementId, targetId, entrance: LEGACY_API
       })
       if (!result.event) {
-        // Older producers treat a non-2xx response as an instruction to spool.
-        // Updated hooks opt in to an explicit refusal and keep only gap metadata.
-        const hook = req.headers['x-redlog-hook'] === '1'
+        // A deliberate pause/unrecorded interval is acknowledged so the hook
+        // never spools it. Before its gate ingest settles only the terminal
+        // hints (cwd, terminal key); a refused row leaves the causal links as
+        // they were, as its absence from the record does.
         if (result.skipped === 'paused') {
-          json(res, hook ? 423 : 200, { ok: !hook, recording: false, skipped: 'recording paused' })
+          json(res, 200, { ok: true, recording: false, skipped: 'recording paused' })
           return
         }
         if (result.skipped === 'unrecorded') {
           json(res, 200, { ok: true, recording: false, skipped: 'terminal not recording' })
           return
         }
-        // Plumbing and duplicates are deliberate omissions, not delivery loss.
-        if (hook && (result.skipped === 'plumbing' || result.skipped === 'dedup')) {
-          res.writeHead(204).end()
-          return
-        }
+        // A paused recording is already answered 200 above; the only way to
+        // reach here with no event is the 2 s dedup window.
         json(res, 409, { error: 'Duplicate event (dedup window)' })
         return
       }

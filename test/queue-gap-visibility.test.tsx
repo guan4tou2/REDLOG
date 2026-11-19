@@ -80,13 +80,6 @@ const ev = (agentType: string, data: Record<string, unknown>): RedLogEvent => ({
 })
 
 describe('a capture gap on the Timeline', () => {
-  it('names how many terminal commands went unrecorded', () => {
-    expect(eventTitle(ev('system', {
-      subtype: 'capture_gap', source: 'shell-hook', reason: 'shell-commands-dropped',
-      skipped_units: 4, gap_started_at: 1, gap_ended_at: 2
-    }))).toBe('[gap] Terminal commands dropped: 4')
-  })
-
   it('says how many events the proxy queue refused', () => {
     const title = eventTitle(ev('scanner', { subtype: 'capture_gap', source: 'mitmproxy', reason: 'queue-full', skipped_units: 12 }))
     expect(title).toMatch(/12/)

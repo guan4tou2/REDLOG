@@ -102,9 +102,6 @@ ${shims}
 cat > "$work/bin/curl" <<'FAKE'
 #!/bin/sh
 echo curl >> "$EXECLOG"
-case "$*" in
-  */api/shell/capture-gap*) cat > /dev/null; exit 0 ;;
-esac
 n=$(cat "$CAP.n" 2>/dev/null || echo 1000)
 echo $((n + 1)) > "$CAP.n"
 cat > "$CAP/$n.json"
