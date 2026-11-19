@@ -322,6 +322,6 @@ describe('what is known without verifying', () => {
     anchorNow.mockResolvedValueOnce({ skipped: 'offline' })
     mount()
     fireEvent.click(within(openDetails()).getByRole('button', { name: 'Anchor now' }))
-    await waitFor(() => expect(screen.getByTestId('evidence-verify-line').textContent).toContain('Skipped: this project is offline'))
+    await waitFor(() => expect(screen.getByTestId('evidence-verify-line').textContent).toContain('Timestamp anchoring off in Settings'))
   })
 })

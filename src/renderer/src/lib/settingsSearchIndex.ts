@@ -377,6 +377,8 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.ownTraffic',
     'settings.ipMode',
     'settings.ipModeHint',
+    'settings.offline',
+    'settings.offlineHint',
     'settings.showWifiName',
     'settings.showWifiNameHint',
     'settings.checkInterval',

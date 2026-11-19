@@ -319,6 +319,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
   const [splitRef, splitWidth] = useContainerWidth<HTMLDivElement>()
   const compactSplit = splitWidth !== null && splitWidth < 960
   const layout: DetailLayout = compactSplit ? 'bottom' : preferredLayout
+  const bottomDetailOpen = layout === 'bottom' && detailOpen && selectedEvent !== null
   useEffect(() => {
     const onChange = (): void => setPreferredLayout(storedDetailLayout())
     window.addEventListener(DETAIL_LAYOUT_EVENT, onChange)
@@ -333,6 +334,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
   // otherwise the panel keeps whatever scroll offset the prior event left
   // (with JSON expanded the title easily scrolls off screen).
   const detailPanelRef = useRef<HTMLDivElement | null>(null)
+  const detailHeaderRef = useRef<HTMLDivElement>(null)
   const [operatorNames, setOperatorNames] = useState<Record<string, string>>({})
   // v0.6.89.5: focus chain / broken-chain state.
   //
@@ -656,6 +658,27 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
   // on mount alone ran while the spinner was up, found no elements, and never
   // measured anything — so the track sat at UNMEASURED_TRACK_W for good.
   const trackMounted = events.length > 0
+  useLayoutEffect(() => {
+    const header = detailHeaderRef.current
+    const split = detailPanelRef.current?.parentElement
+    if (!bottomDetailOpen || !header || !split) return
+
+    // The sticky header can wrap. Reserve its actual height so the lanes
+    // start scrolling before the inspector's controls would be clipped.
+    const reserveHeader = (height: number): void => {
+      split.style.setProperty('--timeline-detail-header-height', `${Math.ceil(height)}px`)
+    }
+    reserveHeader(header.offsetHeight)
+    const observer = new ResizeObserver(([entry]) => {
+      reserveHeader(entry.borderBoxSize?.[0]?.blockSize ?? header.offsetHeight)
+    })
+    observer.observe(header, { box: 'border-box' })
+    return () => {
+      observer.disconnect()
+      split.style.removeProperty('--timeline-detail-header-height')
+    }
+  }, [bottomDetailOpen, trackMounted])
+
   useEffect(() => {
     if (!trackMounted || !containerRef.current) return
     const ro = new ResizeObserver(([entry]) => {
@@ -2288,7 +2311,11 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
           rendering it twice would be two panes to keep in step and only one
           of them ever tested. */}
       <div ref={splitRef} data-testid="timeline-split" data-layout={layout} className={`flex-1 min-h-0 flex ${layout === 'right' ? 'flex-row' : 'flex-col'}`}>
-      <div ref={trackColumnRef} className="relative flex-1 min-w-0 min-h-0 flex flex-col">
+      {/* Let the upper column claim its content height first. Its ceiling
+          reserves the resize strip and sticky header when the lanes are tall. */}
+      <div ref={trackColumnRef} className={`relative min-w-0 min-h-0 flex flex-col ${bottomDetailOpen
+        ? 'flex-[1_0_auto] overflow-clip max-h-[calc(100%-var(--spacing)-var(--timeline-detail-header-height,0px)-1px)]'
+        : 'flex-1'}`}>
         {/* Swim lanes — one row of everything in standard mode (FR-008). */}
         {/* v0.9.4 P0-2: scrolls vertically. The lane labels are a sibling of
             the track, so the overflow has to live on this shared parent —
@@ -2322,7 +2349,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
         )}
         {/* Standard mode: sized to the ruler and its one row, so the card rail
             sits right under it (Stitch 05) instead of a block of empty track. */}
-        <div ref={containerRef} className={`${timelineMode === 'standard' ? 'flex-none' : 'flex-1'} min-h-0 flex flex-col`}>
+        <div ref={containerRef} className={`${timelineMode === 'standard' ? (bottomDetailOpen ? 'flex-initial' : 'flex-none') : 'flex-1'} min-h-0 flex flex-col`}>
         <div
           ref={laneScrollRef}
           data-testid="timeline-lane-scroll"
@@ -2886,9 +2913,10 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
           const top = py + 12 + POPUP_MAX_H > colH && py - POPUP_MAX_H - 4 >= 0
             ? py - POPUP_MAX_H - 4
             : py + 12
+          const popupMaxHeight = bottomDetailOpen ? Math.min(POPUP_MAX_H, Math.max(0, colH - top)) : undefined
           return (
                   <div className="absolute z-30" data-timeline-popup style={{ left, top, width: POPUP_W }}>
-                    <div className="rounded-md border border-redlog-border bg-redlog-surface/95 shadow-xl max-h-[210px] overflow-y-auto">
+                    <div className="rounded-md border border-redlog-border bg-redlog-surface/95 shadow-xl max-h-[210px] overflow-y-auto" style={{ maxHeight: popupMaxHeight }}>
                       <div className="flex items-center justify-between px-2 py-1 border-b border-redlog-border sticky top-0 bg-redlog-surface/95">
                         <span className="text-xs text-redlog-text-dim font-mono">{cluster.events.length} {t('timeline.title')}</span>
                         <button type="button" aria-label={t('common.close')} className="min-w-7 min-h-7 -my-1 -mr-1 flex items-center justify-center text-redlog-text-dim hover:text-redlog-text text-xs leading-none" onClick={() => setCluster(null)}>×</button>
@@ -2951,7 +2979,7 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
           events={recentEvents}
           total={windowTotal}
           selectedId={selectedEvent?.id ?? null}
-          detailOpen={detailOpen}
+          detailOpen={bottomDetailOpen}
           pluginTypes={pluginTypes}
           showOperator={showOperator}
           operatorLabel={operatorLabel}
@@ -3003,16 +3031,17 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
         <div
           ref={detailPanelRef}
           data-testid="timeline-detail-body"
-          className={`shrink-0 border-redlog-border/50 px-4 pb-3 bg-redlog-surface/80 overflow-y-auto ${
+          className={`border-redlog-border/50 px-4 pb-3 bg-redlog-surface/80 overflow-y-auto ${
             layout === 'bottom'
-              ? `border-t${detailPanel.px == null ? ' max-h-[45vh]' : ''}`
-              : 'border-l h-full'
+              ? `shrink border-t min-h-[calc(var(--timeline-detail-header-height,0px)+1px)] ${detailPanel.px == null ? 'max-h-[45vh]' : ''}`
+              : 'shrink-0 border-l h-full'
           }`}
           style={detailPanel.px == null
             ? (layout === 'right' ? { width: 440 } : undefined)
             : (layout === 'bottom' ? { height: detailPanel.px } : { width: detailPanel.px })}
         >
           <TimelineEventInspector
+            headerRef={detailHeaderRef}
             event={selectedEvent}
             pluginTypes={pluginTypes}
             tierChip={tierChip}

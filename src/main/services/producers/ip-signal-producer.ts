@@ -202,6 +202,8 @@ export class IPSignalProducer {
     this.state.link = link
   }
 
+  get offline(): boolean { return this.cfg.offline === true }
+
   getState(): IPProducerState {
     return { ...this.state }
   }

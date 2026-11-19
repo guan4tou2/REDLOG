@@ -52,17 +52,20 @@ function UpdateBlock({ t }: { t: T }): JSX.Element | null {
   }, [])
   if (!status) return null
 
+  const offline = status.offline === true
   const busy = status.stage === 'checking' || status.stage === 'downloading' || status.stage === 'installing'
-  const showDownloadPage = status.stage === 'failed' || (status.method === 'download-page' && status.stage === 'available')
-    || (status.stage === 'unavailable' && status.result === 'noInstaller')
+  const showDownloadPage = !offline && (status.stage === 'failed' || (status.method === 'download-page' && status.stage === 'available')
+    || (status.stage === 'unavailable' && status.result === 'noInstaller'))
+  const showAirgap = offline || (status.stage === 'unavailable' && status.result === 'airgap')
+  const activeUpdate = status.stage === 'downloading' || status.stage === 'ready' || status.stage === 'installing'
   return (
     <div className="space-y-1.5" data-testid="update-block">
       <p className="text-xs text-redlog-text-dim" data-testid="update-method">
         {methodText(status, window.redlog.platform, t)}
         {status.packaged ? '' : ` · ${t('update.devBuild')}`}
       </p>
-      <p className="text-sm text-redlog-text" role="status" data-testid="update-state">{stateText(status, t)}</p>
-      {status.stage === 'unavailable' && status.result === 'airgap' && (
+      <p className="text-sm text-redlog-text" role="status" data-testid="update-state">{showAirgap && !activeUpdate ? t('update.state.airgap') : stateText(status, t)}</p>
+      {showAirgap && (
         <p className="text-xs text-redlog-text-faint" data-testid="update-airgap-hint">{t('update.airgapHint')}</p>
       )}
       {status.stage === 'ready' && status.method === 'in-app' && (
@@ -74,8 +77,8 @@ function UpdateBlock({ t }: { t: T }): JSX.Element | null {
         </p>
       )}
       <div className="flex flex-wrap gap-2">
-        <Button level="secondary" disabled={busy} onClick={() => void window.redlog.app.checkForUpdates()} data-testid="update-check">
-          {status.stage === 'checking' ? t('update.checking') : status.stage === 'failed' ? t('update.retry') : t('settings.checkUpdate')}
+        <Button level="secondary" disabled={offline || busy} onClick={() => void window.redlog.app.checkForUpdates()} data-testid="update-check">
+          {!offline && status.stage === 'checking' ? t('update.checking') : !offline && status.stage === 'failed' ? t('update.retry') : t('settings.checkUpdate')}
         </Button>
         {status.stage === 'downloading' && (
           <Button level="secondary" onClick={() => void window.redlog.app.cancelUpdate()} data-testid="update-cancel">

@@ -120,23 +120,25 @@ export default function IPStatusCard(): JSX.Element {
   }
 
   const safety = shownIpSafety(status)
-  const lookupFailed = !!status.error
+  const offline = status.offline === true
+  const lookupFailed = !offline && !!status.error
   // The tag says how far the answer goes. A match against the operator's own
   // lists is a match, not a safety verdict; no match is "unconfirmed".
-  const tag = lookupFailed ? <Tag tone="err" testid="ip-state">{t('ip.lookupFailed')}</Tag>
+  const tag = offline ? <Tag tone="neutral" testid="ip-state">{t('ip.lookupOffline')}</Tag>
+    : lookupFailed ? <Tag tone="err" testid="ip-state">{t('ip.lookupFailed')}</Tag>
     : safety === 'safe' ? <Tag tone="ok" testid="ip-state">{t('ip.safeIp')}</Tag>
       : safety === 'exposed' ? <Tag tone="err" testid="ip-state"><span className="h-2 w-2 rounded-full bg-redlog-danger animate-pulse" />{t('ip.exposedIp')}</Tag>
         : <Tag tone="warn" testid="ip-state">{t('ip.unknownIp')}</Tag>
 
   return (
     <div data-testid="ip-status-card" className={shell}>
-      <CardHead tag={tag} right={status.lastCheck ? t('ip.updatedAt', { time: formatTime(status.lastCheck, { seconds: true }) }) : undefined} />
+      <CardHead tag={tag} right={!offline && status.lastCheck ? t('ip.updatedAt', { time: formatTime(status.lastCheck, { seconds: true }) }) : undefined} />
 
       <dl className="space-y-2 text-xs">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
           <dt className="text-redlog-text-dim">{t('ip.externalIp')}</dt>
           <dd className="m-0 text-right font-mono text-redlog-text [overflow-wrap:anywhere]">
-            {lookupFailed
+            {offline ? '—' : lookupFailed
               ? <Tag tone="warn">{t('ip.externalUnknown')}</Tag>
               : <>{status.externalIP ?? '—'}{safety === 'unknown' && status.externalIP && <span className="ml-1.5 font-sans text-redlog-text-faint" title={t('ip.safetyHint', { page: t('settings.pageNetwork') })}>{t('ip.notOnSafeList')}</span>}</>}
           </dd>
@@ -147,7 +149,7 @@ export default function IPStatusCard(): JSX.Element {
         </div>
       </dl>
 
-      {safety === 'exposed' && !lookupFailed && (
+      {!offline && safety === 'exposed' && !lookupFailed && (
         <p className="text-xs text-red-400/90 flex items-start gap-1.5">
           <span className="shrink-0">⚠</span>
           <span>{t('ip.exposedHint')}</span>

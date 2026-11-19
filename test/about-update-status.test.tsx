@@ -2,6 +2,8 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, cleanup, screen, fireEvent, act } from '@testing-library/react'
 import AboutPage from '../src/renderer/src/components/settings/AboutPage'
+import en from '../src/renderer/src/i18n/en.json'
+import zhTW from '../src/renderer/src/i18n/zh-TW.json'
 import type { UpdateStatus } from '../src/main/services/update-status'
 
 // Spec 061 US1: About says what the last check found. A check that failed, or
@@ -62,6 +64,16 @@ describe('About: update status', () => {
     expect(screen.getByTestId('update-open-page')).not.toBeNull()
   })
 
+  it('shows checks are disabled before a check, and restores the prior result when switched off', async () => {
+    const { push } = draw({ stage: 'failed', result: 'failed' })
+    expect(await state()).toBe('update.state.failed')
+    push({ offline: true })
+    expect(await state()).toBe('update.state.airgap')
+    expect((screen.getByTestId('update-check') as HTMLButtonElement).disabled).toBe(true)
+    push({})
+    expect(await state()).toBe('update.state.failed')
+  })
+
   it('says why air-gap made no request, and where to change it', async () => {
     draw({ stage: 'unavailable', result: 'airgap' })
     expect(await state()).toBe('update.state.airgap')
@@ -72,6 +84,11 @@ describe('About: update status', () => {
   // Air-gap switched on after an earlier check: pressing Check replaces the old
   // "up to date" with why nothing was asked, not with an error
   // (test/airgap-live.test.ts shows main answering this status after the switch).
+  it.each([en, zhTW])('directs the operator to the existing Network setting', (locale) => {
+    expect(locale['update.airgapHint']).toContain(locale['settings.pageNetwork'])
+    expect(locale['update.airgapHint']).toContain(locale['settings.offline'])
+  })
+
   it('a check pressed after air-gap was switched on says air-gap stopped it, not an error or "up to date"', async () => {
     const { app, push } = draw({ result: 'upToDate', checkedAt: 1 })
     expect(await state()).toBe('update.state.upToDate')

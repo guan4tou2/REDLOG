@@ -18,6 +18,7 @@ export type UpdateStage =
 export type UpdateResult = 'upToDate' | 'failed' | 'airgap' | 'noInstaller'
 
 export interface UpdateStatus {
+  offline?: boolean
   stage: UpdateStage
   /** `in-app`: downloaded and installed by RedLog. `download-page`: the
    *  operator fetches the installer and replaces the app. */

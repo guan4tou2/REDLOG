@@ -50,13 +50,13 @@ const n = (v: number): string => v.toLocaleString()
 /** Something on the record that is not clean. `danger` is a fault in the
  *  record or its timestamping; `warn` qualifies what a tick may claim. */
 interface Finding {
-  id: string; tone: 'danger' | 'warn'; text: string
+  id: string; tone: 'danger' | 'warn' | 'neutral'; text: string
   /** The fuller sentence, for the disclosure. */
   detail?: string
   /** Said by the result's own lines in the disclosure, so not listed twice there. */
   inResult?: boolean
 }
-const TONE: Record<Finding['tone'], string> = { danger: 'text-red-400', warn: 'text-amber-400' }
+const TONE: Record<Finding['tone'], string> = { danger: 'text-red-400', warn: 'text-amber-400', neutral: 'text-redlog-text-dim' }
 
 interface Reading {
   record: VerifyRecord | null
@@ -65,7 +65,7 @@ interface Reading {
   lenFailed: boolean
   anchors: ChainAnchorInfo[] | null
   anchorsFailed: boolean
-  skipped: boolean
+  offline: boolean
   now: number
 }
 
@@ -82,7 +82,7 @@ function unanchoredCount(anchors: ChainAnchorInfo[] | null, len: number | null):
 function findings(r: Reading, t: Translate): Finding[] {
   const out: Finding[] = []
   const latest = r.anchors?.[0]
-  if (latest?.status === 'failed') out.push({ id: 'anchor-failed', tone: 'danger', text: t('evidence.externalTimestampAbsent'), detail: t('issues.integrity.anchor-failed') })
+  if (!r.offline && latest?.status === 'failed') out.push({ id: 'anchor-failed', tone: 'danger', text: t('evidence.externalTimestampAbsent'), detail: t('issues.integrity.anchor-failed') })
   if (r.record) {
     const verdict = verifyVerdict(r.record.result as FullVerifyResult)
     const walked = r.record.result.walked ?? 0
@@ -107,11 +107,11 @@ function findings(r: Reading, t: Translate): Finding[] {
   // Stale only while something waits for an anchor: an idle chain that the
   // last anchor covers, or an air-gapped one, is not overdue.
   const unanchored = unanchoredCount(r.anchors, r.len)
-  if (latest && latest.status !== 'failed' && unanchored !== 0) {
+  if (!r.offline && latest && latest.status !== 'failed' && unanchored !== 0) {
     const hours = Math.floor((r.now - latest.createdAt) / 3_600_000)
     if (hours >= ANCHOR_DEAD_HOURS) out.push({ id: 'anchor-stale', tone: 'warn', text: `▲ ${t('issues.integrity.anchor-stale', { days: Math.max(1, Math.floor(hours / 24)) })}` })
   }
-  if (r.skipped) out.push({ id: 'skipped-offline', tone: 'warn', text: `▲ ${t('settings.integritySkippedOffline')}` })
+  if (r.offline) out.push({ id: 'skipped-offline', tone: 'neutral', text: t('settings.integritySkippedOffline') })
   return out
 }
 
@@ -183,7 +183,7 @@ function ResultDetail({ r, t }: { r: FullVerifyResult; t: Translate }): JSX.Elem
 }
 
 /** One anchor: status, time, count, head and each calendar's receipt. */
-function AnchorCard({ a, t }: { a: ChainAnchorInfo; t: Translate }): JSX.Element {
+function AnchorCard({ a, offline, t }: { a: ChainAnchorInfo; offline: boolean; t: Translate }): JSX.Element {
   return <div data-testid="anchor-card" className="rounded border border-redlog-border bg-redlog-surface/50 p-2">
     <div className="flex items-center gap-2 text-xs">
       <span className={`rounded px-1.5 py-0.5 text-xs ${STATUS_CLASS[a.status] ?? 'bg-redlog-elevated text-redlog-text-dim'}`}>{statusLabel(t, a.status)}</span>
@@ -194,15 +194,17 @@ function AnchorCard({ a, t }: { a: ChainAnchorInfo; t: Translate }): JSX.Element
       <span className="text-redlog-text-faint">{t('settings.integrityHeadHash')}: </span>{a.headHash.slice(0, 32)}…
     </p>
     {a.calendarReceipts.length > 0 && <div className="mt-1 flex flex-wrap gap-1">
-      {a.calendarReceipts.map((r, i) => (
-        <span key={i}
-          title={r.ok ? `${r.calendar} — ${r.upgradedBytes ?? r.receiptB64?.length ?? 0} B ${r.upgraded ? '(UPGRADED)' : '(pending)'}` : `${r.calendar} — ${r.error}`}
-          className={`rounded px-1.5 py-0.5 font-mono text-xs ${r.upgraded ? 'bg-redlog-cyan/15 text-redlog-cyan' : r.ok ? 'bg-green-900/40 text-green-400' : 'bg-red-900/40 text-red-400'}`}>
-          {/* "COMPLETE" at submission means every calendar accepted a pending
-              digest; only "upgraded" is a Bitcoin attestation. */}
-          {calendarHost(r.calendar)} · {t(!r.ok ? 'evidence.receiptFailed' : r.upgraded ? 'evidence.receiptUpgraded' : 'evidence.receiptPending')}
+      {a.calendarReceipts.map((r, i) => {
+        // A complete submission has calendar receipts. An upgraded receipt has a Bitcoin attestation.
+        const upgradeOff = offline && r.ok && !r.upgraded
+        const label = t(!r.ok ? 'evidence.receiptFailed' : r.upgraded ? 'evidence.receiptUpgraded'
+          : upgradeOff ? 'evidence.receiptUpgradeOff' : 'evidence.receiptPending')
+        return <span key={i}
+          title={r.ok ? `${r.calendar} — ${r.upgradedBytes ?? r.receiptB64?.length ?? 0} B ${r.upgraded ? '(UPGRADED)' : upgradeOff ? `(${label})` : '(pending)'}` : `${r.calendar} — ${r.error}`}
+          className={`rounded px-1.5 py-0.5 font-mono text-xs ${upgradeOff ? 'bg-redlog-elevated text-redlog-text-dim' : r.upgraded ? 'bg-redlog-cyan/15 text-redlog-cyan' : r.ok ? 'bg-green-900/40 text-green-400' : 'bg-red-900/40 text-red-400'}`}>
+          {calendarHost(r.calendar)} · {label}
         </span>
-      ))}
+      })}
     </div>}
   </div>
 }
@@ -245,7 +247,16 @@ export function EvidenceVerify({ heading }: { heading: JSX.Element }): JSX.Eleme
   const anchors = useReadState<ChainAnchorInfo[]>(() => window.redlog.chain.anchors())
   const [anchoring, setAnchoring] = useState(false)
   const [upgrading, setUpgrading] = useState(false)
-  const [skipped, setSkipped] = useState(false)
+  const [offline, setOffline] = useState(false)
+  useEffect(() => {
+    const ip = window.redlog.ip
+    let live = true
+    const off = ip?.onStatus?.((status) => { live = false; setOffline(status.offline === true) })
+    void ip?.getStatus?.().then((status) => {
+      if (live && status) setOffline(status.offline === true)
+    }).catch(() => {})
+    return () => { live = false; off?.() }
+  }, [])
   const { retry: rereadLength } = chainLen
   const { retry: rereadAnchors } = anchors
 
@@ -286,10 +297,8 @@ export function EvidenceVerify({ heading }: { heading: JSX.Element }): JSX.Eleme
 
   const handleAnchor = async (): Promise<void> => {
     setAnchoring(true)
-    let wasSkipped = false
-    const r = await anchorNowWithFeedback(t, () => { void handleAnchor() }, () => { wasSkipped = true })
+    const r = await anchorNowWithFeedback(t, () => { void handleAnchor() }, () => { setOffline(true) })
     setAnchoring(false)
-    setSkipped(wasSkipped)
     if (r) rereadAnchors()
   }
 
@@ -317,7 +326,7 @@ export function EvidenceVerify({ heading }: { heading: JSX.Element }): JSX.Eleme
   const anyPending = anchorList?.some((a) => a.calendarReceipts.some((r) => r.ok && !r.upgraded)) ?? false
   const list = findings({
     record: shown, len: lenSinceWalk, lenFailed: chainLen.state.phase === 'failed',
-    anchors: anchorList, anchorsFailed: anchors.state.phase === 'failed', skipped, now: Date.now()
+    anchors: anchorList, anchorsFailed: anchors.state.phase === 'failed', offline, now: Date.now()
   }, t)
   const clean = !shown || verifyVerdict(shown.result as FullVerifyResult) === 'intact'
 
@@ -357,12 +366,12 @@ export function EvidenceVerify({ heading }: { heading: JSX.Element }): JSX.Eleme
         <dd className="m-0 flex min-w-0 flex-wrap items-center justify-between gap-2">
           {anchors.state.phase === 'failed'
             ? <span>{t('evidence.readFailed')}</span>
-            : anchorList ? <AnchorLine anchors={anchorList} chainLen={len} t={t} /> : <span />}
+            : !offline && anchorList ? <AnchorLine anchors={anchorList} chainLen={len} t={t} /> : <span />}
           <span className="flex shrink-0 items-center gap-2">
-            <Button level="quiet" size="compact" onClick={() => { void handleAnchor() }} disabled={anchoring}>
+            <Button level="quiet" size="compact" onClick={() => { void handleAnchor() }} disabled={offline || anchoring}>
               {anchoring ? t('settings.integrityAnchoring') : t('settings.integrityAnchorNow')}
             </Button>
-            {anyPending && <Button level="quiet" size="compact" onClick={() => { void handleUpgrade() }} disabled={upgrading}>
+            {anyPending && <Button level="quiet" size="compact" onClick={() => { void handleUpgrade() }} disabled={offline || upgrading}>
               {upgrading ? t('evidence.upgrading') : t('settings.integrityUpgradeAll')}
             </Button>}
           </span>
@@ -371,7 +380,7 @@ export function EvidenceVerify({ heading }: { heading: JSX.Element }): JSX.Eleme
       {/* Every anchor, newest first: its head and each calendar's receipt are
           what an operator hands over, so they stay reachable here. */}
       {anchorList && anchorList.length > 0 && <div className="space-y-1">
-        {anchorList.map((a) => <AnchorCard key={a.id} a={a} t={t} />)}
+        {anchorList.map((a) => <AnchorCard key={a.id} a={a} offline={offline} t={t} />)}
         <p className="text-xs text-redlog-text-faint">{t('evidence.otsHint')}</p>
       </div>}
     </div>}

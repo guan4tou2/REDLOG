@@ -3,7 +3,7 @@ import { useI18n } from '../i18n'
 import { toast } from './Toast'
 import { Button } from './Button'
 import { toggleRecordingWithFeedback, recordingChord } from '../lib/recordingToggle'
-import { useIssues, raiseIssue, clearIssue } from '../lib/issues'
+import { useIssues, raiseIssue, clearIssue, snapshotIssues } from '../lib/issues'
 import { formatTime, formatDateTime, useDisplayZone, zoneLabel, zoneOffset } from '../lib/time'
 import { useAppCounts } from '../lib/useAppCounts'
 import { integrityFault } from '../lib/integrityPulse'
@@ -94,6 +94,7 @@ export default function StatusBar(): JSX.Element {
   const captureVerdict = current?.verdict ?? null
   const lastEventAt = current?.lastEventAt ?? null
   const issues = useIssues()
+  const offline = ipStatus?.offline === true
 
   useEffect(() => {
     // Uptime is engagement-scoped: how long since the project was created,
@@ -152,13 +153,15 @@ export default function StatusBar(): JSX.Element {
     // Three cheap reads: two counts and the newest anchor row. The broken
     // sample comes off the health payload, which was already carrying it and
     // being ignored.
+    let live = true
     const loadIntegrity = (sampleBroken: boolean): void => {
       void Promise.all([
         window.redlog.chain.length(),
         window.redlog.events.getCount('chained'),
         window.redlog.chain.anchors()
       ]).then(([chainLen, eventCount, anchors]) => {
-        const newest = anchors[0]
+        if (!live) return
+        const newest = offline ? undefined : anchors[0]
         const fault = integrityFault({
           chainLen,
           eventCount,
@@ -212,7 +215,8 @@ export default function StatusBar(): JSX.Element {
     // Same tick, and the sample state rides the payload this read already
     // fetched rather than costing a second round trip.
     loadIntegrity(!!(h as { lastSampleBroken?: unknown }).lastSampleBroken)
-  }, [capture])
+    return () => { live = false }
+  }, [capture, offline, t])
 
   // Scope as a condition, raised here because this is the component that is
   // always mounted — the dashboard's panel reads the store, it does not fill
@@ -236,7 +240,12 @@ export default function StatusBar(): JSX.Element {
   // An external-IP lookup that errored is a condition too, and a different one
   // from "the address is exposed": it says the answer is unknown, not bad. It
   // stands on its own — relay nodes and the local address do not depend on it.
-  const ipError = ipStatus?.error
+  const ipError = offline ? null : ipStatus?.error
+  useEffect(() => {
+    if (!offline) return
+    clearIssue('anchor')
+    if (snapshotIssues().some(({ id, fix }) => id === 'integrity' && fix === 'anchor-now')) clearIssue('integrity')
+  }, [offline])
   useEffect(() => {
     if (!ipError) { clearIssue('ip'); return }
     raiseIssue({ id: 'ip', tier: 'pending', title: t('ip.lookupFailed'), detail: t('issues.ipLookupDetail'), view: settingsTarget('network') })
@@ -262,8 +271,9 @@ export default function StatusBar(): JSX.Element {
   }
 
   const safety = shownIpSafety(ipStatus)
-  const safetyDot = safety === 'safe' ? 'bg-emerald-500' : safety === 'exposed' ? 'bg-redlog-danger' : 'bg-amber-500'
-  const safetyLabel = safety === 'safe' ? t('statusBar.safeIp') : safety === 'exposed' ? t('statusBar.exposedIp') : t('statusBar.ipUnknown')
+  const safetyDot = offline ? 'bg-redlog-text-faint' : safety === 'safe' ? 'bg-emerald-500' : safety === 'exposed' ? 'bg-redlog-danger' : 'bg-amber-500'
+  const safetyLabel = offline ? t('statusBar.ipOffline') : safety === 'safe' ? t('statusBar.safeIp') : safety === 'exposed' ? t('statusBar.exposedIp') : t('statusBar.ipUnknown')
+  const safetyText = offline ? 'text-redlog-text-dim' : safety === 'safe' ? 'text-emerald-400/80' : safety === 'exposed' ? 'text-red-400/80' : 'text-amber-400/80'
 
   const hours = Math.floor(uptime / 3600)
   const mins = Math.floor((uptime % 3600) / 60)
@@ -406,15 +416,15 @@ export default function StatusBar(): JSX.Element {
           truncates. (At 800×600 with the shell at 200% the bar is 400px wide;
           three word labels there once pushed the HUD toggle past the right
           edge, where `overflow-hidden` made it unreachable.) */}
-      <div className="flex items-center gap-1.5 shrink-0" title={ipStatus?.externalIP ? `${safetyLabel} ${ipStatus.externalIP}` : safetyLabel}>
+      <div className="flex items-center gap-1.5 shrink-0" title={offline ? t('ip.lookupOffline') : ipStatus?.externalIP ? `${safetyLabel} ${ipStatus.externalIP}` : safetyLabel}>
         <span className={`w-1.5 h-1.5 rounded-full ${safetyDot}`} />
-        <span data-testid="status-bar-ip-state" className={safety === 'safe' ? 'text-emerald-400/80' : safety === 'exposed' ? 'text-red-400/80' : 'text-amber-400/80'}>
+        <span data-testid="status-bar-ip-state" className={safetyText}>
           {safetyLabel}
         </span>
-        {!narrow && ipStatus?.externalIP && (
+        {!offline && !narrow && ipStatus?.externalIP && (
           <span className="text-redlog-text-dim tabular-nums">{ipStatus.externalIP}</span>
         )}
-        {narrow && <span className="sr-only">{ipStatus?.externalIP ?? ''}</span>}
+        {!offline && narrow && <span className="sr-only">{ipStatus?.externalIP ?? ''}</span>}
       </div>
 
       <Sep narrow={narrow} />

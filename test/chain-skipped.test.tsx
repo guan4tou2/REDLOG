@@ -14,10 +14,11 @@ import { _resetIssues, snapshotIssues } from '../src/renderer/src/lib/issues'
 
 // An air-gapped project does not submit an anchor. That is not "nothing to
 // anchor" (an error) and not an anchor (a success, with receipts to count).
-const SKIPPED = 'Skipped: this project is offline'
+const SKIPPED = 'Timestamp anchoring off in Settings'
 
-function install(chain: Record<string, unknown>): void {
+function install(chain: Record<string, unknown>, offline = false): void {
   ;(window as unknown as { redlog: unknown }).redlog = {
+    ip: { getStatus: async () => ({ offline }), onStatus: () => () => {} },
     events: { onNewBatch: () => () => {} },
     project: { active: vi.fn(async () => ({ id: 'p1', name: 'demo' })) },
     chain: { anchors: vi.fn(async () => []), length: vi.fn(async () => 0), verify: vi.fn(), anchorNow: vi.fn(), upgrade: vi.fn(), ...chain }
@@ -32,6 +33,18 @@ const openDetails = async (): Promise<void> => { fireEvent.click(await screen.fi
 
 describe('air-gapped anchoring', () => {
   afterEach(() => { cleanup(); _resetIssues(); toasts.length = 0 })
+
+  it('names the setting immediately and leaves an old receipt visible without an overdue warning', async () => {
+    const old = { id: 'old', headEventId: 'e1', headHash: 'f'.repeat(64), eventCount: 1, status: 'complete',
+      createdAt: Date.now() - 72 * 3_600_000, calendarReceipts: [{ calendar: 'https://a.example.org', ok: true }] }
+    install({ length: async () => 2, anchors: async () => [old] }, true)
+    render(<I18nProvider><Panel /></I18nProvider>)
+    await screen.findByText('Timestamp anchoring off in Settings')
+    await openDetails()
+    expect((await screen.findByTestId('anchor-card')).textContent).toContain('Upgrade off in Settings')
+    expect(screen.queryByText(/No successful anchor for/)).toBeNull()
+    expect((screen.getByRole('button', { name: 'Upgrade pending' }) as HTMLButtonElement).disabled).toBe(true)
+  })
 
   it('shows one neutral toast, raises no issue and returns null', async () => {
     install({ anchorNow: vi.fn(async () => ({ skipped: 'offline' })) })
