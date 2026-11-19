@@ -89,7 +89,7 @@ export function resolveTimelineKey(e: KeyLike, ctx: TimelineKeyContext): Timelin
   //        "what else was happening then" means.
   //   ⇧← ⇧→ skip to the next event that carries state — a non-zero exit, a
   //        scope violation, loot. The dense middle of a run is mostly noise.
-  if (e.metaKey || e.ctrlKey || e.altKey) return 'none'
+  if (e.metaKey || e.ctrlKey || (e.altKey && e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return 'none'
   // This handler is on the window: the arrows on a focused select used to move
   // the Timeline's selection, and +/−/0 to zoom it, instead of choosing an option.
   if (ctx.ownsKeys) return 'none'

@@ -273,3 +273,12 @@ describe('tickLabelAlign', () => {
     expect(tickLabelAlign(AXIS_LABEL_HALF_W, 1000)).toBe('center')
   })
 })
+
+it('FR-065: extends the domain to interval starts and preserves the old call', () => {
+  const events = [{ timestamp: 1_000_000, agentType: 'shell' }]
+  const before = computeDomainBounds(events)
+  const extended = computeDomainBounds(events, { lo: 100_000, hi: 2_000_000 })
+  expect(extended.timeStart, 'interval start is reachable').toBeLessThan(100_000)
+  expect(extended.timeEnd).toBeGreaterThan(2_000_000)
+  expect(computeDomainBounds(events)).toEqual(before)
+})

@@ -25,7 +25,8 @@ const ROOT = path.join(__dirname, '..')
 // 2026-11-18: measured on the merged tree after the Timeline strip's retry links became Buttons, the
 // Terminal strip lost its font/find buttons, and the Evidence change made a screenshot row one target
 // and moved verification out of Settings.
-const RAW_BUTTON_BASELINE = 209
+// 2026-11-18: Timeline interval marks add a mark on a track (§4.1); both mark buttons are counted explicitly.
+const RAW_BUTTON_BASELINE = 210
 const IMPLEMENTATIONS = new Set([
   'src/renderer/src/components/Button.tsx',
   'src/renderer/src/components/IconButton.tsx'
@@ -48,4 +49,10 @@ describe('raw <button> in components', () => {
       'Use Button/IconButton, or see UIUX-STANDARD §4.1 and raise the baseline with a reason.')
       .toBeLessThanOrEqual(RAW_BUTTON_BASELINE)
   })
+})
+
+it('F5: timeline track controls remain visible to the raw-button ratchet', () => {
+  const timeline = fs.readFileSync(path.join(ROOT, 'src/renderer/src/components/Timeline.tsx'), 'utf8')
+  const tracks = fs.readFileSync(path.join(ROOT, 'src/renderer/src/components/timeline/TimelineCommandTracks.tsx'), 'utf8')
+  expect(timeline + tracks, 'F5: no raw-button wrapper may hide timeline marks').not.toContain('TimelineMarkButton')
 })

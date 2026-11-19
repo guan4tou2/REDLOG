@@ -1,3 +1,4 @@
+import { MARK_HIT_PX } from './timelineGeometry'
 import type { TimelineInterval, TimelineIntervalSet } from './timelineIntervals'
 
 export type IntervalStartCap = 'mark' | 'unloaded'
@@ -13,7 +14,7 @@ export interface IntervalMark {
   x1: number
   /** 線的中心：row * laneH + TRACK_LINE_Y。 */
   y: number
-  /** 點擊區域，寬不小於 MARK_HIT_PX，與鄰居相接於中點。 */
+  /** 點擊區域，寬不小於 MARK_HIT_PX；span 包含整段線，後開始的記號疊於其上。 */
   hitLeft: number
   hitWidth: number
   /** span／point 為 1 段；cluster 為 n 段，依起點排序。 */
@@ -101,7 +102,7 @@ export function layoutIntervalMarks(input: IntervalLayoutInput): IntervalMark[] 
       const unloaded = iv.startTs === null
       const anchor = toX(iv.startTs ?? iv.endTs!)
       const endCap = capOf(iv, endsMayBeMissing)
-      const x0 = unloaded ? anchor - OPEN_STUB_PX : anchor
+      const x0 = Math.max(0, Math.min(trackW, unloaded ? anchor - OPEN_STUB_PX : anchor))
       const end = unloaded ? anchor : iv.reversed ? anchor : iv.endBasis === 'open'
         ? endsMayBeMissing ? anchor + OPEN_STUB_PX : nextStarts[i] === null ? trackW : toX(nextStarts[i]!)
         : toX(iv.endTs!)
@@ -109,8 +110,7 @@ export function layoutIntervalMarks(input: IntervalLayoutInput): IntervalMark[] 
       const candidate: WorkingMark = { unionEnd: Math.max(x0, end), mark: {
         key: iv.id, row, kind: point ? 'point' : 'span', x0, x1: point ? x0 : end,
         y: row * laneH + TRACK_LINE_Y,
-        // S2 has no hit targets. S3 assigns the interactive geometry.
-        hitLeft: x0 - 4, hitWidth: Math.max(8, end - x0),
+        hitLeft: x0 - MARK_HIT_PX / 2, hitWidth: Math.max(MARK_HIT_PX, end - x0 + MARK_HIT_PX),
         intervals: [iv], startCap: unloaded ? 'unloaded' : 'mark', endCap,
         failed: endCap === 'failed' ? 1 : 0, open: iv.endBasis === 'open' ? 1 : 0, label: null
       } }
@@ -145,7 +145,7 @@ export function layoutIntervalMarks(input: IntervalLayoutInput): IntervalMark[] 
         cells.pop()
       }
     }
-    const placed: WorkingMark[] = []
+    let placed: WorkingMark[] = []
     let active: WorkingMark[] = []
     for (const candidate of cells) {
       active = active.filter((a) => a.mark.x1 > candidate.mark.x0)
@@ -154,6 +154,30 @@ export function layoutIntervalMarks(input: IntervalLayoutInput): IntervalMark[] 
         placed.push(candidate)
         if (candidate.mark.x1 > candidate.mark.x0) active.push(candidate)
       }
+    }
+    // Depth capping can create a count after the cell pass. Settle the same
+    // footprint again, including the 27px minimum targets on either side.
+    const settled: WorkingMark[] = []
+    for (const candidate of placed) {
+      settled.push(candidate)
+      while (settled.length > 1) {
+        const b = settled[settled.length - 1], a = settled[settled.length - 2]
+        if (a.mark.kind !== 'cluster' && b.mark.kind !== 'cluster') break
+        if (b.mark.x0 - a.mark.x0 >= MARK_HIT_PX) break
+        merge(a, b)
+        settled.pop()
+      }
+    }
+    placed = settled
+    for (const { mark: m } of placed) {
+      // A span always owns its whole line and both pads. Later-started marks
+      // paint above it and own their local boxes, never the gap between starts.
+      const half = MARK_HIT_PX / 2
+      const left = Math.max(0, Math.min(trackW - MARK_HIT_PX, m.x0 - half))
+      const drawnEnd = m.kind === 'point' && m.open > 0 ? Math.min(trackW, m.x0 + OPEN_STUB_PX) : m.x1
+      const right = Math.min(trackW, Math.max(left + MARK_HIT_PX, drawnEnd + half))
+      m.hitLeft = left
+      m.hitWidth = right - left
     }
     // Geometry may place an end-only stub before a known start. Restore each
     // cluster's members to the set's chronological order in one linear pass.
@@ -196,4 +220,10 @@ export function filterVisibleMarks(
   const left = Math.max(0, viewLeft), right = Math.min(trackW, viewLeft + viewWidth)
   return marks.filter((m) => m.row >= rows.first - 1 && m.row <= rows.last + 1
     && m.x0 <= right && m.x1 >= left)
+}
+
+/** CSS-pixel viewport rows, shared by scrolling, keyboard walking and remounts. */
+export function visibleTrackRows(scrollTop: number, clientHeight: number, axisH: number, laneH: number, rowCount: number): { first: number; last: number } {
+  const first = Math.min(Math.max(0, rowCount - 1), Math.max(0, Math.floor((scrollTop - axisH) / laneH)))
+  return { first, last: Math.min(Math.max(0, rowCount - 1), Math.max(first, Math.ceil((scrollTop + clientHeight - axisH) / laneH) - 1)) }
 }
