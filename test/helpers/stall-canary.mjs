@@ -34,7 +34,10 @@ export function runRound(base, label, sync, { now = () => performance.now(), wri
 }
 
 export function startCanary() {
-  const bases = [['tmp', os.tmpdir()], ['repo', path.resolve('test-results')]]
+  // `home` keeps a probe on the system volume now that the Windows leg points
+  // TEMP at the work volume: without it the canary could no longer tell
+  // "the suite's files moved off the slow volume" from "the volume got better".
+  const bases = [['tmp', os.tmpdir()], ['home', path.join(os.homedir(), 'redlog-stall-canary')], ['repo', path.resolve('test-results')]]
   const errors = new Set()
   const report = error => {
     const message = error instanceof Error ? error.message : String(error)

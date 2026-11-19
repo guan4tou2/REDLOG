@@ -51,12 +51,12 @@ it('deduplicates interval errors and stops when the parent disappears', () => {
   const stop = startCanary()
   try {
     vi.advanceTimersByTime(1000)
-    expect(output.mock.calls[0][0]).toMatch(/^\[canary\] bases tmp=.+ repo=.+test-results$/)
+    expect(output.mock.calls[0][0]).toMatch(/^\[canary\] bases tmp=.+ home=.+redlog-stall-canary repo=.+test-results$/)
     expect(output.mock.calls.filter(([line]) => line === '[canary] error disk unavailable')).toHaveLength(1)
-    expect(mkdir).toHaveBeenCalledTimes(4)
+    expect(mkdir).toHaveBeenCalledTimes(6)
     kill.mockImplementation(() => { throw new Error('parent gone') })
     vi.advanceTimersByTime(1000)
-    expect(mkdir).toHaveBeenCalledTimes(4)
+    expect(mkdir).toHaveBeenCalledTimes(6)
     expect(vi.getTimerCount()).toBe(0)
     expect(process.listenerCount('disconnect')).toBe(listeners)
   } finally { stop(); vi.restoreAllMocks(); vi.useRealTimers() }
