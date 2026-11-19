@@ -126,6 +126,24 @@ jobs:
         id: build
         run: npm run build
 
+      - name: Keep the suite's temp files off the system volume (Windows)
+        # Every test file works in a directory under os.tmpdir(), which on this
+        # runner is C:. test/helpers/stall-canary.mjs timed the same small file
+        # operations on C: and on the work volume all through two runs (#836):
+        # 37 rounds had a step over 250 ms, every one on C:, all but one of
+        # them the fsync (up to 0.9 s); the work volume never crossed 250 ms.
+        # Those are the windows in which a file that takes under a second took
+        # 14-50 s and now and then passed the 15 s timeout. RUNNER_TEMP is on
+        # the work volume and is emptied by the runner. Two runs is a small
+        # sample: the canary keeps a probe on the system volume (`home`) and on
+        # this one (`tmp`), so every later run says whether this still holds.
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "TEMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
+          "TMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
+          "temp is now $env:RUNNER_TEMP"
+
       - name: Vitest
         # Also when the build failed: those files then fail on the missing
         # build, and every other file still reports.
