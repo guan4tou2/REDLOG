@@ -9,6 +9,7 @@ const MAX_PAGE = 2000
  * supplies row admission/selection; neither can accidentally accept an old page. */
 export function useTimelinePages(
   filter: MutableRefObject<ReturnType<typeof toEventFilter>>,
+  filterKey: string,
   generation: MutableRefObject<number>,
   callbacks: { reset: (generation: number) => void; rows: (events: RedLogEvent[]) => void; ready: (generation: number) => void }
 ) {
@@ -50,7 +51,6 @@ export function useTimelinePages(
       .catch(error => { if (alive.current && generation.current === gen) setError(String(error instanceof Error ? error.message : error)) })
       .finally(() => { if (alive.current && generation.current === gen) { pending.current = false; setLoading(false) } })
   }, [filter, generation, acceptPage])
-  const filterKey = JSON.stringify(filter.current)
   useEffect(() => { loadFirstPage() }, [filterKey, loadFirstPage])
 
   const loadMore = useCallback((): void => {

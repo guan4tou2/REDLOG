@@ -51,7 +51,7 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
-describe('A. the dialog opens on the whole project unless the operator narrowed the view', () => {
+describe('A. the dialog opens on the whole project on every opening', () => {
   it('opens on the entire project from a page with no filter, resolving that plan once and no other', async () => {
     draw(); open(); await ready()
     expect(rangeValue()).toBe('all')
@@ -67,18 +67,24 @@ describe('A. the dialog opens on the whole project unless the operator narrowed 
     expect(resolve).toHaveBeenCalledTimes(1)
     expect(resolve.mock.calls[0][0]).toMatchObject({ format: 'har', subset: { kind: 'all' } })
   })
-  it('opens on the current results when the view is narrowed, resolving once', async () => {
+  it('opens on the whole project even when the view is narrowed, then lets the operator select current results', async () => {
     const subset: Subset = { kind: 'selection', projection: 'events', filter: { ...DEFAULT_FILTER, targetId: 'corp.test' }, query: '' }
     draw({ label: 'Search', request: { format: 'json', subset } }); open(); await ready()
-    expect(rangeValue()).toBe('current')
+    expect(rangeValue()).toBe('all')
     expect(resolve).toHaveBeenCalledTimes(1)
-    expect(resolve.mock.calls[0][0]).toMatchObject({ subset })
+    expect(resolve.mock.calls[0][0]).toMatchObject({ subset: { kind: 'all' } })
+    fireEvent.change(screen.getByLabelText('Export range'), { target: { value: 'current' } }); await ready()
+    expect(resolve.mock.lastCall?.[0]).toMatchObject({ subset })
+    fireEvent.keyDown(window, { key: 'Escape' })
+    open(); await ready()
+    expect(rangeValue()).toBe('all')
   })
   it('keeps an exported session as its own subset', async () => {
     const subset: Subset = { kind: 'session', projectId: 'p', anchorEventId: 'e', snapshot: SNAP }
     draw({ label: 'Session', request: { format: 'json', subset } }); open(); await ready()
-    expect(rangeValue()).toBe('current')
-    expect(resolve.mock.calls[0][0]).toMatchObject({ subset })
+    expect(rangeValue()).toBe('all')
+    fireEvent.change(screen.getByLabelText('Export range'), { target: { value: 'current' } }); await ready()
+    expect(resolve.mock.lastCall?.[0]).toMatchObject({ subset })
   })
   it('keeps the operator\'s range when the plan re-resolves', async () => {
     draw(); open(); await ready()

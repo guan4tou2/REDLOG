@@ -148,7 +148,7 @@ for (const kind of ['claude-code', 'codex'] as const) test(`${kind}: new authori
     await expect(transcript.getByText(output, { exact: true })).toBeVisible()
 
     await page.getByLabel('Export', { exact: true }).click()
-    await page.getByLabel('Export range', { exact: true }).selectOption('all')
+    await expect(page.getByLabel('Export range', { exact: true })).toHaveValue('all')
     await page.getByLabel('Export format', { exact: true }).selectOption('other')
     await page.getByLabel('Other formats', { exact: true }).selectOption('json')
     await expect(page.getByTestId('export-confirm')).toBeEnabled()

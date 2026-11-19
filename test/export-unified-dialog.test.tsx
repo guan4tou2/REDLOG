@@ -41,16 +41,18 @@ describe('one export dialog', () => {
   })
   afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
-  it('opens directly with the complete contributed query, not loaded rows', async () => {
+  it('opens on the whole project and previews the complete contributed query when selected', async () => {
     draw(); open(); await ready()
     expect(screen.getByRole('dialog').getAttribute('aria-modal')).toBe('true')
     expect(screen.queryByRole('menu')).toBeNull()
-    expect(resolve.mock.calls[0][0]).toMatchObject({ format: 'json', subset: selection })
+    expect(resolve.mock.calls[0][0]).toMatchObject({ format: 'json', subset: { kind: 'all' } })
+    range('current'); await ready()
+    expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'json', subset: selection })
     expect(screen.getByTestId('export-preview-subset').textContent).toContain('needle')
     expect(screen.getAllByText('600')).toHaveLength(2)
   })
   it('changes format without changing range, and all-project range without changing format', async () => {
-    draw(); open(); await ready()
+    draw(); open(); await ready(); range('current'); await ready()
     format('ndjson'); await ready()
     expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'ndjson', subset: selection })
     range('all'); await ready()
@@ -61,17 +63,18 @@ describe('one export dialog', () => {
     expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'bundle', subset: selection })
   })
   it('freezes the view query until the dialog is closed and opened again', async () => {
-    const ui = draw(); open(); await ready()
+    const ui = draw(); open(); await ready(); range('current'); await ready()
     const next = { ...entry, request: { ...entry.request, subset: { ...selection, query: 'other' } as ExportSubset } }
     ui.rerender(<I18nProvider><View value={next} /><ExportMenu totalCount={600} /></I18nProvider>)
     format('ndjson'); await ready()
     expect(resolve.mock.lastCall?.[0].subset).toEqual(selection)
     fireEvent.keyDown(window, { key: 'Escape' }); open(); await ready()
+    range('current'); await ready()
     expect(resolve.mock.lastCall?.[0].subset).toEqual(next.request.subset)
   })
   it('preserves HTTP predicates and offers no masking toggle for HAR; the Policy row says what is masked', async () => {
     const subset: ExportSubset = { kind: 'selection', projection: 'http', filter: { targetId: 'corp.test' }, http: { method: 'POST', statusPrefix: '4', text: 'login' } }
-    draw({ label: 'HTTP', request: { format: 'har', subset } }); open(); await ready()
+    draw({ label: 'HTTP', request: { format: 'har', subset } }); open(); await ready(); range('current'); await ready()
     expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'har', subset, maskOutOfScope: true, scrubPii: false })
     expect(screen.queryByLabelText(/mask out-of-scope content using web scope/i)).toBeNull()
     expect(screen.queryByLabelText(/including out-of-scope content raw/i)).toBeNull()
@@ -98,12 +101,12 @@ describe('one export dialog', () => {
   })
   it('retains the timeline format supplied by the view', async () => {
     draw({ label: 'Timeline', request: { format: 'timeline', subset: selection } }); open(); await ready()
-    expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'timeline', subset: selection })
-    range('all'); await ready()
     expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'timeline', subset: { kind: 'all' } })
+    range('current'); await ready()
+    expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'timeline', subset: selection })
   })
   it('does not ask a format that cannot scrub PII to scrub it, and keeps the choice for one that can', async () => {
-    draw(); open(); await ready()
+    draw(); open(); await ready(); range('current'); await ready()
     fireEvent.click(screen.getByLabelText(/scrub operator pii/i)); await ready()
     expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'json', scrubPii: true, subset: selection })
     format('bundle'); await ready()
@@ -142,23 +145,24 @@ describe('one export dialog', () => {
       if (request.format === 'bundle') p.attachments = [{ id: 'casts/session.cast', kind: 'cast', bytes: 42, targets: [], attribution: 'unattributed', status: request.excludeAttachments?.includes('casts/session.cast') ? 'excluded-by-operator' : 'included' }]
       return { ok: true, plan: p }
     })
-    draw(); open(); await ready(); format('bundle'); await ready()
+    draw(); open(); await ready(); range('current'); await ready(); format('bundle'); await ready()
     fireEvent.click(screen.getByLabelText('casts/session.cast')); await ready()
     format('ndjson'); await ready(); range('all'); await ready(); format('bundle'); await ready()
     expect(resolve.mock.lastCall?.[0]).toMatchObject({ format: 'bundle', subset: { kind: 'all' }, excludeAttachments: ['casts/session.cast'] })
     expect((screen.getByLabelText('casts/session.cast') as HTMLInputElement).checked).toBe(false)
   })
-  it('allows all-project export when the current view cannot be exported', async () => {
-    draw({ ...entry, disabledReason: 'This query cannot be exported' }); open()
-    expect(screen.getByRole('alert').textContent).toContain('This query cannot be exported')
-    expect(resolve).not.toHaveBeenCalled()
-    range('all'); await ready()
+  it('previews the project even when the current view cannot be exported', async () => {
+    draw({ ...entry, disabledReason: 'This query cannot be exported' }); open(); await ready()
     expect(resolve.mock.lastCall?.[0]).toMatchObject({ subset: { kind: 'all' } })
+    range('current')
+    expect(screen.getByRole('alert').textContent).toContain('This query cannot be exported')
+    expect(screen.queryByTestId('export-confirm')).toBeNull()
+    expect(resolve).toHaveBeenCalledTimes(1)
   })
   it('locks edits and cancellation during execution, then keeps the draft after failure', async () => {
     let release!: (value: { ok: boolean; error: string }) => void
     execute.mockImplementation(() => new Promise(r => { release = r }))
-    draw(); open(); await ready(); format('ndjson'); await ready()
+    draw(); open(); await ready(); range('current'); await ready(); format('ndjson'); await ready()
     fireEvent.click(screen.getByTestId('export-confirm'))
     expect((screen.getByLabelText('Export format') as HTMLSelectElement).disabled).toBe(true)
     expect((screen.getByLabelText('Export range') as HTMLSelectElement).disabled).toBe(true)

@@ -266,3 +266,10 @@ export function evaluateScope(subject: string, policy: ScopePolicy): ScopeDecisi
   }
   return { status: c.status }
 }
+
+/** Scope inclusion wins over the personal list. Explicit scope exclusions
+ *  still win over inclusion, so an excluded local address can be personal. */
+export function isPersonalDomain(subject: string | null | undefined, policy?: Partial<ScopePolicy> & { personalDomains?: string[] }): boolean {
+  if (!subject || !policy?.personalDomains?.some(rule => matchPattern(subject, rule))) return false
+  return evaluateScope(subject, { targets: policy.targets ?? [], excludeTargets: policy.excludeTargets ?? [] }).status !== 'in-scope'
+}

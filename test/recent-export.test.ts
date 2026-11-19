@@ -12,15 +12,16 @@ const receipt = (artifactPath: string) => ({ artifactPath, format: 'json' as con
 it('persists only one completed artifact per project/root on this machine', () => {
   const storeDir = path.join(dir, 'machine-data')
   const file = path.join(dir, 'evidence.json'); fs.writeFileSync(file, '{}')
-  new RecentExportStore(storeDir).remember('p', dir, receipt(file))
+  const counts = { included: 8, excludedDoNotExport: 2, excludedPersonal: 1, maskedOutOfScope: 3, attachmentsIncluded: 1 }
+  new RecentExportStore(storeDir).remember('p', dir, { ...receipt(file), counts })
   const reopened = new RecentExportStore(storeDir)
-  expect(reopened.get('p', dir)).toEqual({ ...receipt(file), availability: 'available' })
+  expect(reopened.get('p', dir)).toEqual({ ...receipt(file), counts, availability: 'available' })
   expect(reopened.get('other', dir)).toBeNull()
   expect(reopened.get('p', path.join(dir, 'copied-project'))).toBeNull()
   const next = path.join(dir, 'next.json'); fs.writeFileSync(next, '{}')
   reopened.remember('p', dir, receipt(next))
   expect(fs.readdirSync(storeDir)).toHaveLength(1)
-  expect(reopened.get('p', dir)?.artifactPath).toBe(next)
+  expect(reopened.get('p', dir)).toEqual({ ...receipt(next), availability: 'available' })
   if (process.platform !== 'win32') expect(fs.statSync(path.join(storeDir, fs.readdirSync(storeDir)[0])).mode & 0o777).toBe(0o600)
 })
 

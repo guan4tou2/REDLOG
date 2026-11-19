@@ -35,6 +35,12 @@ export class RecentExportStore {
       || !['json', 'ndjson', 'bundle', 'har', 'timeline'].includes(receipt.format)) {
       throw new Error('recent-export-invalid')
     }
+    const { counts } = receipt
+    if (counts !== undefined && (!counts || typeof counts !== 'object'
+        || [counts.included, counts.excludedDoNotExport, counts.excludedPersonal, counts.maskedOutOfScope,
+          counts.maskedUnclassified ?? 0, counts.exchanges ?? 0, counts.attachmentsIncluded].some(
+          count => !Number.isSafeInteger(count) || count < 0
+        ))) throw new Error('recent-export-invalid')
     let availability: ExportDelivery['availability'] = 'available'
     try {
       const stat = fs.statSync(receipt.artifactPath)
@@ -42,12 +48,12 @@ export class RecentExportStore {
     } catch (error) {
       availability = (error as NodeJS.ErrnoException).code === 'ENOENT' ? 'missing' : 'unavailable'
     }
-    return { artifactPath: receipt.artifactPath, format: receipt.format, completedAt: receipt.completedAt, availability }
+    return { artifactPath: receipt.artifactPath, format: receipt.format, completedAt: receipt.completedAt, ...(counts ? { counts } : {}), availability }
   }
 
   remember(projectId: string, projectDir: string, delivery: SavedDelivery): void {
     const key = this.key(projectId, projectDir)
-    const receipt: Receipt = { artifactPath: delivery.artifactPath, format: delivery.format, completedAt: delivery.completedAt, projectId, projectDir: path.resolve(projectDir) }
+    const receipt: Receipt = { artifactPath: delivery.artifactPath, format: delivery.format, completedAt: delivery.completedAt, counts: delivery.counts, projectId, projectDir: path.resolve(projectDir) }
     if (this.dir) {
       fs.mkdirSync(this.dir, { recursive: true, mode: 0o700 })
       const temp = path.join(this.dir, `${key}.${randomUUID()}.tmp`)

@@ -119,6 +119,7 @@ interface FilterContextValue {
   scopeTargets: string[]
   scopeExcludeTargets: string[]
   personalDomains: string[]
+  scopePolicyKey: string
   /** Of the target/type menus. `error` keeps whatever loaded before. */
   listsStatus: ListsStatus
   /** Of the scope lists, which drive the in-scope and personal switches. */
@@ -144,6 +145,7 @@ const FilterContext = createContext<FilterContextValue>({
   scopeTargets: [],
   scopeExcludeTargets: [],
   personalDomains: [],
+  scopePolicyKey: '',
   listsStatus: 'loading',
   scopeStatus: 'loading',
   retryLists: () => {}
@@ -276,12 +278,26 @@ export function FilterProvider({ children }: { children: ReactNode }): JSX.Eleme
     refreshScope()
   }, [refreshLists, refreshScope])
 
+  const { inScopeOnly, hidePersonal } = filter
+  const scopePolicy = useMemo(() => inScopeOnly || hidePersonal
+    ? JSON.stringify([scopeTargets, scopeExcludeTargets, hidePersonal ? personalDomains : []])
+    : '', [inScopeOnly, hidePersonal, scopeTargets, scopeExcludeTargets, personalDomains])
+  // Counts changes of the policy after it was first read. The first read is
+  // not a change: the pages' opening queries were already answered under the
+  // stored policy (it is applied where the events are stored), and a key that
+  // moved when the lists arrived asked every mounted page twice at each open.
+  const [policySeen, setPolicySeen] = useState<{ policy: string; changes: number } | null>(null)
+  if (scopeStatus === 'ready' && policySeen?.policy !== scopePolicy) {
+    setPolicySeen({ policy: scopePolicy, changes: policySeen ? policySeen.changes + 1 : 0 })
+  }
+  const scopePolicyKey = String(policySeen?.changes ?? 0)
+
   const value = useMemo(() => ({
     filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, setHidePersonal, setTier, clearAll,
-    activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets, personalDomains,
+    activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets, personalDomains, scopePolicyKey,
     listsStatus, scopeStatus, retryLists
   }), [filter, setTargetId, setAgentType, setTimeRange, setInScopeOnly, setHidePersonal, setTier, clearAll,
-       activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets, personalDomains,
+       activeCount, knownTargets, knownAgentTypes, scopeTargets, scopeExcludeTargets, personalDomains, scopePolicyKey,
        listsStatus, scopeStatus, retryLists])
 
   return <FilterContext value={value}>{children}</FilterContext>
