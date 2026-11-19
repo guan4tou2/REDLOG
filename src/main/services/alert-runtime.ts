@@ -32,9 +32,9 @@ import { IPSignalProducer } from './producers/ip-signal-producer'
 
 /** The compat shape the StatusBar / IPStatusCard / overlay expect. The
  *  old IPMonitor exposed exactly this; the runtime composes it from the
- *  producer's state + the badge surface's verdict. Kept identical so the
- *  UI code doesn't need to change. */
+ *  producer's state and configuration plus the badge surface's verdict. */
 export interface IPStatusShape {
+  offline: boolean
   externalIP: string | null
   internalIP: string | null
   ipSafety: 'safe' | 'exposed' | 'unknown'
@@ -144,11 +144,13 @@ export class AlertRuntime {
   /** IPC-compat: what the StatusBar / IPStatusCard have always read. */
   ipStatus(): IPStatusShape {
     const st = this.ipProducer.getState()
-    const ipSafety = shownIpSafety(
+    const offline = this.ipProducer.offline
+    const ipSafety = offline ? 'unknown' : shownIpSafety(
       { ipSafety: verdictToSafety(this.badgeSurface.get()), externalIP: st.external, error: st.error, externalReadAt: st.externalReadAt },
       { now: Date.now(), maxAgeMs: this.ipReadMaxAge }
     )
     return {
+      offline,
       externalIP: st.external,
       internalIP: st.internal,
       ipSafety,

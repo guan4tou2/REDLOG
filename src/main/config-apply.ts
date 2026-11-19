@@ -30,6 +30,14 @@ import type { VpnAdapter } from '../core/config'
 
 type Opts = Record<string, unknown>
 
+export function airgapEvent(enabled: boolean): { subtype: 'opsec_airgap'; enabled: boolean; description: string } {
+  return {
+    subtype: 'opsec_airgap',
+    enabled,
+    description: enabled ? 'Air-gap ON — no outbound anchoring / NTP / update / IP lookup' : 'Air-gap OFF'
+  }
+}
+
 /** The subsystems, as main/index.ts binds them. Names follow the call they
  *  stand for, so the golden list in the test reads like the old code. */
 export interface ConfigApplyDeps {
@@ -43,6 +51,7 @@ export interface ConfigApplyDeps {
   alertConfigure(config: RedLogConfig, identity: ProjectContext, scopeTargets: string[]): void
   /** Air-gap's own senders. Open sets them in main/index.ts; a save, here. */
   setUpdaterAirgap(on: boolean): void
+  recordAirgap(data: ReturnType<typeof airgapEvent>, identity: ProjectContext): void
   /** The anchoring and NTP loops, as project open starts and close stops them. */
   startOutboundLoops(): void
   stopOutboundLoops(): void
@@ -141,13 +150,13 @@ function runStep(step: ConfigApplyStep, ctx: StepContext, deps: ConfigApplyDeps)
       deps.alertConfigure(cfg, ctx.identity, [...ctx.next.scopeInForce])
       return
     case 'airgap': {
-      // As a fresh open with this setting: on, nothing of RedLog's own goes
-      // out from now; off, the loops run again and the update check is
-      // allowed when pressed. Restarting the loops when air-gap did not move
-      // (a save that plans every step) would only send early.
+      // A save that plans every step may leave the setting unchanged.
+      // Restarting the loops in that case would send early.
       const on = cfg.network?.offline === true
       if (ctx.applied && (ctx.applied.network?.offline === true) === on) return
       if (on) { deps.stopOutboundLoops(); deps.setUpdaterAirgap(true) } else { deps.setUpdaterAirgap(false); deps.startOutboundLoops() }
+      deps.recordAirgap(airgapEvent(on), ctx.identity)
+      deps.broadcastIPStatus()
       return
     }
     case 'lootDetector':

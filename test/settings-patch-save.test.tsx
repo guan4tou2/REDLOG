@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import Settings, { type SettingsPage } from '../src/renderer/src/components/Settings'
 import { I18nProvider } from '../src/renderer/src/i18n'
@@ -114,6 +114,17 @@ const failedShown = async (): Promise<void> => {
 const settle = (ms = 600): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 describe('a save writes only what the page changed', () => {
+  it('shows the saved offline switch and persists a flip through config patch', async () => {
+    window.localStorage.setItem('redlog-locale', 'en')
+    disk = { ...disk, network: { ...(disk.network as object), offline: true } }
+    mount('network')
+    const toggle = await screen.findByRole<HTMLInputElement>('checkbox', { name: 'Offline mode' })
+    expect(toggle.checked).toBe(true)
+    fireEvent.click(toggle)
+    await waitFor(() => expect(writes).toEqual(['patch']), { timeout: 3000 })
+    expect(at(disk, ['network', 'offline'])).toBe(false)
+  })
+
   it('keeps a field another writer changed after the page loaded', async () => {
     mount('network')
     const interval = await findInput('61')

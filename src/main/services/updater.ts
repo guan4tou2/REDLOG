@@ -342,7 +342,14 @@ export function takeUpdateOutcome(): UpdateOutcome | null {
   return outcome
 }
 
-export function setUpdaterAirgap(v: boolean): void { airgap = v }
+export function setUpdaterAirgap(v: boolean): void {
+  if (airgap === v) return
+  airgap = v
+  const status = store()
+  status.patch(!v && status.get().result === 'airgap'
+    ? { offline: false, stage: 'idle', result: null, checkedAt: null }
+    : { offline: v })
+}
 
 async function runCheck(): Promise<void> {
   if (airgap) {

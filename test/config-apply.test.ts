@@ -75,6 +75,7 @@ function harness(): { deps: ConfigApplyDeps; log: string[]; args: Array<[string,
     screenshotConfigure: rec('screenshotAgent.configure'),
     alertResetOnProjectSwitch: rec('alertRuntime.resetOnProjectSwitch'),
     alertConfigure: (c, _i, t) => { log.push('alertRuntime.configure'); args.push(['alertRuntime.configure', t]) },
+    recordAirgap: rec('recordAirgap'),
     setUpdaterAirgap: (on) => { log.push(`setUpdaterAirgap:${on}`) },
     startOutboundLoops: rec('startOutboundLoops'),
     stopOutboundLoops: rec('stopOutboundLoops'),
@@ -278,17 +279,24 @@ describe('config apply: one path for every entry point', () => {
     const on = cfg((c) => { c.network.offline = true })
     openWith(off)
     h.log.length = 0
-    save(off, on)
+    const records = (): unknown[] => h.args.filter(([name]) => name === 'recordAirgap').map(([, data]) => data)
+    const plan = applier.apply({ reason: 'save', identity: open, next: on, diskPrev: off })
+    expect(plan?.entries).toContainEqual({ step: 'airgap' })
     expect(h.log.filter((c) => AIRGAP.has(c))).toEqual(['stopOutboundLoops', 'setUpdaterAirgap:true'])
+    expect(records()).toEqual([{ subtype: 'opsec_airgap', enabled: true, description: 'Air-gap ON — no outbound anchoring / NTP / update / IP lookup' }])
+
 
     // A save that plans every step but leaves air-gap where it was restarts nothing.
     h.log.length = 0
     save(on, cfg((c) => { c.network.offline = true; (c as unknown as Record<string, unknown>).brandNew = 1 }))
     expect(h.log.filter((c) => AIRGAP.has(c))).toEqual([])
+    expect(records()).toHaveLength(1)
 
     h.log.length = 0
     save(on, off)
     expect(h.log.filter((c) => AIRGAP.has(c))).toEqual(['setUpdaterAirgap:false', 'startOutboundLoops'])
+    expect(records()).toHaveLength(2)
+    expect(records()[1]).toEqual({ subtype: 'opsec_airgap', enabled: false, description: 'Air-gap OFF' })
   })
 
   it('turning the host monitors pack on reconfigures its three members and nothing else', () => {

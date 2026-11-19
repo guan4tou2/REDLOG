@@ -1,5 +1,5 @@
 import { createOfficialAgentPluginManager } from '../core/plugins/official-agents'
-import { createConfigApplier } from './config-apply'
+import { airgapEvent, createConfigApplier } from './config-apply'
 import { createConfigStore } from './config-store'
 import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, dialog, screen, session, shell, protocol, powerMonitor } from 'electron'
 import { electronApp, is } from '@electron-toolkit/utils'
@@ -552,6 +552,10 @@ screenshotAgent.setWindowHider(async () => {
 })
 const lootDetector = new LootDetector()
 
+function recordAirgap(data: ReturnType<typeof airgapEvent>, identity: ProjectContext): void {
+  insertEvent('system', data, identity)
+}
+
 /** The one way a config takes effect (main/config-apply.ts). Open, every save,
  *  plugin and hook-exclusion changes and the current-target switch call it with
  *  their reason; it reconfigures only what the change touches. */
@@ -565,6 +569,7 @@ const configApplier = createConfigApplier({
   alertResetOnProjectSwitch: () => alertRuntime.resetOnProjectSwitch(),
   alertConfigure: (cfg, identity, targets) => alertRuntime.configure(cfg, identity, targets),
   setUpdaterAirgap,
+  recordAirgap,
   startOutboundLoops: () => { startAnchorLoop(); startNtpLoop() },
   stopOutboundLoops: () => { stopAnchorLoop(); stopNtpLoop() },
   lootConfigure: (opts) => lootDetector.configure(opts),
@@ -1073,15 +1078,13 @@ function startProjectResources(project: ProjectMeta, projectDir: string, config:
     isCurrent: () => projectRuntime.isCurrent(opening)
   })
 
-  // OPSEC air-gap: suppress every outbound request RedLog makes of its own —
-  // anchoring, NTP sync, and the update check. Capture and the local API are
-  // untouched. Record the mode so a timeline that lacks anchors is explained
-  // by a choice, not a failure.
+  // Record the mode alongside project open so the timeline explains
+  // intentional gaps in anchoring.
   // A save that switches it later goes through the applier's `airgap` step,
   // which does the same to the updater and these two loops.
   const airgap = config.network?.offline === true
   setUpdaterAirgap(airgap)
-  insertEvent('system', { subtype: 'opsec_airgap', enabled: airgap, description: airgap ? 'Air-gap ON — no outbound anchoring / NTP / update / IP lookup' : 'Air-gap OFF' }, opening)
+  recordAirgap(airgapEvent(airgap), opening)
   if (!airgap) {
     startAnchorLoop()
     startNtpLoop()

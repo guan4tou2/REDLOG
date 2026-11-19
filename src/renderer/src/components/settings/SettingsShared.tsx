@@ -14,7 +14,7 @@ export const isWindows = (window as { redlog?: { platform?: string } }).redlog?.
 export interface ConfigState {
   engagement: { id: string }
   operator: { id: string; name: string }
-  network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto'; showWifiName?: boolean; vpnAdapters?: Array<{ name: string; pattern: string; enabled: boolean }> }
+  network: { whitelist: string[]; blacklist: string[]; checkInterval: number; providers?: string[]; confirmations?: number; ipMode?: 'dns' | 'http' | 'auto'; offline?: boolean; showWifiName?: boolean; vpnAdapters?: Array<{ name: string; pattern: string; enabled: boolean }> }
   scope: { warnOnViolation?: boolean; targets: string[]; excludeTargets: string[]; scopeFile: string; personalDomains?: string[] }
   screenshot: { quality: number }
   fileWatcher?: { watchPaths?: string[]; ignorePatterns?: string[] }

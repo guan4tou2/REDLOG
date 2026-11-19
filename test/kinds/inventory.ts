@@ -377,6 +377,7 @@ export const ANNOTATED: Annotation[] = [
   { site: 'src/core/bundle-export.ts', agentType: 'system', subtypes: { export_sealed: 'subtype: SEAL_SUBTYPE' } },
   { site: 'src/main/index.ts', agentType: 'system', subtypes: {
     recording_paused: "'recording_paused' as const", recording_resumed: "'recording_resumed' as const" } },
+  { site: 'src/main/index.ts', file: 'src/main/config-apply.ts', agentType: 'system', subtypes: { opsec_airgap: "subtype: 'opsec_airgap'," } },
   { site: 'src/main/index.ts', file: 'src/core/unsaved-gap.ts', agentType: 'system', subtypes: { capture_gap: "subtype: 'capture_gap'" } },
   { site: 'src/main/services/cdp-connector.ts', agentType: 'browser', subtypes: {
     console_warn: "'console_warn'", console_error: "'console_error'", console_info: "'console_info'",
