@@ -47,6 +47,7 @@ interface CaptureError {
   at: number
   message: string
   sidecarSessionId?: string
+  sidecarCause?: string
 }
 
 export interface CaptureSource {
@@ -268,16 +269,19 @@ export function notePipelineWarning(source: string, err: unknown): void {
 const CAPTURE_ERROR_TTL_MS = 10 * 60 * 1000
 const _captureErrors = new Map<string, {
   transient?: CaptureError
-  // Project directory → sidecar path. An unresolved sidecar belongs to
-  // that project even if the tailer unregisters the session or restarts.
+  stopped?: CaptureError
+  // Project directory → sidecar path. Pending raw writes survive a
+  // tailer reload that keeps the same capture scope.
   sidecars?: Map<string, Map<string, CaptureError>>
 }>()
 
-export function noteCaptureError(sourceId: string, err: unknown, sidecar?: { path: string; sessionId: string }): void {
+export function noteCaptureError(sourceId: string, err: unknown, sidecar?: { path: string; sessionId: string } | 'stopped'): void {
   const msg = err instanceof Error ? err.message : String(err ?? '')
   const error = { at: Date.now(), message: msg.slice(0, 200) }
   const source = _captureErrors.get(sourceId) ?? {}
-  if (sidecar) {
+  if (sidecar === 'stopped') {
+    source.stopped = error
+  } else if (sidecar) {
     const projectDir = getProjectDir()
     const sidecars = source.sidecars ??= new Map()
     let pending = sidecars.get(projectDir)
@@ -285,7 +289,12 @@ export function noteCaptureError(sourceId: string, err: unknown, sidecar?: { pat
       pending = new Map()
       sidecars.set(projectDir, pending)
     }
-    if (!pending.has(sidecar.path)) pending.set(sidecar.path, { ...error, sidecarSessionId: sidecar.sessionId })
+    pending.set(sidecar.path, {
+      at: pending.get(sidecar.path)?.at ?? error.at,
+      message: `Raw conversation is not being saved. RedLog retries when the transcript changes. Cause: ${msg}`,
+      sidecarSessionId: sidecar.sessionId,
+      sidecarCause: msg
+    })
   } else {
     source.transient = error
   }
@@ -299,8 +308,7 @@ export function getCaptureError(sourceId: string): CaptureError | undefined {
   return getLiveCaptureError(sourceId, Date.now())
 }
 
-/** A source recovery clears its transient error. A committed sidecar can
- *  also resolve that sidecar's pending error. */
+/** Resolve just the named sidecar, or the transient failure of a source. */
 export function clearCaptureError(sourceId: string, sidecarPath?: string): void {
   const source = _captureErrors.get(sourceId)
   if (!source) return
@@ -312,16 +320,33 @@ export function clearCaptureError(sourceId: string, sidecarPath?: string): void 
       healthCache = null
     }
   }
-  if (source.transient) {
+  if (!sidecarPath && source.transient) {
     delete source.transient
     healthCache = null
   }
-  if (!source.sidecars?.size) _captureErrors.delete(sourceId)
+  if (!source.transient && !source.stopped && !source.sidecars?.size) _captureErrors.delete(sourceId)
 }
 
-function getLiveCaptureError(sourceId: string, now: number): CaptureError | undefined {
+/** A host disabled by an unreadable recording boundary recovers on reconfigure. */
+export function clearCaptureStop(sourceId: string): void {
+  const source = _captureErrors.get(sourceId)
+  if (!source?.stopped) return
+  delete source.stopped
+  if (!source.transient && !source.sidecars?.size) _captureErrors.delete(sourceId)
+  healthCache = null
+}
+
+function getLiveCaptureError(sourceId: string, now: number, lastEventAt?: number | null): CaptureError | undefined {
   const source = _captureErrors.get(sourceId)
   if (!source) return undefined
+  if (source.stopped) return source.stopped
+  let transient = source.transient
+  if (transient && now - transient.at > CAPTURE_ERROR_TTL_MS) {
+    clearCaptureError(sourceId)
+    transient = undefined
+  }
+  // A failure to read or run the source outranks an incomplete raw copy.
+  if (transient && (lastEventAt == null || lastEventAt <= transient.at)) return transient
   if (source.sidecars?.size) {
     // Show the oldest unresolved sidecar on the existing source row.
     let projectDir: string | undefined
@@ -329,13 +354,7 @@ function getLiveCaptureError(sourceId: string, now: number): CaptureError | unde
     const oldest = projectDir === undefined ? undefined : source.sidecars.get(projectDir)?.values().next().value
     if (oldest) return oldest
   }
-  const e = source.transient
-  if (!e) return undefined
-  if (now - e.at > CAPTURE_ERROR_TTL_MS) {
-    clearCaptureError(sourceId)
-    return undefined
-  }
-  return e
+  return transient
 }
 
 function getLiveDbError(now: number): CaptureHealth['lastDbError'] {
@@ -706,11 +725,12 @@ function computeCaptureHealth(now: number): CaptureHealth {
       : opts.configPath
         ? cfgFlag(opts.configPath) ?? (opts.configPath.startsWith('packs.') ? false : undefined)
         : undefined)
-    const lastError = getLiveCaptureError(id, now)
     const state = stateFrom(opts.alwaysPresent ? undefined : opts.installed, last, enabled)
+    const lastError = state === 'off' && id.startsWith('agent-') ? undefined : getLiveCaptureError(id, now, last)
     // A later event can resolve a transient source failure. A raw sidecar
     // failure can coexist with later events until that sidecar is saved.
-    const recovered = lastError !== undefined && lastError.sidecarSessionId === undefined && last !== null && last > lastError.at
+    const recovered = lastError !== undefined && lastError !== _captureErrors.get(id)?.stopped
+      && lastError.sidecarSessionId === undefined && last !== null && last > lastError.at
     return {
       id,
       installed: opts.installed,

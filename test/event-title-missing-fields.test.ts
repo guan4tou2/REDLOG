@@ -76,6 +76,16 @@ describe('system event titles', () => {
       .toBe(eventTitle(sys({ subtype: 'ip_verdict', ip_verdict_kind: 'unknown' })))
   })
 
+  it('titles a raw-copy gap without claiming the timeline was paused', () => {
+    expect(eventTitle(sys({ subtype: 'capture_gap', agent: 'codex', missing: 'raw', reason: 'stopped' })))
+      .toBe('[gap] codex raw conversation copy incomplete')
+  })
+
+  it('names paused content omitted even when only its byte count is known', () => {
+    expect(eventTitle(sys({ subtype: 'capture_gap', agent: 'codex', skipped_bytes: 128, skipped_units: 0 })))
+      .toBe('[gap] codex transcript omitted while recording was paused')
+  })
+
   it('still says it is a system event when the subtype has no title', () => {
     expect(eventTitle(sys({ subtype: 'something_new' }))).toMatch(/something_new/)
     expect(eventTitle(sys({ subtype: 'something_new' }))).not.toMatch(/^system:/)

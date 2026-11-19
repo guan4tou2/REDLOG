@@ -12,16 +12,15 @@ import { noteCaptureError } from '../../core/capture-health'
 interface AgentModule { agentKind: string; modulePath: string; root: string }
 export interface AgentTailerConfig extends TailerHostConfig { integrations?: AgentModule[] }
 const loaded = new Map<string, string>()
-function unload(): void {
+function unload(reloading = false): void {
   // Stop before discarding module instances, including auxiliary watchers.
-  for (const [kind, file] of loaded) { unregisterAdapter(kind); delete require.cache[file] }
+  for (const [kind, file] of loaded) { unregisterAdapter(kind, reloading); delete require.cache[file] }
   loaded.clear()
 }
 export function configureAgentTailer(next: Partial<AgentTailerConfig>): void {
   const { integrations, ...hostCfg } = next
-  if (integrations !== undefined) {
-    configureHost({ enabled: false, enabledAgents: [] })
-    unload()
+  configureHost(hostCfg, integrations === undefined ? undefined : () => {
+    unload(true)
     for (const entry of integrations) {
       let cacheKey = entry.modulePath
       try {
@@ -35,8 +34,7 @@ export function configureAgentTailer(next: Partial<AgentTailerConfig>): void {
         noteCaptureError(`agent-${entry.agentKind}`, e)
       }
     }
-  }
-  configureHost(hostCfg)
+  })
 }
 /** Project close/switch only (`stopProject`). Ends the project's AI session
  *  selection (#686); a settings save goes through `configureAgentTailer`. */

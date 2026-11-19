@@ -301,9 +301,11 @@ export function officialProjectLevel(
   return source.enabled === true && authorized && p.status === 'active' ? 'recording' : 'installedNotEnabled'
 }
 
+type CaptureErrorText = Omit<NonNullable<CaptureSourceInfo['lastError']>, 'at'>
+
 export type OfficialHealth =
   | { kind: 'unknown' }
-  | { kind: 'error'; message: string; sidecarSessionId?: string }
+  | ({ kind: 'error' } & CaptureErrorText)
   | { kind: 'received'; at: number }
   | { kind: 'inactive' }
   | { kind: 'waiting' }
@@ -315,16 +317,13 @@ export type OfficialHealth =
 export function officialHealth(
   p: PluginView,
   level: OfficialProjectLevel,
-  snapshot: { status: 'ok' | 'unknown'; source?: { lastEventAt: number | null; lastError?: Pick<NonNullable<CaptureSourceInfo['lastError']>, 'message' | 'sidecarSessionId'> } }
+  snapshot: { status: 'ok' | 'unknown'; source?: { lastEventAt: number | null; lastError?: CaptureErrorText } }
 ): OfficialHealth {
   if (snapshot.status === 'unknown') return { kind: 'unknown' }
   const inactive = level === 'notInstalled' || level === 'unavailable' || level === 'installedNotEnabled'
   const s = snapshot.source
   if (!s) return inactive ? { kind: 'inactive' } : { kind: 'unknown' }
-  if (s.lastError) {
-    const { message, sidecarSessionId } = s.lastError
-    return { kind: 'error', message, ...(sidecarSessionId !== undefined ? { sidecarSessionId } : {}) }
-  }
+  if (s.lastError) return { kind: 'error', ...s.lastError }
   const lastStoredAt = captureFacts({ state: 'ready', lastEventAt: s.lastEventAt }).lastStoredAt
   if (lastStoredAt !== null) return { kind: 'received', at: lastStoredAt }
   return inactive || !p.official ? { kind: 'inactive' } : { kind: 'waiting' }

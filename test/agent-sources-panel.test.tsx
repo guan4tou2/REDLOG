@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react'
 import type { ConfirmOpts } from '../src/renderer/src/components/ConfirmDialog'
+import zhTW from '../src/renderer/src/i18n/zh-TW.json'
 import AgentsPanel from '../src/renderer/src/components/settings/AgentsPanel'
 
 // #435: one source entry has to answer the whole question — installed here,
@@ -27,9 +28,9 @@ let saved: unknown
 let openPlugins: ReturnType<typeof vi.fn>
 const uninstalled = { agentKind: 'codex', pluginId: 'official-ai-codex', name: 'Codex', state: 'not-installed' }
 const installed = { ...uninstalled, state: 'installed', installationId: 'receipt-1' }
-function Harness() {
+function Harness({ translate = t }: { translate?: typeof t } = {}) {
   const [config, setConfig] = useState({ engagement: { id: 'project-a' }, agentTailer: { sources: {} } })
-  return <AgentsPanel t={t} config={config as never} setConfig={c => { saved = c; setConfig(c as never) }} onOpenPlugins={openPlugins} />
+  return <AgentsPanel t={translate} config={config as never} setConfig={c => { saved = c; setConfig(c as never) }} onOpenPlugins={openPlugins} />
 }
 const healthSnapshot = (sources: unknown[]): unknown => ({
   verdict: 'healthy', hasRecorded: false, sources, lastEventAt: null, checkedAt: Date.now(), dbErrorTotal: 0, dbErrorFirstAt: null
@@ -260,4 +261,15 @@ it('points an available update at the Plugins page without granting project perm
   expect(install).not.toHaveBeenCalled()
   expect(saved).toBeUndefined()
   expect(screen.queryByTestId('agent-enabled-codex')).toBeNull()
+})
+
+it('localizes the raw sidecar failure on the source settings row', async () => {
+  catalog.mockResolvedValue([installed])
+  health.mockResolvedValue(healthSnapshot([{ id: 'agent-codex', enabled: true, state: 'error', lastEventAt: null,
+    lastError: { at: 1, message: 'English fallback', sidecarSessionId: 'session-a', sidecarCause: 'icacls timed out' }
+  }]))
+  const translate = (key: string, vars?: Record<string, string | number>): string =>
+    ((zhTW as Record<string, string>)[key] ?? key).replace(/\{\{(\w+)\}\}/g, (_, name) => String(vars?.[name] ?? ''))
+  render(<Harness translate={translate} />)
+  expect((await screen.findByRole('alert')).textContent).toBe('工作階段 session-a 的原始對話未儲存。逐字稿更新時，RedLog 會重試。原因：icacls timed out')
 })

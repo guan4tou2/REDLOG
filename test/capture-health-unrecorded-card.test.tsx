@@ -92,3 +92,11 @@ describe('capture card — AI tool in use, not recorded', () => {
     expect(name.some((el) => el.className.includes('truncate'))).toBe(true)
   })
 })
+
+it('localizes the raw sidecar failure on the capture card', () => {
+  window.localStorage.setItem('redlog-locale', 'zh-TW')
+  show(health([codex({ unrecordedActivityAt: undefined, installed: true, enabled: true, state: 'error',
+    lastError: { at: 1, message: 'English fallback', sidecarSessionId: 'session-a', sidecarCause: 'icacls timed out' }
+  })]))
+  expect(screen.getByText('工作階段 session-a 的原始對話未儲存。逐字稿更新時，RedLog 會重試。原因：icacls timed out')).toBeTruthy()
+})

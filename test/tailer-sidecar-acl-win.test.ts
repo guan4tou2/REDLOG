@@ -79,6 +79,9 @@ describe.skipIf(!IS_WIN)('the AI sidecar directory under the real Windows ACL', 
     const seen = { dir: aclListing(dir), earlier: aclListing(earlier), sidecar: aclListing(sidecar) }
     console.log(`[ACL] dir\n${seen.dir}\n[ACL] earlier\n${seen.earlier}\n[ACL] new sidecar\n${seen.sidecar}`)
 
+    // On the elevated CI token the new file lacks a current-user (F) ACE
+    // until RedLog adds one. An ordinary Windows creator may already have
+    // that ACE, so this listing alone cannot prove the ACL call ran there.
     for (const [target, out] of [[dir, seen.dir], [earlier, seen.earlier], [sidecar, seen.sidecar]]) {
       expectRestrictedListing(target, out)
     }

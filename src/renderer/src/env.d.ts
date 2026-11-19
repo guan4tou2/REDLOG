@@ -581,7 +581,7 @@ interface CaptureSourceInfo {
    *  `lastEventAt`, which is data, not a verdict. */
   state: 'ready' | 'unset' | 'off' | 'error'
   /** Why the capture failed, while the failure is still live. */
-  lastError?: { at: number; message: string; sidecarSessionId?: string }
+  lastError?: { at: number; message: string; sidecarSessionId?: string; sidecarCause?: string }
   /** `terminal` only (spec 052): terminals that have enrolled and how many of
    *  them are recording. Absent when none have. */
   enrolled?: { total: number; recording: number }

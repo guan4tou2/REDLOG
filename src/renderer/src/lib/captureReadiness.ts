@@ -219,10 +219,10 @@ export function primaryCaptureAction(source: {
 }
 
 export function captureErrorText(
-  error: Pick<NonNullable<CaptureSourceInfo['lastError']>, 'message' | 'sidecarSessionId'>,
+  error: Pick<NonNullable<CaptureSourceInfo['lastError']>, 'message' | 'sidecarSessionId' | 'sidecarCause'>,
   t: (key: string, vars?: Record<string, string | number>) => string
 ): string {
   return error.sidecarSessionId === undefined
     ? error.message
-    : t('capture.sidecarAclError', { sessionId: error.sidecarSessionId })
+    : t('capture.sidecarAclError', { sessionId: error.sidecarSessionId, cause: error.sidecarCause ?? error.message })
 }

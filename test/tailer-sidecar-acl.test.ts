@@ -1,12 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import * as fs from 'fs'
+vi.mock('fs', async original => ({ ...await original<typeof import('fs')>() }))
 import * as os from 'os'
 import * as path from 'path'
 
 import { _replaceIcaclsForTests } from '../src/core/fs-acl'
 import { claudeCodeAdapter } from '../optional-plugins/claude-code/adapter'
-import { registerAdapter, configureHost, registerSession, catchUpSession, stopHost, _sessionsForTest } from '../src/main/services/tailer-host'
-import { getCaptureError, clearCaptureError } from '../src/core/capture-health'
+import { registerAdapter, unregisterAdapter, configureHost, registerSession, catchUpSession, stopHost, _sessionsForTest } from '../src/main/services/tailer-host'
+import { getCaptureError, clearCaptureError, noteCaptureError } from '../src/core/capture-health'
+import { eventBus } from '../src/core/event-bus'
 import { queryEvents } from '../src/core/db/events'
 import { initDB, closeDB } from '../src/core/db/index'
 import { createOperator, generateToken } from '../src/core/db/operators'
@@ -48,7 +50,7 @@ beforeEach(() => {
   fs.mkdirSync(path.join(scratch, 'claude-projects', '-tmp-acl'), { recursive: true })
   claudeCodeAdapter.transcriptGlob = path.join(scratch, 'claude-projects', '**', '*.jsonl')
   registerAdapter(claudeCodeAdapter)
-  configureHost({ enabled: true, identity: { projectId: 'p1', engagementId: 'e1', operatorId: OP }, idleFlushMs: 60_000, previewChars: 1000 })
+  configureHost({ activationStarts: undefined, excludedSessionsByAgent: undefined, enabledAgents: undefined, enabled: true, identity: { projectId: 'p1', engagementId: 'e1', operatorId: OP }, idleFlushMs: 60_000, previewChars: 1000 })
   acl.mockReset()
   process.env.USERNAME = 'tester'
   _replaceIcaclsForTests((args) => acl(args[0]))
@@ -60,7 +62,10 @@ afterEach(() => {
   if (realUser === undefined) delete process.env.USERNAME
   else process.env.USERNAME = realUser
   stopHost()
+  if (eventBus.paused) eventBus.resume()
+  vi.restoreAllMocks()
   vi.useRealTimers()
+  clearCaptureError('agent-claude-code')
   for (const sid of [SID_A, SID_B]) clearCaptureError('agent-claude-code', path.join(sidecarDir, `claude-code-${sid}.jsonl`))
   try { closeDB() } catch { /* ignore */ }
   fs.rmSync(scratch, { recursive: true, force: true })
@@ -188,7 +193,7 @@ describe('new AI sidecar files', () => {
     expect(JSON.stringify(event)).not.toContain('abcdef1234567890')
     expect(fs.readFileSync(sidecar, 'utf8')).toBe('')
     expect(_sessionsForTest().get(`claude-code:${SID_A}`)?.sourceOffset).toBe(0)
-    expect(getCaptureError('agent-claude-code')).toMatchObject({ message: expect.stringContaining(SID_A) })
+    expect(getCaptureError('agent-claude-code')).toMatchObject({ sidecarSessionId: SID_A })
   })
 
   it('keeps the failed session visible after another session of the same kind succeeds', () => {
@@ -203,7 +208,7 @@ describe('new AI sidecar files', () => {
     const other = _sessionsForTest().get(`claude-code:${SID_B}`)!.sidecarPath
     expect(fs.readFileSync(other, 'utf8')).toContain('SECRET-CONVERSATION')
     expect(fs.readFileSync(sidecar, 'utf8')).toBe('')
-    expect(getCaptureError('agent-claude-code')).toMatchObject({ message: expect.stringContaining(SID_A) })
+    expect(getCaptureError('agent-claude-code')).toMatchObject({ sidecarSessionId: SID_A })
 
     acl.mockImplementation(() => {})
     vi.advanceTimersByTime(900)
@@ -221,11 +226,11 @@ describe('new AI sidecar files', () => {
     })
     registerSession('claude-code', fileA)
     registerSession('claude-code', fileB)
-    expect(getCaptureError('agent-claude-code')).toMatchObject({ message: expect.stringContaining(SID_A) })
+    expect(getCaptureError('agent-claude-code')).toMatchObject({ sidecarSessionId: SID_A })
 
     const sidecarB = failSidecar(SID_B)
     vi.advanceTimersByTime(1000)
-    expect(getCaptureError('agent-claude-code')).toMatchObject({ message: expect.stringContaining(SID_B) })
+    expect(getCaptureError('agent-claude-code')).toMatchObject({ sidecarSessionId: SID_B })
     expect(fs.readFileSync(sidecarB, 'utf8')).toBe('')
 
     acl.mockReset()
@@ -276,6 +281,226 @@ describe('new AI sidecar files', () => {
     changes()
     expect(attempts()).toBe(7)
     expect(fs.readFileSync(sidecar, 'utf8')).toBe('')
+  })
+
+  const uuids = () => queryEvents({ agentType: 'agent', limit: 500 })
+    .filter(({ data }) => data.subtype === 'user_message' || data.subtype === 'assistant_message')
+    .map(({ data }) => data.transcript_uuid).sort()
+  const gaps = () => queryEvents({ limit: 500 }).filter(({ data }) => data.subtype === 'capture_gap').map(({ data }) => data)
+
+  it('records the last reply immediately during cooldown and retries its raw bytes at the trailing edge', () => {
+    setPlatform('win32')
+    vi.useFakeTimers()
+    const file = source(SID_A)
+    const sidecar = failSidecar(SID_A)
+    registerSession('claude-code', file)
+    vi.advanceTimersByTime(91_000)
+    fs.appendFileSync(file, turn('prompt', 'operator prompt'))
+    catchUpSession('claude-code', SID_A)
+    vi.advanceTimersByTime(5000)
+    fs.appendFileSync(file, turn('final', 'final reply').replace('"type":"user"', '"type":"assistant"').replace('"role":"user"', '"role":"assistant"'))
+    catchUpSession('claude-code', SID_A)
+    expect.soft(uuids()).toEqual(['final', 'prompt', 'u1'])
+    expect(fs.readFileSync(sidecar, 'utf8')).toBe('')
+    acl.mockReset()
+    vi.advanceTimersByTime(10_999)
+    expect(fs.readFileSync(sidecar, 'utf8')).toBe('')
+    vi.advanceTimersByTime(1)
+    expect.soft(fs.readFileSync(sidecar, 'utf8')).toBe(fs.readFileSync(file, 'utf8'))
+    expect(uuids()).toEqual(['final', 'prompt', 'u1'])
+  })
+
+  it('seeds already emitted UUIDs when an adapter re-registers a failing session', () => {
+    setPlatform('win32')
+    vi.useFakeTimers()
+    const file = source(SID_A)
+    failSidecar(SID_A)
+    registerSession('claude-code', file)
+    unregisterAdapter('claude-code')
+    registerAdapter(claudeCodeAdapter)
+    registerSession('claude-code', file)
+    expect(uuids()).toEqual(['u1'])
+  })
+
+  it.each(['excluded', 'superseded', 'disabled', 'unregistered'] as const)(
+    'retires the pending raw copy and records its gap when %s',
+    (reason) => {
+      setPlatform('win32')
+      vi.useFakeTimers()
+      const file = source(SID_A)
+      const sidecar = failSidecar(SID_A)
+      registerSession('claude-code', file)
+      const skipped = fs.statSync(file).size
+      expect(getCaptureError('agent-claude-code')).toBeDefined()
+      if (reason === 'excluded') configureHost({ excludedSessionsByAgent: { 'claude-code': [SID_A] } })
+      if (reason === 'disabled') configureHost({ enabledAgents: [] })
+      if (reason === 'unregistered') {
+        unregisterAdapter('claude-code')
+        registerAdapter(claudeCodeAdapter)
+      }
+      if (reason === 'superseded') {
+        acl.mockReset()
+        configureHost({ activationStarts: { 'claude-code': Math.ceil(fs.statSync(file).birthtimeMs) + 1 } })
+        registerSession('claude-code', file)
+        const fresh = _sessionsForTest().get(`claude-code:${SID_A}`)!.sidecarPath
+        fs.appendFileSync(file, turn('u2', 'new activation'))
+        catchUpSession('claude-code', SID_A)
+        expect(fs.readFileSync(fresh, 'utf8')).toBe(turn('u2', 'new activation'))
+      }
+      vi.advanceTimersByTime(60 * 60_000)
+      expect.soft(getCaptureError('agent-claude-code')).toBeUndefined()
+      expect.soft(gaps()).toEqual([expect.objectContaining({ session_id: SID_A, skipped_bytes: skipped, missing: 'raw' })])
+      expect(fs.readFileSync(sidecar, 'utf8')).toBe('')
+    }
+  )
+
+  it('accounts separately for raw bytes already processed and content skipped during pause', () => {
+    setPlatform('win32')
+    vi.useFakeTimers()
+    const file = source(SID_A)
+    const sidecar = failSidecar(SID_A)
+    registerSession('claude-code', file)
+    const firstBytes = fs.statSync(file).size
+    const paused = turn('paused', 'private while paused')
+    eventBus.pause()
+    fs.appendFileSync(file, paused)
+    eventBus.resume()
+    acl.mockReset()
+    fs.appendFileSync(file, turn('u2', 'after resume'))
+    catchUpSession('claude-code', SID_A)
+    expect.soft(fs.readFileSync(sidecar, 'utf8')).toBe('')
+    vi.advanceTimersByTime(1000)
+    expect.soft(uuids()).toEqual(['u1', 'u2'])
+    expect.soft(fs.readFileSync(sidecar, 'utf8')).toBe(turn('u2', 'after resume'))
+    expect.soft(gaps()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ missing: 'raw', skipped_bytes: firstBytes }),
+      expect.objectContaining({ skipped_bytes: Buffer.byteLength(paused), description: expect.stringContaining('events and sidecar') })
+    ]))
+    expect(gaps()).toHaveLength(2)
+    expect(getCaptureError('agent-claude-code')).toBeUndefined()
+  })
+
+  it('reports a sidecar create failure even after another session writes and the transient TTL elapses', () => {
+    setPlatform('win32')
+    vi.useFakeTimers()
+    const file = source(SID_A)
+    const sidecar = path.join(sidecarDir, `claude-code-${SID_A}.jsonl`)
+    const open = fs.openSync
+    vi.spyOn(fs, 'openSync').mockImplementation((file, flags, mode) => {
+      if (file === sidecar) throw new Error('EACCES creating sidecar')
+      return open(file, flags, mode)
+    })
+    registerSession('claude-code', file)
+    const other = source(SID_B)
+    fs.writeFileSync(other, turn('other', 'another session'))
+    registerSession('claude-code', other)
+    vi.advanceTimersByTime(11 * 60_000)
+    expect(getCaptureError('agent-claude-code')).toMatchObject({ sidecarSessionId: SID_A, message: expect.stringContaining('EACCES creating sidecar') })
+    expect(uuids()).toEqual(['other', 'u1'])
+  })
+
+  it('prefers a live source-wide failure and falls back to the pending raw copy', () => {
+    setPlatform('win32')
+    vi.useFakeTimers()
+    failSidecar(SID_A)
+    registerSession('claude-code', source(SID_A))
+    noteCaptureError('agent-claude-code', new Error('EACCES: recording boundary unavailable'))
+    expect.soft(getCaptureError('agent-claude-code')?.message).toContain('EACCES')
+    vi.advanceTimersByTime(11 * 60_000)
+    expect(getCaptureError('agent-claude-code')?.sidecarSessionId).toBe(SID_A)
+  })
+
+  it('reports the actual failure with complete fallback text for a 64-character session ID', () => {
+    setPlatform('win32')
+    const sid = 'a'.repeat(64)
+    const sidecar = path.join(sidecarDir, `claude-code-${sid}.jsonl`)
+    acl.mockImplementation((target) => {
+      if (target === sidecar) throw new Error('icacls timed out')
+    })
+    registerSession('claude-code', source(sid))
+    const error = getCaptureError('agent-claude-code')
+    expect(error).toMatchObject({
+      sidecarSessionId: sid,
+      message: 'Raw conversation is not being saved. RedLog retries when the transcript changes. Cause: icacls timed out'
+    })
+  })
+
+  it('replaces an earlier generic retry when a sidecar failure starts its backoff', () => {
+    setPlatform('win32')
+    vi.useFakeTimers()
+    const file = source(SID_A)
+    const sidecar = failSidecar(SID_A)
+    const parse = vi.spyOn(claudeCodeAdapter, 'parseUnit').mockImplementationOnce(() => { throw new Error('transient parse error') })
+    registerSession('claude-code', file)
+    vi.advanceTimersByTime(900)
+    catchUpSession('claude-code', SID_A)
+    const attempts = () => acl.mock.calls.filter(([target]) => target === sidecar).length
+    expect(attempts()).toBe(1)
+    vi.advanceTimersByTime(100)
+    expect(attempts()).toBe(1)
+    vi.advanceTimersByTime(900)
+    expect(attempts()).toBe(2)
+    parse.mockRestore()
+  })
+
+  it('continues recording per-message events while the sidecar index is waiting to retry', () => {
+    setPlatform('win32')
+    vi.useFakeTimers()
+    const dir = path.join(scratch, SID_A)
+    fs.mkdirSync(dir)
+    const adapter = {
+      ...claudeCodeAdapter, perMessageDir: true,
+      transcriptRoot: path.join(scratch, 'unused'), resolveCwd: () => scratch
+    }
+    registerAdapter(adapter)
+    const sidecar = failSidecar(SID_A)
+    fs.writeFileSync(path.join(dir, 'one.json'), turn('u1', 'first'))
+    registerSession('claude-code', dir)
+    fs.writeFileSync(path.join(dir, 'two.json'), turn('u2', 'second'))
+    catchUpSession('claude-code', SID_A)
+    expect.soft(uuids()).toEqual(['u1', 'u2'])
+    expect(acl.mock.calls.filter(([target]) => target === sidecar)).toHaveLength(1)
+    expect(fs.readFileSync(sidecar, 'utf8')).toBe('')
+    acl.mockReset()
+    vi.advanceTimersByTime(1000)
+    expect(uuids()).toEqual(['u1', 'u2'])
+    expect(fs.readFileSync(sidecar, 'utf8')).toBe('one.json\ntwo.json\n')
+    expect(getCaptureError('agent-claude-code')).toBeUndefined()
+  })
+
+  it('retires an unresolved sidecar even when the next settings change arrives before rediscovery', () => {
+    setPlatform('win32')
+    vi.useFakeTimers()
+    const file = source(SID_A)
+    failSidecar(SID_A)
+    registerSession('claude-code', file)
+    configureHost({})
+    expect(getCaptureError('agent-claude-code')?.sidecarSessionId).toBe(SID_A)
+    configureHost({ enabledAgents: [] })
+    expect.soft(getCaptureError('agent-claude-code')).toBeUndefined()
+    expect(gaps()).toEqual([expect.objectContaining({ missing: 'raw', skipped_bytes: Buffer.byteLength(turn('u1', 'SECRET-CONVERSATION')) })])
+  })
+
+  it('keeps a stopped tailer visible above a pending sidecar until its recording boundary is usable', () => {
+    setPlatform('win32')
+    vi.useFakeTimers()
+    const file = source(SID_A)
+    failSidecar(SID_A)
+    registerSession('claude-code', file)
+    const rename = fs.renameSync
+    const refused = vi.spyOn(fs, 'renameSync').mockImplementation((oldPath, newPath) => {
+      if (String(newPath).endsWith('.recording-boundary.json')) throw new Error('EACCES recording boundary')
+      return rename(oldPath, newPath)
+    })
+    eventBus.pause()
+    vi.advanceTimersByTime(11 * 60_000)
+    expect(getCaptureError('agent-claude-code')?.message).toContain('EACCES recording boundary')
+    eventBus.resume()
+    refused.mockRestore()
+    acl.mockReset()
+    configureHost({ enabled: true })
+    registerSession('claude-code', file)
+    expect(getCaptureError('agent-claude-code')).toBeUndefined()
   })
 
   it('creates owner-only POSIX files', { skip: process.platform === 'win32' }, () => {

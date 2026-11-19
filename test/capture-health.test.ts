@@ -458,6 +458,10 @@ describeDB('capture-health', () => {
       expect(row()?.state).toBe('error')
       expect(row()?.lastError?.sidecarSessionId).toBe('blocked')
 
+      configureCaptureHealth({ agentTailer: { sources: { codex: { enabled: false, installationId: receipt, workPaths: [tmp] } } } })
+      expect(row()?.state).toBe('off')
+      expect(row()?.lastError).toBeUndefined()
+      configureCaptureHealth({ agentTailer: { sources: { codex: { enabled: true, installationId: receipt, workPaths: [tmp], startedAt: 1000 } } } })
       clearCaptureError('agent-codex', sidecar.path)
       expect(row()?.state).toBe('ready')
     } finally {

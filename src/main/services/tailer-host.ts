@@ -51,7 +51,7 @@ import { ingestEvent } from '../../core/ingest'
 import { extractTargetWithProvenance } from '../../core/target-extractor'
 import { eventBus } from '../../core/event-bus'
 import { getProjectDir, getDB } from '../../core/db/index'
-import { noteDbError, noteCaptureError, clearCaptureError } from '../../core/capture-health'
+import { noteDbError, noteCaptureError, clearCaptureError, clearCaptureStop } from '../../core/capture-health'
 import { redactSecrets, outputIfPathHiddenByCommand } from '../../core/secret-redaction'
 import { jsonStringify } from '../../core/ingest/depth'
 import { isInsideDir } from '../../core/paths'
@@ -268,10 +268,12 @@ export interface TailerHostConfig {
 interface SessionState {
   sessionId: string
   agentKind: string
+  detached?: boolean
   adapter: TailerAdapter
   sourcePath: string
   sourceBaseOffset: number
   sourceOffset: number
+  eventOffset: number
   discardPartial: boolean
   checkpointPaused: boolean
   pauseSkippedBytes: number
@@ -279,6 +281,7 @@ interface SessionState {
   unitSidecarOffset: number
   replayFrom?: number
   completedFiles: Map<string, string>
+  pendingFiles: Set<string>
   skipMissingParents: boolean
   ignoredParents: Map<string, string | null>
   sidecarPath: string
@@ -296,6 +299,8 @@ interface SessionState {
   /** Set while the ACL is failing: zero with a scheduled retry, or the
    *  earliest event-driven retry (monotonic time) after the budget is spent. */
   sidecarAclRetryAt?: number
+  sidecarCause?: string
+  rawGapThrough?: number
   lastSnapshotBytes: number
   bytesAppendedSinceSnapshot: number
   driftAdvisoryFired: Set<string>
@@ -325,6 +330,11 @@ const coalesceTimers = new Map<string, ReturnType<typeof setTimeout>>()
 /** Keyed by `${agentKind}:${sessionId}` — two adapters can produce the same
  *  bare sessionId (e.g. Codex + Claude both name a session 'rollout-abc'). */
 const sessions = new Map<string, SessionState>()
+
+function activeSession(key: string): SessionState | undefined {
+  const s = sessions.get(key)
+  return s?.detached ? undefined : s
+}
 
 function sessionKey(agentKind: string, sessionId: string): string {
   return `${agentKind}:${sessionId}`
@@ -392,14 +402,28 @@ const RETRY_MAX_MS = RETRY_BASE_MS * 2 ** (RETRY_LIMIT - 1)
 /** A failed pass is read again on the next file event or restart. The last
  *  turn of a session gets neither, so a few backed-off passes cover it; after
  *  those it waits for the same two things, with the error in capture health. */
+function armRetry(s: SessionState, delay: number): void {
+  s.retryTimer = setTimeout(() => { s.retryTimer = null; catchUpSession(s.agentKind, s.sessionId) }, delay)
+  s.retryTimer.unref?.()
+}
+
 function scheduleRetry(s: SessionState): void {
   if (s.retryTimer || s.retryAttempt >= RETRY_LIMIT) return
-  s.retryTimer = setTimeout(() => { s.retryTimer = null; catchUpSession(s.agentKind, s.sessionId) }, RETRY_BASE_MS * 2 ** s.retryAttempt++)
-  s.retryTimer.unref?.()
+  armRetry(s, RETRY_BASE_MS * 2 ** s.retryAttempt++)
 }
 
 function sidecarAclBackoff(s: SessionState): boolean {
   return s.sidecarAclRetryAt !== undefined && (s.retryTimer !== null || performance.now() < s.sidecarAclRetryAt)
+}
+
+/** After the normal budget, only new work inside a cooldown earns a retry. */
+function retryNewSidecarContent(s: SessionState): void {
+  if (s.sidecarCause !== undefined) {
+    noteCaptureError(`agent-${s.agentKind}`, s.sidecarCause, { path: s.sidecarPath, sessionId: s.sessionId })
+  }
+  if (s.retryTimer || s.sidecarAclRetryAt === undefined) return
+  const remaining = Math.ceil(s.sidecarAclRetryAt - performance.now())
+  if (remaining > 0) armRetry(s, remaining)
 }
 
 function coalescedCatchUp(agentKind: string, sid: string): void {
@@ -408,7 +432,7 @@ function coalescedCatchUp(agentKind: string, sid: string): void {
   if (existing) clearTimeout(existing)
   coalesceTimers.set(key, setTimeout(() => {
     coalesceTimers.delete(key)
-    if (sessions.has(key)) catchUpSession(agentKind, sid)
+    if (activeSession(key)) catchUpSession(agentKind, sid)
   }, COALESCE_MS))
 }
 
@@ -462,7 +486,7 @@ export interface AgentSessionInfo { agentKind: string; sessionId: string; cwd?: 
 export function listAgentSessions(): AgentSessionInfo[] {
   // A session already tailing when another one is selected stays in `sessions`
   // but its turns are dropped, so it is not recording.
-  const result = [...sessions.values()].map(s => ({ agentKind: s.agentKind, sessionId: s.sessionId, cwd: s.transcriptCwd, recording: cfg.enabled && !eventBus.paused && sessionAllowed(s.agentKind, s.sessionId) })) as AgentSessionInfo[]
+  const result = [...sessions.values()].filter(s => !s.detached).map(s => ({ agentKind: s.agentKind, sessionId: s.sessionId, cwd: s.transcriptCwd, recording: cfg.enabled && !eventBus.paused && sessionAllowed(s.agentKind, s.sessionId) })) as AgentSessionInfo[]
   for (const [agentKind, ids] of Object.entries(cfg.excludedSessionsByAgent ?? {})) for (const sessionId of ids) {
     if (!result.some(s => s.agentKind === agentKind && s.sessionId === sessionId)) result.push({ agentKind, sessionId, recording: false })
   }
@@ -471,8 +495,12 @@ export function listAgentSessions(): AgentSessionInfo[] {
 function sessionAllowed(kind: string, id: string): boolean {
   return isSessionRegistered(id) && !cfg.excludedSessionsByAgent?.[kind]?.includes(id)
 }
-function activationFor(kind: string, id: string): number | undefined {
-  return Math.max(cfg.sessionStartsByAgent?.[kind]?.[id] ?? 0, cfg.activationStarts?.[kind] ?? 0) || undefined
+function activationFor(kind: string, id: string, config = cfg): number | undefined {
+  return Math.max(config.sessionStartsByAgent?.[kind]?.[id] ?? 0, config.activationStarts?.[kind] ?? 0) || undefined
+}
+function sidecarName(kind: string, id: string, config: TailerHostConfig): string {
+  const startedAt = activationFor(kind, id, config)
+  return `${kind}-${id}${startedAt ? `-${startedAt}` : ''}.jsonl`
 }
 
 // ─── Adapter registry ───────────────────────────────────────────────────────
@@ -482,11 +510,11 @@ const initializedAdapters = new Set<string>()
 const hostControlSurface: HostControlSurface = {
   acceptsMessage(agentKind, messageId, changedAt) {
     if (eventBus.paused || !cfg.enabled || !agentEnabled(agentKind) || !/^[a-zA-Z0-9_-]+$/.test(messageId)) return false
-    return [...sessions.values()].some(s => s.agentKind === agentKind && sessionAllowed(agentKind, s.sessionId) && s.adapter.perMessageDir && s.redlogIdByUuid.get(messageId + '.json') !== '__paused__' && (changedAt === undefined || changedAt >= s.resumedAt + 1) && fs.existsSync(path.join(s.sourcePath, messageId + '.json')))
+    return [...sessions.values()].some(s => !s.detached && s.agentKind === agentKind && sessionAllowed(agentKind, s.sessionId) && s.adapter.perMessageDir && s.redlogIdByUuid.get(messageId + '.json') !== '__paused__' && (changedAt === undefined || changedAt >= s.resumedAt + 1) && fs.existsSync(path.join(s.sourcePath, messageId + '.json')))
   },
   emitTurns(agentKind: string, sessionId: string, turns: ParsedTurn[]): void {
     if (eventBus.paused) return
-    const s = sessions.get(sessionKey(agentKind, sessionId))
+    const s = activeSession(sessionKey(agentKind, sessionId))
     if (!s || !sessionAllowed(agentKind, sessionId)) {
       // No live session — the msg stub for this sessionId hasn't been
       // observed yet. Drop silently; the adapter is expected to retry (or
@@ -512,11 +540,13 @@ export function registerAdapter(adapter: TailerAdapter): void {
   if (cfg.enabled && cfg.identity?.engagementId && cfg.identity.operatorId) restartAdapter(adapter)
 }
 
-export function unregisterAdapter(agentKind: string): void {
+export function unregisterAdapter(agentKind: string, reloading = false): void {
   const w = watchersByAgent.get(agentKind)
   if (w) { void w.close(); watchersByAgent.delete(agentKind) }
   // Also close any sessions that belong to this adapter.
-  for (const [key, s] of sessions) if (s.agentKind === agentKind) unregisterSession(key)
+  for (const [key, s] of sessions) {
+    if (s.agentKind === agentKind && (!s.detached || !reloading)) unregisterSession(key)
+  }
   if (initializedAdapters.has(agentKind)) registeredAdapters.get(agentKind)?.stop?.()
   registeredAdapters.delete(agentKind)
   initializedAdapters.delete(agentKind)
@@ -971,7 +1001,7 @@ function pendingSize(s: SessionState): number {
  *  Handles both per-line (JSONL) and per-message (file-per-unit) adapters
  *  based on `adapter.perMessageDir`. Public for testability. */
 export function catchUpSession(agentKind: string, sessionId: string): void {
-  const s = sessions.get(sessionKey(agentKind, sessionId))
+  const s = activeSession(sessionKey(agentKind, sessionId))
   if (!s || !sessionAllowed(agentKind, sessionId)) return
   if (s.adapter.perMessageDir) {
     catchUpPerMessageDir(s)
@@ -984,12 +1014,15 @@ function checkpoint(s: SessionState, offset = s.sourceOffset, savedBytes?: numbe
   const bytes = savedBytes ?? (fs.existsSync(s.sidecarPath) ? fs.statSync(s.sidecarPath).size : 0)
   const file = s.sidecarPath + '.offset.json'
   const tmp = file + '.tmp'
+  // Only buffered turns whose source bytes have reached this sidecar can
+  // be replayed from it. The uncommitted portion is still in the source.
+  const queuedOffsets = [...s.pendingByParentUuid.values()].flat().map(q => q.sidecarOffset).filter(at => at < bytes)
   try {
     fs.writeFileSync(tmp, JSON.stringify({ source: s.sourcePath, startedAt: activationFor(s.agentKind, s.sessionId), base: s.sourceBaseOffset,
       offset, savedBytes: bytes, discardPartial: s.discardPartial, paused: s.checkpointPaused,
       skippedBytes: s.pauseSkippedBytes, gapStartedAt: s.pauseStartedAt, resumedAt: s.resumedAt, skipMissingParents: s.skipMissingParents,
       ignoredParents: Object.fromEntries(s.ignoredParents),
-      replayFrom: s.adapter.perMessageDir || !s.pendingByParentUuid.size ? undefined : Math.min(...[...s.pendingByParentUuid.values()].flat().map(q => q.sidecarOffset)) }), { mode: 0o600 })
+      replayFrom: s.adapter.perMessageDir || !queuedOffsets.length ? undefined : Math.min(...queuedOffsets) }), { mode: 0o600 })
     fs.renameSync(tmp, file)
   } catch (e) { try { fs.unlinkSync(tmp) } catch { /* only our staging file */ }; throw e }
 }
@@ -997,8 +1030,9 @@ function checkpoint(s: SessionState, offset = s.sourceOffset, savedBytes?: numbe
 /** Boundaries are metadata only: never append paused source bytes to evidence. */
 function discardJsonl(s: SessionState): void {
   const size = fs.statSync(s.sourcePath).size
+  recordRawGap(s, 'paused')
   if (size !== s.sourceOffset) {
-    s.pauseSkippedBytes += Math.max(0, size - s.sourceOffset)
+    s.pauseSkippedBytes += Math.max(0, size - s.eventOffset)
     s.pauseStartedAt ??= Date.now()
     s.discardPartial = false
     if (size > 0) {
@@ -1014,6 +1048,27 @@ function discardJsonl(s: SessionState): void {
   s.ignoredParents.clear()
   checkpoint(s, size)
   s.sourceOffset = size
+  s.eventOffset = size
+  resolveSidecarFailure(s, true)
+}
+
+function pendingSidecar(s: SessionState): boolean {
+  return s.sidecarAclRetryAt !== undefined && (s.eventOffset > s.sourceOffset || s.pendingFiles.size > 0)
+}
+
+function recordRawGap(s: SessionState, reason: 'paused' | 'stopped' | 'reset'): void {
+  const skippedBytes = Math.max(0, s.eventOffset - Math.max(s.sourceOffset, s.rawGapThrough ?? 0))
+  const skippedUnits = s.pendingFiles.size
+  if (!skippedBytes && !skippedUnits) return
+  const ev = ingestEvent('system', {
+    subtype: 'capture_gap', agent: s.agentKind, session_id: s.sessionId,
+    missing: 'raw', reason, skipped_bytes: skippedBytes, skipped_units: skippedUnits,
+    sidecar_file: path.basename(s.sidecarPath),
+    ...(!s.adapter.perMessageDir ? { source_offset: Math.max(s.sourceOffset, s.rawGapThrough ?? 0) } : {}),
+    description: 'The raw conversation copy was incomplete at this capture boundary.'
+  }, { ...ids(), bypassPause: true })
+  if (!ev) throw new Error('AI raw capture gap was not saved')
+  s.rawGapThrough = s.eventOffset
 }
 
 function reportGap(s: SessionState): void {
@@ -1027,28 +1082,37 @@ function reportGap(s: SessionState): void {
   s.pauseSkippedBytes = 0; s.pauseSkippedLines = 0; s.pauseStartedAt = null
 }
 
+function resolveSidecarFailure(s: SessionState, keepBackoff = false): void {
+  if (!keepBackoff || !sidecarAclBackoff(s)) {
+    s.sidecarAclRetryAt = undefined
+    s.sidecarCause = undefined
+  }
+  s.rawGapThrough = undefined
+  clearCaptureError(`agent-${s.agentKind}`, s.sidecarPath)
+}
+
 function appendAndCommit(s: SessionState, bytes: Buffer, offset: number): boolean {
-  const before = fs.existsSync(s.sidecarPath) ? fs.statSync(s.sidecarPath).size : 0
-  // processUnit may already have saved a redacted event. Create the sidecar
-  // empty and apply its Windows ACL before appending raw bytes. A failed
-  // restriction leaves the raw write and source checkpoint uncommitted.
-  // The ACL memo also checks the file identity so replacements are restricted.
-  if (!fs.existsSync(s.sidecarPath)) fs.closeSync(fs.openSync(s.sidecarPath, 'a', 0o600))
+  if (sidecarAclBackoff(s)) return false
+  let before: number
+  // Events may already be saved. Apply the ACL to an empty new file
+  // before writing raw bytes, including when the file has been replaced.
   try {
+    if (!fs.existsSync(s.sidecarPath)) fs.closeSync(fs.openSync(s.sidecarPath, 'a', 0o600))
+    before = fs.statSync(s.sidecarPath).size
     restrictToOwnerOnce(s.sidecarPath)
   } catch (e) {
-    const message = `Raw conversation for session ${s.sessionId} is not being saved. Check Windows permissions on the project's agent-transcripts folder and files, then restart RedLog to retry.`
-    noteCaptureError(`agent-${s.agentKind}`, message, { path: s.sidecarPath, sessionId: s.sessionId })
-    console.warn('[tailer-host] Could not restrict sidecar', s.sidecarPath, String(e))
+    s.sidecarCause = e instanceof Error ? e.message : String(e)
+    if (s.eventOffset > s.sourceOffset || s.pendingFiles.size) {
+      noteCaptureError(`agent-${s.agentKind}`, s.sidecarCause, { path: s.sidecarPath, sessionId: s.sessionId })
+    }
+    console.warn('[tailer-host] Could not prepare sidecar', s.sidecarPath, String(e))
     if (s.retryTimer) {
-      // A previously scheduled retry may be due sooner than the ACL backoff.
+      // A generic retry scheduled before this failure may be due too soon.
       clearTimeout(s.retryTimer)
       s.retryTimer = null
       s.retryAttempt = Math.max(0, s.retryAttempt - 1)
     }
     scheduleRetry(s)
-    // Once automatic retries are spent, source changes can retry at the
-    // slowest interval without starting another automatic retry loop.
     s.sidecarAclRetryAt = s.retryTimer ? 0 : performance.now() + RETRY_MAX_MS
     return false
   }
@@ -1063,13 +1127,11 @@ function appendAndCommit(s: SessionState, bytes: Buffer, offset: number): boolea
   s.sourceOffset = offset
   s.runningHash.update(bytes)
   s.bytesAppendedSinceSnapshot += bytes.length
-  s.sidecarAclRetryAt = undefined
-  clearCaptureError(`agent-${s.agentKind}`, s.sidecarPath)
   return true
 }
 
 function catchUpJsonl(s: SessionState): void {
-  if (!cfg.enabled || sessions.get(sessionKey(s.agentKind, s.sessionId)) !== s) return
+  if (!cfg.enabled || activeSession(sessionKey(s.agentKind, s.sessionId)) !== s) return
   try {
     if (eventBus.paused || s.checkpointPaused) {
       // Also recover a shutdown/crash during a persisted pause without replay.
@@ -1077,24 +1139,26 @@ function catchUpJsonl(s: SessionState): void {
       if (eventBus.paused) return
       s.checkpointPaused = false; checkpoint(s)
     }
-    if (sidecarAclBackoff(s)) return
     const sourceSize = fs.statSync(s.sourcePath).size
-    if (s.adapter.detectReset?.(s.sourceOffset, sourceSize) ?? (sourceSize < s.sourceOffset)) {
+    if (s.adapter.detectReset?.(s.eventOffset, sourceSize) ?? (sourceSize < s.eventOffset)) {
+      recordRawGap(s, 'reset')
       const size = fs.existsSync(s.sidecarPath) ? fs.statSync(s.sidecarPath).size : 0
       // Keep prior evidence append-only; a reset never truncates recorded bytes.
       const ev = ingestEvent('agent', { subtype: 'transcript_compacted', agent: s.agentKind, session_id: s.sessionId,
         old_sidecar_bytes: size, old_sidecar_sha256: fileSha256(s.sidecarPath), new_source_bytes: sourceSize
       }, ids())
       if (!ev) throw new Error('AI reset was not saved')
-      s.discardPartial = false; checkpoint(s, 0); s.sourceOffset = 0
+      s.discardPartial = false; checkpoint(s, 0); s.sourceOffset = 0; s.eventOffset = 0
+      resolveSidecarFailure(s, true)
       s.pendingByParentUuid.clear(); s.pendingLineBuffer = ''; s.postCompact = true
       s.ignoredParents.clear(); s.toolCommandByUseId.clear(); s.skipMissingParents = true
     }
-    if (sourceSize <= s.sourceOffset) return
-    const limit = Math.min(sourceSize - s.sourceOffset, 10 * 1024 * 1024)
+    let offset = sidecarAclBackoff(s) ? s.eventOffset : s.sourceOffset
+    if (sourceSize <= offset) return
+    const limit = Math.min(sourceSize - offset, 10 * 1024 * 1024)
     const fd = fs.openSync(s.sourcePath, 'r')
     let bytes: Buffer
-    try { bytes = Buffer.alloc(limit); const read = fs.readSync(fd, bytes, 0, limit, s.sourceOffset); bytes = bytes.subarray(0, read) }
+    try { bytes = Buffer.alloc(limit); const read = fs.readSync(fd, bytes, 0, limit, offset); bytes = bytes.subarray(0, read) }
     finally { fs.closeSync(fd) }
     if (s.discardPartial) {
       const end = bytes.indexOf(10)
@@ -1102,7 +1166,8 @@ function catchUpJsonl(s: SessionState): void {
       const previous = s.discardPartial
       s.discardPartial = end < 0
       try { checkpoint(s, s.sourceOffset + skip) } catch (e) { s.discardPartial = previous; throw e }
-      s.sourceOffset += skip; bytes = bytes.subarray(skip)
+      s.sourceOffset += skip; offset += skip; bytes = bytes.subarray(skip)
+      s.eventOffset = s.sourceOffset
     }
     const lastNl = bytes.lastIndexOf(10)
     if (lastNl < 0) {
@@ -1111,32 +1176,48 @@ function catchUpJsonl(s: SessionState): void {
     }
     const complete = bytes.subarray(0, lastNl + 1)
     reportGap(s)
-    // Preserve partial UTF-8 bytes at the source; decode only complete lines.
-    s.unitSidecarOffset = fs.existsSync(s.sidecarPath) ? fs.statSync(s.sidecarPath).size : 0
-    for (const line of complete.toString('utf8').split('\n')) {
+    // Keep the redacted cursor independent of the raw checkpoint. The
+    // source still supplies the original bytes for an eventual raw retry.
+    const previousEventOffset = s.eventOffset
+    const savedBytes = fs.existsSync(s.sidecarPath) ? fs.statSync(s.sidecarPath).size : 0
+    for (let start = Math.max(0, s.eventOffset - offset); start < complete.length;) {
+      const end = complete.indexOf(10, start) + 1
+      const line = complete.toString('utf8', start, end - 1)
+      s.unitSidecarOffset = savedBytes + offset - s.sourceOffset + start
       if (line.trim()) processUnit(s, line.replace(/\r$/, ''), s.sourcePath)
-      s.unitSidecarOffset += Buffer.byteLength(line + '\n')
+      s.eventOffset = offset + end
+      start = end
     }
-    if (!appendAndCommit(s, complete, s.sourceOffset + complete.length)) return
-    s.linesSeen += complete.toString('utf8').split('\n').filter(line => line.trim()).length
-    scheduleIdleSnapshot(s)
-    s.retryAttempt = 0
-    if (sourceSize - s.sourceOffset > complete.length && limit === 10 * 1024 * 1024) setImmediate(() => catchUpJsonl(s))
+    if (sidecarAclBackoff(s)) {
+      if (s.eventOffset > previousEventOffset) retryNewSidecarContent(s)
+    } else if (appendAndCommit(s, complete, offset + complete.length)) {
+      s.linesSeen += complete.toString('utf8').split('\n').filter(line => line.trim()).length
+      scheduleIdleSnapshot(s)
+      s.retryAttempt = 0
+      clearCaptureError(`agent-${s.agentKind}`)
+      if (s.sourceOffset >= s.eventOffset) resolveSidecarFailure(s)
+    }
+    // A single read is bounded, including when only the event cursor moves.
+    if (offset + complete.length < sourceSize && limit === 10 * 1024 * 1024) {
+      setImmediate(() => { if (sessionAllowed(s.agentKind, s.sessionId)) catchUpJsonl(s) })
+    }
   } catch (e) { noteCaptureError(`agent-${s.agentKind}`, e); scheduleRetry(s) }
 }
 
 function catchUpPerMessageDir(s: SessionState): void {
-  if (!cfg.enabled || sessions.get(sessionKey(s.agentKind, s.sessionId)) !== s) return
+  if (!cfg.enabled || activeSession(sessionKey(s.agentKind, s.sessionId)) !== s) return
   try {
-    if (sidecarAclBackoff(s)) return
     const units = fs.readdirSync(s.sourcePath).filter(name => name.endsWith('.json')).map(name => ({ name, full: path.join(s.sourcePath, name) }))
       .map(p => ({ ...p, stat: fs.statSync(p.full) })).filter(p => p.stat.isFile() && p.stat.mtimeMs >= (activationFor(s.agentKind, s.sessionId) ?? 0))
       .sort((a, b) => a.stat.mtimeMs - b.stat.mtimeMs || compareCodeUnits(a.name, b.name))
     for (const p of units) {
       if (s.redlogIdByUuid.get(p.name) === '__paused__') continue
-      if (eventBus.paused || s.checkpointPaused || (resumeBoundary > 0 && p.stat.mtimeMs < resumeBoundary + 1)) {
+      const pending = s.pendingFiles.has(p.name)
+      const paused = eventBus.paused || s.checkpointPaused
+      if (pending && paused) continue
+      if (paused || (!pending && resumeBoundary > 0 && p.stat.mtimeMs < resumeBoundary + 1)) {
         // Names only, no message/part content. Persist exclusions across restart.
-        if (!appendAndCommit(s, Buffer.from('!pause:' + p.name + '\n'), s.sourceOffset)) return
+        if (!appendAndCommit(s, Buffer.from('!pause:' + p.name + '\n'), s.sourceOffset)) continue
         s.redlogIdByUuid.set(p.name, '__paused__'); s.pauseSkippedLines++; s.pauseStartedAt ??= Date.now()
         continue
       }
@@ -1144,12 +1225,25 @@ function catchUpPerMessageDir(s: SessionState): void {
       if (s.completedFiles.get(p.name) === fingerprint) continue
       reportGap(s)
       processUnit(s, fs.readFileSync(p.full, 'utf8'), p.full)
-      if (!s.redlogIdByUuid.has(p.name) && !appendAndCommit(s, Buffer.from(p.name + '\n'), s.sourceOffset)) return
-      s.redlogIdByUuid.set(p.name, '__seen__'); s.completedFiles.set(p.name, fingerprint); s.linesSeen++
+      if (!s.completedFiles.has(p.name)) {
+        const blocked = sidecarAclBackoff(s)
+        const newlyPending = !s.pendingFiles.has(p.name)
+        s.pendingFiles.add(p.name)
+        if (!appendAndCommit(s, Buffer.from(p.name + '\n'), s.sourceOffset)) {
+          if (blocked && newlyPending) retryNewSidecarContent(s)
+          continue
+        }
+        s.pendingFiles.delete(p.name)
+      }
+      s.completedFiles.set(p.name, fingerprint); s.linesSeen++
     }
     if (!eventBus.paused && s.checkpointPaused) { s.checkpointPaused = false; checkpoint(s) }
     if (!eventBus.paused) scheduleIdleSnapshot(s)
-    s.retryAttempt = 0
+    if (!s.pendingFiles.size && !sidecarAclBackoff(s)) {
+      s.retryAttempt = 0
+      resolveSidecarFailure(s)
+      clearCaptureError(`agent-${s.agentKind}`)
+    }
   } catch (e) { noteCaptureError(`agent-${s.agentKind}`, e); scheduleRetry(s) }
 }
 
@@ -1157,8 +1251,9 @@ function catchUpPerMessageDir(s: SessionState): void {
 // sessions/new files are registered by normal discovery and use the same gate.
 const onRecording = (recording: boolean): void => {
   if (!cfg.enabled) return
-  try { saveBoundary(!recording) } catch (e) { for (const kind of cfg.enabledAgents ?? registeredAdapters.keys()) noteCaptureError(`agent-${kind}`, e); cfg.enabled = false; return }
+  try { saveBoundary(!recording) } catch (e) { for (const kind of cfg.enabledAgents ?? registeredAdapters.keys()) noteCaptureError(`agent-${kind}`, e, 'stopped'); cfg.enabled = false; return }
   for (const s of sessions.values()) {
+    if (s.detached) continue
     try {
       s.checkpointPaused = true
       if (s.adapter.perMessageDir) catchUpPerMessageDir(s)
@@ -1325,9 +1420,7 @@ function takeSeedSlice(sessionId: string, agentKind: string): Map<string, string
   const key = `${agentKind}:${sessionId}`
   const slice = seedIndex.get(key)
   if (!slice) return new Map()
-  // Transfer ownership: the caller copies these into its own session map, so
-  // holding them here as well would double the footprint of the largest
-  // structure in the tailer.
+  // Transfer ownership so the same map can return when the session closes.
   seedIndex.delete(key)
   return slice
 }
@@ -1342,7 +1435,7 @@ export function registerSession(agentKind: string, sourcePath: string): void {
     ? path.basename(sourcePath)                                // dir name = session id
     : path.basename(sourcePath, path.extname(sourcePath))      // strip .jsonl
   const key = sessionKey(agentKind, sessionId)
-  if (sessions.has(key)) return
+  if (activeSession(key)) return
   if (!sessionAllowed(agentKind, sessionId)) return
   const cwd = adapter.resolveCwd(sourcePath)
   if (!cwd) return
@@ -1355,7 +1448,7 @@ export function registerSession(agentKind: string, sourcePath: string): void {
   const sidecarDir = path.join(projectDir, 'agent-transcripts')
   try { fs.mkdirSync(sidecarDir, { recursive: true, mode: 0o700 }) } catch { /* ignore */ }
   try { secureSidecarDir(sidecarDir) } catch (e) { noteCaptureError(`agent-${agentKind}`, e); return }
-  const sidecarPath = path.join(sidecarDir, `${agentKind}-${sessionId}${activationFor(agentKind, sessionId) ? `-${activationFor(agentKind, sessionId)}` : ''}.jsonl`)
+  const sidecarPath = path.join(sidecarDir, sidecarName(agentKind, sessionId, cfg))
   if (!isInsideDir(sidecarDir, sidecarPath)) return
 
   let sourceBaseOffset = 0
@@ -1385,12 +1478,14 @@ export function registerSession(agentKind: string, sourcePath: string): void {
     sourcePath,
     sourceBaseOffset,
     sourceOffset: sourceBaseOffset,
+    eventOffset: sourceBaseOffset,
     discardPartial: false,
     checkpointPaused: eventBus.paused,
     pauseSkippedBytes: 0,
     resumedAt: 0,
     unitSidecarOffset: 0,
     completedFiles: new Map(),
+    pendingFiles: new Set(),
     skipMissingParents: false,
     ignoredParents: new Map(),
     sidecarPath,
@@ -1423,6 +1518,7 @@ export function registerSession(agentKind: string, sourcePath: string): void {
       if (cursor.source !== sourcePath || !Number.isSafeInteger(cursor.base) || !Number.isSafeInteger(cursor.offset ?? cursor.base)
         || (cursor.offset ?? cursor.base) < 0) throw new Error('Invalid AI source checkpoint')
       s.sourceOffset = cursor.offset ?? cursor.base
+      s.eventOffset = s.sourceOffset
       s.discardPartial = cursor.discardPartial === true
       s.checkpointPaused = cursor.paused === true || eventBus.paused
       s.pauseSkippedBytes = cursor.skippedBytes ?? 0; s.pauseStartedAt = cursor.gapStartedAt ?? null
@@ -1447,6 +1543,7 @@ export function registerSession(agentKind: string, sourcePath: string): void {
     const existing = fs.readFileSync(sidecarPath)
     if (existing.length > 0) s.runningHash.update(existing)
   } catch { /* new sidecar — hash starts empty */ }
+  const detached = sessions.get(key)
   sessions.set(key, s)
 
   // v0.7.4 F2: seed the parent-map from DB so re-ingest post-sidecar-prune
@@ -1467,25 +1564,18 @@ export function registerSession(agentKind: string, sourcePath: string): void {
   // Slices are handed out and deleted as sessions claim them, so the index
   // does not sit alongside the per-session maps it feeds.
   try {
-    const slice = takeSeedSlice(sessionId, agentKind)
-    for (const [uuid, id] of slice) s.redlogIdByUuid.set(uuid, id)
+    s.redlogIdByUuid = takeSeedSlice(sessionId, agentKind)
   } catch (e) { noteDbError('tailer-host', e) }
 
-  // For per-message adapters we ALSO read the sidecar-as-index to seed
-  // the filename dedup set (in case DB seed missed anything, e.g. a
-  // crash between sidecar append and DB insert). Only fill entries the DB
-  // seed didn't already populate — otherwise the sentinel would clobber
-  // the real event id and later `_causes` lookups would produce the
-  // string `'__seen__'` instead of a proper parent RedLog id.
+  // An indexed filename and an emitted turn UUID are different facts:
+  // either write can already exist when the other needs to be retried.
   if (adapter.perMessageDir) {
     try {
       const idx = fs.readFileSync(sidecarPath, 'utf-8')
       for (const raw of idx.split('\n')) {
-        const name = raw.endsWith('\r') ? raw.slice(0, -1) : raw
-        if (name.startsWith('!pause:')) { s.redlogIdByUuid.set(name.slice(7), '__paused__'); continue }
-        if (name && !s.redlogIdByUuid.has(name)) {
-          s.redlogIdByUuid.set(name, '__seen__')  // sentinel, not a real id
-        }
+        const name = raw.replace(/\r$/, '')
+        if (name.startsWith('!pause:')) s.redlogIdByUuid.set(name.slice(7), '__paused__')
+        else if (name) s.completedFiles.set(name, '')
       }
     } catch { /* new sidecar, no index yet */ }
   }
@@ -1499,14 +1589,39 @@ export function registerSession(agentKind: string, sourcePath: string): void {
         if (line.trim()) processUnit(s, line, sourcePath)
         s.unitSidecarOffset += Buffer.byteLength(line + '\n')
       }
-    } catch (e) { noteDbError('tailer-host', e); sessions.delete(key); return }
+    } catch (e) {
+      noteDbError('tailer-host', e)
+      releaseSession(s)
+      if (detached) sessions.set(key, detached)
+      return
+    }
   }
   catchUpSession(agentKind, sessionId)
 }
 
-function unregisterSession(key: string): void {
+function releaseSession(s: SessionState): void {
+  const key = sessionKey(s.agentKind, s.sessionId)
+  // Return the same UUID map used during retries, including events emitted
+  // since registration. A watcher unlink/add can claim it again.
+  seedIndex?.set(key, s.redlogIdByUuid)
+  sessions.delete(key)
+}
+
+function retireSidecar(s: SessionState): void {
+  try {
+    if (pendingSidecar(s)) recordRawGap(s, 'stopped')
+    resolveSidecarFailure(s)
+  } catch (e) { noteDbError('tailer-host', e) }
+}
+
+function unregisterSession(key: string, retiring = true): void {
   const s = sessions.get(key)
   if (!s) return
+  if (retiring && pendingSidecar(s)) retireSidecar(s)
+  if (s.detached) {
+    if (retiring) sessions.delete(key)
+    return
+  }
   if (s.idleTimer) { clearTimeout(s.idleTimer); s.idleTimer = null }
   if (s.retryTimer) { clearTimeout(s.retryTimer); s.retryTimer = null }
   const ct = coalesceTimers.get(key)
@@ -1526,21 +1641,43 @@ function unregisterSession(key: string): void {
       }, ids())
     } catch (e) { noteDbError('tailer-host', e) }
   }
-  sessions.delete(key)
+  releaseSession(s)
+  // A same-scope reload can finish before discovery. Retain the outstanding
+  // raw range to account for it if capture is disabled before it is found.
+  if (!retiring && pendingSidecar(s)) {
+    s.detached = true
+    sessions.set(key, s)
+  }
 }
 
 // ─── Lifecycle ──────────────────────────────────────────────────────────────
 
-export function configureHost(next: Partial<TailerHostConfig>): void {
-  stopHost()
-  cfg = { ...cfg, ...next }
-  if (cfg.enabled) {
-    try { restoreBoundary() } catch (e) { for (const kind of cfg.enabledAgents ?? registeredAdapters.keys()) noteCaptureError(`agent-${kind}`, e); cfg.enabled = false; return }
+export function configureHost(next: Partial<TailerHostConfig>, reloadAdapters?: () => void): void {
+  const previous = cfg
+  const configured = { ...cfg, ...next }
+  stopHost(true)
+  if (reloadAdapters) {
+    cfg = { ...previous, enabled: false }
+    try { reloadAdapters() } finally { cfg = previous }
   }
+  for (const [key, s] of sessions) {
+    const paths = configured.watchPathsByAgent ? configured.watchPathsByAgent[s.agentKind] : configured.watchPaths
+    if (!configured.enabled || (configured.enabledAgents && !configured.enabledAgents.includes(s.agentKind))
+      || !registeredAdapters.has(s.agentKind) || configured.excludedSessionsByAgent?.[s.agentKind]?.includes(s.sessionId)
+      || sidecarName(s.agentKind, s.sessionId, configured) !== path.basename(s.sidecarPath)
+      || (configured.watchPathsByAgent && !paths?.length) || !cwdPassesGate(s.transcriptCwd, configured.excludedPaths, paths)) {
+      unregisterSession(key)
+    }
+  }
+  cfg = configured
+  if (cfg.enabled) {
+    try { restoreBoundary() } catch (e) { for (const kind of cfg.enabledAgents ?? registeredAdapters.keys()) noteCaptureError(`agent-${kind}`, e, 'stopped'); cfg.enabled = false; return }
+  }
+  for (const kind of cfg.enabledAgents ?? registeredAdapters.keys()) clearCaptureStop(`agent-${kind}`)
   restartAll()
 }
 
-export function stopHost(): void {
+export function stopHost(reloading = false): void {
   ++hostGeneration
   for (const kind of initializedAdapters) registeredAdapters.get(kind)?.stop?.()
   initializedAdapters.clear()
@@ -1548,8 +1685,7 @@ export function stopHost(): void {
   watchersByAgent.clear()
   for (const [, t] of coalesceTimers) clearTimeout(t)
   coalesceTimers.clear()
-  for (const [key] of sessions) unregisterSession(key)
-  sessions.clear()
+  for (const key of [...sessions.keys()]) unregisterSession(key, !reloading)
   // The seed index is keyed by session, not by project, and holds event ids
   // from whichever database was open when it was built. Closing the host is
   // the boundary — dropping it here means a project switch can never hand the
@@ -1619,7 +1755,7 @@ function restartAdapter(adapter: TailerAdapter): void {
     if (!sessionDir) return
     const sid = path.basename(sessionDir)
     const key = sessionKey(adapter.agentKind, sid)
-    if (sessions.has(key)) catchUpSession(adapter.agentKind, sid)
+    if (activeSession(key)) catchUpSession(adapter.agentKind, sid)
     else registerSession(adapter.agentKind, sessionDir)
   })
   watcher.on('addDir', (p) => {
@@ -1638,7 +1774,7 @@ function restartAdapter(adapter: TailerAdapter): void {
       if (!p.endsWith('.jsonl')) return
       const sid = path.basename(p, '.jsonl')
       const key = sessionKey(adapter.agentKind, sid)
-      if (sessions.has(key)) coalescedCatchUp(adapter.agentKind, sid)
+      if (activeSession(key)) coalescedCatchUp(adapter.agentKind, sid)
       else registerSession(adapter.agentKind, p)
       return
     }
@@ -1648,7 +1784,7 @@ function restartAdapter(adapter: TailerAdapter): void {
     if (!sessionDir) return
     const sid = path.basename(sessionDir)
     const key = sessionKey(adapter.agentKind, sid)
-    if (sessions.has(key)) coalescedCatchUp(adapter.agentKind, sid)
+    if (activeSession(key)) coalescedCatchUp(adapter.agentKind, sid)
   })
   watcher.on('unlink', (p) => {
     if (!current()) return
