@@ -12,7 +12,7 @@ import {
   queryEvents, queryEventsPage, queryHttpFlowPage, queryEventById, queryEventCausalChain, queryByFlowId, queryStreamSegments, queryCommandOutput, queryCommandEnds, commandEvidence,
   executeEventQuery, fetchToolCounterparts, type EventQueryRequest, type ToolPairKey,
   countEvents, spanEvents, matchEventIds, type EventCountRequest, type EventMatchRequest,
-  getEventCount, distinctAgentTypes, aggregateTargets,
+  getEventCount, getLootCount, lootCountIsPartial, distinctAgentTypes, aggregateTargets,
   queryScreenshotPage,
   distinctHosts,
   type RedLogEvent, type EventTierFilter, type EventFilter, type EventQueryOptions
@@ -34,10 +34,17 @@ export function registerEventsIpc(ipcMain: IpcMain, ctx: IpcContext): void {
     const scope = snapshotScope(loadConfig(getProjectPath(project)))
     return {
       ...opts,
-      ...(opts.inScopeOnly ? { scope: { targets: scope.targets, excludeTargets: scope.excludeTargets } } : {}),
+      scope: { targets: scope.targets, excludeTargets: scope.excludeTargets },
       ...(opts.hidePersonal ? { personalDomains: scope.personalDomains } : {})
     }
   }
+
+  // The sidebar reports the default Loot view's population. Sidebars do not
+  // inherit the operator's temporary view filters.
+  ipcMain.handle('loot:getCount', () =>
+    ctx.getActiveProject() ? getLootCount(withActiveScope({ hidePersonal: true })) : 0)
+  ipcMain.handle('loot:countIsPartial', () =>
+    ctx.getActiveProject() ? lootCountIsPartial(withActiveScope({ hidePersonal: true })) : false)
 
   ipcMain.handle('events:query', (_e, opts: EventQueryOptions) =>
     ctx.getActiveProject() ? queryEvents(withActiveScope(opts ?? {})) : [])

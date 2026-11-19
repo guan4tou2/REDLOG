@@ -5,10 +5,10 @@
 
 _REDLOG_LAST_CMD=""
 _REDLOG_CMD_START=""
-# What the last send did with an event it could neither deliver nor spool:
-# empty while events are delivered or kept, `unreachable` or `no-project` once
-# one was dropped, `told` once the prompt has said so. See `_redlog_warn_unsaved`.
-_REDLOG_UNSAVED=""
+# The last dropped delivery, the last reason announced at the prompt, and
+# metadata for command ends neither delivered nor successfully spooled.
+_REDLOG_UNSAVED="" _REDLOG_WARNED_REASON="" _REDLOG_LAST_DELIVERED=0
+_REDLOG_GAP_COUNT=0 _REDLOG_GAP_FIRST="" _REDLOG_GAP_LAST="" _REDLOG_GAP_PAYLOAD=""
 # Set when a terminal that loaded with no project open first sees one; cleared
 # once the prompt has said so. See `_redlog_announce_adoption`.
 _REDLOG_ADOPTED=""
@@ -162,6 +162,51 @@ _redlog_resolve_host() {
     fi
   fi
   echo "127.0.0.1"
+}
+
+# Called by the explicit status command and after an HTTP refusal only. A
+# successful delivery never makes a second request just to learn its status.
+_redlog_health() {
+  local port host token result
+  _redlog_read_text "${_REDLOG_DIR:-$HOME/.redlog}/api-port" || return 1
+  port=$_redlog_text
+  case "$port" in ''|*[!0-9]*) return 1 ;; esac
+  host=${_REDLOG_HOST:-127.0.0.1}
+  if [[ -z "${_REDLOG_HOST:-}" && -n "${WSL_DISTRO_NAME:-}" ]]; then
+    host=$(_redlog_resolve_host "$port")
+  fi
+  _redlog_read_text "${_REDLOG_DIR:-$HOME/.redlog}/api-token" || :
+  token=$_redlog_text
+  result=$(_redlog_curl_authed "$token" --noproxy '*' -sf --connect-timeout 1 --max-time 2 \
+    "http://$host:$port/api/health" 2>/dev/null) || return 1
+  [[ "$result" == *'"ok":true'* ]] || return 1
+  _redlog_text=$result
+}
+
+_redlog_status() {
+  if ! _redlog_health; then
+    printf '%s\n' 'app not reachable'
+    return 1
+  fi
+  case "$_redlog_text" in
+    *'"projectOpen":false'*) printf '%s\n' 'app running, no project open'; return 1 ;;
+    *'"recording":false'*) printf '%s\n' 'recording paused'; return 1 ;;
+    *'"recording":true'*) ;;
+    *) printf '%s\n' 'app recording state unavailable'; return 1 ;;
+  esac
+  local project=${_redlog_text#*\"projectId\":\"} state mode
+  project=${project%%\"*}
+  state=$(_redlog_state --action show --format human)
+  if [[ "$state" != 'recording enabled · mode '*" · project $project · terminal "* || -z "$project" || "$project" == '{'* ]]; then
+    if [[ "$state" == 'recording enabled'* ]]; then
+      printf '%s\n' 'not recording in this terminal (project or credentials changed)'
+    else
+      printf '%s\n' "${state:-not recording in this terminal}"
+    fi
+    return 1
+  fi
+  mode=${state#* · mode }
+  printf 'recording into project %s · mode %s\n' "$project" "${mode%% · project *}"
 }
 
 # The correlation key for one command. `command_start`, every `command_output`
@@ -672,10 +717,39 @@ _redlog_curl_authed() {
 # built itself is at most a few KB, and gets 1 s; a body the python builder
 # wrote, up to megabytes, keeps 2 s.
 _redlog_post() {
-  _redlog_curl_authed "$2" --noproxy '*' -sf -X POST "http://${_REDLOG_HOST}:$1/api/events" \
-    -H "Content-Type: application/json" \
+  _redlog_curl_authed "$2" --noproxy '*' -sf -X POST "http://${_REDLOG_HOST}:$1${4:-/api/events}" \
+    -H "Content-Type: application/json" -H "X-RedLog-Hook: 1" \
     --data-binary @- \
     --connect-timeout 1 --max-time "${3:-2}" >/dev/null 2>&1
+}
+
+_redlog_note_drop() {
+  [[ "$2" == command_end ]] && _redlog_is_recording || return 0
+  _REDLOG_UNSAVED=$1
+  # Once per dropped command, on the loss path only. No command text survives.
+  local now=${EPOCHREALTIME:-}
+  if [[ "$now" == *.* ]]; then
+    local frac=${now#*.}000
+    now="${now%%.*}${frac:0:3}"
+  else
+    now="$(date +%s)000"
+  fi
+  _REDLOG_GAP_FIRST=${_REDLOG_GAP_FIRST:-$now}
+  _REDLOG_GAP_LAST=$now
+  _REDLOG_GAP_COUNT=$((_REDLOG_GAP_COUNT + 1))
+}
+
+_redlog_flush_gap() {
+  if [[ -z "$_REDLOG_GAP_PAYLOAD" ]]; then
+    [[ "$_REDLOG_GAP_COUNT" != 0 ]] || return 0
+    local last=$_REDLOG_GAP_LAST
+    [[ "$last" -ge "$_REDLOG_GAP_FIRST" ]] || last=$_REDLOG_GAP_FIRST
+    _REDLOG_GAP_PAYLOAD="{\"id\":\"$last-$$-${RANDOM:-0}\",\"count\":$_REDLOG_GAP_COUNT,\"startedAt\":$_REDLOG_GAP_FIRST,\"endedAt\":$last}"
+    _REDLOG_GAP_COUNT=0 _REDLOG_GAP_FIRST="" _REDLOG_GAP_LAST=""
+  fi
+  if _redlog_post "$1" "$2" 1 /api/shell/capture-gap <<<"$_REDLOG_GAP_PAYLOAD"; then
+    _REDLOG_GAP_PAYLOAD=""
+  fi
 }
 
 _redlog_send_event() {
@@ -717,7 +791,10 @@ _redlog_send_event() {
   # than kept in the wrong place.
   local redlog_dir="${_REDLOG_DIR:-}"
   if [[ -z "$redlog_dir" ]]; then
-    [[ -n "${WSL_DISTRO_NAME:-}" ]] && return 0
+    if [[ -n "${WSL_DISTRO_NAME:-}" ]]; then
+      _redlog_note_drop unreachable "$subtype"
+      return 0
+    fi
     redlog_dir="$HOME/.redlog"
   fi
 
@@ -839,8 +916,31 @@ sys.stdout.write(json.dumps(d))
       _redlog_post "$port" "$token" 1 <<<"$payload" && delivered=1 || post_rc=$?
     fi
   fi
-  [[ "$delivered" == 1 ]] && _REDLOG_UNSAVED=""
-  if [[ "$delivered" != 1 ]]; then
+  if [[ "$delivered" == 1 ]]; then
+    if [[ "$subtype" == command_end ]]; then
+      _REDLOG_UNSAVED="" _REDLOG_WARNED_REASON="" _REDLOG_LAST_DELIVERED=1
+      if [[ "$_REDLOG_GAP_COUNT" != 0 || -n "$_REDLOG_GAP_PAYLOAD" ]]; then
+        _redlog_flush_gap "$port" "$token"
+      fi
+    fi
+  else
+    _REDLOG_LAST_DELIVERED=0
+    if [[ "$post_rc" == 22 ]]; then
+      # A live HTTP refusal is not a transport outage. Never replay it: it
+      # may be a pause refusal, even if recording resumes before health replies.
+      if [[ "$subtype" == command_end ]]; then
+        local reason=delivery-failed
+        if _redlog_health; then
+          case "$_redlog_text" in
+            *'"projectOpen":false'*) reason=no-project ;;
+            *'"recording":false'*) reason=paused ;;
+          esac
+        fi
+        _redlog_note_drop "$reason" "$subtype"
+      fi
+      [[ -z "$work" ]] || rm -rf "$work"
+      return 0
+    fi
     # Cap spool at 5000 entries — beyond that we accept loss over disk fill.
     #
     # Only the files still waiting for replay. Replay renames what it cannot
@@ -857,13 +957,7 @@ sys.stdout.write(json.dumps(d))
     # than a process.
     if ! { _redlog_read_text "${_REDLOG_DIR:-${HOME:-}/.redlog}/active-identity.json" \
            && [[ "$_redlog_text" == *'"engagementId"'* ]]; }; then
-      # Dropped, and the operator has not been told. The next prompt says so
-      # (`_redlog_warn_unsaved`), from this outcome: no extra request per
-      # prompt. `curl -f` exits 22 for an HTTP error, so RedLog answered; with
-      # no identity that is the 503 it gives while no project is open.
-      if [[ "${_REDLOG_UNSAVED:-}" != told ]]; then
-        if [[ "$post_rc" == 22 ]]; then _REDLOG_UNSAVED=no-project; else _REDLOG_UNSAVED=unreachable; fi
-      fi
+      _redlog_note_drop unreachable "$subtype"
       [[ -z "$work" ]] || rm -rf "$work"
       return 0
     fi
@@ -871,17 +965,16 @@ sys.stdout.write(json.dumps(d))
     # `mkdir -p` leaves an existing directory and its mode alone, so only a
     # missing one needs the process.
     [[ -d "$spool_dir" ]] || mkdir -m 700 -p "$spool_dir" 2>/dev/null
-    local spool_file
+    local spool_file saved=0
     _redlog_count_waiting "$spool_dir"
     if [[ "$_redlog_count" -lt 5000 ]]; then
-      _REDLOG_UNSAVED=""
       if [[ -n "$work" ]]; then
         # The work directory is already unique, including on BSD date where
         # %N is literal and several events share one second and shell PID.
         _redlog_ns_stamp
         spool_file="$spool_dir/$_redlog_ns.$$.${work##*/}.json"
         chmod 600 "$payload_file" 2>/dev/null
-        mv "$payload_file" "$spool_file" 2>/dev/null
+        mv "$payload_file" "$spool_file" 2>/dev/null && saved=1
       else
         # No work directory to borrow a unique name from. noclobber makes the
         # write fail rather than overwrite a name another event took, and it
@@ -892,11 +985,17 @@ sys.stdout.write(json.dumps(d))
           _redlog_ns_stamp
           spool_file="$spool_dir/$_redlog_ns.$$.redlog-send.${RANDOM}${RANDOM}.json"
           if ( umask 077; set -C; printf '%s' "$payload" > "$spool_file.tmp" ) 2>/dev/null; then
-            mv "$spool_file.tmp" "$spool_file" 2>/dev/null
+            mv "$spool_file.tmp" "$spool_file" 2>/dev/null && saved=1
             break
           fi
         done
       fi
+    fi
+    if [[ "$saved" == 1 ]]; then
+      _REDLOG_UNSAVED=""
+      if [[ "$subtype" == command_end && "$reachable" == 0 ]]; then _REDLOG_UNSAVED=spooled; fi
+    else
+      _redlog_note_drop unreachable "$subtype"
     fi
   fi
   [[ -z "$work" ]] || rm -rf "$work"
@@ -1034,18 +1133,10 @@ redlog-run() {
 # The flags are shell variables on purpose: "have I said this in this shell" is
 # not state that should survive a subshell, unlike the stop (FR-022).
 #
-# Two ways in. Without the port and token files there is nothing to send to,
-# which is checked only after a command (`$1` is 1). With them — and RedLog
-# leaves them behind when it quits — the send itself is the evidence: an event
-# that was neither delivered nor spooled left `_REDLOG_UNSAVED` set. A
-# delivered or spooled event clears it, so the next loss is said again. A
-# terminal stopped with `redlog stop`, or not selected for recording, is not
-# losing anything it was asked to keep, and is not told it is.
-#
-# Called once per prompt by both adapters, and the adoption notice goes with
-# it, last: a drop said here happened before the project opened.
+# Called by both adapters after stdout/stderr have been restored. A terminal
+# stopped by the operator (or for a project switch) is not expected to record.
 _redlog_warn_unsaved() {
-  _redlog_warn_dropped "$@"
+  _redlog_warn_dropped
   _redlog_announce_adoption
   return 0
 }
@@ -1062,8 +1153,9 @@ _redlog_announce_adoption() {
   # the prompt waited, by the check before the next command.
   [[ -n "${_REDLOG_IDENTITY_SEEN:-}" ]] || _redlog_check_project
   [[ -n "${_REDLOG_ADOPTED:-}" ]] || return 0
+  _redlog_is_recording || { _REDLOG_ADOPTED=""; return 0; }
+  [[ "$_REDLOG_LAST_DELIVERED" == 1 ]] || return 0
   _REDLOG_ADOPTED=""
-  _redlog_is_recording || return 0
   local ident label
   ident=$(_redlog_identity_file)
   label=$(python3 -c '
@@ -1096,39 +1188,16 @@ sys.stdout.write(name or eid)
 }
 
 _redlog_warn_dropped() {
-  if [[ "${1:-}" == 1 ]]; then
-    if _redlog_is_running; then
-      _REDLOG_WARNED_UNREACHABLE=""
-    else
-      if [[ -z "${_REDLOG_WARNED_UNREACHABLE:-}" ]]; then
-        _REDLOG_WARNED_UNREACHABLE=1
-        # The text of each command is still kept for replay (#315) — the sender
-        # spools it with nowhere to send it — but not what it printed, which
-        # only a live relay can hold. Saying "unrecorded" would mislead too.
-        if [[ ! -s "$(_redlog_identity_file)" ]]; then
-          printf '%s\n' "[redlog] RedLog is not reachable — no project is open; commands and output are not being saved" >&2
-        else
-          printf '%s\n' "[redlog] RedLog is not reachable — commands are running without live recording; their text is kept for replay, their output is not" >&2
-        fi
-      fi
-      # Whatever was dropped meanwhile is the loss that line describes.
-      [[ -z "${_REDLOG_UNSAVED:-}" ]] || _REDLOG_UNSAVED=told
-      return 0
-    fi
-  fi
-  case "${_REDLOG_UNSAVED:-}" in
-    unreachable|no-project) ;;
-    *) return 0 ;;
+  local reason=${_REDLOG_UNSAVED:-} message
+  [[ -n "$reason" && "$reason" != "$_REDLOG_WARNED_REASON" ]] || return 0
+  _redlog_is_recording || return 0
+  case "$reason" in
+    unreachable) message='RedLog is not reachable; this terminal is not being recorded' ;;
+    no-project) message='no project is open in RedLog; this terminal is not being recorded' ;;
+    paused) message='RedLog recording is paused; this terminal is not being recorded' ;;
+    delivery-failed) message='RedLog refused delivery; this terminal command was not recorded' ;;
+    spooled) message='RedLog is not reachable; the command was queued for replay' ;;
   esac
-  if ! _redlog_is_recording; then
-    _REDLOG_UNSAVED=""
-    return 0
-  fi
-  if [[ "$_REDLOG_UNSAVED" == no-project ]]; then
-    printf '%s\n' "[redlog] no project is open in RedLog; this terminal is not being recorded" >&2
-  else
-    printf '%s\n' "[redlog] RedLog is not reachable; this terminal is not being recorded" >&2
-  fi
-  _REDLOG_UNSAVED=told
-  return 0
+  printf '[redlog] %s\n' "$message" >&2
+  _REDLOG_WARNED_REASON=$reason
 }

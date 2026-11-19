@@ -72,7 +72,7 @@ const ROOT = path.join(__dirname, '..', '..')
 //   was `event.agentType === 'shell' && d.subtype === 'command_end'` in
 //   main/index.ts: agent -1, subtype -1.
 const AGENT_BASELINE = 280
-const SUBTYPE_BASELINE = 308
+const SUBTYPE_BASELINE = 307
 const TABLE_BASELINE = 31
 
 type Counter = 'agent' | 'subtype'

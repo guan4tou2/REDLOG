@@ -53,6 +53,15 @@ describe('the export preview shows only what the plan measured', () => {
     await waitFor(() => expect(screen.getByTestId('export-preview-scope')).toBeTruthy())
   }
 
+  it('shows the executed counts when export completes', async () => {
+    await draw(plan())
+    fireEvent.click(screen.getByTestId('export-confirm'))
+    const completion = await screen.findByTestId('export-completed')
+    expect(completion.textContent).toMatch(/Included\s*100/)
+    expect(completion.textContent).toMatch(/Dropped \(personal\/local\)\s*7/)
+    expect(completion.textContent).toMatch(/Out of scope \(masked\)\s*5/)
+  })
+
   it('names the real scope rather than claiming there is none', async () => {
     await draw(plan())
     const scope = screen.getByTestId('export-preview-scope').textContent ?? ''

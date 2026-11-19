@@ -274,9 +274,13 @@ function rawEventTitle(event: RedLogEvent, t: Translate): string {
       }
       if (d.subtype === 'secret_revealed') return t('eventTitle.secretRevealed', { fields: (d.fields as string[])?.join(', ') || t('eventTitle.secretRevealedUnknown') })
       if (d.subtype === 'connection_capture_started') return t('eventTitle.connectionCaptureOn')
-      if (d.subtype === 'capture_gap' && d.reason === 'gap-unsaved') return t('eventTitle.gapUnsaved', { count: String(d.skipped_units ?? '?') })
-      // An AI transcript's pause gap (tailer-host.ts reportGap): no reason, an agent.
-      if (d.subtype === 'capture_gap' && typeof d.agent === 'string') return t('eventTitle.gapAiPaused', { agent: d.agent, count: String(d.skipped_units ?? '?') })
+      if (d.subtype === 'capture_gap') {
+        const count = String(d.skipped_units ?? '?')
+        if (d.reason === 'shell-commands-dropped') return t('eventTitle.gapShellCommands', { count })
+        if (d.reason === 'gap-unsaved') return t('eventTitle.gapUnsaved', { count })
+        // AI transcript pause gaps have an agent and no reason.
+        if (typeof d.agent === 'string') return t('eventTitle.gapAiPaused', { agent: d.agent, count })
+      }
       // Facts about the record itself: something in it was rewritten or removed.
       if (d.subtype === 'sanitized') return t('eventTitle.sanitized', { count: Array.isArray(d.source_events) ? d.source_events.length : '?' })
       if (d.subtype === 'retention_pruned_logged') return t('eventTitle.retentionPruned', { count: String(d.count ?? '?') })

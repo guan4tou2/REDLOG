@@ -22,6 +22,12 @@ $script:_RedLogSpoolDir  = Join-Path $script:_RedLogDir  'pending'
 $script:_RedLogLastId    = 0
 $script:_RedLogMaxBytes  = 102400   # 100 KB per stream (parity with bash hook)
 $script:_RedLogSpoolCap  = 5000     # protects against a runaway loop while RedLog is offline
+$script:_RedLogDropReason = $null
+$script:_RedLogWarnedReason = $null
+$script:_RedLogGapCount = 0
+$script:_RedLogGapFirst = $null
+$script:_RedLogGapLast = $null
+$script:_RedLogPendingGap = $null
 # This shell's source session, minted here as the POSIX adapters do
 # (_REDLOG_SESSION_ID). Without it, and without a per-command id below, the
 # app could not pair a command's start with its end and listed every
@@ -65,13 +71,13 @@ function _RedLogSpoolPayload {
         # No open project means nobody to attribute this to; the replay would
         # only park it as *.unattributed. Same rule as shell-common.sh.
         $identFile = Join-Path $script:_RedLogDir 'active-identity.json'
-        if (-not (Test-Path $identFile) -or -not (Select-String -Path $identFile -Pattern '"engagementId"' -Quiet)) { return }
+        if (-not (Test-Path $identFile) -or -not (Select-String -Path $identFile -Pattern '"engagementId"' -Quiet)) { return $false }
         if (-not (Test-Path $script:_RedLogSpoolDir)) {
             New-Item -ItemType Directory -Path $script:_RedLogSpoolDir -Force | Out-Null
         }
         # Cap the spool so a machine offline for weeks doesn't fill the disk.
         $count = @(Get-ChildItem -Path $script:_RedLogSpoolDir -Filter '*.json' -ErrorAction SilentlyContinue).Count
-        if ($count -ge $script:_RedLogSpoolCap) { return }
+        if ($count -ge $script:_RedLogSpoolCap) { return $false }
         # The clock is only millisecond-resolution. Two events in one process
         # can share it; a unique suffix must preserve both offline payloads.
         $name = "$(_RedLogTimestamp).$PID.$([guid]::NewGuid().ToString('N')).json"
@@ -79,9 +85,9 @@ function _RedLogSpoolPayload {
         # UTF-8 without BOM — the drain in main/index.ts uses JSON.parse which
         # rejects a leading BOM on some Node versions.
         [System.IO.File]::WriteAllText($path, $Json, [System.Text.UTF8Encoding]::new($false))
+        return $true
     } catch {
-        # Best-effort. If the spool write fails, the event is lost — same
-        # posture the bash hook takes.
+        return $false
     }
 }
 
@@ -112,6 +118,39 @@ function _RedLogBuildPayload {
     $payload | ConvertTo-Json -Depth 6 -Compress
 }
 
+function _RedLogNoteDrop {
+    param([string]$Reason, [string]$Subtype, [hashtable]$Extra)
+    # The interactive prompt also sends an end row for Redlog-Run. Count the
+    # single history entry, so its wrapper does not double the loss.
+    if ($Subtype -ne 'command_end' -or $Extra['captured_by'] -eq 'redlog-run') { return }
+    $script:_RedLogDropReason = $Reason
+    $ended = $Extra['source_timestamp']
+    if (-not $ended) { $ended = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() }
+    if ($script:_RedLogGapCount -eq 0) { $script:_RedLogGapFirst = $ended }
+    $script:_RedLogGapLast = [Math]::Max([int64]$ended, [int64]$script:_RedLogGapFirst)
+    $script:_RedLogGapCount++
+}
+
+function _RedLogFlushGap {
+    param([string]$Base, [hashtable]$Headers)
+    if (-not $script:_RedLogPendingGap) {
+        if ($script:_RedLogGapCount -eq 0) { return }
+        $script:_RedLogPendingGap = @{
+            id = [guid]::NewGuid().ToString('N')
+            count = $script:_RedLogGapCount
+            startedAt = $script:_RedLogGapFirst
+            endedAt = $script:_RedLogGapLast
+        } | ConvertTo-Json -Compress
+        $script:_RedLogGapCount = 0
+    }
+    try {
+        Invoke-RestMethod -Uri "$Base/api/shell/capture-gap" -Method Post -Headers $Headers -Body $script:_RedLogPendingGap -TimeoutSec 2 -ErrorAction Stop | Out-Null
+        $script:_RedLogPendingGap = $null
+    } catch {
+        # Retry the same gap id and range after the next successful delivery.
+    }
+}
+
 function _RedLogSendEvent {
     param(
         [string]$Subtype,
@@ -123,29 +162,62 @@ function _RedLogSendEvent {
     if ($env:REDLOG_TERMINAL -eq '1' -and -not (Test-Path (Join-Path $script:_RedLogDir 'active-identity.json'))) { return }
     $body = _RedLogBuildPayload -Subtype $Subtype -Command $Command -Extra $Extra
 
-    if (-not (_RedLogIsRunning)) {
-        # No port/token → RedLog is closed. Spool for later drain.
-        _RedLogSpoolPayload -Json $body
-        return
-    }
-
-    try {
-        $port  = (Get-Content $script:_RedLogPortFile  -Raw).Trim()
-        $token = (Get-Content $script:_RedLogTokenFile -Raw).Trim()
-        $uri     = "http://127.0.0.1:${port}/api/events"
-        $headers = @{
-            'Authorization' = "Bearer $token"
-            'Content-Type'  = 'application/json'
+    if (_RedLogIsRunning) {
+        try {
+            $port = (Get-Content $script:_RedLogPortFile -Raw).Trim()
+            $token = (Get-Content $script:_RedLogTokenFile -Raw).Trim()
+            $base = "http://127.0.0.1:${port}"
+            $headers = @{
+                'Authorization' = "Bearer $token"
+                'Content-Type' = 'application/json'
+                'X-RedLog-Hook' = '1'
+            }
+            $result = Invoke-RestMethod -Uri "$base/api/events" -Method Post -Headers $headers -Body $body -TimeoutSec 2 -ErrorAction Stop
+            $skipped = if ($result -and $result.PSObject.Properties['skipped']) { $result.skipped }
+            if ($skipped -eq 'recording paused') {
+                # Older apps acknowledge a paused write with HTTP 200.
+                _RedLogNoteDrop 'paused' $Subtype $Extra
+                return
+            }
+            if ($Subtype -eq 'command_end' -and $skipped -ne 'terminal not recording') {
+                $script:_RedLogDropReason = $null
+                $script:_RedLogWarnedReason = $null
+                if ($script:_RedLogPendingGap -or $script:_RedLogGapCount) {
+                    _RedLogFlushGap -Base $base -Headers $headers
+                }
+            }
+            return
+        } catch {
+            if ($_.Exception.PSObject.Properties['Response'] -and $_.Exception.Response) {
+                $status = [int]$_.Exception.Response.StatusCode
+                $reason = switch ($status) {
+                    423 { 'paused' }
+                    503 { 'no-project' }
+                    default { 'delivery-failed' }
+                }
+                _RedLogNoteDrop $reason $Subtype $Extra
+                return
+            }
         }
-        # Foreground POST with short deadline — matches bash's curl 2s cap.
-        # When RedLog IS listening this returns in ~10-50ms; the perceptible
-        # cost only shows up when the port is stale, which is exactly the
-        # case we want to spool for.
-        Invoke-RestMethod -Uri $uri -Method Post -Headers $headers -Body $body -TimeoutSec 2 -ErrorAction Stop | Out-Null
-    } catch {
-        # POST failed (RedLog stopped, port stale, network hiccup) → spool.
-        _RedLogSpoolPayload -Json $body
     }
+    if (-not (_RedLogSpoolPayload -Json $body)) {
+        _RedLogNoteDrop 'unreachable' $Subtype $Extra
+    } else {
+        $script:_RedLogDropReason = $null
+    }
+}
+
+function _RedLogWarnDropped {
+    $reason = $script:_RedLogDropReason
+    if (-not $reason -or $reason -eq $script:_RedLogWarnedReason) { return }
+    $message = switch ($reason) {
+        'unreachable' { 'RedLog is not reachable; this terminal is not being recorded' }
+        'no-project' { 'no project is open in RedLog; this terminal is not being recorded' }
+        'paused' { 'RedLog recording is paused; this terminal is not being recorded' }
+        'delivery-failed' { 'RedLog refused delivery; this terminal command was not recorded' }
+    }
+    [Console]::Error.WriteLine("[redlog] $message")
+    $script:_RedLogWarnedReason = $reason
 }
 
 # Save the original prompt so we can chain
@@ -200,6 +272,7 @@ function prompt {
             source_timestamp = $endedAt
             command_id = $commandId
         }
+        _RedLogWarnDropped
         $script:_RedLogLastId = $entry.Id
     }
 
@@ -370,6 +443,3 @@ function Redlog-Run {
     # Propagate exit code so callers can act on it.
     $global:LASTEXITCODE = $exitCode
 }
-
-Write-Host '[redlog] PowerShell hook active - commands will be logged to RedLog timeline' -ForegroundColor DarkGray
-Write-Host '[redlog] tip: prefix a command with "Redlog-Run" for full stdout/stderr capture' -ForegroundColor DarkGray

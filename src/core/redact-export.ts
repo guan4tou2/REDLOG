@@ -1,5 +1,6 @@
+import { isPersonalDomain } from './scope-evaluator'
 import { getSanitizedFields } from './sanitize'
-import { scopeMaskReplacements, isOutOfScope, isUnclassifiedScope, isPersonalDomain, type ScopeForSanitize } from './scope-sanitize'
+import { scopeMaskReplacements, isOutOfScope, isUnclassifiedScope, type ScopeForSanitize } from './scope-sanitize'
 import type { RedLogEvent } from './db/events'
 import { withoutRowId } from './db/event-types'
 

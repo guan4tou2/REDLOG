@@ -468,18 +468,6 @@ const SCOPE_MASKED_FIELDS: Readonly<Record<string, FieldMasker>> = {
 const MASKED_FIELD_NAMES = Object.keys(SCOPE_MASKED_FIELDS)
 
 /**
- * True when the event's target matches a personal/local domain pattern.
- * Personal rows are DROPPED entirely on export (not masked).
- * Uses only the "rung 1" explicit-exclude match — residual/inferred
- * buckets are ignored so a non-personal target doesn't false-positive.
- */
-export function isPersonalDomain(targetId: string | null | undefined, scope: ScopeForSanitize | undefined): boolean {
-  if (!scope?.personalDomains?.length) return false
-  if (!targetId) return false
-  return classifyScope(targetId, { targets: [], excludeTargets: scope.personalDomains }).distance === 'excluded'
-}
-
-/**
  * True when this event carries a target that matches none of the scope targets.
  * An empty scope is never classified as out-of-scope (can't classify).
  */

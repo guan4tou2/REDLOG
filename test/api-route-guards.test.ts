@@ -42,11 +42,11 @@ const lootCalls: string[] = []
 
 interface Reply { status: number; body: string; json: () => Record<string, unknown> }
 
-function call(method: string, url: string, body?: string): Promise<Reply> {
+function call(method: string, url: string, body?: string, headers: Record<string, string> = {}): Promise<Reply> {
   const req = Readable.from(body === undefined ? [] : [Buffer.from(body)]) as unknown as http.IncomingMessage
   Object.assign(req, {
     method, url,
-    headers: { host: '127.0.0.1:6660', authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    headers: { host: '127.0.0.1:6660', authorization: `Bearer ${token}`, 'content-type': 'application/json', ...headers },
     socket: { remoteAddress: '127.0.0.1' }
   })
   return new Promise((resolve) => {
@@ -227,4 +227,39 @@ describe('POST /api/terminal/replay', () => {
       expect(r.body).not.toContain('OUTSIDE-CANARY')
       expect(r.status).toBe(403)
     })
+})
+
+it('reports active recording and pause through health, and lets updated hooks detect refused writes', async () => {
+ eventBus.resume('api')
+ expect((await call('GET', '/api/health')).json()).toMatchObject({ projectOpen: true, recording: true, projectId: 'eng-1' })
+ eventBus.pause('api')
+ try {
+  expect((await call('GET', '/api/health')).json()).toMatchObject({ projectOpen: true, recording: false })
+  const body = JSON.stringify({ agent_type: 'shell', data: { subtype: 'command_end', command: 'paused-test' } })
+  expect((await call('POST', '/api/events', body, { 'x-redlog-hook': '1' })).status).toBe(423)
+  expect((await call('POST', '/api/events', body)).status).toBe(200)
+ } finally { eventBus.resume('api') }
+})
+
+it('reports no project without claiming to record even when the API is running', async () => {
+ api.onApiProjectClose()
+ try {
+  expect((await call('GET', '/api/health')).json()).toMatchObject({ projectOpen: false, recording: false })
+  expect((await call('POST', '/api/shell/capture-gap', '{}')).status).toBe(503)
+ } finally { api.onApiProjectOpen() }
+})
+
+it('records one metadata-only shell capture gap even if delivery is retried', async () => {
+ const gap = { id: 'test-shell-gap', count: 4, startedAt: Date.now() - 10_000, endedAt: Date.now() - 5_000 }
+ const before = getEventCount()
+ for (const _ of [1, 2]) {
+  const response = await call('POST', '/api/shell/capture-gap', JSON.stringify(gap))
+  expect(response.status).toBe(200)
+ }
+ const { queryEvents } = await import('../src/core/db/events')
+ expect(getEventCount()).toBe(before + 1)
+ const event = queryEvents({ agentType: 'system', limit: 100 }).find(e => e.data.hook_gap_id === gap.id)
+ expect(event?.data).toMatchObject({ subtype: 'capture_gap', source: 'shell-hook', skipped_units: 4, gap_started_at: gap.startedAt, gap_ended_at: gap.endedAt })
+ expect(event?.data).not.toHaveProperty('command')
+ expect(event?.data).not.toHaveProperty('stdout')
 })

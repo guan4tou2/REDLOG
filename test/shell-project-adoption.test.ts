@@ -64,6 +64,14 @@ printf '%s' '{"native":["echo","printf","redlog"]}' > "$HOME/.redlog/command-cla
 printf '%s' '${s.identity ? 0 : 22}' > "$RCF"
 cat > "$work/bin/curl" <<'FAKE'
 #!/bin/sh
+case "$*" in
+  */api/health*)
+    case "$(cat "$RCF")" in
+      22) printf '%s' '{"ok":true,"projectOpen":false,"recording":false}'; exit 0 ;;
+      0) printf '{"ok":true,"projectOpen":true,"recording":true,"projectId":"%s"}' "$(sed -n 's/.*"engagementId":"\\([^"]*\\)".*/\\1/p' "$HOME/.redlog/active-identity.json")"; exit 0 ;;
+    esac ;;
+  */api/shell/capture-gap*) cat > /dev/null; exit 0 ;;
+esac
 { cat; echo; } >> "$RCF.posts" 2>/dev/null
 exit "$(cat "$RCF")"
 FAKE
@@ -165,7 +173,7 @@ describeShell('a terminal opened with no project says when a project adopts it',
       // "not recording", and there was no pin for a switch to break.
       it('(f) `redlog status` after adoption says it is recording into the project, and adoption is written once', async () => {
         const o = await run({ shell, identity: false, commands: ['echo dropped-cmd', OPEN_A, 'echo after-open', 'echo later-cmd', 'redlog status'] })
-        expect(o.transcript, o.raw).toContain('recording enabled · mode auto · project eng-A')
+        expect(o.transcript, o.raw).toContain('recording into project eng-A · mode auto')
         expect(o.transcript).not.toContain('not recording (no project')
         expect(o.adopts, o.raw).toBe(1)
       }, 120_000)

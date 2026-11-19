@@ -32,26 +32,27 @@ for (const shell of ['bash', 'zsh'] as const) {
 
   ;(available ? describe : describe.skip)(`${shell} terminal status`, () => {
     it('does not promise recording just because the hook loaded', () => {
-      const output = run('redlog status; redlog start; redlog mode auto; redlog status')
-      expect(output).toContain('not recording (no project')
+      const output = run('redlog status; redlog start; redlog mode auto; redlog status; :')
+      expect(output).toContain('app not reachable')
       expect(output).toContain('open a project and a new terminal')
       expect(output).not.toMatch(/will be recorded|recording in this terminal|^recording /m)
     })
 
-    it('reports the configured switch without claiming delivery was verified', () => {
-      const output = run('redlog status', { engagementId: 'status-project', operatorId: 'status-operator' })
-      expect(output).toContain('recording enabled')
-      expect(output).toContain('project status-project')
-    })
-
-    it('does not report enabled recording with an incomplete operator identity', () => {
-      const output = run('redlog status', { engagementId: 'status-project', operatorId: '' })
-      expect(output).toContain('not recording (missing operator identity')
-      expect(output).not.toMatch(/^recording /m)
+    it.each([
+      ['', 'app not reachable', 1],
+      ['{"ok":true,"projectOpen":false,"recording":false}', 'app running, no project open', 1],
+      ['{"ok":true,"projectOpen":true,"recording":false}', 'recording paused', 1],
+      ['{"ok":true,"projectOpen":true,"recording":true,"projectId":"status-project"}', 'recording into project status-project', 0]
+    ])('reports the state returned by the app (%s)', (health, message, code) => {
+      const output = run(`printf 6660 > "$HOME/.redlog/api-port"; curl() { printf '%s' '${health}'; }; redlog status; printf 'exit=%s\\n' "$?"`, {
+        engagementId: 'status-project', operatorId: 'status-operator'
+      })
+      expect(output).toContain(message)
+      expect(output).toContain(`exit=${code}`)
     })
 
     it('does not announce a resume or emit a resumed event after a project switch', () => {
-      const output = run('_redlog_state --action project --engagement other-project >/dev/null; _redlog_send_event() { echo "EVENT:$1"; }; redlog start; redlog status', {
+      const output = run('_redlog_state --action project --engagement other-project >/dev/null; _redlog_send_event() { echo "EVENT:$1"; }; redlog start; redlog status; :', {
         engagementId: 'status-project', operatorId: 'status-operator'
       })
       expect(output).toContain('stopped (project-switched)')

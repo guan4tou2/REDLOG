@@ -59,6 +59,12 @@ printf '%s' '{"native":["echo","printf","rm","redlog"]}' > "$HOME/.redlog/comman
 printf 0 > "$RCF"
 cat > "$work/bin/curl" <<'FAKE'
 #!/bin/sh
+case "$*" in
+  */api/health*)
+    [ "$(cat "$RCF")" = 22 ] || exit 7
+    printf '%s' '{"ok":true,"projectOpen":false,"recording":false}'; exit 0 ;;
+  */api/shell/capture-gap*) cat > /dev/null; exit 0 ;;
+esac
 { cat; echo; } >> "$RCF.posts" 2>/dev/null
 exit "$(cat "$RCF")"
 FAKE

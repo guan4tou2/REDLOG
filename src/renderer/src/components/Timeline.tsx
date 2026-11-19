@@ -1418,7 +1418,8 @@ const TimelinePanelView = memo(function TimelinePanelView({ focusEventId, focusT
   useRevalidateOnFocus(readAttribution)
   // Said only when there is something it should have resolved: traffic has
   // arrived, the join has been asked, and it has never once answered.
-  const attributionBlind = attribution.attempted > 0 && attribution.resolved === 0
+  const attributionBlind = !(sharedFilter.hidePersonal && personalDomains.length > 0)
+    && attribution.attempted > 0 && attribution.resolved === 0
 
   const [showAllDespiteQuery, setShowAllDespiteQuery] = useState(false)
   const toggleShowAll = useCallback(() => setShowAllDespiteQuery((v) => !v), [])

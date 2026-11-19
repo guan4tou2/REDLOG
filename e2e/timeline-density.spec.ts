@@ -87,6 +87,9 @@ test('timeline-density: the list keeps its rows at 800x500, the toolbar is one r
     await openView(page, 'timeline')
     expect(await timelineMode(page)).toBe('standard')
     await expect(page.getByTestId('rail-card').first()).toBeVisible()
+    await expect(page.getByTestId('timeline-attribution-status')).toHaveCount(0)
+    await page.getByRole('button', { name: '已隱藏非工作流量', exact: true }).click()
+
 
     // (1) + (3) at the minimum window.
     await resizeMainWindow(app, 800, 500)

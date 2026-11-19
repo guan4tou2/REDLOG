@@ -1,3 +1,4 @@
+import { isPersonalDomain } from './scope-evaluator'
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
@@ -10,7 +11,7 @@ import type { ExportCounts, ExportSnapshot, NormalizedExportRequest } from './ex
 import { listAnchors, computeChainHead, chainHeadHash } from './chain-anchor'
 import { listOperators, getPrimaryOperator, getPrimaryOperatorTokenHash } from './db/operators'
 import { getSanitizedFields, countSanitizedEvents } from './sanitize'
-import { isOutOfScope, isPersonalDomain, scopeMaskReplacements, type ScopeForSanitize } from './scope-sanitize'
+import { isOutOfScope, scopeMaskReplacements, type ScopeForSanitize } from './scope-sanitize'
 import { BODY_REF_FOR, scopeBodyRefsToDrop } from './redact-export'
 import { getDoNotExportIds } from './db/do-not-export'
 import { isAttachmentId, type ExportAttachment } from './export-attachments'

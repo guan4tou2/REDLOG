@@ -26,7 +26,7 @@ describeShell(`the redlog command (${target?.label ?? 'no zsh reachable'})`, () 
   let collector: Awaited<ReturnType<typeof startCollector>>
   const token = 'us2-token'
 
-  beforeAll(async () => { collector = await startCollector(token) })
+  beforeAll(async () => { collector = await startCollector(token, 'eng-us2') })
   afterAll(async () => { await collector?.close() })
 
   describe('status', () => {

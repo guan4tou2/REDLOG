@@ -548,6 +548,9 @@ test.describe('filtered-export', () => {
      const win=await app.browserWindow(page); await win.evaluate(w=>w.setSize(800,850))
      const exportLabel=locale==='en'?'Export':'匯出'
      await page.getByLabel(exportLabel,{exact:true}).click()
+     const range = page.getByLabel(locale === 'en' ? 'Export range' : '匯出範圍', { exact: true })
+     await expect(range).toHaveValue('all')
+     await range.selectOption('current')
      await expect(page.getByTestId('export-preview-subset')).toContainText('needle')
      // Search has a 100-row page. Export must include all 106 matches without
      // requiring Load more, and switching format must retain that query.
@@ -579,10 +582,12 @@ test.describe('filtered-export', () => {
      // A legitimate empty selection still previews; it cannot be confirmed.
      await page.getByTestId('search-input').fill('never-recorded-token')
      await page.getByLabel(exportLabel,{exact:true}).click()
+     await range.selectOption('current')
      await expect(page.getByTestId('export-confirm')).toBeDisabled()
      await page.keyboard.press('Escape'); await page.keyboard.press('Escape')
      await page.getByTestId('search-input').fill('session:')
      await page.getByLabel(exportLabel,{exact:true}).click()
+     await range.selectOption('current')
      await expect(page.getByText('Invalid export query',{exact:false})).toBeVisible()
    })
   }

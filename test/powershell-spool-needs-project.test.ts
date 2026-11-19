@@ -14,6 +14,6 @@ describe('shell-hook.ps1 spool needs an open project', () => {
     const mkdir = body.indexOf('New-Item')
     expect(gate).toBeGreaterThan(-1)
     expect(mkdir).toBeGreaterThan(gate)
-    expect(body.slice(0, mkdir)).toMatch(/\{ return \}/)
+    expect(body.slice(0, mkdir)).toMatch(/\{ return \$false \}/)
   })
 })

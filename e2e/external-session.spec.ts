@@ -31,7 +31,7 @@ test('external PTY output remains searchable and exportable while paused', async
     // in the Activity tab; the raw event row is the one this tab shows.
     await expect(page.getByTestId('search-results').getByRole('option').getByText(/PTY #1: external-pty-canary/)).toBeVisible()
     await page.getByLabel('Export', { exact: true }).click()
-    await page.getByLabel('Export range', { exact: true }).selectOption('all')
+    await expect(page.getByLabel('Export range', { exact: true })).toHaveValue('all')
     await expect(page.getByText('Plan fingerprint')).toBeVisible()
     await page.getByTestId('export-confirm').click()
     await expect(page.getByTestId('export-completed')).toBeVisible()
