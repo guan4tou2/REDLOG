@@ -55,7 +55,7 @@ import { noteDbError, noteCaptureError, clearCaptureError } from '../../core/cap
 import { redactSecrets, outputIfPathHiddenByCommand } from '../../core/secret-redaction'
 import { jsonStringify } from '../../core/ingest/depth'
 import { isInsideDir } from '../../core/paths'
-import { restrictToOwner } from '../../core/fs-acl'
+import { restrictToOwner, restrictToOwnerOnce } from '../../core/fs-acl'
 import type { ProjectIdentity } from '../../core/project-runtime'
 import { compareCodeUnits } from '../../core/code-unit-order'
 
@@ -338,13 +338,9 @@ const SIDECAR_ACL_MARKER = '.owner-only'
  *  Files already in the directory are restricted first. Restricting a
  *  directory strips the inherited entries from its children, and a file that
  *  has nothing explicit is left with an empty ACL, unreadable by its owner.
- *  Files created afterwards never get the project directory's entries. They
- *  inherit only what the directory itself holds as inheritable explicit
- *  entries: none from the user's grant, which is not inheritable; SYSTEM,
- *  Administrators and the user when an elevated process created the
- *  directory (the Windows CI log shows this); and with nothing inheritable,
- *  the creating process's default entries. The marker keeps this to one pass per directory, since each
- *  icacls call costs about 50 ms. */
+ *  New sidecars are restricted separately before their first content write;
+ *  the directory's user grant is not inheritable. The marker keeps this
+ *  directory pass to once, since each icacls call costs about 50 ms. */
 function secureSidecarDir(dir: string): void {
   if (process.platform !== 'win32') return
   const marker = path.join(dir, SIDECAR_ACL_MARKER)
@@ -1025,6 +1021,10 @@ function reportGap(s: SessionState): void {
 
 function appendAndCommit(s: SessionState, bytes: Buffer, offset: number): void {
   const before = fs.existsSync(s.sidecarPath) ? fs.statSync(s.sidecarPath).size : 0
+  // Create without content before applying the Windows ACL. The memo checks
+  // file identity, so a replaced sidecar is restricted again, not each append.
+  if (!fs.existsSync(s.sidecarPath)) fs.closeSync(fs.openSync(s.sidecarPath, 'a', 0o600))
+  restrictToOwnerOnce(s.sidecarPath)
   try {
     fs.appendFileSync(s.sidecarPath, bytes, { mode: 0o600 })
     checkpoint(s, offset, before + bytes.length)

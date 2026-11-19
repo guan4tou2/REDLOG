@@ -26,19 +26,8 @@ const turn = (uuid: string, text: string): string => JSON.stringify({
   message: { role: 'user', content: [{ type: 'text', text }] }
 }) + '\n'
 
-// Under the user's profile, not os.tmpdir(): the Windows CI leg points TEMP at
-// the work volume, and what a new file's ACL holds depends on its parent. There
-// (D:\a\_temp, elevated runner) the directory and the earlier sidecar came out
-// as below, but the sidecar created afterwards carried only the creating
-// process's defaults: Administrators, SYSTEM and the logon session, with no
-// entry naming the user. No Users, Everyone or Authenticated Users either, so
-// nothing was readable by another ordinary account; but "the user is named"
-// is a statement about a profile directory, which is where a project lives.
-const profileTemp = (): string =>
-  IS_WIN && process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'Temp') : os.tmpdir()
-
 beforeEach(() => {
-  scratch = fs.mkdtempSync(path.join(profileTemp(), 'tailer-acl-win-'))
+  scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'tailer-acl-win-'))
   initDB(scratch)
   createOperator({ id: OP, name: 'Operator 1', token: generateToken() })
   fs.mkdirSync(path.join(scratch, 'claude-projects', '-tmp-acl'), { recursive: true })
@@ -83,10 +72,7 @@ describe.skipIf(!IS_WIN)('the AI sidecar directory under the real Windows ACL', 
       expect(out).not.toContain('BUILTIN\\Users')
       expect(out).not.toContain('Authenticated Users')
     }
-    // Nothing reaches the directory, or a file already in it, from the project
-    // directory. A sidecar created afterwards may inherit — but only from this
-    // directory, which the loop above has already held to the owner.
-    for (const out of [seen.dir, seen.earlier]) expect(out).not.toContain('(I)')
+    for (const out of [seen.dir, seen.earlier, seen.sidecar]) expect(out).not.toContain('(I)')
 
     expect(fs.readFileSync(earlier, 'utf-8')).toBe('EARLIER-CONVERSATION')
     expect(fs.readFileSync(sidecar, 'utf-8')).toContain('second')

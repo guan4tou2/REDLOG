@@ -3,11 +3,9 @@ import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 
-vi.mock('../src/core/fs-acl', () => ({ restrictToOwner: vi.fn(), restrictToOwnerOnce: vi.fn() }))
-
-import { restrictToOwner } from '../src/core/fs-acl'
+import { _replaceIcaclsForTests } from '../src/core/fs-acl'
 import { claudeCodeAdapter } from '../optional-plugins/claude-code/adapter'
-import { registerAdapter, configureHost, registerSession, stopHost, _sessionsForTest } from '../src/main/services/tailer-host'
+import { registerAdapter, configureHost, registerSession, catchUpSession, stopHost, _sessionsForTest } from '../src/main/services/tailer-host'
 import { getCaptureError, clearCaptureError } from '../src/core/capture-health'
 import { initDB, closeDB } from '../src/core/db/index'
 import { createOperator, generateToken } from '../src/core/db/operators'
@@ -22,7 +20,8 @@ const SID_A = 'aaaaaaaa-bbbb-cccc-dddd-0000000000a1'
 const SID_B = 'aaaaaaaa-bbbb-cccc-dddd-0000000000b2'
 const realPlatform = Object.getOwnPropertyDescriptor(process, 'platform')!
 const setPlatform = (value: string): void => { Object.defineProperty(process, 'platform', { value }) }
-const acl = vi.mocked(restrictToOwner)
+const acl = vi.fn<(target: string) => void>()
+const realUser = process.env.USERNAME
 
 let scratch: string
 let sidecarDir: string
@@ -50,10 +49,15 @@ beforeEach(() => {
   registerAdapter(claudeCodeAdapter)
   configureHost({ enabled: true, identity: { projectId: 'p1', engagementId: 'e1', operatorId: OP }, idleFlushMs: 60_000, previewChars: 1000 })
   acl.mockReset()
+  process.env.USERNAME = 'tester'
+  _replaceIcaclsForTests((args) => acl(args[0]))
 })
 
 afterEach(() => {
   Object.defineProperty(process, 'platform', realPlatform)
+  _replaceIcaclsForTests(null)
+  if (realUser === undefined) delete process.env.USERNAME
+  else process.env.USERNAME = realUser
   stopHost()
   clearCaptureError('agent-claude-code')
   try { closeDB() } catch { /* ignore */ }
@@ -65,7 +69,7 @@ describe('the AI sidecar directory on Windows', () => {
     setPlatform('win32')
     registerSession('claude-code', source(SID_A))
 
-    expect(acl.mock.calls.map(([target]) => target)).toEqual([sidecarDir])
+    expect(acl.mock.calls.map(([target]) => target)).toEqual([sidecarDir, path.join(sidecarDir, `claude-code-${SID_A}.jsonl`)])
     expect(_sessionsForTest().has(`claude-code:${SID_A}`)).toBe(true)
   })
 
@@ -74,7 +78,7 @@ describe('the AI sidecar directory on Windows', () => {
     registerSession('claude-code', source(SID_A))
     registerSession('claude-code', source(SID_B))
 
-    expect(acl.mock.calls).toHaveLength(1)
+    expect(acl.mock.calls.filter(([target]) => target === sidecarDir)).toHaveLength(1)
   })
 
   it('restricts the files already there before the directory, so none is left with nothing explicit', () => {
@@ -87,7 +91,8 @@ describe('the AI sidecar directory on Windows', () => {
     expect(acl.mock.calls.map(([target]) => target)).toEqual([
       path.join(sidecarDir, 'claude-code-old.jsonl'),
       path.join(sidecarDir, 'claude-code-old.jsonl.offset.json'),
-      sidecarDir
+      sidecarDir,
+      path.join(sidecarDir, `claude-code-${SID_A}.jsonl`)
     ])
   })
 
@@ -109,7 +114,7 @@ describe('the AI sidecar directory on Windows', () => {
     registerSession('claude-code', source(SID_A))
 
     expect(_sessionsForTest().has(`claude-code:${SID_A}`)).toBe(true)
-    expect(acl).toHaveBeenCalledTimes(2)
+    expect(acl).toHaveBeenCalledTimes(3)
   })
 })
 
@@ -123,5 +128,66 @@ describe('the AI sidecar directory on POSIX', () => {
     expect(acl).not.toHaveBeenCalled()
     expect(fs.statSync(sidecarDir).mode & 0o777).toBe(0o700)
     expect(fs.existsSync(path.join(sidecarDir, '.owner-only'))).toBe(false)
+  })
+})
+
+describe('new AI sidecar files', () => {
+  it('restricts each empty file once before content, including a recreated file', () => {
+    setPlatform('win32')
+    const file = source(SID_A)
+    const contentAtRestriction: string[] = []
+    acl.mockImplementation((target) => {
+      if (target.endsWith('.jsonl')) contentAtRestriction.push(fs.readFileSync(target, 'utf8'))
+    })
+    registerSession('claude-code', file)
+    const sidecar = _sessionsForTest().get(`claude-code:${SID_A}`)!.sidecarPath
+    expect(acl.mock.calls.shift()).toEqual([sidecarDir])
+    expect(contentAtRestriction, 'sidecar must be empty when restricted').toEqual([''])
+    expect(acl.mock.calls.map(([target]) => target)).toEqual([sidecar])
+    fs.appendFileSync(file, turn('u2', 'first'))
+    catchUpSession('claude-code', SID_A)
+    expect(acl.mock.calls.map(([target]) => target)).toEqual([sidecar])
+    expect(fs.readFileSync(sidecar, 'utf8')).toContain('first')
+    fs.appendFileSync(file, turn('u3', 'second'))
+    catchUpSession('claude-code', SID_A)
+    expect(acl).toHaveBeenCalledTimes(1)
+    expect(fs.readFileSync(sidecar, 'utf8')).toContain('second')
+
+    registerSession('claude-code', source(SID_B))
+    const other = _sessionsForTest().get(`claude-code:${SID_B}`)!.sidecarPath
+    expect(acl.mock.calls.map(([target]) => target)).toEqual([sidecar, other])
+    expect(contentAtRestriction, 'each new sidecar must be empty when restricted').toEqual(['', ''])
+    fs.renameSync(sidecar, sidecar + '.rotated')
+    fs.appendFileSync(file, turn('u4', 'third'))
+    catchUpSession('claude-code', SID_A)
+    expect(acl.mock.calls.map(([target]) => target)).toEqual([sidecar, other, sidecar])
+    expect(contentAtRestriction, 'recreated sidecar must be empty when restricted').toEqual(['', '', ''])
+    expect(fs.readFileSync(sidecar, 'utf8')).toContain('third')
+  })
+
+  it('leaves no conversation or advanced cursor on restriction failure and retries', () => {
+    setPlatform('win32')
+    const file = source(SID_A)
+    acl.mockImplementation((target) => {
+      if (target.endsWith('.jsonl')) throw new Error('icacls: access denied')
+    })
+    registerSession('claude-code', file)
+    const session = _sessionsForTest().get(`claude-code:${SID_A}`)!
+    expect(acl.mock.calls.shift()).toEqual([sidecarDir])
+    expect(fs.readFileSync(session.sidecarPath, 'utf8')).toBe('')
+    expect(session.sourceOffset).toBe(0)
+    expect(getCaptureError('agent-claude-code')?.message).toContain('icacls: access denied')
+    acl.mockImplementation(() => {})
+    catchUpSession('claude-code', SID_A)
+    expect(acl).toHaveBeenCalledTimes(2)
+    expect(fs.readFileSync(session.sidecarPath, 'utf8')).toContain('SECRET-CONVERSATION')
+    expect(getCaptureError('agent-claude-code')).toBeUndefined()
+  })
+
+  it('creates owner-only POSIX files', { skip: process.platform === 'win32' }, () => {
+    registerSession('claude-code', source(SID_A))
+    const sidecar = _sessionsForTest().get(`claude-code:${SID_A}`)!.sidecarPath
+    expect(fs.statSync(sidecar).mode & 0o777).toBe(0o600)
+    expect(acl).not.toHaveBeenCalled()
   })
 })
