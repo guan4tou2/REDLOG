@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest'
+import { requires } from './helpers/requires'
 import { createServer } from 'node:http'
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+
+const socketIt = requires('listen').it
 
 describe.skipIf(process.platform === 'win32')('explicit external PTY session', () => {
   async function session(maxBytes: number, paused: boolean | 'offline' = false, command = ['/bin/sh', '-c', 'test -t 0 && test -t 1 && printf PTY_OK; printf STDERR_OK >&2; exit 7'], interactive = false, transientRead?: 'eof' | 'eio' | 'order') {
@@ -136,7 +139,7 @@ runpy.run_path(sys.argv[0], run_name='__main__')
     }
   }
 
-  it('preserves PTY semantics, merged output, exit status and pinned project', async () => {
+  socketIt('preserves PTY semantics, merged output, exit status and pinned project', async () => {
     const r = await session(1024)
     expect(r.code).toBe(7)
     expect(r.output).toContain('PTY_OK')
@@ -151,7 +154,7 @@ runpy.run_path(sys.argv[0], run_name='__main__')
   // #296. `ssh host 'sleep 20'` was recorded as `ssh host sleep 20`, which is a
   // different command: the operator's own quoting is what says where one
   // argument ends. The record has to be one that could be pasted back.
-  it('records the command with its quoting, so arguments keep their boundaries', async () => {
+  socketIt('records the command with its quoting, so arguments keep their boundaries', async () => {
     const r = await session(1024, false, ['/bin/echo', 'host', 'sleep 20', "it's", '', 'plain'])
     expect(r.code).toBe(0)
     expect(r.events[0]).toMatchObject({
@@ -160,7 +163,7 @@ runpy.run_path(sys.argv[0], run_name='__main__')
     })
   })
 
-  it.each(['eof', 'eio'] as const)('drains real output after a transient PTY %s while the command is alive', async (failure) => {
+  socketIt.each(['eof', 'eio'] as const)('drains real output after a transient PTY %s while the command is alive', async (failure) => {
     const r = await session(4096, false, ['/bin/sh', '-c', 'printf READ_RETRY; printf STDERR_RETRY >&2; sleep 0.1; exit 7'], false, failure)
     expect(r.diagnostic).toContain(`INJECTED_PTY_${failure}`)
     expect(r.output).toContain('READ_RETRY')
@@ -172,7 +175,7 @@ runpy.run_path(sys.argv[0], run_name='__main__')
     expect(r.events.at(-1)).toMatchObject({ subtype: 'session_end', exitCode: 7, outputBytes: Buffer.byteLength(recorded), omittedBytes: 0 })
   })
 
-  it('preserves terminal geometry and interactive interrupt behavior', async () => {
+  socketIt('preserves terminal geometry and interactive interrupt behavior', async () => {
     // READY is printed only once the process that must take the interrupt is
     // the one running, with SIGINT at its default. A shell printing READY and
     // then starting \`sleep\` left a window where ^C reached the shell between
@@ -184,21 +187,21 @@ runpy.run_path(sys.argv[0], run_name='__main__')
     expect(r.events.at(-1)).toMatchObject({ subtype: 'session_end', exitCode: -2 })
   })
 
-  it('records a failed executable as an explicit exit boundary', async () => {
+  socketIt('records a failed executable as an explicit exit boundary', async () => {
     const r = await session(4096, false, ['/no-such-redlog-command'])
     expect(r.code).toBe(127)
     expect(r.output).toContain('command could not start')
     expect(r.events.at(-1)).toMatchObject({ subtype: 'session_end', exitCode: 127 })
   })
 
-  it('disables unpinned metadata hooks inside the recorded child', async () => {
+  socketIt('disables unpinned metadata hooks inside the recorded child', async () => {
     const r = await session(4096, false, ['/bin/bash', '-c', 'source hooks/shell-bash-hook.sh; printf HOOK_SAFE; _redlog_send_event command_start unsafe'])
     expect(r.code).toBe(0)
     expect(r.output).toContain('HOOK_SAFE')
     expect(r.events.every(e => e.source === 'external-session')).toBe(true)
   })
 
-  it('continues saving beyond the per-chunk budget without truncating the session', async () => {
+  socketIt('continues saving beyond the per-chunk budget without truncating the session', async () => {
     const r = await session(5)
     expect(r.output).toContain('PTY_OK')
     const chunks = r.events.filter(e => e.subtype === 'session_output')
@@ -208,7 +211,7 @@ runpy.run_path(sys.argv[0], run_name='__main__')
     expect(r.diagnostic).not.toContain('limit reached')
   })
 
-  it('keeps binary and terminal control bytes independently of its readable transcript', async () => {
+  socketIt('keeps binary and terminal control bytes independently of its readable transcript', async () => {
     const r = await session(8, false, ['python3', '-c', "import sys;sys.stdout.buffer.write(bytes([255,0,27,91,51,49,109,65]))"])
     const chunks = r.events.filter(e => e.subtype === 'session_output')
     const raw = Buffer.concat(chunks.filter(e => e.output_body).map(e => Buffer.from(e.output_body.data, 'base64')))
@@ -218,7 +221,7 @@ runpy.run_path(sys.argv[0], run_name='__main__')
 
   // The trace exists so a lost-output report can come with a timeline (#333
   // had none). It is attached to issues, so it must never carry the output.
-  it('writes an opt-in event trace that names events and byte counts but never the output', async () => {
+  socketIt('writes an opt-in event trace that names events and byte counts but never the output', async () => {
     const file = path.join(os.tmpdir(), `redlog-trace-${process.pid}-${Date.now()}.log`)
     process.env.REDLOG_SESSION_TRACE = file
     try {
@@ -300,7 +303,7 @@ runpy.run_path(sys.argv[0], run_name='__main__')
     }
   })
 
-  it('keeps the command live on capture failure and records the omission', async () => {
+  socketIt('keeps the command live on capture failure and records the omission', async () => {
     const r = await session(1024, 'offline')
     expect(r.code).toBe(7)
     expect(r.output).toContain('PTY_OK')
@@ -310,7 +313,7 @@ runpy.run_path(sys.argv[0], run_name='__main__')
     expect(r.diagnostic).toContain('capture unavailable')
   })
 
-  it('does not spool or replay output the server marks paused', async () => {
+  socketIt('does not spool or replay output the server marks paused', async () => {
     const r = await session(1024, true)
     expect(r.output).toContain('PTY_OK')
     expect(r.events.filter(e => e.subtype === 'session_output')).toEqual([])
@@ -323,7 +326,7 @@ runpy.run_path(sys.argv[0], run_name='__main__')
   // test cannot reproduce on demand. What it can pin is the property that
   // removes the race: the parent keeps the slave open until the child has
   // been reaped and the master drained.
-  it('holds the PTY slave open until the child is reaped', async () => {
+  socketIt('holds the PTY slave open until the child is reaped', async () => {
     const r = await session(4096, false, ['/bin/echo', 'held-canary'], false, 'order')
     expect(r.diagnostic).toContain('OPENPTY')
     expect(r.diagnostic).toContain('CLOSE_SLAVE_AFTER_REAP')

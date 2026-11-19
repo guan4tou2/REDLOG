@@ -12,12 +12,8 @@ belongs in `tasks.md`, not here.
 
 ```bash
 npm install
-npm rebuild better-sqlite3
+npm run build
 ```
-
-> The `pretest` / `pree2e` scripts rebuild `better-sqlite3` for the right ABI.
-> On Windows, run `npm test` (which triggers `pretest`) before `npm run e2e`,
-> since the two targets need different builds of the same native module.
 
 An engagement with at least one Claude Code session is needed for the manual
 scenarios. Either open an existing project, or record one:

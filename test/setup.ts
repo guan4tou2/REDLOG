@@ -96,5 +96,5 @@ try {
     timing.restore()
   })
 } catch {
-  // better-sqlite3 is not built for this Node ABI; nothing to relax.
+  // The SQLite binding could not be loaded; requires() reports availability.
 }

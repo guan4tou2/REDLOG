@@ -3,7 +3,7 @@
 //
 // A skipped test reports green. For as long as nothing counted them, a runner
 // image without zsh, a step order that ran Vitest before the build, or a
-// native module built for the wrong ABI each turned whole files grey and the
+// native binding that could not load each turned whole files grey and the
 // leg stayed green. This reads the JUnit report Vitest writes in CI and
 // compares it with test/skip-baseline.json for this platform:
 //

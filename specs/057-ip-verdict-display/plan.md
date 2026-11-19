@@ -52,8 +52,7 @@ The policy, its verdicts and the chain's `ip_verdict` events do not change
 - Playwright 1.63 e2e against the built app. A local HTTP provider feeds the
   IP producer.
 
-**Target Platform**: desktop, on macOS and Windows. The Windows e2e needs the
-Electron ABI build of better-sqlite3 (`pree2e`).
+**Target Platform**: desktop, on macOS and Windows.
 
 **Project Type**: desktop app (Electron main, preload, React renderer, core
 library), plus the local HTTP API and `cli/redlog-cli.js`

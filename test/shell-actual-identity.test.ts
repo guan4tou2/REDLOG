@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -25,7 +26,8 @@ import {
 
 const target: ShellTarget | null = findShellTarget()
 // POSIX by construction: this file spawns real bash and real zsh.
-const describeShell = process.platform === 'win32' ? describe.skip : target ? describe : describe.skip
+const listen = requires('listen')
+const describeShell = process.platform === 'win32' || !target ? describe.skip : listen.describe
 
 const TOKEN = 'identity-token'
 

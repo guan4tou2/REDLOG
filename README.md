@@ -302,7 +302,7 @@ EOF
 source /path/to/redlog/shell/redlog-agent.sh
 
 redlog_status                           # check connection
-redlog_mark "Found SQLi" "Blind" "high" # create marker
+redlog_mark "Found SQLi" "Blind" "important" # create marker
 redlog_event "agent" '{"subtype":"scan_complete"}'
 redlog_search "password"                # search events
 redlog_scope                            # check scope
@@ -313,7 +313,7 @@ redlog_screenshot                       # manual capture
 
 ### Codex / OpenAI Function Calling
 
-See [`docs/codex-tools.json`](docs/codex-tools.json) for OpenAI-compatible function definitions usable with Codex, GPT, or any OpenAI-API-compatible model.
+See [`docs/codex-tools.json`](docs/codex-tools.json) for function-call schema examples. They require an HTTP adapter supplied by the calling framework using `x-redlog-requests`; no MCP server or executable tool dispatcher is included.
 
 ### More reading
 
@@ -472,12 +472,12 @@ Export your project config as a `.yaml` or `.json` profile:
 ## Development
 
 Building from source is for contributors and for platforms without an
-installer (Intel Macs). Requires Node 20 or 22 and Python 3 plus a C/C++
-toolchain for the native `better-sqlite3` module.
+installer (Intel Macs). Use Node 22 (22.14 or later for Node-API 10).
+`better-sqlite3` ships a Node-API prebuild shared by Node and Electron.
+Building native modules from source requires Python 3 and a C/C++ toolchain.
 
 ```bash
 npm install
-npm run rebuild        # rebuild better-sqlite3 for Electron's ABI
 npm run dev            # run the app with hot reload
 npm run build          # production build of main + renderer
 ```

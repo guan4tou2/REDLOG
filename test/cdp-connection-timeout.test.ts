@@ -1,9 +1,10 @@
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { expect, it } from 'vitest'
+import { expect } from 'vitest'
+import { requires } from './helpers/requires'
 import { getActiveBrowserTab, setCdpPort } from '../src/main/services/cdp-connector'
 
-it('distinguishes an unresponsive CDP endpoint from a responding tab on retry', async () => {
+requires('listen').it('distinguishes an unresponsive CDP endpoint from a responding tab on retry', async () => {
   let respond = false
   const server = createServer((_request, response) => {
     if (respond) response.end(JSON.stringify([{ type: 'page', title: 'Recovered', url: 'about:blank' }]))

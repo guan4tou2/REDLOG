@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { requires } from './helpers/requires'
 import { runZsh, startCollector, hookPath, type ShellTarget, type ZshReport } from './helpers/zsh-pty'
 
 // The bash twin of zsh-transparency.pty.test.ts: is the shell the same shell
@@ -28,7 +29,8 @@ import { runZsh, startCollector, hookPath, type ShellTarget, type ZshReport } fr
 // (hooks/redlog-relay.py `pty`), and what is stored is the cleaned text.
 
 const target: ShellTarget = { prefix: [], toShellPath: (p) => p, label: 'local bash' }
-const describeShell = process.platform === 'win32' ? describe.skip : describe
+const listen = requires('listen')
+const describeShell = process.platform === 'win32' ? describe.skip : listen.describe
 
 const ROWS = 30
 const COLS = 100

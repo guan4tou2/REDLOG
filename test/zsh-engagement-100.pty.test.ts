@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { requires } from './helpers/requires'
 import { findShellTarget, runZsh, startCollector, hookPath, type ShellTarget, type CapturedEvent } from './helpers/zsh-pty'
 
 // Spec 052 T045, SC-002 / SC-003: a scripted engagement of at least a hundred
@@ -27,7 +28,8 @@ import { findShellTarget, runZsh, startCollector, hookPath, type ShellTarget, ty
 
 const target: ShellTarget | null = findShellTarget()
 const enabled = !!target && (target.prefix.length === 0 || process.env.REDLOG_PTY_SC === '1')
-const describeShell = enabled ? describe : describe.skip
+const listen = requires('listen')
+const describeShell = enabled ? listen.describe : describe.skip
 
 const COUNT = 100
 

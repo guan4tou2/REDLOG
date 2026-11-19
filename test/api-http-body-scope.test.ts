@@ -28,7 +28,8 @@ if (requires('better-sqlite3').ok) {
   dbAvailable = true
 }
 
-const describeDB = dbAvailable ? describe : describe.skip
+const listen = requires('listen')
+const describeDB = dbAvailable ? listen.describe : describe.skip
 
 const IN_SCOPE = 'in.scope-test.example'
 const OUT_OF_SCOPE = 'out.other-test.example'

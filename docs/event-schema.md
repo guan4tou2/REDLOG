@@ -29,7 +29,9 @@ To make the timeline both **usable inside RedLog** and **portable to Ghostwriter
 | `bytes` | number | Byte size of a transfer / payload |
 | `severity` | string | `marker`: `info` / `important` / `critical` (the vocabulary the marker dialog writes). `loot`: `info` / `low` / `medium` / `high` / `critical` |
 
-## Standard `agent_type` values
+## Stored `agent_type` values
+
+This section describes stored rows, including RedLog-derived types; it is not an external POST allow-list. For external requests use [the API reference](api-reference.md#post-apievents).
 
 All 15 are first-class Timeline lanes (empty lanes auto-collapse):
 
@@ -107,7 +109,7 @@ All 15 are first-class Timeline lanes (empty lanes auto-collapse):
   - `opsec_state_changed` — VPN interfaces, DNS resolvers, primary MAC, or hostname changed
   - `recording_paused` / `recording_resumed` — recording was toggled. Carries
     `source`: `ui` (operator at the keyboard), `api` (redlog-cli or another
-    local REST client) or `mcp` (an AI agent calling `redlog_recording`).
+    local REST client) or historical `mcp` (the MCP server has been removed).
     While paused RedLog records nothing except `system` and `marker` events —
     see [audit-trail.md](audit-trail.md)
   - `config_changed` — security-relevant setting saved (scope targets, warn-on-violation, IP blacklist…) with a from→to diff
@@ -133,6 +135,8 @@ Agents can also log them explicitly. Keys:
 | `socks_port` | local SOCKS port opened, if any |
 | `forward` | raw forward spec (e.g. `8080:10.0.0.5:80`) |
 | `mitre_ttp` | `T1090` (Proxy) or `T1572` (Protocol Tunneling) |
+
+Stored derived row (not an external POST body):
 
 ```json
 {
@@ -370,13 +374,13 @@ File transfer:
 }
 ```
 
-C2 check-in:
+External C2 observation (the source is `scanner`, the category is in `data.subtype`):
 ```json
 {
-  "agent_type": "c2_checkin",
+  "agent_type": "scanner",
   "target_id": "10.0.0.15",
   "data": {
-    "subtype": "beacon",
+    "subtype": "c2_checkin",
     "dest_ip": "10.0.0.15",
     "user_context": "SYSTEM",
     "mitre_ttp": "T1071.001",

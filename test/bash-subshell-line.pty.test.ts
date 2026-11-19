@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { requires } from './helpers/requires'
 import { runZsh, startCollector, hookPath, type ShellTarget, type CapturedEvent } from './helpers/zsh-pty'
 
 // Bash's DEBUG trap does not follow a subshell or group compound, so
@@ -8,7 +9,8 @@ import { runZsh, startCollector, hookPath, type ShellTarget, type CapturedEvent 
 // to the terminal and was never ours.
 
 const bashTarget: ShellTarget = { prefix: [], toShellPath: (p) => p, label: 'local bash' }
-const describeBash = process.platform === 'win32' ? describe.skip : describe
+const listen = requires('listen')
+const describeBash = process.platform === 'win32' ? describe.skip : listen.describe
 
 describeBash('a bash line the DEBUG trap does not see', () => {
   let collector: Awaited<ReturnType<typeof startCollector>>

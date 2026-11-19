@@ -64,7 +64,11 @@ export default defineConfig({
     // the default reporter still prints, and the file is only written when CI
     // is set.
     reporters: process.env.CI
-      ? ['default', ['junit', { outputFile: 'test-results/unit-junit.xml' }]]
+      ? [
+          'default',
+          ['junit', { outputFile: 'test-results/unit-junit.xml' }],
+          ...(process.env.GITHUB_ACTIONS === 'true' ? ['github-actions'] : []),
+        ]
       : ['default'],
   },
 })

@@ -13,25 +13,10 @@ npm run e2e          # every e2e/*.spec.ts
 npm run e2e:ui       # Playwright UI mode, for one spec at a time
 ```
 
-**For source journeys, use `npm run e2e`.** The `pree2e` script rebuilds
-better-sqlite3 for Electron's ABI. `npx playwright test` goes straight to
-Playwright and skips it, and the mismatch does not announce itself as an ABI
-error: Electron dies mid-launch with `exitCode=3221225477` (0xC0000005) and the
-failure surfaces as a missing `view-root` selector. If you need one spec
-directly, do the rebuild yourself first:
-
-```sh
-npx electron-rebuild -f -o better-sqlite3
-npx playwright test e2e/<spec>.spec.ts --reporter=line
-```
-
-Running `npm test` afterwards flips the module back to the Node ABI (its
-`pretest` rebuilds), which is fine — but then the next direct Playwright run
-needs the rebuild again.
-
-Installed-only runs use the package's own native modules. With
-`REDLOG_PACKAGED_APP` set, the documented direct Playwright command does not
-need to rebuild workspace SQLite unless another selected spec launches source.
+For a focused source run, use `npm run e2e -- e2e/<spec>.spec.ts --reporter=line`
+after the build. Node and Electron load the same `better-sqlite3` Node-API
+prebuild for the platform and architecture. Installed-only runs with
+`REDLOG_PACKAGED_APP` use the package's native modules.
 
 For the bounded settings/source/export check, use the two-file selection in
 [Testing RedLog](../docs/TESTING.md#local-iteration-and-process-reuse). Ordinary

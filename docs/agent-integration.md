@@ -170,6 +170,8 @@ the wrapped command normally.
 
 Direct REST API for scripts and custom agents. Runs on `127.0.0.1:6660` (configurable).
 
+The CLI is available from a repository checkout (`node cli/redlog-cli.js`); the installed app does not include `cli/`. The CLI reads the token and port files below; `REDLOG_TOKEN` / `REDLOG_PORT` do not override them.
+
 ### Authentication
 
 ```bash
@@ -187,7 +189,7 @@ EOF
 # POST request
 curl -K - -X POST http://127.0.0.1:$PORT/api/marker \
   -H "Content-Type: application/json" \
-  -d '{"title":"Finding","severity":"high"}' <<EOF
+  -d '{"title":"Finding","severity":"important"}' <<EOF
 header = "Authorization: Bearer $(cat ~/.redlog/api-token)"
 EOF
 ```
@@ -201,7 +203,7 @@ EOF
 | GET | `/api/status` | yes | System status (IP, events, violations, capture health) |
 | GET | `/api/capture` | yes | Detailed capture subsystem health |
 | GET | `/api/config` | yes | Project configuration |
-| GET | `/api/scope` | yes | Scope targets + exclusions + violations |
+| GET | `/api/scope` | yes | Scope targets + violations |
 | GET | `/api/recording` | yes | Recording state |
 | POST | `/api/recording` | yes | Control recording (`{"action":"pause\|resume\|toggle"}`) |
 | POST | `/api/events` | yes | Insert event (operator_id set from token; auto-detects targets, pivots, cleanup, file transfers, loot) |
@@ -226,13 +228,16 @@ EOF
 | GET | `/api/anchors/:id/ots` | yes | Download `.ots` proof file (`?calendar=<url>` optional) |
 | GET | `/api/clock` | yes | NTP offset + last query time + host wall clock |
 | POST | `/api/export/bundle` | yes | Produce signed evidence bundle in `exports/` dir |
+| GET | `/api/export/har` | yes | Export scope-filtered HAR (`?since=&before=&target_id=&limit=`) |
+| GET | `/api/http-body/<sha>` | yes | Read a deliverable body (`?encoding=text` or `base64`) |
+| POST | `/api/http-verify` | yes | Capture-adapter verification report |
 | POST | `/api/sanitize` | yes | Layer 4 redaction: `{ event_ids, fields?, reason?, dry_run? }` → masked bytes + chained `system.sanitized` event |
 
 ### Event Schema
 
 ```json
 {
-  "agent_type": "shell|scanner|agent|recon|exploit",
+  "agent_type": "agent",
   "data": {
     "subtype": "command_start|command_end|scan_complete",
     "command": "nmap -sV target.com",
@@ -248,14 +253,14 @@ EOF
 {
   "title": "Found SQLi in /api/users",
   "notes": "Parameter 'id' is injectable, time-based blind",
-  "severity": "high",
+  "severity": "important",
   "target_id": "api.example.com"
 }
 ```
 
 ## 3. Shell Functions
 
-Source the helper script for quick access from any terminal:
+Source the helper script from a repository checkout for quick access from any terminal. It is not included in the installed app. For registration, set `SESSION_ID` from the calling tool’s actual session metadata; no vendor-specific environment variable is guaranteed:
 
 ```bash
 source /path/to/redlog/shell/redlog-agent.sh
@@ -263,9 +268,9 @@ source /path/to/redlog/shell/redlog-agent.sh
 
 | Function | Description | Example |
 |----------|-------------|---------|
-| `redlog_session_register` | Opt this session into capture (call first) | `redlog_session_register "$CLAUDE_SESSION_ID"` |
+| `redlog_session_register` | Opt this session into capture (call first) | `redlog_session_register "$SESSION_ID"` |
 | `redlog_status` | Check if RedLog is running | `redlog_status` |
-| `redlog_mark` | Create a marker | `redlog_mark "Finding" "Details" "high"` |
+| `redlog_mark` | Create a marker | `redlog_mark "Finding" "Details" "important"` |
 | `redlog_event` | Log raw event | `redlog_event "agent" '{"subtype":"done"}'` |
 | `redlog_note` | Quick note marker | `redlog_note "Switching to auth bypass"` |
 | `redlog_search` | Search events | `redlog_search "password" 20` |
@@ -277,7 +282,7 @@ source /path/to/redlog/shell/redlog-agent.sh
 
 ## 4. Codex / OpenAI Function Calling
 
-See [`codex-tools.json`](codex-tools.json) for OpenAI-compatible function definitions. These work with Codex, GPT, or any OpenAI-API-compatible model. Session-start and other frequently used tools:
+See [`codex-tools.json`](codex-tools.json) for OpenAI-compatible function definitions. These are schema examples, not installed tools. There is no MCP server. A calling framework must implement an HTTP adapter using `x-redlog-requests`; otherwise call the HTTP API or source the shell helper. Session-start and other frequently used tools:
 
 1. `redlog_session_register` — opt this session into capture (call first)
 2. `redlog_status` — get recording status
@@ -356,14 +361,14 @@ Details, threat model, and verification workflow: [docs/audit-trail.md](audit-tr
 
 For maximum coverage with minimal friction — **connect the applicable passive sources, then add explicit observations** (see [Capture priority](#how-ai-conversations-are-recorded)):
 
-1. **Install the shell preexec hook** in `~/.zshrc` — passive, captures every command from every agent. This is the backbone; do it first.
+1. **Install the shell preexec hook** in `~/.zshrc` — records connected interactive shell commands. AI subprocesses may not load it.
 2. *(Optional)* **Install the desired AI capture integration**, add its project working directories and explicitly enable it.
 3. **Add the mitmproxy addon** if you're proxying traffic — passive HTTP capture.
 4. **Install the [redlog-pentest skill](skills/redlog-pentest.md)** — guides the agent to use the API for what hooks can't do (markers, scope checks, anchoring).
-5. **For each teammate: add a secondary operator** via Settings ▸ Operator Tokens so the audit log stays distinguishable.
+5. The former Settings ▸ Operator Tokens workflow has been removed; use the current project operator identity.
 
 This gives you:
-- Automatic passive capture of every command (hooks)
+- Passive capture from the sources actually connected
 - Agent-initiated markers and scope checks (API / shell functions)
 - Team-shared scope configuration (profiles)
 - Per-operator attribution + Bitcoin-backed integrity anchoring

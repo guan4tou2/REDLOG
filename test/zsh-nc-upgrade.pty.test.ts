@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { requires } from './helpers/requires'
 import { spawnSync } from 'child_process'
 import { findShellTarget, runZsh, startCollector, hookPath, type ShellTarget, type ZshReport } from './helpers/zsh-pty'
 
@@ -53,7 +54,8 @@ function hasTraditionalNc(t: ShellTarget | null): boolean {
   return false
 }
 
-const describeShell = hasTraditionalNc(target) ? describe : describe.skip
+const listen = requires('listen')
+const describeShell = hasTraditionalNc(target) ? listen.describe : describe.skip
 
 const PORT = 4444
 

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { requires } from './helpers/requires'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -14,7 +15,8 @@ import { findShellTarget, runZsh, startCollector, hookPath, type ShellTarget } f
 // shell or a command that reports someone else's exit status is worse.
 
 const target: ShellTarget | null = findShellTarget()
-const describeShell = target ? describe : describe.skip
+const listen = requires('listen')
+const describeShell = target ? listen.describe : describe.skip
 
 const occurrences = (text: string, needle: string): number =>
   text.split(needle).length - 1

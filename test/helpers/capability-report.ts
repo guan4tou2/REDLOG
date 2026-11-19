@@ -13,13 +13,16 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { CAPABILITIES, expectation, probe, type Capability } from './requires'
+import { CAPABILITIES, expectation, probe, probeUnitBuild, type Capability } from './requires'
 
 interface Row { file: string; cap: Capability; ok: boolean; detail: string; want: string | null }
 
 const ROOT = path.resolve(__dirname, '..', '..')
 
 export default function setup(): () => void {
+  const build = probeUnitBuild()
+  if (!build.ok) throw new Error(`[capabilities] ${build.detail}`)
+
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-capabilities-'))
   process.env.REDLOG_CAPABILITY_LOG = dir
 

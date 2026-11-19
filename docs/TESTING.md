@@ -26,19 +26,21 @@ npm run build
 npm test
 ```
 
-Build before `npm test`, as CI does: `csp-production` and `bundle-requires` read
-`out/renderer` and `out/main/index.js`, and skip (saying so) without them.
+`npm run build` produces the app bundles for `csp-production` and
+`bundle-requires` and prepares the optional AI packages and export worker.
+`npm test` prepares those two unit-test artifacts via `pretest`. Direct Vitest
+runs check for them at startup and ask for `npm run build` if either is missing.
+The bundle and renderer checks need the full app build.
 
-`npm test` rebuilds SQLite for Node, then runs Vitest. `npm run e2e` rebuilds it
-for Electron. Do not run these concurrently. Use `npm test` to request a Node
-rebuild again. If the binding still fails, check the rebuild log, node-gyp
-selection and headers before changing product code or skipping database tests.
+`better-sqlite3` uses the same platform-specific Node-API 10 prebuild in Node
+and Electron. If SQLite fails to load, check the runtime's Node-API version
+and the installed package for that platform and architecture.
 
 | Purpose | Command | What it proves |
 | --- | --- | --- |
-| One behavior | `npx vitest run test/<file>.test.ts` | The selected domain, storage or rendered behavior; native modules must already use the Node ABI. |
-| Local iteration | `npm run test:watch` | Vitest watch mode; same ABI requirement. |
-| Changed source unit tests | `npm run test:changed` | Rebuilds for Node, then uses Vitest's import graph against `origin/main`; no automatic pass when no tests are selected. |
+| One behavior | `npx vitest run test/<file>.test.ts` | The selected domain, storage or rendered behavior. |
+| Local iteration | `npm run test:watch` | Vitest watch mode. |
+| Changed source unit tests | `npm run test:changed` | Prepares the unit-test artifacts, then uses Vitest's import graph against `origin/main`; no automatic pass when no tests are selected. |
 | Source app journey | `npm run build` then `npm run e2e -- e2e/<file>.spec.ts` | Real Electron/IPC interaction with isolated test homes. |
 | Core source workflows | `npm run build` then `npm run e2e:core` | Export/delivery, evidence/query/Session/return and network recovery; 33 cases in 3 files. Other affected journeys must be selected explicitly. |
 | Whole source journey suite | `npm run e2e` | All source journeys; explicit platform/installed-only skips remain skips. |
