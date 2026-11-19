@@ -38,7 +38,7 @@ interface Scenario {
   commands: string[]
 }
 
-interface Outcome { transcript: string; spooled: number; calls: number; raw: string }
+interface Outcome { transcript: string; spooled: number; calls: number; statusCalls: number; raw: string }
 
 const NOT_RECORDED = 'this terminal is not being recorded'
 
@@ -66,7 +66,7 @@ printf '%s' '${s.curl}' > "$RCF"
 cat > "$work/bin/curl" <<'FAKE'
 #!/bin/sh
 cat > /dev/null 2>&1
-echo call >> "$RCF.calls"
+echo "$*" >> "$RCF.calls"
 exit "$(cat "$RCF")"
 FAKE
 chmod +x "$work/bin/curl"
@@ -81,6 +81,7 @@ ${shellRun}
 echo '@@OUT'; cat "$work/out"
 echo "@@SPOOLED $(find "$HOME/.redlog/pending" -name '*.json' 2>/dev/null | wc -l | tr -d ' ')"
 echo "@@CALLS $(cat "$RCF.calls" 2>/dev/null | wc -l | tr -d ' ')"
+echo "@@STATUSCALLS $(cat "$RCF.calls" 2>/dev/null | grep -c -E 'api/(health|recording)' | tr -d ' ')"
 `
 }
 
@@ -94,6 +95,7 @@ async function run(s: Scenario): Promise<Outcome> {
     transcript: out.slice(at + 6, end),
     spooled: Number(/@@SPOOLED (\d+)/.exec(out)?.[1] ?? NaN),
     calls: Number(/@@CALLS (\d+)/.exec(out)?.[1] ?? NaN),
+    statusCalls: Number(/@@STATUSCALLS (\d+)/.exec(out)?.[1] ?? NaN),
     raw: out + r.stderr
   }
 }
@@ -144,6 +146,40 @@ describeShell('a terminal says when its commands are being dropped', () => {
         expect(count(o.transcript, NO_PROJECT), o.raw).toBe(1)
         expect(count(o.transcript, NOT_REACHABLE), o.raw).toBe(1)
         expect(o.transcript.indexOf(NOT_REACHABLE)).toBeGreaterThan(o.transcript.indexOf(NO_PROJECT))
+      }, 90_000)
+
+      // A spooled event is a kept one: it clears the latch as a delivered one
+      // does, so the next loss — here the same reason as the first — is said.
+      it('no project, then a spooled event, then no project again: said again', async () => {
+        const IDENT = `printf '%s' '{"engagementId":"eng-1","operatorId":"op-1"}' > "$HOME/.redlog/active-identity.json"`
+        const o = await run({
+          shell, curl: 22, identity: false,
+          commands: ['echo lost-1', 'echo lost-2', `${IDENT}; echo kept-1`, 'echo kept-2', 'rm "$HOME/.redlog/active-identity.json"; echo lost-3', 'echo lost-4']
+        })
+        expect(o.spooled, o.raw).toBeGreaterThan(0)
+        expect(count(o.transcript, NO_PROJECT), o.raw).toBe(2)
+        expect(o.transcript.lastIndexOf(NO_PROJECT)).toBeGreaterThan(o.transcript.indexOf('kept-2'))
+      }, 90_000)
+
+      // The files-missing line is a notice of its own wording; it is the first
+      // time this loss is said, so the dead port that follows is not a news.
+      it('files missing, then back with nothing listening: the loss is not said a second time', async () => {
+        const o = await run({
+          shell, curl: 7, identity: false, files: false,
+          commands: ['echo lost-1', 'printf 6660 > "$HOME/.redlog/api-port"; printf tok > "$HOME/.redlog/api-token"; echo lost-2', 'echo lost-3']
+        })
+        expect(count(o.transcript, 'not reachable'), o.raw).toBe(1)
+        expect(count(o.transcript, NOT_RECORDED), o.raw).toBe(0)
+      }, 90_000)
+
+      // `redlog status` is the only thing that asks RedLog how it is. The
+      // prompt, the sender and the notice work from what the send answered.
+      it('only `redlog status` asks RedLog how it is', async () => {
+        const quiet = await run({ shell, curl: 0, identity: true, commands: ['echo a', 'echo b', 'echo c'] })
+        expect(quiet.calls, 'the sender never tried').toBeGreaterThan(0)
+        expect(quiet.statusCalls, quiet.raw).toBe(0)
+        const asked = await run({ shell, curl: 0, identity: true, commands: ['echo a', 'redlog status'] })
+        expect(asked.statusCalls, asked.raw).toBeGreaterThan(0)
       }, 90_000)
 
       it('identity present and the send fails: spooled, and no notice', async () => {

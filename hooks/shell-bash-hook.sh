@@ -191,8 +191,10 @@ redlog() {
   [[ -n "${_REDLOG_DIR:-}" ]] && home=${_REDLOG_DIR%/*}
   case "$sub" in
     status)
-      _redlog_status
-      local status_rc=$?
+      # In an `if`: the caller's errexit must not end the line before it is
+      # printed, and the status is still the answer.
+      local status_rc
+      if _redlog_status; then status_rc=0; else status_rc=$?; fi
       echo
       return $status_rc
       ;;

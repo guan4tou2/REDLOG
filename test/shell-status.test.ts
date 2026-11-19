@@ -45,7 +45,7 @@ for (const shell of ['bash', 'zsh'] as const) {
       const output = run('redlog status', { engagementId: 'status-project', operatorId: 'status-operator' })
       // No app runs here, so the terminal's switch is on and nothing is
       // listening: the line says so instead of "recording enabled".
-      expect(output).toContain('app not reachable')
+      expect(output).toContain('RedLog not reachable')
       expect(output).toContain('mode auto')
       expect(output).toContain('project status-project')
       expect(output).not.toContain('recording enabled')
