@@ -431,12 +431,13 @@ test.describe('activity-return-state', () => {
 
     await page.getByTestId('reader-locate').click()
     await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'timeline')
-    await expect(page.getByTestId('timeline-detail-panel')).toHaveCount(1)
+    await expect(page.getByTestId('timeline-detail-body')).toBeVisible()
     const selected = await page.evaluate(() => localStorage.getItem('redlog-timeline-focus-event'))
     expect(selected, 'the timeline selected a concrete event').toBeTruthy()
     // The visited Reader stays mounted under [hidden]; it must not own Escape.
     await page.keyboard.press('Escape')
-    await expect(page.getByTestId('timeline-detail-panel')).toHaveCount(0)
+    await expect(page.getByTestId('timeline-detail-body')).toHaveCount(0)
+    await expect(page.getByTestId('timeline-detail-panel')).toBeVisible()
 
     await page.getByRole('button', { name: /^← / }).click()
     await expect(page.locator('[data-testid="view-root"]')).toHaveAttribute('data-view', 'search')
