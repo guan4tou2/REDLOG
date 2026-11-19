@@ -5,6 +5,7 @@ import type { ConfirmOpts } from '../src/renderer/src/components/ConfirmDialog'
 import PluginsPanel from '../src/renderer/src/components/settings/PluginsPanel'
 import { _resetCaptureHealth } from '../src/renderer/src/lib/captureHealthStore'
 import en from '../src/renderer/src/i18n/en.json'
+import zhTW from '../src/renderer/src/i18n/zh-TW.json'
 
 // Spec 066 batch B: the Plugins page is the single install / update / remove
 // entry for official integrations, links both ways, and reads capture health.
@@ -147,6 +148,21 @@ describe('official integrations on the plugin page (Spec 066)', () => {
     draw({ config: config({ enabled: false }) }); await open()
     expect(screen.getByTestId('plugin-project-official-ai-codex').textContent).toBe(en['plugins.projectAxis.installedNotEnabled'])
     await waitFor(() => expect(screen.getByTestId('plugin-health-official-ai-codex').textContent).toBe(en['plugins.healthAxis.inactive']))
+  })
+
+  it('names the unsaved raw conversation and the Windows permissions to check in the selected locale', async () => {
+    api.officialAgents.mockResolvedValue([entry('installed', { installationId: 'i1' })])
+    api.list.mockResolvedValue([loadedView()])
+    health.mockResolvedValue(snapshot([{
+      id: 'agent-codex', enabled: true, lastEventAt: Date.now(), state: 'error',
+      lastError: { at: 1, message: 'English fallback', sidecarSessionId: 'session-a' }
+    }]))
+    const translate = (key: string, vars?: Record<string, string | number>): string =>
+      ((zhTW as Record<string, string>)[key] ?? key).replace(/\{\{(\w+)\}\}/g, (_, name) => String(vars?.[name] ?? ''))
+    draw({ t: translate, config: config({ enabled: true, installationId: 'i1' }) })
+    await open()
+    await waitFor(() => expect(screen.getByTestId('plugin-health-official-ai-codex').textContent)
+      .toContain('工作階段 session-a 的原始對話未儲存。請檢查專案中 agent-transcripts 資料夾與檔案的 Windows 權限'))
   })
 
   it('shows the last delivery, an error, and "unknown" when the read fails — never a stale verdict', async () => {

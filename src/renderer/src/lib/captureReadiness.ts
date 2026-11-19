@@ -217,3 +217,12 @@ export function primaryCaptureAction(source: {
   if (source.enabled === false) return 'enable'
   return 'none'
 }
+
+export function captureErrorText(
+  error: Pick<NonNullable<CaptureSourceInfo['lastError']>, 'message' | 'sidecarSessionId'>,
+  t: (key: string, vars?: Record<string, string | number>) => string
+): string {
+  return error.sidecarSessionId === undefined
+    ? error.message
+    : t('capture.sidecarAclError', { sessionId: error.sidecarSessionId })
+}

@@ -1,6 +1,7 @@
 import { Button } from '../Button'
 import { PluginSampleTester } from './PluginSampleTester'
 import { PluginIcon, TONE_DOT, KIND_LABEL } from './PluginRow'
+import { captureErrorText } from '../../lib/captureReadiness'
 import { formatDateTime } from '../../lib/time'
 import { effectGroups, pluginKind, pluginTone, type OfficialHealth, type OfficialProjectLevel, type PluginView, type PluginViewModel } from '../../lib/pluginViewModel'
 
@@ -54,7 +55,7 @@ function ContributionResults({ p, t }: { p: PluginView; t: T }): JSX.Element | n
 function HealthLine({ health, t, id }: { health: OfficialHealth; t: T; id: string }): JSX.Element {
   const testId = `plugin-health-${id}`
   switch (health.kind) {
-    case 'error': return <p role="alert" data-testid={testId} className="text-red-400 break-words">{t('plugins.healthAxis.error')}: {health.message}</p>
+    case 'error': return <p role="alert" data-testid={testId} className="text-red-400 break-words">{t('plugins.healthAxis.error')}: {captureErrorText(health, t)}</p>
     case 'received': return <p data-testid={testId}>{t('settings.source.lastReceived', { when: formatDateTime(health.at) })}</p>
     case 'waiting': return <p data-testid={testId} className="text-redlog-text-dim">{t('settings.source.neverReceived')}</p>
     case 'inactive': return <p data-testid={testId} className="text-redlog-text-dim">{t('plugins.healthAxis.inactive')}</p>

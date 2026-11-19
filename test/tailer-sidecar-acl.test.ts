@@ -7,6 +7,7 @@ import { _replaceIcaclsForTests } from '../src/core/fs-acl'
 import { claudeCodeAdapter } from '../optional-plugins/claude-code/adapter'
 import { registerAdapter, configureHost, registerSession, catchUpSession, stopHost, _sessionsForTest } from '../src/main/services/tailer-host'
 import { getCaptureError, clearCaptureError } from '../src/core/capture-health'
+import { queryEvents } from '../src/core/db/events'
 import { initDB, closeDB } from '../src/core/db/index'
 import { createOperator, generateToken } from '../src/core/db/operators'
 
@@ -59,7 +60,8 @@ afterEach(() => {
   if (realUser === undefined) delete process.env.USERNAME
   else process.env.USERNAME = realUser
   stopHost()
-  clearCaptureError('agent-claude-code')
+  vi.useRealTimers()
+  for (const sid of [SID_A, SID_B]) clearCaptureError('agent-claude-code', path.join(sidecarDir, `claude-code-${sid}.jsonl`))
   try { closeDB() } catch { /* ignore */ }
   fs.rmSync(scratch, { recursive: true, force: true })
 })
@@ -165,23 +167,115 @@ describe('new AI sidecar files', () => {
     expect(fs.readFileSync(sidecar, 'utf8')).toContain('third')
   })
 
-  it('leaves no conversation or advanced cursor on restriction failure and retries', () => {
+  function failSidecar(sid: string): string {
+    const sidecar = path.join(sidecarDir, `claude-code-${sid}.jsonl`)
+    acl.mockImplementation((target) => {
+      if (target === sidecar) throw new Error('icacls: access denied')
+    })
+    return sidecar
+  }
+
+  it('records the redacted event and reports which session has an empty raw sidecar', () => {
     setPlatform('win32')
     const file = source(SID_A)
+    fs.writeFileSync(file, turn('u1', 'export API_KEY=abcdef1234567890'))
+    const sidecar = failSidecar(SID_A)
+    registerSession('claude-code', file)
+
+    const event = queryEvents({ agentType: 'agent', limit: 20 })
+      .find(({ data }) => data.session_id === SID_A && data.subtype === 'user_message')
+    expect(event?.data.full).toEqual(expect.stringContaining('[REDACTED]'))
+    expect(JSON.stringify(event)).not.toContain('abcdef1234567890')
+    expect(fs.readFileSync(sidecar, 'utf8')).toBe('')
+    expect(_sessionsForTest().get(`claude-code:${SID_A}`)?.sourceOffset).toBe(0)
+    expect(getCaptureError('agent-claude-code')).toMatchObject({ message: expect.stringContaining(SID_A) })
+  })
+
+  it('keeps the failed session visible after another session of the same kind succeeds', () => {
+    setPlatform('win32')
+    vi.useFakeTimers()
+    const sidecar = failSidecar(SID_A)
+    registerSession('claude-code', source(SID_A))
+    expect(getCaptureError('agent-claude-code')).toBeDefined()
+
+    vi.advanceTimersByTime(100)
+    registerSession('claude-code', source(SID_B))
+    const other = _sessionsForTest().get(`claude-code:${SID_B}`)!.sidecarPath
+    expect(fs.readFileSync(other, 'utf8')).toContain('SECRET-CONVERSATION')
+    expect(fs.readFileSync(sidecar, 'utf8')).toBe('')
+    expect(getCaptureError('agent-claude-code')).toMatchObject({ message: expect.stringContaining(SID_A) })
+
+    acl.mockImplementation(() => {})
+    vi.advanceTimersByTime(900)
+    expect(fs.readFileSync(sidecar, 'utf8')).toContain('SECRET-CONVERSATION')
+    expect(getCaptureError('agent-claude-code')).toBeUndefined()
+  })
+
+  it('keeps each failed session until its own sidecar is written', () => {
+    setPlatform('win32')
+    vi.useFakeTimers()
+    const fileA = source(SID_A)
+    const fileB = source(SID_B)
     acl.mockImplementation((target) => {
       if (target.endsWith('.jsonl')) throw new Error('icacls: access denied')
     })
-    registerSession('claude-code', file)
-    const session = _sessionsForTest().get(`claude-code:${SID_A}`)!
-    expect(acl.mock.calls.shift()).toEqual([sidecarDir])
-    expect(fs.readFileSync(session.sidecarPath, 'utf8')).toBe('')
-    expect(session.sourceOffset).toBe(0)
-    expect(getCaptureError('agent-claude-code')?.message).toContain('icacls: access denied')
-    acl.mockImplementation(() => {})
-    catchUpSession('claude-code', SID_A)
-    expect(acl).toHaveBeenCalledTimes(2)
-    expect(fs.readFileSync(session.sidecarPath, 'utf8')).toContain('SECRET-CONVERSATION')
+    registerSession('claude-code', fileA)
+    registerSession('claude-code', fileB)
+    expect(getCaptureError('agent-claude-code')).toMatchObject({ message: expect.stringContaining(SID_A) })
+
+    const sidecarB = failSidecar(SID_B)
+    vi.advanceTimersByTime(1000)
+    expect(getCaptureError('agent-claude-code')).toMatchObject({ message: expect.stringContaining(SID_B) })
+    expect(fs.readFileSync(sidecarB, 'utf8')).toBe('')
+
+    acl.mockReset()
+    vi.advanceTimersByTime(2000)
+    expect(fs.readFileSync(sidecarB, 'utf8')).toContain('SECRET-CONVERSATION')
     expect(getCaptureError('agent-claude-code')).toBeUndefined()
+  })
+
+  it('keeps the error visible after the retry budget and the capture error TTL pass', () => {
+    setPlatform('win32')
+    vi.useFakeTimers()
+    const sidecar = failSidecar(SID_A)
+    registerSession('claude-code', source(SID_A))
+
+    vi.advanceTimersByTime(31_000)
+    expect(acl.mock.calls.filter(([target]) => target === sidecar)).toHaveLength(6)
+    vi.advanceTimersByTime(11 * 60_000)
+    expect(acl.mock.calls.filter(([target]) => target === sidecar)).toHaveLength(6)
+    expect(fs.readFileSync(sidecar, 'utf8')).toBe('')
+    expect(getCaptureError('agent-claude-code')).toBeDefined()
+  })
+
+  it('bounds sidecar ACL attempts during file changes and after automatic retries stop', () => {
+    setPlatform('win32')
+    vi.useFakeTimers()
+    const file = source(SID_A)
+    const sidecar = failSidecar(SID_A)
+    registerSession('claude-code', file)
+    const attempts = () => acl.mock.calls.filter(([target]) => target === sidecar).length
+    const changes = () => {
+      for (let i = 0; i < 6; i++) {
+        fs.appendFileSync(file, turn(`u${fs.statSync(file).size}`, 'more'))
+        catchUpSession('claude-code', SID_A)
+      }
+    }
+
+    for (const [index, delay] of [1000, 2000, 4000, 8000, 16_000].entries()) {
+      vi.advanceTimersByTime(delay - 1)
+      changes()
+      expect(attempts(), 'file changes cannot accelerate the retry').toBe(index + 1)
+      vi.advanceTimersByTime(1)
+      expect(attempts()).toBe(index + 2)
+    }
+    vi.advanceTimersByTime(15_999)
+    changes()
+    expect(attempts()).toBe(6)
+    vi.advanceTimersByTime(1)
+    changes()
+    expect(attempts()).toBe(7)
+    expect(fs.readFileSync(sidecar, 'utf8')).toBe('')
   })
 
   it('creates owner-only POSIX files', { skip: process.platform === 'win32' }, () => {

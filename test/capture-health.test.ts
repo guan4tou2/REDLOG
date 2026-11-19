@@ -436,6 +436,35 @@ describeDB('capture-health', () => {
     expect(h.hasRecorded).toBe(false)
   })
 
+  it('keeps an agent row in error when a newer event lands but its sidecar still has unwritten content', async () => {
+    vi.spyOn(os, 'homedir').mockReturnValue(tmp)
+    const { createOfficialAgentPluginManager } = await import('../src/core/plugins/official-agents')
+    const { noteCaptureError, clearCaptureError } = await import('../src/core/capture-health')
+    const manager = createOfficialAgentPluginManager(path.join(tmp, '.redlog', 'plugins'))
+    manager.install('codex')
+    fs.mkdirSync(path.join(tmp, '.codex', 'sessions'), { recursive: true })
+    const receipt = manager.list().find(p => p.agentKind === 'codex')!.installationId
+    vi.spyOn(pluginsIndex, 'listPlugins').mockReturnValue([{ manifest: { id: 'official-ai-codex' }, status: 'active' }] as never)
+    configureCaptureHealth({ agentTailer: { sources: { codex: { enabled: true, installationId: receipt, workPaths: [tmp], startedAt: 1000 } } } })
+    const row = () => getCaptureHealth().sources.find(s => s.id === 'agent-codex')
+    const sidecar = { path: path.join(tmp, 'agent-transcripts', 'codex-blocked.jsonl'), sessionId: 'blocked' }
+    try {
+      const at = Date.now()
+      const clock = vi.spyOn(Date, 'now').mockReturnValue(at - 10_000)
+      noteCaptureError('agent-codex', new Error('sidecar ACL failed'), sidecar)
+      clock.mockReturnValue(at)
+      ins('agent', { agent: 'codex', subtype: 'user_message', session_id: 'other' })
+      expect(row()?.lastEventAt).toBeGreaterThan(at - 10_000)
+      expect(row()?.state).toBe('error')
+      expect(row()?.lastError?.sidecarSessionId).toBe('blocked')
+
+      clearCaptureError('agent-codex', sidecar.path)
+      expect(row()?.state).toBe('ready')
+    } finally {
+      clearCaptureError('agent-codex', sidecar.path)
+    }
+  })
+
   // v0.9.7: the `claude-code` row is gone. That hook was retired in v0.7.3 —
   // the script is a no-op stub, its detectHooks() entry is commented out —
   // so the row could never report `installed` and rendered as a permanent

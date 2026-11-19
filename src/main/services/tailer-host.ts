@@ -293,6 +293,9 @@ interface SessionState {
   idleTimer: NodeJS.Timeout | null
   retryTimer: NodeJS.Timeout | null
   retryAttempt: number
+  /** Set while the ACL is failing: zero with a scheduled retry, or the
+   *  earliest event-driven retry (monotonic time) after the budget is spent. */
+  sidecarAclRetryAt?: number
   lastSnapshotBytes: number
   bytesAppendedSinceSnapshot: number
   driftAdvisoryFired: Set<string>
@@ -384,6 +387,7 @@ function restoreBoundary(): void {
 const COALESCE_MS = 50
 const RETRY_BASE_MS = 1000
 const RETRY_LIMIT = 5
+const RETRY_MAX_MS = RETRY_BASE_MS * 2 ** (RETRY_LIMIT - 1)
 
 /** A failed pass is read again on the next file event or restart. The last
  *  turn of a session gets neither, so a few backed-off passes cover it; after
@@ -392,6 +396,10 @@ function scheduleRetry(s: SessionState): void {
   if (s.retryTimer || s.retryAttempt >= RETRY_LIMIT) return
   s.retryTimer = setTimeout(() => { s.retryTimer = null; catchUpSession(s.agentKind, s.sessionId) }, RETRY_BASE_MS * 2 ** s.retryAttempt++)
   s.retryTimer.unref?.()
+}
+
+function sidecarAclBackoff(s: SessionState): boolean {
+  return s.sidecarAclRetryAt !== undefined && (s.retryTimer !== null || performance.now() < s.sidecarAclRetryAt)
 }
 
 function coalescedCatchUp(agentKind: string, sid: string): void {
@@ -1019,12 +1027,31 @@ function reportGap(s: SessionState): void {
   s.pauseSkippedBytes = 0; s.pauseSkippedLines = 0; s.pauseStartedAt = null
 }
 
-function appendAndCommit(s: SessionState, bytes: Buffer, offset: number): void {
+function appendAndCommit(s: SessionState, bytes: Buffer, offset: number): boolean {
   const before = fs.existsSync(s.sidecarPath) ? fs.statSync(s.sidecarPath).size : 0
-  // Create without content before applying the Windows ACL. The memo checks
-  // file identity, so a replaced sidecar is restricted again, not each append.
+  // processUnit may already have saved a redacted event. Create the sidecar
+  // empty and apply its Windows ACL before appending raw bytes. A failed
+  // restriction leaves the raw write and source checkpoint uncommitted.
+  // The ACL memo also checks the file identity so replacements are restricted.
   if (!fs.existsSync(s.sidecarPath)) fs.closeSync(fs.openSync(s.sidecarPath, 'a', 0o600))
-  restrictToOwnerOnce(s.sidecarPath)
+  try {
+    restrictToOwnerOnce(s.sidecarPath)
+  } catch (e) {
+    const message = `Raw conversation for session ${s.sessionId} is not being saved. Check Windows permissions on the project's agent-transcripts folder and files, then restart RedLog to retry.`
+    noteCaptureError(`agent-${s.agentKind}`, message, { path: s.sidecarPath, sessionId: s.sessionId })
+    console.warn('[tailer-host] Could not restrict sidecar', s.sidecarPath, String(e))
+    if (s.retryTimer) {
+      // A previously scheduled retry may be due sooner than the ACL backoff.
+      clearTimeout(s.retryTimer)
+      s.retryTimer = null
+      s.retryAttempt = Math.max(0, s.retryAttempt - 1)
+    }
+    scheduleRetry(s)
+    // Once automatic retries are spent, source changes can retry at the
+    // slowest interval without starting another automatic retry loop.
+    s.sidecarAclRetryAt = s.retryTimer ? 0 : performance.now() + RETRY_MAX_MS
+    return false
+  }
   try {
     fs.appendFileSync(s.sidecarPath, bytes, { mode: 0o600 })
     checkpoint(s, offset, before + bytes.length)
@@ -1036,7 +1063,9 @@ function appendAndCommit(s: SessionState, bytes: Buffer, offset: number): void {
   s.sourceOffset = offset
   s.runningHash.update(bytes)
   s.bytesAppendedSinceSnapshot += bytes.length
-  clearCaptureError(`agent-${s.agentKind}`)
+  s.sidecarAclRetryAt = undefined
+  clearCaptureError(`agent-${s.agentKind}`, s.sidecarPath)
+  return true
 }
 
 function catchUpJsonl(s: SessionState): void {
@@ -1048,6 +1077,7 @@ function catchUpJsonl(s: SessionState): void {
       if (eventBus.paused) return
       s.checkpointPaused = false; checkpoint(s)
     }
+    if (sidecarAclBackoff(s)) return
     const sourceSize = fs.statSync(s.sourcePath).size
     if (s.adapter.detectReset?.(s.sourceOffset, sourceSize) ?? (sourceSize < s.sourceOffset)) {
       const size = fs.existsSync(s.sidecarPath) ? fs.statSync(s.sidecarPath).size : 0
@@ -1087,7 +1117,7 @@ function catchUpJsonl(s: SessionState): void {
       if (line.trim()) processUnit(s, line.replace(/\r$/, ''), s.sourcePath)
       s.unitSidecarOffset += Buffer.byteLength(line + '\n')
     }
-    appendAndCommit(s, complete, s.sourceOffset + complete.length)
+    if (!appendAndCommit(s, complete, s.sourceOffset + complete.length)) return
     s.linesSeen += complete.toString('utf8').split('\n').filter(line => line.trim()).length
     scheduleIdleSnapshot(s)
     s.retryAttempt = 0
@@ -1098,6 +1128,7 @@ function catchUpJsonl(s: SessionState): void {
 function catchUpPerMessageDir(s: SessionState): void {
   if (!cfg.enabled || sessions.get(sessionKey(s.agentKind, s.sessionId)) !== s) return
   try {
+    if (sidecarAclBackoff(s)) return
     const units = fs.readdirSync(s.sourcePath).filter(name => name.endsWith('.json')).map(name => ({ name, full: path.join(s.sourcePath, name) }))
       .map(p => ({ ...p, stat: fs.statSync(p.full) })).filter(p => p.stat.isFile() && p.stat.mtimeMs >= (activationFor(s.agentKind, s.sessionId) ?? 0))
       .sort((a, b) => a.stat.mtimeMs - b.stat.mtimeMs || compareCodeUnits(a.name, b.name))
@@ -1105,7 +1136,7 @@ function catchUpPerMessageDir(s: SessionState): void {
       if (s.redlogIdByUuid.get(p.name) === '__paused__') continue
       if (eventBus.paused || s.checkpointPaused || (resumeBoundary > 0 && p.stat.mtimeMs < resumeBoundary + 1)) {
         // Names only, no message/part content. Persist exclusions across restart.
-        appendAndCommit(s, Buffer.from('!pause:' + p.name + '\n'), s.sourceOffset)
+        if (!appendAndCommit(s, Buffer.from('!pause:' + p.name + '\n'), s.sourceOffset)) return
         s.redlogIdByUuid.set(p.name, '__paused__'); s.pauseSkippedLines++; s.pauseStartedAt ??= Date.now()
         continue
       }
@@ -1113,7 +1144,7 @@ function catchUpPerMessageDir(s: SessionState): void {
       if (s.completedFiles.get(p.name) === fingerprint) continue
       reportGap(s)
       processUnit(s, fs.readFileSync(p.full, 'utf8'), p.full)
-      if (!s.redlogIdByUuid.has(p.name)) appendAndCommit(s, Buffer.from(p.name + '\n'), s.sourceOffset)
+      if (!s.redlogIdByUuid.has(p.name) && !appendAndCommit(s, Buffer.from(p.name + '\n'), s.sourceOffset)) return
       s.redlogIdByUuid.set(p.name, '__seen__'); s.completedFiles.set(p.name, fingerprint); s.linesSeen++
     }
     if (!eventBus.paused && s.checkpointPaused) { s.checkpointPaused = false; checkpoint(s) }

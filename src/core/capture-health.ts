@@ -43,6 +43,12 @@ import { eventBus } from './event-bus'
 // cannot tell a broken hook from a coffee break.
 export type SourceState = 'ready' | 'unset' | 'off' | 'error'
 
+interface CaptureError {
+  at: number
+  message: string
+  sidecarSessionId?: string
+}
+
 export interface CaptureSource {
   id: string
   /** installed / available where that's knowable (hooks), else undefined */
@@ -61,10 +67,9 @@ export interface CaptureSource {
   /** ms epoch of the most recent event attributable to this source, or null */
   lastEventAt: number | null
   state: SourceState
-  /** Most recent capture failure from this source, while it is still live
-   *  (`CAPTURE_ERROR_TTL_MS`). Set by `noteCaptureError`; drives `state:
-   *  'error'` and gives the panel something to say beyond the colour. */
-  lastError?: { at: number; message: string }
+  /** Live source failure. An unresolved sidecar takes precedence over
+   *  transient source failures. */
+  lastError?: CaptureError
   /** E3: a plugin-contributed capture producer, enumerated from the registry
    *  rather than the hardcoded core list. Informational sources are DISPLAY
    *  ONLY — they are appended after the verdict is computed and never feed
@@ -261,30 +266,75 @@ export function notePipelineWarning(source: string, err: unknown): void {
 // that way teaches the operator to ignore the one signal that must never be
 // ignored. It tips the owning source to `error` and the verdict to `partial`.
 const CAPTURE_ERROR_TTL_MS = 10 * 60 * 1000
-const _captureErrors = new Map<string, { at: number; message: string }>()
+const _captureErrors = new Map<string, {
+  transient?: CaptureError
+  // Project directory → sidecar path. An unresolved sidecar belongs to
+  // that project even if the tailer unregisters the session or restarts.
+  sidecars?: Map<string, Map<string, CaptureError>>
+}>()
 
-export function noteCaptureError(sourceId: string, err: unknown): void {
+export function noteCaptureError(sourceId: string, err: unknown, sidecar?: { path: string; sessionId: string }): void {
   const msg = err instanceof Error ? err.message : String(err ?? '')
-  _captureErrors.set(sourceId, { at: Date.now(), message: msg.slice(0, 200) })
+  const error = { at: Date.now(), message: msg.slice(0, 200) }
+  const source = _captureErrors.get(sourceId) ?? {}
+  if (sidecar) {
+    const projectDir = getProjectDir()
+    const sidecars = source.sidecars ??= new Map()
+    let pending = sidecars.get(projectDir)
+    if (!pending) {
+      pending = new Map()
+      sidecars.set(projectDir, pending)
+    }
+    if (!pending.has(sidecar.path)) pending.set(sidecar.path, { ...error, sidecarSessionId: sidecar.sessionId })
+  } else {
+    source.transient = error
+  }
+  _captureErrors.set(sourceId, source)
   healthCache = null
 }
 
 /** The live failure for one source, for callers that need to say WHY right
  *  now rather than wait for the next health read. */
-export function getCaptureError(sourceId: string): { at: number; message: string } | undefined {
+export function getCaptureError(sourceId: string): CaptureError | undefined {
   return getLiveCaptureError(sourceId, Date.now())
 }
 
-/** Called when a source captures successfully again, so the row recovers
- *  without waiting out the TTL. */
-export function clearCaptureError(sourceId: string): void {
-  if (_captureErrors.delete(sourceId)) healthCache = null
+/** A source recovery clears its transient error. A committed sidecar can
+ *  also resolve that sidecar's pending error. */
+export function clearCaptureError(sourceId: string, sidecarPath?: string): void {
+  const source = _captureErrors.get(sourceId)
+  if (!source) return
+  if (sidecarPath && source.sidecars?.size) {
+    const projectDir = getProjectDir()
+    const pending = source.sidecars.get(projectDir)
+    if (pending?.delete(sidecarPath)) {
+      if (!pending.size) source.sidecars.delete(projectDir)
+      healthCache = null
+    }
+  }
+  if (source.transient) {
+    delete source.transient
+    healthCache = null
+  }
+  if (!source.sidecars?.size) _captureErrors.delete(sourceId)
 }
 
-function getLiveCaptureError(sourceId: string, now: number): { at: number; message: string } | undefined {
-  const e = _captureErrors.get(sourceId)
+function getLiveCaptureError(sourceId: string, now: number): CaptureError | undefined {
+  const source = _captureErrors.get(sourceId)
+  if (!source) return undefined
+  if (source.sidecars?.size) {
+    // Show the oldest unresolved sidecar on the existing source row.
+    let projectDir: string | undefined
+    try { projectDir = getProjectDir() } catch { /* no open project */ }
+    const oldest = projectDir === undefined ? undefined : source.sidecars.get(projectDir)?.values().next().value
+    if (oldest) return oldest
+  }
+  const e = source.transient
   if (!e) return undefined
-  if (now - e.at > CAPTURE_ERROR_TTL_MS) { _captureErrors.delete(sourceId); return undefined }
+  if (now - e.at > CAPTURE_ERROR_TTL_MS) {
+    clearCaptureError(sourceId)
+    return undefined
+  }
   return e
 }
 
@@ -658,11 +708,9 @@ function computeCaptureHealth(now: number): CaptureHealth {
         : undefined)
     const lastError = getLiveCaptureError(id, now)
     const state = stateFrom(opts.alwaysPresent ? undefined : opts.installed, last, enabled)
-    // An event that landed AFTER the failure says the source recovered. This
-    // used to be "the source is active" — fed within ten minutes — which
-    // cleared a failure that was still live whenever some older event fell
-    // inside the window, and reinstated it when the window moved on.
-    const recovered = lastError !== undefined && last !== null && last > lastError.at
+    // A later event can resolve a transient source failure. A raw sidecar
+    // failure can coexist with later events until that sidecar is saved.
+    const recovered = lastError !== undefined && lastError.sidecarSessionId === undefined && last !== null && last > lastError.at
     return {
       id,
       installed: opts.installed,

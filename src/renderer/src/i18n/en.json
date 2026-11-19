@@ -822,6 +822,7 @@
   "timeline.command.unfinished": "running or status unknown",
   "timeline.command.unfinishedHint": "No end of this command is recorded in the loaded events. It may still be running, may have been interrupted, or may have ended outside this view. It is not recorded as failed.",
   "capture.agentClaudeCode": "Claude Code",
+  "capture.sidecarAclError": "Raw conversation for session {{sessionId}} is not being saved. Check Windows permissions on the project's agent-transcripts folder and files, then restart RedLog to retry.",
   "capture.agentCodex": "Codex CLI",
   "capture.screenshot": "Screenshots",
   "capture.state.off": "off",

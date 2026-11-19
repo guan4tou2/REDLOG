@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Button } from './Button'
 import { SectionLabel } from './SectionLabel'
-import { computeCaptureReadiness, primaryCaptureAction, type CaptureAction } from '../lib/captureReadiness'
+import { captureErrorText, computeCaptureReadiness, primaryCaptureAction, type CaptureAction } from '../lib/captureReadiness'
 import { httpCaptureState, proxyErrorText, type HttpCaptureState } from '../lib/httpCaptureState'
 import { useI18n } from '../i18n'
 import { toast } from './Toast'
@@ -534,7 +534,7 @@ export function CaptureHealthCard({ capture, unknown, projectId, onNavigate, onR
                 act on a red dot alone. */}
             {detail && missing
               ? <span data-testid={`capture-prereq-${s.id}`} className="block text-red-400">{prerequisiteText(missing, t)}</span>
-              : detail && s.lastError && <span className="block text-red-400" title={s.lastError.message}>{s.lastError.message}</span>}
+              : detail && s.lastError && <span className="block text-red-400" title={captureErrorText(s.lastError, t)}>{captureErrorText(s.lastError, t)}</span>}
             {s.unrecordedActivityAt != null && (manage || note) && (
               <span data-testid={`capture-unrecorded-${s.id}`} className="block text-redlog-text-dim">{t('capture.unrecordedActivity')}</span>
             )}

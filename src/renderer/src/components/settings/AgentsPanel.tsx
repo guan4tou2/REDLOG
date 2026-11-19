@@ -3,6 +3,7 @@ import { Button, FIELD_FOCUS_RING } from '../Button'
 import { FieldGroup, type ConfigState } from './SettingsShared'
 import { SourceLastSeen } from './SourceLastSeen'
 import { CheckRow } from './CheckRow'
+import { captureErrorText } from '../../lib/captureReadiness'
 import { useCaptureHealth } from '../../lib/useCaptureHealth'
 import { landOnSourceRow, SOURCE_ROW } from '../../lib/sourceRow'
 import type { OfficialAgentPlugin } from '../../../../core/plugins/official-agents'
@@ -142,7 +143,7 @@ function AgentRow({ item, source, active, config, setConfig, t, onOpenPlugins, f
       /> : <Button level="secondary" type="button" data-testid={`agent-manage-${item.agentKind}`} disabled={!onOpenPlugins} onClick={() => onOpenPlugins?.(item.pluginId)}>{t(MANAGE_KEY[item.state === 'installed' ? 'inactive' : item.state])}</Button>}
     </div>
     {(item.state === 'conflict' || item.state === 'error') && <p role="alert" className="text-xs text-red-400 break-words">{item.error}</p>}
-    {health?.lastError && <p role="alert" className="text-xs text-red-400 break-words">{health.lastError.message}</p>}
+    {health?.lastError && <p role="alert" className="text-xs text-red-400 break-words">{captureErrorText(health.lastError, t)}</p>}
     {item.state === 'installed' && <>
       {scopeChanged && <p role="status" data-testid={`agent-scope-changed-${item.agentKind}`} className="text-xs text-amber-400">{t('settings.agents.scopeChanged')}</p>}
       <div className="space-y-2">

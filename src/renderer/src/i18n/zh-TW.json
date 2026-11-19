@@ -822,6 +822,7 @@
   "timeline.command.unfinished": "執行中／狀態未知",
   "timeline.command.unfinishedHint": "已載入的事件裡找不到這個指令的結束紀錄。它可能仍在執行、已被中斷，或已在目前範圍之外結束，並未記錄為失敗。",
   "capture.agentClaudeCode": "Claude Code",
+  "capture.sidecarAclError": "工作階段 {{sessionId}} 的原始對話未儲存。請檢查專案中 agent-transcripts 資料夾與檔案的 Windows 權限，再重新啟動 RedLog 重試。",
   "capture.agentCodex": "Codex CLI",
   "capture.screenshot": "螢幕截圖",
   "capture.state.off": "已關閉",
