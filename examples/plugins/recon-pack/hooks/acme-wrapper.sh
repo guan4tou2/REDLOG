@@ -14,7 +14,7 @@ _redlog_send() {
     -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' \
     -d "$(python3 - "$@" <<'PY'
 import json, sys
-print(json.dumps({"agent_type": "acme_scan", "data": {"subtype": "invoke", "command": " ".join(sys.argv[1:])}}))
+print(json.dumps({"agent_type": "scanner", "data": {"subtype": "acme_scan", "command": " ".join(sys.argv[1:])}}))
 PY
 )" >/dev/null 2>&1 || true
 }

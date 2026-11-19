@@ -1,8 +1,8 @@
 # RedLog Plugin Development
 
 RedLog is extensible through **plugins** — directories with a `plugin.json`
-manifest that add capture integrations, detection rules, event types, and (when
-you trust them) agent-operable tools. This guide covers the manifest format,
+manifest that add capture integrations, detection rules, event types, and
+bundled transcript tailers. Agent-operable plugin tools have been removed. This guide covers the manifest format,
 every contribution type, the code contract for privileged plugins, and the
 trust/security model that keeps an audit tool from running code it shouldn't.
 
@@ -51,7 +51,7 @@ my-plugin/
   hooks/
     capture.sh          # 🟢 capture script (optional)
   code/
-    tools.js            # 🔴 CommonJS module (optional)
+    tailer.js           # 🔴 bundled-only tailer module (optional)
 ```
 
 Plugins are discovered from two roots:
@@ -278,7 +278,7 @@ started: the class list says so, and that command is recorded as metadata only
 ]
 ```
 
-Capture entries appear in **Settings ▸ Hooks** alongside the built-ins, with the
+Capture entries appear in **Settings ▸ Other capture sources** alongside the built-ins, with the
 same one-click install (`shell-source`/`claude-settings`) or guided steps
 (`manual`). An entry that RedLog installs (anything but `manual`) is not offered
 until you approve the plugin in Settings ▸ Plugins, at its current content: the
@@ -377,11 +377,10 @@ Read the current shell adapter and wrapper patterns:
 
 ##### Testing your plugin
 
-1. Drop the plugin dir under `~/.redlog/plugins/` or your project's
-   `.redlog/plugins/`.
+1. Drop the plugin dir under `~/.redlog/plugins/`.
 2. Restart RedLog (or click **Reload** in Settings ▸ Plugins).
 3. The plugin should appear in Settings ▸ Plugins as 🟢 declarative and in
-   Settings ▸ Hooks as an installable capture.
+   Settings ▸ Other capture sources as an installable capture.
 4. Run your tool against a disposable local fixture and fire its configured hook.
 5. Verify the events land via CLI or timeline:
    ```bash
@@ -456,7 +455,7 @@ To try the examples:
 
 ```bash
 cp -r examples/plugins/recon-pack ~/.redlog/plugins/
-cp -r examples/plugins/geoip-tool ~/.redlog/plugins/
+# The former geoip-tool example has been removed.
 ```
 
 ---

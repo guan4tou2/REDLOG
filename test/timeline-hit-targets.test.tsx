@@ -10,7 +10,7 @@
 // its text — line height plus padding. That is an estimate, which is why this
 // is a ratchet on a count rather than a measurement.
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import TimelinePanel from '../src/renderer/src/components/Timeline'
 import { FilterProvider } from '../src/renderer/src/lib/FilterContext'
 import { I18nProvider } from '../src/renderer/src/i18n'
@@ -137,5 +137,32 @@ describe('Timeline hit areas with an event selected', () => {
     expect(smallText(container)).toEqual([])
     const under = undersized(container)
     expect(under.length, under.join('\n')).toBeLessThanOrEqual(UNDERSIZED_BASELINE)
+  })
+})
+
+
+describe('command interval hit targets (FR-055)', () => {
+  it('span, point and count are buttons with at least 27 CSS px on both axes', async () => {
+    const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(2000)
+    const b = installTimelineBridge({ timelineMode: 'standard' })
+    localStorage.clear()
+    const rows = [[0, 120_000], [240_000, 240_001], [360_000, 360_001], [360_000, 360_001]].flatMap(([start, end], i) => {
+      const data = { terminalId: 't', command_id: String(i), command: `cmd ${i}`, shell: 'zsh' }
+      return [makeEvent(`s${i}`, T0 + start, 'shell', { data: { ...data, subtype: 'command_start' } }),
+        makeEvent(`e${i}`, T0 + end, 'shell', { data: { ...data, subtype: 'command_end', exit_code: 0 } })]
+    })
+    b.queryPage.mockResolvedValue(page(rows))
+    render(<I18nProvider><FilterProvider><TimelinePanel /></FilterProvider></I18nProvider>)
+    await waitFor(() => expect(document.querySelectorAll('[data-testid="timeline-interval-mark"]')).toHaveLength(3))
+    const marks = [...document.querySelectorAll<HTMLElement>('[data-timeline-interval]')]
+    expect(marks.map(m => m.dataset.markKind)).toEqual(['span', 'point', 'cluster'])
+    for (const m of marks) {
+      expect(m.tagName).toBe('BUTTON')
+      expect(parseFloat(m.style.width)).toBeGreaterThanOrEqual(27)
+      expect(parseFloat(m.style.height)).toBeGreaterThanOrEqual(27)
+      expect(m.querySelector('[data-timeline-mark]')).not.toBeNull()
+      expect(m.getAttribute('aria-label')).toBe(m.title)
+    }
+    width.mockRestore()
   })
 })
