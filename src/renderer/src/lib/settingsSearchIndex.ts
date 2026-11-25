@@ -7,6 +7,8 @@ import type { SettingsPage } from '../components/Settings'
 export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
   hooks: [
     'settings.terminalMode',
+    'settings.hookRetiredRemoveFailed',
+    'settings.hookFailedWhy',
     'settings.shellInstalled',
     'settings.hookManual',
     'settings.hookNotFound',
@@ -16,6 +18,8 @@ export const SETTINGS_SEARCH_KEYS: Record<SettingsPage, readonly string[]> = {
     'settings.hookHideSetup',
     'settings.hookOptionalSteps',
     'settings.hookShowSetup',
+    'settings.hookRetiredLine',
+    'settings.hookRetiredRemove',
     'settings.hookManualNote',
     'settings.hooksBuiltin',
     'settings.terminalApp',

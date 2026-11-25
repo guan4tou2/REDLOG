@@ -285,7 +285,8 @@ const api: RedLogAPI = {
     terminalPolicy: () => ipcRenderer.invoke('hooks:terminalPolicy'),
     setTerminalApp: (value: string) => ipcRenderer.invoke('hooks:setTerminalApp', value),
     install: (hookId: string) => ipcRenderer.invoke('hooks:install', hookId),
-    uninstall: (hookId: string) => ipcRenderer.invoke('hooks:uninstall', hookId)
+    uninstall: (hookId: string) => ipcRenderer.invoke('hooks:uninstall', hookId),
+    removeRetiredLines: (hookId: string) => ipcRenderer.invoke('hooks:removeRetiredLines', hookId)
   },
   tools: {
     detection: () => ipcRenderer.invoke('tools:detection'),

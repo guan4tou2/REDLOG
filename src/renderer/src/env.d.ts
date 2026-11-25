@@ -486,7 +486,8 @@ interface RedLogAPI {
      *  profiles it read, shipped first and then the plugins'. */
     terminalPolicy: () => Promise<{ mode: 'auto' | 'manual'; app: string; profiles: import('../../core/terminal-class').TerminalProfile[] } & import('../../core/terminal-class').CompiledClassPolicy>
     setTerminalApp: (value: string) => Promise<string>
-    /** Spec 036: back up the profile, drop the retired source line(s), install the current adapter. */
+    /** #879: take the block that loads a hook file RedLog no longer ships out of this shell's rc files. */
+    removeRetiredLines: (hookId: string) => Promise<{ success: boolean; message: string; changed: string[] }>
   }
   tools: {
     /** #499 PR B: what was found where, per environment. Reads reports and the last lookup; looks nothing up. */

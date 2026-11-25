@@ -9,6 +9,7 @@ import { isOnPath } from './command-lookup'
 import { isDisabled } from './plugins/state'
 import { stopOpenTerminals } from './hook-removal'
 import { readProfilePath } from './powershell-policy'
+import { rcWithoutRetiredHooks, retiredHookLineNumbers } from './retired-hook-lines'
 
 export type InstallMethod = 'claude-settings' | 'shell-source' | 'powershell-profile' | 'manual'
 
@@ -169,6 +170,9 @@ export interface PluginInfo {
   manualSteps?: ManualStep[]
   /** how to undo a source RedLog cannot uninstall itself */
   removalSteps?: ManualStep[]
+  /** Lines in this shell's rc files that load a hook file RedLog no longer
+   *  ships (#879): the file, and the 1-based line. Absent when there are none. */
+  retiredLines?: Array<{ file: string; line: number }>
   /** Contributed by a plugin the operator has switched off. */
   disabled?: boolean
   /** Shipped with RedLog, as opposed to contributed by an installed plugin.
@@ -643,6 +647,52 @@ function rcLayout(plugin: PluginManifest, home: string = homedir()): RcLayout {
 const tildePath = (p: string, home: string = homedir()): string =>
   p.startsWith(`${home}/`) ? `~${p.slice(home.length)}` : p
 
+/** Where bash's rc files still hold the block an earlier bash install wrote
+ *  (retired-hook-lines.ts). The built-in bash only: zsh's installed name never
+ *  changed, and a plugin's capture was never part of that install. Looked for
+ *  in every file a block of ours may be in. */
+function retiredLinesFor(plugin: PluginManifest): Array<{ file: string; line: number }> {
+  if (plugin.id !== 'shell-bash' || plugin.installMethod !== 'shell-source') return []
+  return rcLayout(plugin).candidates.flatMap((file) =>
+    retiredHookLineNumbers(readText(file) ?? '').map((line) => ({ file, line })))
+}
+
+/** Takes those blocks out. An rc left with nothing in it held only what
+ *  RedLog wrote, and goes too. Never throws: install and removal call this on
+ *  the way to their own work, and a file that cannot be written is theirs to
+ *  carry on past. It is returned in `failed`, and Settings goes on naming it. */
+function stripRetiredLines(plugin: PluginManifest): { changed: string[]; failed: string[] } {
+  const changed: string[] = []
+  const failed: string[] = []
+  for (const file of new Set(retiredLinesFor(plugin).map((r) => r.file))) {
+    try {
+      const after = rcWithoutRetiredHooks(readFileSync(file, 'utf-8'))
+      if (after === '') rmSync(file)
+      else writeFileSync(file, after)
+      changed.push(tildePath(file))
+    } catch {
+      failed.push(tildePath(file))
+    }
+  }
+  return { changed, failed }
+}
+
+/** Remove the retired bash block, and nothing else. Separate from install
+ *  because it has to work where install does not: a Windows machine with the
+ *  block in Git Bash's `.bashrc` is where this was found, and rc-file install
+ *  is refused there. `changed` names the files that were rewritten. */
+export function removeRetiredHookLines(pluginId: string): { success: boolean; message: string; changed: string[] } {
+  const plugin = PLUGIN_REGISTRY.find((p) => p.id === pluginId)
+  if (!plugin || plugin.id !== 'shell-bash') return { success: false, message: `No retired hook line is known for ${pluginId}`, changed: [] }
+  const { changed, failed } = stripRetiredLines(plugin)
+  if (failed.length > 0) return { success: false, message: `Could not write ${failed.join(', ')}`, changed }
+  return {
+    success: true,
+    message: changed.length > 0 ? `Retired RedLog hook line removed from ${changed.join(', ')}. New terminals will not load it.` : 'Already removed',
+    changed
+  }
+}
+
 // Per-command lookup cache. The answer virtually never changes during a
 // session; `invalidateCommandCache()` resets it after an install/uninstall so
 // the next `detectHooks()` re-probes.
@@ -912,6 +962,7 @@ function pluginInfo(plugin: PluginManifest, available: boolean, builtinIds: Set<
     ? (plugin.manualSteps ?? buildManualSteps(plugin.id, hookFile, available))
     : undefined
   const missing = available ? [] : missingCommands(plugin)
+  const retiredLines = retiredLinesFor(plugin)
   return {
     id: plugin.id,
     name: plugin.name,
@@ -927,6 +978,7 @@ function pluginInfo(plugin: PluginManifest, available: boolean, builtinIds: Set<
     hookFile,
     manualSteps,
     removalSteps: buildRemovalSteps(plugin.id, undefined, hookFile),
+    ...(retiredLines.length > 0 ? { retiredLines } : {}),
     builtin: builtinIds.has(plugin.id),
     /** Switched off in Settings ▸ 外掛. Still listed, because the producer
      *  runs outside RedLog and disabling does not stop it. */
@@ -1012,7 +1064,7 @@ export function removeInstalledHooks(): string[] {
     // The line is what has to go, so ask whether it is there — not whether
     // the copy it names still is (the operator may have cleared ~/.redlog).
     const sourced = plugin.installMethod === 'shell-source'
-      ? shellSourceState(plugin, false) !== 'absent'
+      ? shellSourceState(plugin, false) !== 'absent' || retiredLinesFor(plugin).length > 0
       : plugin.installMethod === 'powershell-profile'
         ? isPowershellProfileInstalled(installTargetFor(plugin), false)
         : false
@@ -1174,6 +1226,10 @@ export function installHook(pluginId: string): { success: boolean; message: stri
           if (!existsSync(file.source)) throw new Error(`Missing hook file: ${file.source}`)
           copyFileSync(file.source, file.target)
         }
+        // Before the layout is read: a login file that held only the retired
+        // block is gone after this, and the layout must pick the file bash
+        // reads once it is.
+        const retired = stripRetiredLines(plugin).changed
         const layout = rcLayout(plugin)
         for (const { path, block } of layout.writes) {
           const before = existsSync(path) ? readFileSync(path, 'utf-8') : ''
@@ -1185,6 +1241,7 @@ export function installHook(pluginId: string): { success: boolean; message: stri
           success: true,
           message: `${plugin.name} hook added to ${files.join(' and ')}. Open a new terminal, or run: source ${files[0]}`
             + (layout.guessed ? ' (zsh did not say where it reads .zshrc, so this is assumed)' : '')
+            + (retired.length > 0 ? ` A line loading a hook file RedLog no longer ships was removed from ${retired.join(', ')}.` : '')
         }
       } catch (e) {
         return { success: false, message: `Failed: ${e}` }
@@ -1275,6 +1332,11 @@ export function uninstallHook(pluginId: string): { success: boolean; message: st
             if (after === '') rmSync(rcPath, { force: true })
             else writeFileSync(rcPath, after)
           }
+        }
+        // A line from an install that predates the current filename is ours
+        // to take back as well.
+        for (const file of stripRetiredLines(plugin).changed) {
+          if (!removedFrom.includes(file)) removedFrom.push(file)
         }
         // The rc edit only reaches shells started from now on. Terminals that
         // are already open have the hook loaded; stop them too, or "removed"
