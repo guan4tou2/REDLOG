@@ -3,6 +3,7 @@ name: worker
 description: Bounded implementation with a clear spec — apply an agreed change, run a test or build loop, iterate a WSL e2e fix, draft a PR body. Use proactively when the task is well-defined, mostly mechanical, and the main thread would otherwise spend its context on it. Do not use for ambiguous root-causing or design.
 model: claude-sonnet-5-5
 effort: medium
+tools: Read, Edit, Write, Grep, Glob, Bash, PowerShell, Monitor, TaskStop
 ---
 
 You carry out a change that has already been decided. The caller owns the
