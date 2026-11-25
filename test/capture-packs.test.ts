@@ -127,8 +127,24 @@ const describeDB = dbAvailable ? describe : describe.skip
 
 describeDB('capture packs: health', () => {
   let dir: string
-  beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-packs-db-')); db.initDB(dir) })
-  afterEach(() => { vi.restoreAllMocks(); db.closeDB(); fs.rmSync(dir, { recursive: true, force: true }) })
+  let home: string
+  const prevHome = { u: process.env.USERPROFILE, h: process.env.HOME }
+  // The rows below say a source is not installed. That is only true on a machine
+  // with nothing enrolled, so read an empty home, not the developer's own.
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-packs-db-'))
+    home = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-packs-home-'))
+    process.env.USERPROFILE = home
+    process.env.HOME = home
+    db.initDB(dir)
+  })
+  afterEach(() => {
+    vi.restoreAllMocks(); db.closeDB()
+    for (const [k, v] of [['USERPROFILE', prevHome.u], ['HOME', prevHome.h]] as const) {
+      if (v === undefined) delete process.env[k]; else process.env[k] = v
+    }
+    fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(home, { recursive: true, force: true })
+  })
 
   const bundled = (id: string, status = 'active') => ({ manifest: { id }, source: 'bundled', status }) as never
   const allPacks = [bundled('pack-host-monitors'), bundled('pack-windows-output')]
