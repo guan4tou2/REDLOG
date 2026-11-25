@@ -117,7 +117,11 @@ describe('find in saved text', () => {
           expect(walk(s, needle, { window, budget }).matches, JSON.stringify({ s, needle, window, budget })).toEqual(expected)
       }
     }
-  })
+    // Its own budget: this is 1,500 seeded cases of pure CPU and nothing in it
+    // waits. On CI it took 2.5 s on macOS and 4.6 s on Linux, and on Windows
+    // 10.6 s, 13.9 s and then past the suite's 15 s on two branches at once,
+    // neither of which touches this code. A real hang still ends, just later.
+  }, 60_000)
 
   it('finds an 18-byte escaped needle at every alignment across a window and a budget boundary', () => {
     for (const [window, budget] of [[16, 1000], [64, 1000], [1000, 16], [1000, 23], [20, 20]]) {
