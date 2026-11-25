@@ -168,8 +168,9 @@ export class IPPolicy implements Policy {
 export interface ScopePolicyConfig {
   targets: string[]         // include list (globs / CIDRs / hosts)
   excludeTargets: string[]  // explicit deny — always the strongest rung
-  /** Which distances trigger a verdict emit. `in_scope` is always emitted
-   *  (adherence report needs the positive proof). The rest opt-in per
+  /** Which distances trigger a verdict emit. A judged `in_scope` is always
+   *  emitted (adherence report needs the positive proof); with no scope set
+   *  there is nothing to judge and nothing is emitted. The rest opt-in per
    *  operator preference (ea G-C1 — the surface layer's alertFloor). */
   alertFloor: ScopeDistance[]
 }
@@ -256,7 +257,13 @@ export class ScopePolicy implements Policy {
   evaluate(signal: Signal): Verdict[] {
     if (signal.kind !== 'target_hit') return []
     const verdict = this.classify(signal)
-    // in_scope always emits so AdherenceCounter can tally. Non-in-scope
+    // No boundary to judge against: "in scope" here is the classifier's
+    // default, not a finding, and writing it down would put one row with no
+    // basis next to every request and command. In a real project with no
+    // scope set that was 6,688 of 9,822 chained events (#883). An exclusion
+    // still judges, so an excluded hit in an exclude-only project is emitted.
+    if (verdict.distance === 'in_scope' && verdict.authority === 'unknown') return []
+    // A judged in_scope always emits so AdherenceCounter can tally. Non-in-scope
     // emits only if included in alertFloor.
     if (verdict.distance !== 'in_scope' && !isReportable(verdict.distance, this.cfg.alertFloor)) return []
     return [{ kind: 'scope', signal, ...verdict }]
