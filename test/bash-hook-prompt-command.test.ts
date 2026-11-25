@@ -4,6 +4,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { bashCanChainDebugTrap } from './helpers/bash-trap-chain'
+import { requires } from './helpers/requires'
 
 // The bash adapter recorded the operator's PROMPT_COMMAND instead of what they
 // typed, and dropped every real command behind it. Run a real interactive bash.
@@ -115,7 +116,10 @@ function runRc(rc: string[], commands: string[]): string {
   } finally { fs.rmSync(dir, { recursive: true, force: true }) }
 }
 
-describe.skipIf(process.platform === 'win32')('bash adapter with a prompt command that assigns PROMPT_COMMAND', () => {
+// An rc file sourced by an interactive bash, with POSIX paths in both: the
+// requirement is the platform's shell model, not a binary called `bash`, which
+// Git Bash also answers to on Windows.
+requires('posix-shell').describe('bash adapter with a prompt command that assigns PROMPT_COMMAND', () => {
   const typed = ['echo one', 'pwd', 'echo three']
   // Typed last, twice, so two prompts apart: what the prompt command is by then.
   const SHOW = 'echo "PC<${PROMPT_COMMAND[*]//[^a-z_ ]/}>" >&2'
@@ -161,8 +165,10 @@ describe.skipIf(process.platform === 'win32')('bash adapter with a prompt comman
   })
 
   // On an array the same assignment replaces element 0 alone, which is the
-  // hook's own, and leaves the element that made it.
-  it.skipIf(bashMajor < 5 || (bashMajor === 5 && bashMinor < 1))('does the same for an array, and the array does not grow', () => {
+  // hook's own, and leaves the element that made it. Skipped before 5.1 for
+  // the reason the array cases at the end of this file are: such a bash runs
+  // element 0 as a string, so there is no array prompt command to wrap.
+  it.skipIf(bashMajor < 5 || (bashMajor === 5 && bashMinor < 1))(`does the same for an array, and the array does not grow (bash ${bashMajor}.${bashMinor}; arrays are not prompt commands before 5.1)`, () => {
     const out = runRc([NEWLINE, `PROMPT_COMMAND=('PROMPT_COMMAND=kali_newline' ':')`], [...typed, SHOW, SHOW])
     expect(starts(out)).toEqual(typed)
     expect(ends(out)).toEqual(typed)
