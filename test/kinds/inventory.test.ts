@@ -84,6 +84,6 @@ describe('the inventory blind spots stay empty', () => {
 
   it('the one PowerShell helper that forwards -Subtype $Subtype is the only one', () => {
     const hits = read('hooks/*.ps1').filter(live).filter((l) => /-Subtype\s+\$/.test(l.text))
-    expect(hits.map((l) => `${l.file}:${l.line}`)).toEqual(['hooks/shell-hook.ps1:124'])
+    expect(hits.map((l) => `${l.file}:${l.line}`)).toEqual(['hooks/shell-hook.ps1:127'])
   })
 })
