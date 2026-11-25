@@ -10,7 +10,7 @@ import { join } from 'node:path'
 export interface RedLogBridge {
   project: {
     active: () => Promise<{ id: string; name: string } | null>
-    create: (name: string) => Promise<{ id: string; name: string }>
+    create: (name: string, initial?: Record<string, unknown>) => Promise<{ id: string; name: string }>
     open: (id: string) => Promise<{ id: string; name: string } | null>
     list: () => Promise<Array<{ id: string; name: string; lastOpened: number }>>
   }
@@ -107,13 +107,16 @@ export async function launchWithTempHome(executablePath?: string, { showHud = fa
  */
 export async function openTestProject(
   page: Page,
-  name = 'e2e-test'
+  name = 'e2e-test',
+  /** Config the project is created with, e.g. a scope. A project has none by
+   *  default, and with no scope nothing is judged against one. */
+  initial?: Record<string, unknown>
 ): Promise<{ id: string; name: string }> {
-  const project = await page.evaluate(async (n) => {
-    const created = await (window as unknown as { redlog: RedLogBridge }).redlog.project.create(n)
+  const project = await page.evaluate(async ([n, cfg]) => {
+    const created = await (window as unknown as { redlog: RedLogBridge }).redlog.project.create(n, cfg)
     await (window as unknown as { redlog: RedLogBridge }).redlog.project.open(created.id)
     return { id: created.id, name: created.name }
-  }, name)
+  }, [name, initial] as const)
   // App.tsx only reads project.active() once on mount; a reload lets that
   // effect see the now-active project and swap ProjectPicker out for the
   // main shell without needing to click through the picker UI.

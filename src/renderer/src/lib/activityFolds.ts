@@ -17,8 +17,9 @@ export type ActivitySegment =
 const systemData = (item: ActivitySummary): Record<string, unknown> | undefined =>
   item.anchor.agentType === 'system' ? item.anchor.data ?? {} : undefined
 
-/** A clean scope verdict: every in-scope action writes one, the positive
- *  record that scope was observed (`ScopePolicy` always emits `in_scope`). It
+/** A clean scope verdict: every action judged in scope writes one, the positive
+ *  record that scope was observed (`ScopePolicy` emits `in_scope` whenever a
+ *  scope is set; with none set there is nothing to judge and no row). It
  *  stays in the chain and in every count. A verdict whose judged row is in the
  *  record is a source event of that row's activity (decision 2026-11-15 §2,
  *  `attachedCauseId`) and never reaches this list as a row of its own. What

@@ -41,7 +41,12 @@ test.describe.serial('recording pause semantics', () => {
     })
     page = await app.firstWindow()
     await page.waitForLoadState('domcontentloaded')
-    await openTestProject(page, 'pause-semantics')
+    // A scope, so that the out-of-scope host below is judged against something:
+    // a project with no scope raises no scope row at all, paused or not, and
+    // "nothing was derived while paused" would then prove nothing about scope.
+    await openTestProject(page, 'pause-semantics', {
+      scope: { targets: ['in-scope.example.com'], excludeTargets: ['out-of-scope.example.com'] }
+    })
     await page.waitForTimeout(1500)
     base = `http://127.0.0.1:${readFileSync(join(tmpHome, '.redlog', 'api-port'), 'utf-8').trim()}`
     token = readFileSync(join(tmpHome, '.redlog', 'api-token'), 'utf-8').trim()
@@ -72,7 +77,9 @@ test.describe.serial('recording pause semantics', () => {
 
   test('no derived events leak the paused content', async () => {
     const before = await count()
-    // A command whose target would normally raise scope_violation + loot.
+    // A command whose target would normally raise scope_violation + loot. The
+    // scope row is judged from the command's start, the loot from its end.
+    await post('shell', { subtype: 'command_start', command: 'curl https://out-of-scope.example.com' })
     await post('shell', {
       subtype: 'command_end',
       command: 'curl -H "Authorization: Bearer AKIAIOSFODNN7EXAMPLE" https://out-of-scope.example.com',
@@ -119,6 +126,16 @@ test.describe.serial('recording pause semantics', () => {
     expect(subs).toContain('recording_paused')
     expect(subs).toContain('recording_resumed')
     expect(JSON.stringify(all.events)).toContain('after-resume')
+    expect(subs, 'nothing was judged while paused').not.toContain('scope_violation')
+
+    // The control for 'no derived events leak the paused content': the same
+    // host, now that recording is on, does raise the scope row.
+    await post('shell', { subtype: 'command_start', command: 'curl https://out-of-scope.example.com' })
+    await expect.poll(async () => {
+      const now = await fetch(`${base}/api/events?agent_type=system&limit=200`, { headers: { authorization: `Bearer ${token}` } })
+        .then((r) => r.json()) as { events: Array<{ data?: Record<string, unknown> }> }
+      return now.events.filter((e) => e.data?.subtype === 'scope_violation').map((e) => e.data?.distance)
+    }, { timeout: 5000 }).toEqual(['excluded'])
   })
 
   test('the pause/resume rows name their origin', async () => {

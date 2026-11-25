@@ -76,10 +76,31 @@ describe('ScopePolicy — D1-D4 distance ladder', () => {
     expect(r[0].distance).toBe('in_scope')
   })
 
-  it('no config → everything in_scope by default', () => {
+  // #883. With no scope the classifier's answer is a default, not a finding:
+  // it used to be written once per request and per command, and in a real
+  // project with no scope set that was 68% of the chain.
+  it('no scope set → nothing is emitted, because nothing was judged', () => {
     p.configure({})
-    const [v] = p.evaluate(hit('anything.com'))
-    expect(v).toMatchObject({ distance: 'in_scope', authority: 'unknown' })
+    expect(p.evaluate(hit('anything.com'))).toEqual([])
+    // The classifier's own answer is unchanged (Spec 023): in scope, authority unknown.
+    expect(classifyScopeTarget('anything.com', { targets: [], excludeTargets: [] }))
+      .toMatchObject({ distance: 'in_scope', authority: 'unknown' })
+  })
+
+  it('an exclude-only scope still judges an excluded hit, and only that', () => {
+    p.configure({ targets: [], excludeTargets: ['admin.example.com'] })
+    const [v] = p.evaluate(hit('admin.example.com'))
+    expect(v).toMatchObject({ distance: 'excluded', authority: 'fact', severity: 'critical' })
+    expect(p.evaluate(hit('www.example.com'))).toEqual([])
+  })
+
+  it('emitting starts with the first target and stops when the last one is removed', () => {
+    p.configure({ targets: [] })
+    expect(p.evaluate(hit('www.example.com'))).toEqual([])
+    p.configure({ targets: ['*.example.com'] })
+    expect(p.evaluate(hit('www.example.com'))).toHaveLength(1)
+    p.configure({ targets: [] })
+    expect(p.evaluate(hit('www.example.com'))).toEqual([])
   })
 
   it('CIDR wildcard /0 matches everything', () => {
@@ -135,8 +156,9 @@ describe('the pure classifier is the same classifier', () => {
         expect(pure.authority).toBe(v.authority)
         expect(pure.severity).toBe(v.severity)
       } else {
-        // No verdict emitted means the distance was below the floor — which is
-        // exactly what isReportable says about the pure answer.
+        // No verdict emitted means the distance was below the floor, or there
+        // was no scope to judge against (in_scope, authority unknown). Either
+        // way isReportable says the same about the pure answer.
         expect(isReportable(pure.distance, alertFloorFor(true))).toBe(false)
       }
     }
