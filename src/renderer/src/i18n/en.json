@@ -418,7 +418,7 @@
   "settings.confirmationsHint": "CGNAT or load-balanced egress can answer differently each poll; requiring identical reads stops the badge flickering.",
   "settings.ipProviders": "IP lookup endpoints (blank = built-in defaults)",
   "settings.ipProvidersHint": "Tried in order until one answers. Must return JSON with an \"ip\" field.",
-  "settings.vpnAdaptersHint": "Adapter names that count as a VPN tunnel. Presets can be toggled; custom patterns are case-insensitive regex.",
+  "settings.vpnAdaptersHint": "Adapters that count as a VPN tunnel, matched by name and, on Windows, by adapter description. Presets can be toggled; custom patterns are case-insensitive regex.",
   "settings.vpnAddCustom": "Add custom adapter pattern",
   "settings.vpnNamePlaceholder": "Name",
   "settings.vpnPatternPlaceholder": "Regex pattern",
