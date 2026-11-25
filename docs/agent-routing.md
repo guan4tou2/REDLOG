@@ -2,7 +2,7 @@
 
 > **Status:** current  
 > **Scope:** which subagent to use in Claude Code sessions on this repository; not product documentation  
-> **Last verified:** not re-verified in this pass (the model table was not compared with the agent definitions)
+> **Last verified:** 2026-11-25 (the model, effort and tools columns compared with the four definitions in `.claude/agents/`)
 
 Four subagents, one rule: **every one is a 5.5 model**. The main thread runs
 Sonnet 5.5, and nothing here falls back to an older family.
@@ -10,7 +10,7 @@ Sonnet 5.5, and nothing here falls back to an older family.
 | agent | model | effort | use it when | tools |
 |---|---|---|---|---|
 | `scout` | Haiku 5.5 | low | the answer is a fact to look up — grep, read a log, fetch a doc page | read-only |
-| `worker` | Sonnet 5.5 | medium | the change is decided and mostly mechanical — implement, run a test loop, draft a PR body | all, **no commit/push** |
+| `worker` | Sonnet 5.5 | medium | the change is decided and mostly mechanical — implement, run a test loop, draft a PR body | read, edit, run, **no commit/push** |
 | `reviewer` | Opus 5.5 | high | before a large change is pushed, or when a claim is about to be asserted unverified | read + run, never edits |
 | `architect` | Opus 5.5 | xhigh | root cause has resisted two attempts, or a wrong design choice would be expensive | read + run, never edits |
 
@@ -40,6 +40,23 @@ Resolution order, from the docs: per-invocation `model` → frontmatter `model`
 the only place it can be set. It overrides the session's effort but not the
 `CLAUDE_CODE_EFFORT_LEVEL` environment variable — if that is set, it wins over
 all of these.
+
+## Every agent names its tools
+
+A definition with no `tools:` line inherits every tool the session has, and each
+tool's schema is sent again on every call the agent makes. `worker` had no such
+line: its first call carried about 56k tokens before it had read anything,
+against about 15k for `reviewer`, which names four tools. Across 41 `worker`
+runs recorded on one machine, eight tools made up 5,135 of its 5,222 calls
+(`docs/TOKEN-SAVING-TOOLS.md` has the measurement).
+
+So `worker` lists those eight and `Glob`, and its first call in a headless
+session went from 47.7k to 24.4k. When a task needs a tool that is not listed,
+add it to the definition rather than removing the line. A new agent gets a
+`tools:` line from the start.
+
+Definitions are read when a session starts. A session that was already open
+keeps the definition it loaded, so an edit here shows up in the next one.
 
 ## What a subagent's report is
 
