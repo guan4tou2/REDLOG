@@ -49,9 +49,9 @@ describePowerShell.each(shells.length ? shells : ['PowerShell unavailable'])('th
   afterEach(() => { fs.rmSync(home, { recursive: true, force: true }) })
 
   it('gives start and end of one command the same pair key, and each command its own', async () => {
-    // -Command puts the dot-source itself in history; a $PROFILE load is not.
-    const events = (await runShell(ps, home, ['Write-Output first', 'Write-Output second']))
-      .filter((e) => e.command.startsWith('Write-Output'))
+    // -Command puts the dot-source itself in history. It is there before the
+    // first prompt, so the hook does not report it (#886).
+    const events = await runShell(ps, home, ['Write-Output first', 'Write-Output second'])
     const starts = events.filter((e) => e.subtype === 'command_start')
     const ends = events.filter((e) => e.subtype === 'command_end')
     expect(starts.map((e) => e.command)).toEqual(['Write-Output first', 'Write-Output second'])

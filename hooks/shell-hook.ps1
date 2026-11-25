@@ -19,7 +19,10 @@ $script:_RedLogDir       = Join-Path $env:USERPROFILE '.redlog'
 $script:_RedLogPortFile  = Join-Path $script:_RedLogDir  'api-port'
 $script:_RedLogTokenFile = Join-Path $script:_RedLogDir  'api-token'
 $script:_RedLogSpoolDir  = Join-Path $script:_RedLogDir  'pending'
-$script:_RedLogLastId    = 0
+# The history id last reported, `$null` until this shell has drawn a prompt with
+# the hook loaded (see `prompt`). Left alone when the file is loaded a second
+# time: a profile reloaded at a prompt is not a new shell.
+if (-not (Test-Path variable:script:_RedLogLastId)) { $script:_RedLogLastId = $null }
 $script:_RedLogMaxBytes  = 102400   # 100 KB per stream (parity with bash hook)
 $script:_RedLogSpoolCap  = 5000     # protects against a runaway loop while RedLog is offline
 # This shell's source session, minted here as the POSIX adapters do
@@ -175,7 +178,18 @@ function prompt {
     $nativeExit = $lastExit -and ($lastExit -ne $script:_RedLogPrevExit -or -not $newError)
 
     $entry = Get-History -Count 1 -ErrorAction SilentlyContinue
-    if ($entry -and $entry.Id -ne $script:_RedLogLastId) {
+    if ($null -eq $script:_RedLogLastId) {
+        # This shell's first prompt. The host draws a prompt before it reads a
+        # line, so nothing in history yet was typed at one: it is what started
+        # the shell handed over. A terminal app's integration starts PowerShell
+        # as `-NoExit -Command "<its setup>"`, and that string is in history like
+        # any line -- two apps' setup lines were being delivered to clients as
+        # commands the operator ran (#886). So is the line that loaded this file
+        # into a shell already running.
+        # Recording starts after it. Told apart by where it came from, never by
+        # what it says: every app writes its own line, and changes it.
+        $script:_RedLogLastId = if ($entry) { $entry.Id } else { 0 }
+    } elseif ($entry -and $entry.Id -ne $script:_RedLogLastId) {
         $cmd = $entry.CommandLine
         $duration = [int]($entry.EndExecutionTime - $entry.StartExecutionTime).TotalSeconds
         $exitCode = if ($success) { 0 } elseif ($nativeExit) { $lastExit } else { 1 }
