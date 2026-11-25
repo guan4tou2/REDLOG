@@ -492,7 +492,25 @@ _redlog_debug_trap() {
 # -a, a prompt function) was recorded as "the command", and because a command
 # was then "in flight" the next real one was dropped: nothing they typed was
 # recorded. Disarm first, re-arm last; the trap only counts while armed.
-_redlog_arm() { _REDLOG_TRAP_ARMED=1; }
+#
+# Arming is also where the prompt command is checked, because it is the last
+# thing a prompt runs and the operator's own prompt command has run by then.
+# That command may assign PROMPT_COMMAND: Kali's stock ~/.bashrc starts with
+# `PROMPT_COMMAND="PROMPT_COMMAND=echo"`, so that the first prompt prints no
+# blank line and every later one does. Bash had already read the string it was
+# running, so the first prompt finished, armed, and the first command got its
+# `command_start`; from the second prompt on the prompt command was `echo` and
+# nothing of REDLOG's ran again. That command never ended, and every later one
+# was dropped as "one is already in flight" (#878). So when the prompt command
+# no longer runs `_redlog_prompt_command`, whatever it is now is wrapped again.
+# A test on a variable, no process; the wrap itself is paid only then.
+#
+# `_REDLOG_TRAP_ARMED=1` stays the last command of the body: it is what
+# `$BASH_COMMAND` names when stdin ends at an idle prompt (see the trace).
+_redlog_arm() {
+  [[ "${PROMPT_COMMAND[*]-}" == *_redlog_prompt_command* ]] || _redlog_wrap_prompt_command
+  _REDLOG_TRAP_ARMED=1
+}
 
 # Where REDLOG's trap is put in place, and kept there. Bash keeps one DEBUG
 # trap per shell, and bash-preexec, starship's bash init and atuin all keep
@@ -706,23 +724,56 @@ _REDLOG_HISTNUM=$(_redlog_history_number)
 # `$(trap -p DEBUG)` and the `trap` are commands of the prompt command, not a
 # function's, for the reason given at `_redlog_trap_plan`. The read costs one
 # `$( )` a prompt, as `history 1` already does twice. All of it runs disarmed.
-_redlog_pc_plan='_redlog_trap_plan "$(trap -p DEBUG)"'
-_redlog_pc_set='[[ -z "$_REDLOG_TRAP_NEXT" ]] || trap -- "$_REDLOG_TRAP_NEXT" DEBUG'
-if (( BASH_VERSINFO[0] > 5 || (BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] >= 1) )) \
-   && [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]]; then
-  PROMPT_COMMAND=(_redlog_prompt_command "${PROMPT_COMMAND[@]}" "$_redlog_pc_plan" "$_redlog_pc_set" _redlog_arm)
-else
-  _redlog_user_pc="${PROMPT_COMMAND:-}"
-  # A trailing `;` or blank in the operator's value would make `;;` a syntax error.
-  _redlog_user_pc="${_redlog_user_pc%"${_redlog_user_pc##*[![:space:];]}"}"
-  if [[ -n "$_redlog_user_pc" ]]; then
-    PROMPT_COMMAND="_redlog_prompt_command;${_redlog_user_pc};${_redlog_pc_plan};${_redlog_pc_set};_redlog_arm"
+#
+# A function, because it runs again whenever the prompt command has stopped
+# carrying REDLOG's (see `_redlog_arm`). What it wraps is the value as it is
+# now, less any piece of REDLOG's own still in it, so that a second wrap (or a
+# value a parent shell exported) does not leave two tails.
+#
+# An array needs one thing more. A plain `PROMPT_COMMAND=x` on an array assigns
+# element 0, which here is `_redlog_prompt_command`, and leaves the rest. To
+# the operator's code element 0 was its own first element — the one now at
+# index 1 — so that is the one `x` stands in for; kept beside `x` it would run
+# again, replace element 0 again, and add an `x` at every prompt.
+_REDLOG_PC_PLAN='_redlog_trap_plan "$(trap -p DEBUG)"'
+_REDLOG_PC_SET='[[ -z "$_REDLOG_TRAP_NEXT" ]] || trap -- "$_REDLOG_TRAP_NEXT" DEBUG'
+_redlog_wrap_prompt_command() {
+  local piece
+  if (( BASH_VERSINFO[0] > 5 || (BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] >= 1) )) \
+     && [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]]; then
+    local -a now=("${PROMPT_COMMAND[@]}") kept=()
+    if (( ${#now[@]} > 1 )) && [[ "${now[0]}" != _redlog_prompt_command \
+          && "${now[${#now[@]}-1]}" == _redlog_arm ]]; then
+      case "${now[1]}" in
+        "$_REDLOG_PC_PLAN"|"$_REDLOG_PC_SET"|_redlog_arm) ;;
+        *) unset 'now[1]' ;;
+      esac
+    fi
+    for piece in "${now[@]}"; do
+      case "$piece" in
+        _redlog_prompt_command|"$_REDLOG_PC_PLAN"|"$_REDLOG_PC_SET"|_redlog_arm) ;;
+        *) kept[${#kept[@]}]=$piece ;;
+      esac
+    done
+    PROMPT_COMMAND=(_redlog_prompt_command "${kept[@]}" "$_REDLOG_PC_PLAN" "$_REDLOG_PC_SET" _redlog_arm)
   else
-    PROMPT_COMMAND="_redlog_prompt_command;${_redlog_pc_plan};${_redlog_pc_set};_redlog_arm"
+    local theirs="${PROMPT_COMMAND:-}"
+    # With the `;` that joined it first, so that no `;;` is left behind.
+    for piece in _redlog_prompt_command "$_REDLOG_PC_PLAN" "$_REDLOG_PC_SET" _redlog_arm; do
+      theirs=${theirs//";$piece"/}
+      theirs=${theirs//"$piece;"/}
+      theirs=${theirs//"$piece"/}
+    done
+    # A trailing `;` or blank in the operator's value would make `;;` a syntax error.
+    theirs="${theirs%"${theirs##*[![:space:];]}"}"
+    if [[ -n "$theirs" ]]; then
+      PROMPT_COMMAND="_redlog_prompt_command;${theirs};${_REDLOG_PC_PLAN};${_REDLOG_PC_SET};_redlog_arm"
+    else
+      PROMPT_COMMAND="_redlog_prompt_command;${_REDLOG_PC_PLAN};${_REDLOG_PC_SET};_redlog_arm"
+    fi
   fi
-  unset _redlog_user_pc
-fi
-unset _redlog_pc_plan _redlog_pc_set
+}
+_redlog_wrap_prompt_command
 # A relayed command's directory is removed by the NEXT prompt command. `exit` is
 # a relayed command like any other, and no prompt follows it, so every shell
 # closed on purpose left one behind (#296). Nothing here restores the
