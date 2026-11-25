@@ -418,7 +418,7 @@
   "settings.confirmationsHint": "CGNAT 或負載平衡出口每次回應可能不同；要求連續一致可避免徽章亂閃。",
   "settings.ipProviders": "IP 查詢端點（留空 = 內建預設）",
   "settings.ipProvidersHint": "依序嘗試直到有回應。需回傳含 \"ip\" 欄位的 JSON。",
-  "settings.vpnAdaptersHint": "哪些介面名稱算 VPN 隧道。可切換預設，也可新增自訂 pattern（不分大小寫的正規表達式）。",
+  "settings.vpnAdaptersHint": "哪些介面算 VPN 隧道：比對介面名稱，Windows 上也比對介面描述。可切換預設，也可新增自訂 pattern（不分大小寫的正規表達式）。",
   "settings.vpnAddCustom": "新增自訂介面規則",
   "settings.vpnNamePlaceholder": "名稱",
   "settings.vpnPatternPlaceholder": "正規表達式",

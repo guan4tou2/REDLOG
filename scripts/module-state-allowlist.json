@@ -1114,6 +1114,10 @@
       "class": "machine",
       "reason": "VPN adapter patterns of this computer."
     },
+    "src/main/services/opsec-state.ts#adapterCache": {
+      "class": "machine",
+      "reason": "Windows adapter descriptions of this computer, asked for when the interface names change; dropped when the monitor stops."
+    },
     "src/main/services/opsec-state.ts#last": {
       "class": "project-legacy",
       "reason": "Last opsec state of the open project."
