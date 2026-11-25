@@ -4,6 +4,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { bashCanChainDebugTrap } from './helpers/bash-trap-chain'
+import { requires } from './helpers/requires'
 
 // The bash adapter recorded the operator's PROMPT_COMMAND instead of what they
 // typed, and dropped every real command behind it. Run a real interactive bash.
@@ -90,6 +91,93 @@ describe.skipIf(process.platform === 'win32')('bash adapter with an existing PRO
     const ev = run(null, typed)
     expect(starts(ev)).toEqual(typed)
     expect(JSON.stringify(ev)).not.toContain('_redlog_')
+  })
+})
+
+// #878. Kali's stock ~/.bashrc sets `PROMPT_COMMAND="PROMPT_COMMAND=echo"`: the
+// first prompt prints no blank line and every later one does. The hook wraps
+// that value, so the first prompt ran the hook's own pieces and then replaced
+// the whole prompt command with `echo`. One `command_start`, never an end, and
+// every later command dropped behind it, in a shell that said it was recording.
+//
+// From an rc file, unlike the cases above: there every line of the script is
+// followed by a prompt, so a prompt command that replaces itself has already
+// done so by the time the hook is sourced. In an rc both are in place before
+// the first prompt, which is the only arrangement that shows the fault.
+function runRc(rc: string[], commands: string[]): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redlog-bash-'))
+  try {
+    const rcFile = path.join(dir, 'rc')
+    fs.writeFileSync(rcFile, [`HISTFILE=${dir}/hist`, ...rc, `source ${HOOK} 2>/dev/null`, STUB, ''].join('\n'))
+    const r = spawnSync('bash', ['--rcfile', rcFile, '-i'], {
+      input: [...commands, 'exit'].join('\n'), env: { ...process.env, HOME: path.join(dir, 'home') }, encoding: 'utf8'
+    })
+    return r.stderr
+  } finally { fs.rmSync(dir, { recursive: true, force: true }) }
+}
+
+// An rc file sourced by an interactive bash, with POSIX paths in both: the
+// requirement is the platform's shell model, not a binary called `bash`, which
+// Git Bash also answers to on Windows.
+requires('posix-shell').describe('bash adapter with a prompt command that assigns PROMPT_COMMAND', () => {
+  const typed = ['echo one', 'pwd', 'echo three']
+  // Typed last, twice, so two prompts apart: what the prompt command is by then.
+  const SHOW = 'echo "PC<${PROMPT_COMMAND[*]//[^a-z_ ]/}>" >&2'
+  const events = (stderr: string): Array<[string, string]> =>
+    [...stderr.matchAll(/EVENT (\w+) \[([^\]]*)\]/g)].map((m) => [m[1], m[2]] as [string, string])
+      .filter(([, c]) => typed.includes(c))
+  const starts = (stderr: string): string[] => events(stderr).filter(([k]) => k === 'command_start').map(([, c]) => c)
+  const ends = (stderr: string): string[] => events(stderr).filter(([k]) => k === 'command_end').map(([, c]) => c)
+  const count = (text: string, needle: string): number => text.split(needle).length - 1
+  // `$((1))` so an echoed definition is not mistaken for output (see `marks`).
+  const NEWLINE = 'kali_newline() { echo "NL<$((1))>" >&2; }'
+
+  it('keeps recording after the first prompt replaces it (Kali\'s NEWLINE_BEFORE_PROMPT)', () => {
+    const out = runRc([NEWLINE, 'PROMPT_COMMAND="PROMPT_COMMAND=kali_newline"'], [...typed, SHOW, SHOW])
+    expect(starts(out)).toEqual(typed)
+    expect(ends(out)).toEqual(typed)
+    // Seen by the trap and ended at the prompt, not rebuilt from history.
+    expect(dispositions(out).filter(([c]) => typed.includes(c))).toEqual(typed.map((c) => [c, 'interactive']))
+    // The operator's replacement is what runs from the second prompt on.
+    expect(marks(out, 'NL').length).toBeGreaterThanOrEqual(typed.length)
+    const shown = marks(out, 'PC')
+    expect(shown).toHaveLength(2)
+    expect(count(shown[0], '_redlog_prompt_command')).toBe(1)
+    expect(count(shown[0], 'kali_newline')).toBe(1)
+    expect(shown[1]).toBe(shown[0])
+  })
+
+  it('wraps again, without growing, when it is replaced at every prompt', () => {
+    const out = runRc(['again() { PROMPT_COMMAND=again; }', 'PROMPT_COMMAND=again'], [...typed, SHOW, SHOW])
+    expect(starts(out)).toEqual(typed)
+    expect(ends(out)).toEqual(typed)
+    const shown = marks(out, 'PC')
+    expect(shown).toHaveLength(2)
+    expect(count(shown[0], '_redlog_arm')).toBe(1)
+    expect(shown[1]).toBe(shown[0])
+  })
+
+  it('keeps recording, and records nothing of its own, when the prompt command unsets PROMPT_COMMAND', () => {
+    const out = runRc(["PROMPT_COMMAND='unset PROMPT_COMMAND'"], typed)
+    expect(starts(out)).toEqual(typed)
+    expect(ends(out)).toEqual(typed)
+    expect(out.split('\n').filter((l) => l.startsWith('EVENT')).join('\n')).not.toContain('_redlog_')
+  })
+
+  // On an array the same assignment replaces element 0 alone, which is the
+  // hook's own, and leaves the element that made it. Skipped before 5.1 for
+  // the reason the array cases at the end of this file are: such a bash runs
+  // element 0 as a string, so there is no array prompt command to wrap.
+  it.skipIf(bashMajor < 5 || (bashMajor === 5 && bashMinor < 1))(`does the same for an array, and the array does not grow (bash ${bashMajor}.${bashMinor}; arrays are not prompt commands before 5.1)`, () => {
+    const out = runRc([NEWLINE, `PROMPT_COMMAND=('PROMPT_COMMAND=kali_newline' ':')`], [...typed, SHOW, SHOW])
+    expect(starts(out)).toEqual(typed)
+    expect(ends(out)).toEqual(typed)
+    expect(marks(out, 'NL').length).toBeGreaterThanOrEqual(typed.length)
+    const shown = marks(out, 'PC')
+    expect(shown).toHaveLength(2)
+    expect(count(shown[0], '_redlog_prompt_command')).toBe(1)
+    expect(count(shown[0], 'kali_newline')).toBe(1)
+    expect(shown[1]).toBe(shown[0])
   })
 })
 
