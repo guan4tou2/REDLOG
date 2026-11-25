@@ -70,7 +70,7 @@ import { readExecutionPolicy } from '../core/powershell-policy'
 import { shouldAutoStartHttpCapture } from '../core/http-autostart'
 import { isOnPath } from '../core/command-lookup'
 import { installDependency } from './services/dependency-installer'
-import { detectHooks, detectHooksAsync, getCachedHooks, getCaptureHookPath, invalidateHooksCache as invalidateHooksDetectCache, installHook, refreshInstalledHooks, removeInstalledHooks, uninstallHook } from '../core/hooks-manager'
+import { detectHooks, detectHooksAsync, getCachedHooks, getCaptureHookPath, invalidateHooksCache as invalidateHooksDetectCache, installHook, refreshInstalledHooks, removeInstalledHooks, removeRetiredHookLines, uninstallHook } from '../core/hooks-manager'
 import { readTerminalMode, readClassOverlay, readTerminalApp, writeTerminalApp } from '../core/terminal-enrollment'
 import { compileClassPolicy, knownProfiles } from '../core/terminal-class'
 import { createToolDetector, rescanTrigger } from '../core/tool-detection'
@@ -1889,14 +1889,14 @@ app.whenReady().then(() => {
   ipcMain.handle('hooks:setTerminalApp', (_e, value: unknown) => writeTerminalApp(value))
   // Installing or removing a capture hook changes what the record contains
   // from then on, so the record says when it happened.
-  const auditHookChange = (hookId: string, installed: boolean, r: { success: boolean; message: string }): void => {
-    debugLog('hooks', installed ? 'install' : 'uninstall', `id=${hookId} success=${r.success}`)
+  const auditHookChange = (hookId: string, installed: boolean, r: { success: boolean; message: string }, what: 'installed' | 'retiredLine' = 'installed'): void => {
+    debugLog('hooks', what === 'retiredLine' ? 'remove-retired-line' : installed ? 'install' : 'uninstall', `id=${hookId} success=${r.success}`)
     const open = projectRuntime.current()
     if (!r.success || !open) return
     try {
       const ev = insertEvent('system', {
         subtype: 'config_changed',
-        changed: { [`hook.${hookId}.installed`]: { from: !installed, to: installed } },
+        changed: { [`hook.${hookId}.${what}`]: { from: !installed, to: installed } },
         description: r.message
       }, open)
       if (ev) eventBus.publish(ev)
@@ -1912,6 +1912,14 @@ app.whenReady().then(() => {
     invalidateHooksCache(); invalidateHooksDetectCache()
     const r = uninstallHook(hookId)
     auditHookChange(hookId, false, r)
+    return r
+  })
+  // #879. Recorded when a file was rewritten: the copy the line names may
+  // still be on disk and loading, and then this ends what it was sending.
+  ipcMain.handle('hooks:removeRetiredLines', (_e, hookId: string) => {
+    invalidateHooksCache(); invalidateHooksDetectCache()
+    const r = removeRetiredHookLines(hookId)
+    auditHookChange(hookId, false, { success: r.changed.length > 0, message: r.message }, 'retiredLine')
     return r
   })
   // Wait for the login shell's PATH (login-path.ts): a Dock-launched app starts

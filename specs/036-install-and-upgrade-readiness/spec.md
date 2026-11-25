@@ -15,6 +15,14 @@
 > RedLog is pre-1.0 and no longer reads a shell profile it did not write. What
 > stands from this spec is the preflight contract itself, the login-PATH
 > resolution, PowerShell profile install, checksums and packaging.
+>
+> **Amended 2026-11-25 (#879).** One line RedLog itself wrote turned out to
+> outlive that removal: the bash install's `source` of the retired entry point
+> in `~/.bashrc`, which then fails at every shell start. Settings names that
+> line on the shell's row and removes it on request, and install and removal
+> take it out with their own lines (`src/core/retired-hook-lines.ts`). Nothing
+> is migrated and the old file is not made to load; the banner, the backup and
+> the preflight field stay removed.
 
 ## Problems (verified on main before this spec)
 

@@ -84,6 +84,8 @@ export interface HookInfo {
    *  by nothing — including the mitmproxy CA removal, which is the longest
    *  lived thing RedLog can leave on a machine. */
   removalSteps?: ManualStep[]
+  /** Where this shell's rc files load a hook file RedLog no longer ships. */
+  retiredLines?: Array<{ file: string; line: number }>
   /** Shipped with RedLog, rather than contributed by an installed plugin. */
   builtin?: boolean
   /** Contributed by a plugin that has been switched off. Still listed: these

@@ -18,6 +18,13 @@ for full commit body + generated notes.
   the NTP queries and the update check at once; before, both kept going until
   the project was reopened. Switched off again, NTP and anchoring resume as
   they do at open.
+- A `~/.bashrc` that still holds the block the bash install wrote before
+  2026-09-22 made every new shell print "No such file or directory" and record
+  nothing, and nothing in the app could see the line. Settings ▸ Commands &
+  terminal now names the file and line on the Bash row and removes the block
+  on request; installing or removing the bash hook takes it out as well. Only
+  a line under RedLog's own marker comment is touched, and the old file is not
+  loaded or migrated (#879).
 
 ## v0.19.0 — 2026-11-17
 

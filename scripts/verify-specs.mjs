@@ -112,10 +112,11 @@ for (const name of Object.keys(KNOWN_GAPS)) {
 
 const executableRoots = ['README.md', 'electron-builder.yml', 'package.json', 'src', 'hooks', 'plugins', 'cli', '.github']
 const forbidden = ['shell-preexec-hook.sh', 'redlog-hook.zsh', 'claude-code-hook.sh']
-// Nothing is exempt any more. The one file that named them held Spec 036's
-// legacy-hook detection list, and that detection is gone with the rest of the
-// pre-1.0 compatibility path.
-const forbiddenExempt = new Set([])
+// One file may name them: it recognises the line an earlier bash install left
+// in a shell rc, so that the line can be reported and removed (#879). It loads
+// nothing and keeps nothing working. Exact path match, no directory or glob.
+// Spec 036's wider detection and migration stay removed.
+const forbiddenExempt = new Set(['src/core/retired-hook-lines.ts'])
 const textExtensions = new Set(['.md', '.yml', '.yaml', '.json', '.ts', '.tsx', '.js', '.mjs', '.sh', '.zsh', '.ps1'])
 
 function visit(candidate) {

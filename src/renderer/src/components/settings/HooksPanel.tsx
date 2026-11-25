@@ -9,6 +9,7 @@ import { useRevalidateOnFocus } from '../../hooks/useRevalidateOnFocus'
 import { useReadState } from '../../lib/readState'
 import { SetupAndTeardown } from './ManualStepList'
 import { Button } from '../Button'
+import { toast } from '../Toast'
 import { ToolProfileCards, type ToolPolicyView } from './ToolProfileCards'
 
 // Built-in hooks describe themselves in English in hooks-manager (main
@@ -91,6 +92,22 @@ export default function HooksPanel({ hooks, setHooks, t }: {
     removeHookWithUndo(hook.id, t, { hide: show(false), restore: show(true), refresh: read.retry })
   }
 
+  // #879. At once, with no undo window: that is for switching a working
+  // source off by mistake, and this line names a file RedLog stopped shipping.
+  const removeRetired = async (hook: HookInfo): Promise<void> => {
+    const failed = (detail?: string): void => toast(t('settings.hookRetiredRemoveFailed'), {
+      type: 'error', why: t('settings.hookFailedWhy'), detail
+    })
+    try {
+      const r = await window.redlog.hooks.removeRetiredLines(hook.id)
+      if (!r.success) failed(r.message)
+    } catch (e) {
+      failed(e instanceof Error ? e.message : String(e))
+    } finally {
+      read.retry()
+    }
+  }
+
   const platform = (window as { redlog?: { platform?: string } }).redlog?.platform
   const builtinHooks = hooks.filter((hook) => hook.builtin && hook.id !== 'mitmproxy')
   const otherHooks = builtinHooks.filter((hook) => isForeignShellHook(hook, platform))
@@ -106,7 +123,7 @@ export default function HooksPanel({ hooks, setHooks, t }: {
         <div
           key={hook.id}
           className={`flex min-w-0 flex-col rounded border ${
-            hook.available ? 'border-redlog-border bg-redlog-surface/50'
+            hook.available || hook.retiredLines?.length ? 'border-redlog-border bg-redlog-surface/50'
               : isManual ? 'border-redlog-border bg-redlog-surface/30 opacity-75'
               : 'border-redlog-border bg-redlog-surface/20 opacity-50'
           }`}
@@ -159,6 +176,20 @@ export default function HooksPanel({ hooks, setHooks, t }: {
             )}
             </div>
           </div>
+          {!!hook.retiredLines?.length && (
+            <div data-testid={`hook-retired-${hook.id}`} className="flex flex-wrap items-center gap-2 px-3 pb-3">
+              <div role="status" className="min-w-0 flex-1 basis-48 text-xs text-amber-400">
+                {hook.retiredLines.map((ref) => (
+                  <p key={`${ref.file}:${ref.line}`} className="break-all">
+                    {t('settings.hookRetiredLine', { file: ref.file, line: ref.line })}
+                  </p>
+                ))}
+              </div>
+              <Button size="compact" onClick={() => { void removeRetired(hook) }}>
+                {t('settings.hookRetiredRemove')}
+              </Button>
+            </div>
+          )}
           {connecting === hook.id && !preparing && (
             <div id={`hook-connection-${hook.id}`} className="min-w-0 px-3 pb-3">
               <RecordTerminalFlow key={connecting}

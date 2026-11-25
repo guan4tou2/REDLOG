@@ -8,7 +8,9 @@
 //
 // It also used to detect shell profiles still sourcing an entry point Spec 006
 // retired, and offer to migrate them. That is gone: RedLog is pre-1.0 and
-// carries no installed base worth a compatibility path.
+// carries no installed base worth a compatibility path. The one such line
+// RedLog itself wrote is reported and removed from Settings instead
+// (retired-hook-lines.ts, #879).
 
 import { basename } from 'path'
 import { isOnPath } from './command-lookup'
